@@ -7,7 +7,7 @@ import { InputManager } from './core/Input.js';
 import { Renderer } from './core/Renderer.js';
 import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
-import { MANIFESTATIONS } from './data/Manifestations.js';
+import { LevelUpUI } from './ui/LevelUpUI.js'; // <-- NEW IMPORT
 
 console.log("FRACTURED Engine Bootstrapping...");
 
@@ -28,6 +28,7 @@ const inputManager = new InputManager(canvas);
 const renderer = new Renderer(canvas, ctx);
 const audioEngine = new AudioEngine();
 const game = new Game();
+const levelUpUI = new LevelUpUI(audioEngine); // <-- INSTANTIATE UI
 
 game.audioEngine = audioEngine;
 
@@ -74,50 +75,14 @@ game.onLevelUp = () => {
     if (gameState === 'DEAD') return;
     gameState = 'LEVEL_UP';
     
-    // Reset inputs
+    // Reset inputs so the player stops walking
     inputManager.keys = { w: false, a: false, s: false, d: false }; 
     inputManager.updateKeyboardInput();
     audioEngine.playSFX('levelup');
 
-    const levelUpModal = document.getElementById('level-up-modal');
-    const cardsContainer = document.getElementById('cards-container');
-    levelUpModal.style.display = 'flex';
-    cardsContainer.innerHTML = '';
-    
-    const keysList = Object.keys(MANIFESTATIONS);
-    const shuffled = [...keysList].sort(() => 0.5 - Math.random());
-    let selected = shuffled.slice(0, 3);
-    
-    selected.forEach(key => {
-        const man = MANIFESTATIONS[key];
-        const currentLvl = key === 'adrenaline' ? 0 : game.state.player.weapons[key].level;
-        const card = document.createElement('div'); 
-        card.className = 'card';
-        
-        if (currentLvl >= man.maxLvl) {
-            card.innerHTML = `<h3>${man.name}</h3><p>MAX LEVEL</p>`;
-            card.style.opacity = '0.5'; 
-            card.style.cursor = 'not-allowed';
-        } else {
-            card.innerHTML = `<h3>${man.name}</h3><p>${man.desc}</p><div class="lvl">Level Up to ${currentLvl + 1}</div>`;
-            card.onclick = () => {
-                if (key === 'adrenaline') {
-                    game.state.player.speedMultiplier += 0.1;
-                    game.state.sanityDrainMult *= 0.85;
-                } else {
-                    const wep = game.state.player.weapons[key];
-                    wep.level++;
-                    if (key === 'flashlight') { wep.damage += 5; wep.radius += 20; wep.angle += 0.05; }
-                    if (key === 'static') { wep.damage += 3; wep.radius += 15; wep.active = true; }
-                }
-                
-                game.state.sanity = Math.min(game.state.player.maxHp, game.state.sanity + 20);
-                gameState = 'PLAYING'; 
-                levelUpModal.style.display = 'none';
-                audioEngine.playSFX('levelup');
-            };
-        }
-        cardsContainer.appendChild(card);
+    // Use our new modular UI manager
+    levelUpUI.show(game, () => {
+        gameState = 'PLAYING';
     });
 };
 
