@@ -24,6 +24,10 @@ export class Enemy {
         // Supports the new Ink Puddle slowing effect
         this.speedModifier = 1.0; 
         
+        // Supports the Corrosive Battery effect
+        this.acidTime = 0;
+        this.acidDmg = 0;
+        
         this.damageAccumulator = 0;
         this.damageTick = 0;
         
@@ -74,7 +78,12 @@ export class Enemy {
                 this.vy = (nearest.y - this.y) / Math.max(minDist, 0.001) * this.speed * 1.5;
             }
         } else {
-            this.color = this.buffed ? '#ff0000' : this.originalColor;
+            // Tint them sickly green if they are currently melting from acid
+            if (this.acidTime > 0 && this.flashTime <= 0) {
+                this.color = '#55ff55';
+            } else {
+                this.color = this.buffed ? '#ff0000' : this.originalColor;
+            }
         }
 
         // Modifier applies Ink slowness

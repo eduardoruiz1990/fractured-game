@@ -56,21 +56,26 @@ canvas { display: block; image-rendering: pixelated; }
 .level-up-modal {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
     background: rgba(10, 10, 10, 0.95); border: 2px solid var(--ui-gold);
-    padding: 30px; display: none; flex-direction: column; align-items: center; gap: 20px;
+    padding: 40px; display: none; flex-direction: column; align-items: center; gap: 30px;
     pointer-events: auto; z-index: 99999;
     box-shadow: 0 0 50px rgba(197, 160, 89, 0.2);
 }
-.cards-container { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; }
+.cards-container { display: flex; gap: 25px; flex-wrap: wrap; justify-content: center; perspective: 1000px; }
 .card {
-    background: #eee; color: #111; padding: 15px; width: 140px; height: 200px;
-    border-bottom: 25px solid #fff; box-shadow: 5px 5px 15px rgba(0,0,0,0.8);
-    cursor: pointer; transition: transform 0.2s, background 0.2s; text-align: center;
-    display: flex; flex-direction: column; justify-content: space-between;
+    background: #eee; color: #111; padding: 10px 10px 25px 10px; width: 160px; height: 240px;
+    box-shadow: 5px 10px 20px rgba(0,0,0,0.8);
+    cursor: pointer; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); text-align: center;
+    display: flex; flex-direction: column; justify-content: flex-start; border-radius: 2px;
 }
-.card:hover { transform: scale(1.05) rotate(2deg); background: #fff; }
-.card h3 { margin: 0; font-size: 1.1rem; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-.card p { font-size: 0.8rem; flex-grow: 1; display: flex; align-items: center; justify-content: center; }
-.card .lvl { font-weight: bold; color: var(--ui-red); }
+.card:hover { transform: scale(1.15) translateY(-10px) !important; background: #fff; box-shadow: 0 15px 30px rgba(197, 160, 89, 0.4); z-index: 10; }
+.polaroid-photo {
+    background: #111; height: 130px; width: 100%; border: 1px solid #333;
+    display: flex; justify-content: center; align-items: center; font-size: 3.5rem; overflow: hidden;
+    box-shadow: inset 0 0 20px #000; margin-bottom: 10px;
+}
+.card h3 { margin: 0; font-size: 1rem; border-bottom: 1px solid #ccc; padding-bottom: 5px; font-family: 'Courier New', monospace; font-weight: 900; }
+.card p { font-size: 0.75rem; flex-grow: 1; display: flex; align-items: center; justify-content: center; font-family: sans-serif; line-height: 1.2; margin: 5px 0;}
+.card .lvl { font-weight: bold; font-family: 'Courier New', monospace; font-size: 0.9rem; }
 
 /* Synapse Tree */
 .synapse-node {

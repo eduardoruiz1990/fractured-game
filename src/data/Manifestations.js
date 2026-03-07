@@ -30,6 +30,18 @@ export const MANIFESTATIONS = {
         name: 'Spilled Ink', 
         desc: 'Leaves a slowing, toxic trail behind you.', 
         maxLvl: 5 
+    },
+    corrosive_battery: {
+        id: 'corrosive_battery',
+        name: 'Corrosive Battery',
+        desc: 'Flashlight applies melting acid over time.',
+        maxLvl: 5
+    },
+    broken_chalk: {
+        id: 'broken_chalk',
+        name: 'Broken Chalk',
+        desc: 'Draws a warding circle. 2x damage inside.',
+        maxLvl: 5
     }
 };
 
@@ -45,6 +57,12 @@ export const SYNERGIES = {
         name: 'Industrial Bleed',
         desc: 'Pipe hits cause massive ink splatters, dealing AoE damage.',
         reqs: ['lead_pipe', 'spilled_ink']
+    },
+    scholastic_purge: {
+        id: 'scholastic_purge',
+        name: 'Scholastic Purge',
+        desc: 'Chalk wards emit acid mist. Instantly kills Parasites.',
+        reqs: ['broken_chalk', 'corrosive_battery']
     }
 };
 

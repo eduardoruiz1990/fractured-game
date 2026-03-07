@@ -181,9 +181,13 @@ export class Renderer {
         });
         this.ctx.globalAlpha = 1.0;
 
-        // Flashlight Glare Gradient
+        // Flashlight Glare Gradient (Tint green if corrosive battery is active!)
         const grad = this.ctx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, fl.radius);
-        grad.addColorStop(0, 'rgba(255, 255, 230, 0.3)'); 
+        if (state.player.weapons.corrosive_battery && state.player.weapons.corrosive_battery.level > 0) {
+            grad.addColorStop(0, 'rgba(180, 255, 150, 0.35)'); 
+        } else {
+            grad.addColorStop(0, 'rgba(255, 255, 230, 0.3)'); 
+        }
         grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
         this.ctx.fillStyle = grad; 
         this.ctx.fillRect(state.player.x - fl.radius, state.player.y - fl.radius, fl.radius*2, fl.radius*2);
@@ -374,6 +378,31 @@ export class Renderer {
         this.ctx.strokeRect(12, 12, this.canvas.width - 24, this.canvas.height - 24);
         this.ctx.restore();
         // ----------------------------------------
+        
+        // Draw Broken Chalk Safe Zones (Underneath everything else)
+        if (state.safeZones) {
+            state.safeZones.forEach(sz => {
+                this.ctx.save();
+                this.ctx.strokeStyle = `rgba(200, 200, 255, ${sz.life / sz.maxLife})`;
+                this.ctx.lineWidth = 3;
+                this.ctx.setLineDash([10, 15]); 
+                
+                // Rotate the chalk circle slowly
+                this.ctx.translate(sz.x, sz.y);
+                this.ctx.rotate(state.frame * 0.01);
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, sz.radius, 0, Math.PI*2);
+                this.ctx.stroke();
+                
+                // Scholastic Purge acid mist effect
+                if (state.player.synergies && state.player.synergies.includes('scholastic_purge')) {
+                    const mistPulse = Math.sin(state.frame * 0.1) * 0.1;
+                    this.ctx.fillStyle = `rgba(100, 255, 100, ${0.15 + mistPulse})`;
+                    this.ctx.fill();
+                }
+                this.ctx.restore();
+            });
+        }
 
         if (state.inkPuddles) {
             state.inkPuddles.forEach(p => {

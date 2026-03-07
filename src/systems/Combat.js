@@ -37,6 +37,15 @@ export class Combat {
                 game.director.spawnInkPuddle(state.player.x, state.player.y, ink.radius, ink.damage);
             }
         }
+        
+        const chalk = state.player.weapons.broken_chalk;
+        if (chalk && chalk.level > 0) {
+            chalk.timer--;
+            if (chalk.timer <= 0) {
+                chalk.timer = chalk.cooldown;
+                game.director.spawnSafeZone(state.player.x, state.player.y, chalk.radius, chalk.duration);
+            }
+        }
 
         const staticWep = state.player.weapons.static;
 
@@ -72,6 +81,15 @@ export class Combat {
         for (let i = state.entities.length - 1; i >= 0; i--) {
             let ent = state.entities[i];
             
+            // Process Acid DoT from Corrosive Battery
+            if (ent.acidTime > 0) {
+                ent.acidTime--;
+                if (state.frame % 30 === 0) {
+                    ent.takeDamage(ent.acidDmg, game);
+                    game.spawnParticles(ent.x, ent.y, '#55ff55', 3);
+                }
+            }
+            
             ent.speedModifier = 1.0;
             for (let p of state.inkPuddles) {
                 if (Math.hypot(ent.x - p.x, ent.y - p.y) < p.radius) {
@@ -84,6 +102,19 @@ export class Combat {
             const dx = ent.x - state.player.x; 
             const dy = ent.y - state.player.y;
             const distToPlayer = Math.max(Math.sqrt(dx*dx + dy*dy), 0.001);
+            
+            // Chalk Safe Zone check (2x damage taken, Scholastic Purge logic)
+            let dmgMult = 1.0;
+            for (let sz of state.safeZones) {
+                if (Math.hypot(ent.x - sz.x, ent.y - sz.y) < sz.radius) {
+                    dmgMult = 2.0;
+                    if (state.player.synergies && state.player.synergies.includes('scholastic_purge')) {
+                        if (ent.type === 'PARASITE') ent.takeDamage(9999, game); // Insta kill
+                        else if (state.frame % 30 === 0) ent.takeDamage(state.player.weapons.corrosive_battery.damage * 2, game);
+                    }
+                    break;
+                }
+            }
             
             let canTakeDamage = !(ent.type === 'BOSS' && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
@@ -100,15 +131,22 @@ export class Combat {
                         if (state.player.synergies && state.player.synergies.includes('blinding_signal')) hitAngle *= 1.5; 
 
                         if (Math.abs(angleDiff) < hitAngle) {
-                            ent.takeDamage(state.player.weapons.flashlight.damage / 60, game);
+                            ent.takeDamage((state.player.weapons.flashlight.damage / 60) * dmgMult, game);
                             ent.x -= ent.vx * 0.5; ent.y -= ent.vy * 0.5; 
                             if (state.player.synergies && state.player.synergies.includes('blinding_signal')) ent.confused = 180; 
+                            
+                            // Apply Corrosive Battery Effect
+                            const batt = state.player.weapons.corrosive_battery;
+                            if (batt && batt.level > 0) {
+                                ent.acidTime = batt.duration;
+                                ent.acidDmg = batt.damage;
+                            }
                         }
                     }
                 }
                 
                 if (staticWep.active && distToPlayer < staticWep.radius) {
-                    ent.takeDamage(staticWep.damage / 60, game);
+                    ent.takeDamage((staticWep.damage / 60) * dmgMult, game);
                     ent.x += (dx / distToPlayer) * 1.5; ent.y += (dy / distToPlayer) * 1.5; 
                 }
             }

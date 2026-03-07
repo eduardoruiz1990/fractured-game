@@ -17,7 +17,8 @@ export class Director {
             xpDrop: new ObjectPool(() => ({ x: 0, y: 0, value: 0, collected: false, active: false }), 300),
             damageText: new ObjectPool(() => ({ x: 0, y: 0, text: '', life: 0, color: '', scale: 1, active: false }), 200),
             inkPuddle: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, life: 0, damage: 0, active: false }), 200),
-            meleeSwing: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, maxRadius: 0, life: 0, active: false }), 20)
+            meleeSwing: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, maxRadius: 0, life: 0, active: false }), 20),
+            safeZone: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, life: 0, maxLife: 0, active: false }), 20)
         };
     }
 
@@ -120,6 +121,12 @@ export class Director {
         m.active = true;
         this.game.state.meleeSwings.push(m);
     }
+    
+    spawnSafeZone(x, y, radius, life) {
+        let sz = this.pools.safeZone.get();
+        sz.x = x; sz.y = y; sz.radius = radius; sz.life = life; sz.maxLife = life; sz.active = true;
+        this.game.state.safeZones.push(sz);
+    }
 
     updateParticles() {
         const state = this.game.state;
@@ -147,6 +154,12 @@ export class Director {
             m.life--;
             m.radius += (m.maxRadius - m.radius) * 0.3; 
             if (m.life <= 0) { m.active = false; this.pools.meleeSwing.release(m); state.meleeSwings.splice(i, 1); }
+        }
+        
+        for (let i = state.safeZones.length - 1; i >= 0; i--) {
+            let sz = state.safeZones[i];
+            sz.life--;
+            if (sz.life <= 0) { sz.active = false; this.pools.safeZone.release(sz); state.safeZones.splice(i, 1); }
         }
     }
 }

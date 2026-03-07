@@ -67,7 +67,13 @@ export class LevelUpUI {
 
         let selected = shuffled.slice(0, 3);
         
-        selected.forEach(key => {
+        // Helper to match items to creepy visual icons
+        const getIcon = (key) => {
+            const icons = { flashlight: '🔦', static: '📻', adrenaline: '💉', lead_pipe: '🪠', spilled_ink: '🦑', corrosive_battery: '🔋', broken_chalk: '🖍️', blinding_signal: '👁️‍🗨️', industrial_bleed: '🩸', scholastic_purge: '☣️', everything_is_target: '🎯', manic_episode: '🌀', compulsive_cleaner: '🧹' };
+            return icons[key] || '❓';
+        };
+        
+        selected.forEach((key, index) => {
             let isSynergy = !!SYNERGIES[key];
             let isCurse = !!INTRUSIVE_THOUGHTS[key];
             
@@ -76,33 +82,31 @@ export class LevelUpUI {
             
             const card = document.createElement('div'); 
             card.className = 'card';
+            // Slight random rotation to look like physical photos scattered on a table
+            const rot = (Math.random() - 0.5) * 6;
+            card.style.transform = `rotate(${rot}deg)`;
+            
+            let titleColor = '#111';
+            let bottomText = `Level Up to ${currentLvl + 1}`;
+            let photoBg = '#111';
+            let iconFilter = '';
             
             if (isCurse) {
-                card.style.borderBottom = '25px solid var(--ui-red)';
-                card.style.boxShadow = '0 0 20px var(--ui-red)';
-                card.innerHTML = `
-                    <h3 style="color: var(--ui-red)">${item.name}</h3>
-                    <p style="font-weight: bold;">${item.desc}</p>
-                    <div class="lvl" style="color: var(--ui-red)">INTRUSIVE THOUGHT</div>
-                `;
-                card.onclick = () => this.selectCard(key, game, onCompleteCallback, 'curse');
+                titleColor = 'var(--ui-red)'; bottomText = 'INTRUSIVE THOUGHT'; photoBg = '#2a0505'; iconFilter = 'hue-rotate(90deg) saturate(200%) brightness(50%)';
             } else if (isSynergy) {
-                card.style.borderBottom = '25px solid var(--ui-gold)';
-                card.style.boxShadow = '0 0 20px var(--ui-gold)';
-                card.innerHTML = `
-                    <h3 style="color: var(--ui-gold)">${item.name}</h3>
-                    <p>${item.desc}</p>
-                    <div class="lvl" style="color: var(--ui-gold)">SYNERGY DISCOVERED</div>
-                `;
-                card.onclick = () => this.selectCard(key, game, onCompleteCallback, 'synergy');
-            } else {
-                card.innerHTML = `
-                    <h3>${item.name}</h3>
-                    <p>${item.desc}</p>
-                    <div class="lvl">Level Up to ${currentLvl + 1}</div>
-                `;
-                card.onclick = () => this.selectCard(key, game, onCompleteCallback, 'normal');
+                titleColor = 'var(--ui-gold)'; bottomText = 'SYNERGY DISCOVERED'; photoBg = '#221a05'; iconFilter = 'sepia(100%) saturate(300%) hue-rotate(10deg)';
             }
+            
+            card.innerHTML = `
+                <div class="polaroid-photo" style="background: ${photoBg}">
+                    <div style="filter: ${iconFilter}; text-shadow: 0 0 15px rgba(255,255,255,0.5);">${getIcon(key)}</div>
+                </div>
+                <h3 style="color: ${titleColor}">${item.name}</h3>
+                <p>${item.desc}</p>
+                <div class="lvl" style="color: ${titleColor}">${bottomText}</div>
+            `;
+            
+            card.onclick = () => this.selectCard(key, game, onCompleteCallback, isCurse ? 'curse' : (isSynergy ? 'synergy' : 'normal'));
             this.container.appendChild(card);
         });
     }
@@ -151,7 +155,11 @@ export class LevelUpUI {
             } else if (key === 'industrial_bleed') {
                 game.state.cameraShake = 30;
                 game.state.player.weapons.lead_pipe.damage *= 1.5; 
+            } else if (key === 'scholastic_purge') {
+                game.state.cameraShake = 30;
+                game.state.player.weapons.broken_chalk.duration *= 1.5;
             }
+
             if (this.audioEngine) this.audioEngine.playSFX('levelup', 5); 
         } 
         else {
@@ -169,6 +177,10 @@ export class LevelUpUI {
                 wep.damage += 20; wep.radius += 15; wep.cooldown = Math.max(30, wep.cooldown - 10);
             } else if (key === 'spilled_ink') {
                 wep.damage += 3; wep.radius += 10; wep.dropRate = Math.max(10, wep.dropRate - 5);
+            } else if (key === 'corrosive_battery') {
+                wep.damage += 5; wep.duration += 30;
+            } else if (key === 'broken_chalk') {
+                wep.radius += 15; wep.duration += 30; wep.cooldown = Math.max(60, wep.cooldown - 15);
             }
             if (this.audioEngine) this.audioEngine.playSFX('levelup');
         }

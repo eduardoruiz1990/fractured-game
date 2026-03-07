@@ -35,7 +35,9 @@ export class Game {
                     static: { level: 0, damage: 0, radius: 60, active: false, pulsePhase: 0 },
                     adrenaline: { level: 0 },
                     lead_pipe: { level: 0, damage: 50, radius: 80, cooldown: 90, timer: 0 },
-                    spilled_ink: { level: 0, damage: 5, radius: 30, dropRate: 30, timer: 0 }
+                    spilled_ink: { level: 0, damage: 5, radius: 30, dropRate: 30, timer: 0 },
+                    corrosive_battery: { level: 0, damage: 2, duration: 60 },
+                    broken_chalk: { level: 0, radius: 70, duration: 180, cooldown: 120, timer: 0 }
                 },
                 synergies: [],
                 curses: [] // Tracks active Intrusive Thoughts
@@ -43,7 +45,7 @@ export class Game {
             inputBuffer: [],
             sanity: maxSanity, sanityDrainMult: 1.0,
             xp: 0, level: 1, lucidity: 0,
-            entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [],
+            entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [], safeZones: [],
             frame: 0, stress: 1.0, cameraShake: 0,
             bossSpawned: false
         };
