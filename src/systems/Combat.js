@@ -70,6 +70,13 @@ export class Combat {
                     game.spawnXP(ent.x, ent.y, dropAmount);
                 }
                 game.spawnParticles(ent.x, ent.y, ent.color, ent.type === 'BOSS' ? 100 : 15);
+                
+                // RETURN TO POOL instead of just deleting
+                ent.active = false;
+                let poolKey = ent.type.toLowerCase();
+                if (game.director && game.director.pools && game.director.pools[poolKey]) {
+                    game.director.pools[poolKey].release(ent);
+                }
                 state.entities.splice(i, 1);
             }
         }
@@ -100,7 +107,15 @@ export class Combat {
                     pickupCount++;
                 }
             }
-            if (xp.collected) state.xpDrops.splice(i, 1);
+            
+            if (xp.collected) {
+                // RETURN TO POOL
+                xp.active = false;
+                if (game.director && game.director.pools && game.director.pools.xpDrop) {
+                    game.director.pools.xpDrop.release(xp);
+                }
+                state.xpDrops.splice(i, 1);
+            }
         }
         
         if (pickupCount > 0 && game.audioEngine) game.audioEngine.playSFX('pickup', pickupCount);

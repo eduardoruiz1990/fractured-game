@@ -2,9 +2,13 @@
 import { Enemy } from './Enemy.js';
 
 export class Boss extends Enemy {
-    constructor(id, x, y) {
-        super(id, 'BOSS', x, y, 800, 0.8, 30, '#b87333');
+    constructor() {
+        super('BOSS', 30, '#b87333');
+    }
+
+    init(id, x, y) {
         this.phase = 0;
+        return this.initBase(id, x, y, 800, 0.8);
     }
 
     update(state, game) {

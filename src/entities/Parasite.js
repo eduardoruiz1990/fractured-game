@@ -2,8 +2,12 @@
 import { Enemy } from './Enemy.js';
 
 export class Parasite extends Enemy {
-    constructor(id, x, y) {
-        super(id, 'PARASITE', x, y, 15, 3.0, 0, '#a0522d');
+    constructor() {
+        super('PARASITE', 0, '#a0522d');
+    }
+
+    init(id, x, y) {
+        return this.initBase(id, x, y, 15, 3.0);
     }
 
     update(state, game) {

@@ -2,9 +2,16 @@
 // The master class that all creatures inherit from.
 
 export class Enemy {
-    constructor(id, type, x, y, hp, speed, damage, color) {
-        this.id = id;
+    constructor(type, damage, color) {
+        // These properties never change, so we set them once on memory allocation
         this.type = type;
+        this.damage = damage;
+        this.originalColor = color;
+    }
+
+    // Called every time the entity is pulled from the Object Pool
+    initBase(id, x, y, hp, speed) {
+        this.id = id;
         this.x = x;
         this.y = y;
         this.vx = 0;
@@ -13,12 +20,12 @@ export class Enemy {
         this.maxHp = hp;
         this.speed = speed;
         this.baseSpeed = speed;
-        this.damage = damage;
-        this.color = color;
-        this.originalColor = color;
+        this.color = this.originalColor;
         this.flashTime = 0;
         this.buffed = false;
         this.confused = 0;
+        this.active = true;
+        return this;
     }
 
     takeDamage(amount) {

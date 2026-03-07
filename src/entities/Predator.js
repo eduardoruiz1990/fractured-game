@@ -2,8 +2,12 @@
 import { Enemy } from './Enemy.js';
 
 export class Predator extends Enemy {
-    constructor(id, x, y, stress) {
-        super(id, 'PREDATOR', x, y, 45 * stress, 1.8 * stress, 15, '#8b0000');
+    constructor() {
+        super('PREDATOR', 15, '#8b0000');
+    }
+
+    init(id, x, y, stress) {
+        return this.initBase(id, x, y, 45 * stress, 1.8 * stress);
     }
 
     update(state, game) {

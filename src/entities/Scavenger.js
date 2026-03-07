@@ -2,8 +2,12 @@
 import { Enemy } from './Enemy.js';
 
 export class Scavenger extends Enemy {
-    constructor(id, x, y, stress) {
-        super(id, 'SCAVENGER', x, y, 20, 1.2 * stress, 2, '#555');
+    constructor() {
+        super('SCAVENGER', 2, '#555');
+    }
+
+    init(id, x, y, stress) {
+        return this.initBase(id, x, y, 20, 1.2 * stress);
     }
 
     update(state, game) {
