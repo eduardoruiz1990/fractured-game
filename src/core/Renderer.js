@@ -13,6 +13,11 @@ export class Renderer {
         
         // Define the global zoom level
         this.zoom = 1.3; 
+
+        // Player Animation State tracking
+        this.legPhase = 0;
+        this.lastPx = -1;
+        this.lastPy = -1;
     }
 
     // Generates the eerie school tile floor pattern once
@@ -241,6 +246,20 @@ export class Renderer {
         let sanityRatio = state.sanity / state.player.maxHp;
         let panic = (1 - Math.max(0, sanityRatio)); // 0 = calm, 1 = absolute breakdown
         
+        // Velocity Tracking for Legs Animation
+        let isMoving = false;
+        if (this.lastPx !== -1) {
+            let distMoved = Math.hypot(state.player.x - this.lastPx, state.player.y - this.lastPy);
+            if (distMoved > 0.5) isMoving = true;
+        }
+        this.lastPx = state.player.x;
+        this.lastPy = state.player.y;
+
+        if (isMoving) {
+            // Legs scramble faster if panicking
+            this.legPhase += 0.3 + (panic * 0.4);
+        }
+
         // Whole body violently trembles as sanity decreases
         let shakeX = (Math.random() - 0.5) * panic * 6;
         let shakeY = (Math.random() - 0.5) * panic * 6;
@@ -263,18 +282,16 @@ export class Renderer {
         this.ctx.strokeStyle = '#050505';
         this.ctx.lineWidth = 4;
         this.ctx.lineCap = 'round';
-        // Legs twitch faster when panicked
-        let legSpeed = state.frame * (0.3 + panic * 0.5); 
         
         // Left Leg
         this.ctx.beginPath();
         this.ctx.moveTo(0, 5);
-        this.ctx.lineTo(-8 + Math.cos(legSpeed)*6, 8 + Math.sin(legSpeed)*6);
+        this.ctx.lineTo(-8 + Math.cos(this.legPhase)*6, 8 + Math.sin(this.legPhase)*6);
         this.ctx.stroke();
         // Right Leg
         this.ctx.beginPath();
         this.ctx.moveTo(0, -5);
-        this.ctx.lineTo(-8 + Math.cos(legSpeed + Math.PI)*6, -8 + Math.sin(legSpeed + Math.PI)*6);
+        this.ctx.lineTo(-8 + Math.cos(this.legPhase + Math.PI)*6, -8 + Math.sin(this.legPhase + Math.PI)*6);
         this.ctx.stroke();
 
         // Top-down survivor body (dark trenchcoat/shoulders)
@@ -339,12 +356,24 @@ export class Renderer {
     }
 
     drawWorldItems(state) {
-        // Draw the eerie school floor tiles under everything else
+        // --- ARENA BOUNDARY & FLOOR RENDERING ---
         this.ctx.save();
+        // The floor pattern only draws INSIDE the actual playable dimensions
         this.ctx.fillStyle = this.ctx.createPattern(this.floorPattern, 'repeat');
-        // Render a massive chunk of floor around the player
-        this.ctx.fillRect(state.player.x - 2000, state.player.y - 2000, 4000, 4000);
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Draw physical thick walls encapsulating the arena
+        this.ctx.strokeStyle = '#020202';
+        this.ctx.lineWidth = 25;
+        this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Inner Danger Striping (Faded Gold Warning line)
+        this.ctx.strokeStyle = 'rgba(197, 160, 89, 0.4)'; 
+        this.ctx.lineWidth = 3;
+        this.ctx.setLineDash([15, 15]);
+        this.ctx.strokeRect(12, 12, this.canvas.width - 24, this.canvas.height - 24);
         this.ctx.restore();
+        // ----------------------------------------
 
         if (state.inkPuddles) {
             state.inkPuddles.forEach(p => {

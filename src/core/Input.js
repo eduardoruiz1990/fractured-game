@@ -148,8 +148,9 @@ export class InputManager {
     // Called by the game loop to resolve mouse aiming
     updateAimAngle(playerX, playerY) {
         if (!this.isTouchDevice && this.mouseX !== undefined && this.mouseY !== undefined) {
-            // FIX: Because the camera is zoomed and translated to center the player, 
-            // the player is *always* drawn at exactly the center of the canvas visually!
+            // Because the camera is zoomed and translated to strictly center the player, 
+            // the logical center of the screen is ALWAYS the player visually.
+            // We calculate angle relative strictly to the middle of the monitor.
             const screenCenterX = this.canvas.width / 2;
             const screenCenterY = this.canvas.height / 2;
             this.state.aimAngle = Math.atan2(this.mouseY - screenCenterY, this.mouseX - screenCenterX);
