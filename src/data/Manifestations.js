@@ -47,3 +47,21 @@ export const SYNERGIES = {
         reqs: ['lead_pipe', 'spilled_ink']
     }
 };
+
+export const INTRUSIVE_THOUGHTS = {
+    everything_is_target: {
+        id: 'everything_is_target',
+        name: 'Everything is a Target',
+        desc: '+100% Damage, but your flashlight destroys your own XP drops.'
+    },
+    manic_episode: {
+        id: 'manic_episode',
+        name: 'Manic Episode',
+        desc: '+50% Fire Rate, but Sanity drains 2x faster.'
+    },
+    compulsive_cleaner: {
+        id: 'compulsive_cleaner',
+        name: 'Compulsive Cleaner',
+        desc: 'Janitors drop more XP, but Hall Monitors hunt you at 2x speed.'
+    }
+};

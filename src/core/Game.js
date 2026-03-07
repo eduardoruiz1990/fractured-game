@@ -37,7 +37,8 @@ export class Game {
                     lead_pipe: { level: 0, damage: 50, radius: 80, cooldown: 90, timer: 0 },
                     spilled_ink: { level: 0, damage: 5, radius: 30, dropRate: 30, timer: 0 }
                 },
-                synergies: []
+                synergies: [],
+                curses: [] // Tracks active Intrusive Thoughts
             },
             inputBuffer: [],
             sanity: maxSanity, sanityDrainMult: 1.0,

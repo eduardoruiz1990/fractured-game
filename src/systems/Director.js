@@ -8,7 +8,6 @@ export class Director {
     constructor(game) {
         this.game = game;
         
-        // Added pools for the Ink and Melee VFX!
         this.pools = {
             scavenger: new ObjectPool(() => new Scavenger(), 100),
             predator: new ObjectPool(() => new Predator(), 50),
@@ -52,7 +51,14 @@ export class Director {
 
         let ent;
         if (type === 'SCAVENGER') ent = this.pools.scavenger.get().init(Math.random(), x, y, state.stress);
-        else if (type === 'PREDATOR') ent = this.pools.predator.get().init(Math.random(), x, y, state.stress);
+        else if (type === 'PREDATOR') {
+            ent = this.pools.predator.get().init(Math.random(), x, y, state.stress);
+            // CURSE EFFECT: Compulsive Cleaner makes predators horrifyingly fast
+            if (state.player.curses && state.player.curses.includes('compulsive_cleaner')) {
+                ent.speed *= 2.0;
+                ent.baseSpeed *= 2.0;
+            }
+        }
         else if (type === 'PARASITE') ent = this.pools.parasite.get().init(Math.random(), x, y);
         else if (type === 'BOSS') ent = this.pools.boss.get().init(Math.random(), x, y);
         
@@ -101,17 +107,16 @@ export class Director {
         state.damageTexts.push(dt);
     }
 
-    // New Weapon VFX Spawners
     spawnInkPuddle(x, y, radius, damage) {
         let p = this.pools.inkPuddle.get();
-        p.x = x; p.y = y; p.radius = radius; p.damage = damage; p.life = 300; // Lasts 5 seconds
+        p.x = x; p.y = y; p.radius = radius; p.damage = damage; p.life = 300; 
         p.active = true;
         this.game.state.inkPuddles.push(p);
     }
 
     spawnMeleeSwing(x, y, maxRadius) {
         let m = this.pools.meleeSwing.get();
-        m.x = x; m.y = y; m.radius = 0; m.maxRadius = maxRadius; m.life = 15; // Quick white flash
+        m.x = x; m.y = y; m.radius = 0; m.maxRadius = maxRadius; m.life = 15; 
         m.active = true;
         this.game.state.meleeSwings.push(m);
     }
@@ -131,7 +136,6 @@ export class Director {
             if (dt.life <= 0) { dt.active = false; this.pools.damageText.release(dt); state.damageTexts.splice(i, 1); }
         }
 
-        // Clean up puddles and swings
         for (let i = state.inkPuddles.length - 1; i >= 0; i--) {
             let p = state.inkPuddles[i];
             p.life--;
@@ -141,7 +145,7 @@ export class Director {
         for (let i = state.meleeSwings.length - 1; i >= 0; i--) {
             let m = state.meleeSwings[i];
             m.life--;
-            m.radius += (m.maxRadius - m.radius) * 0.3; // Expands quickly outward
+            m.radius += (m.maxRadius - m.radius) * 0.3; 
             if (m.life <= 0) { m.active = false; this.pools.meleeSwing.release(m); state.meleeSwings.splice(i, 1); }
         }
     }

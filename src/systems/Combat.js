@@ -1,10 +1,8 @@
-// src/systems/Combat.js
 export class Combat {
     static resolveWeapons(game) {
         const state = game.state;
         let deathCount = 0;
 
-        // 1. Process New Melee Weapons
         const pipe = state.player.weapons.lead_pipe;
         if (pipe && pipe.level > 0) {
             pipe.timer--;
@@ -20,10 +18,9 @@ export class Combat {
 
                     if (canTakeDamage && d <= pipe.radius) {
                         ent.takeDamage(pipe.damage, game);
-                        ent.x += (ent.x - state.player.x) / d * 25; // Massive Knockback
+                        ent.x += (ent.x - state.player.x) / d * 25; 
                         ent.y += (ent.y - state.player.y) / d * 25;
                         
-                        // SYNERGY: Industrial Bleed
                         if (state.player.synergies && state.player.synergies.includes('industrial_bleed')) {
                             game.director.spawnInkPuddle(ent.x, ent.y, pipe.radius * 0.8, pipe.damage * 0.2);
                         }
@@ -43,16 +40,43 @@ export class Combat {
 
         const staticWep = state.player.weapons.static;
 
-        // 2. Process Enemy Loop (Flashlight, Static, and Ink interactions)
+        // CURSE EFFECT: Everything is a Target (Burn your own XP!)
+        if (state.player.curses && state.player.curses.includes('everything_is_target')) {
+            let hitAngle = state.player.weapons.flashlight.angle;
+            if (state.player.synergies && state.player.synergies.includes('blinding_signal')) hitAngle *= 1.5; 
+            
+            for (let j = state.xpDrops.length - 1; j >= 0; j--) {
+                let xp = state.xpDrops[j];
+                let distToXP = Math.max(Math.hypot(xp.x - state.player.x, xp.y - state.player.y), 0.001);
+                if (distToXP < state.player.weapons.flashlight.radius) {
+                    let angleToXP = Math.atan2(xp.y - state.player.y, xp.x - state.player.x);
+                    let angleDiff = angleToXP - state.player.angle;
+                    if (Number.isFinite(angleDiff)) {
+                        if (angleDiff > 100 || angleDiff < -100) angleDiff = 0;
+                        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                        
+                        if (Math.abs(angleDiff) < hitAngle) {
+                            xp.active = false;
+                            if (game.director && game.director.pools && game.director.pools.xpDrop) {
+                                game.director.pools.xpDrop.release(xp);
+                            }
+                            state.xpDrops.splice(j, 1);
+                            game.spawnParticles(xp.x, xp.y, '#ffffff', 3); // Dust poof
+                        }
+                    }
+                }
+            }
+        }
+
         for (let i = state.entities.length - 1; i >= 0; i--) {
             let ent = state.entities[i];
             
-            // Apply Ink Slow & DoT
             ent.speedModifier = 1.0;
             for (let p of state.inkPuddles) {
                 if (Math.hypot(ent.x - p.x, ent.y - p.y) < p.radius) {
-                    ent.speedModifier = 0.5; // Walk through sludge
-                    if (state.frame % 30 === 0) ent.takeDamage(p.damage, game); // Damage tick
+                    ent.speedModifier = 0.5; 
+                    if (state.frame % 30 === 0) ent.takeDamage(p.damage, game); 
                     break;
                 }
             }
@@ -64,7 +88,6 @@ export class Combat {
             let canTakeDamage = !(ent.type === 'BOSS' && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
             if (canTakeDamage) {
-                // Flashlight
                 if (distToPlayer < state.player.weapons.flashlight.radius) {
                     const angleToEnt = Math.atan2(dy, dx);
                     let angleDiff = angleToEnt - state.player.angle;
@@ -79,13 +102,11 @@ export class Combat {
                         if (Math.abs(angleDiff) < hitAngle) {
                             ent.takeDamage(state.player.weapons.flashlight.damage / 60, game);
                             ent.x -= ent.vx * 0.5; ent.y -= ent.vy * 0.5; 
-                            
                             if (state.player.synergies && state.player.synergies.includes('blinding_signal')) ent.confused = 180; 
                         }
                     }
                 }
                 
-                // Static Aura
                 if (staticWep.active && distToPlayer < staticWep.radius) {
                     ent.takeDamage(staticWep.damage / 60, game);
                     ent.x += (dx / distToPlayer) * 1.5; ent.y += (dy / distToPlayer) * 1.5; 
@@ -101,6 +122,12 @@ export class Combat {
                 } else {
                     let dropAmount = ent.type === 'SCAVENGER' ? 2 : (ent.type === 'PREDATOR' ? 5 : 1);
                     if (ent.maxHp > 30) dropAmount += 5; 
+                    
+                    // CURSE EFFECT: Compulsive cleaner logic
+                    if (ent.type === 'SCAVENGER' && state.player.curses && state.player.curses.includes('compulsive_cleaner')) {
+                        dropAmount += 3; 
+                    }
+                    
                     game.spawnXP(ent.x, ent.y, dropAmount);
                 }
                 game.spawnParticles(ent.x, ent.y, ent.color, ent.type === 'BOSS' ? 100 : 15);

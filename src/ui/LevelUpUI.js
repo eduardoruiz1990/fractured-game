@@ -1,4 +1,4 @@
-import { MANIFESTATIONS, SYNERGIES } from '../data/Manifestations.js';
+import { MANIFESTATIONS, SYNERGIES, INTRUSIVE_THOUGHTS } from '../data/Manifestations.js';
 
 export class LevelUpUI {
     constructor(audioEngine) {
@@ -25,6 +25,7 @@ export class LevelUpUI {
         this.container.innerHTML = '';
         
         if (!game.state.player.synergies) game.state.player.synergies = [];
+        if (!game.state.player.curses) game.state.player.curses = [];
 
         let availableManifestations = Object.keys(MANIFESTATIONS).filter(key => {
             const currentLvl = game.state.player.weapons[key]?.level || 0;
@@ -33,33 +34,59 @@ export class LevelUpUI {
 
         let availableSynergies = Object.keys(SYNERGIES).filter(synKey => {
             const syn = SYNERGIES[synKey];
-            // Dev Mode ignores the Level 5 requirements so synergies are thrown into the pool instantly
             const hasReqs = window.FRACTURED_DEV_MODE || 
                             syn.reqs.every(req => game.state.player.weapons[req] && game.state.player.weapons[req].level >= 5);
             const alreadyHas = game.state.player.synergies.includes(synKey);
             return hasReqs && !alreadyHas;
         });
 
+        let availableCurses = Object.keys(INTRUSIVE_THOUGHTS).filter(cKey => !game.state.player.curses.includes(cKey));
+
         let pool = [...availableManifestations, ...availableSynergies];
+
+        // Intrusive Thoughts have a 25% chance to infect the pool (or 100% in Dev Mode)
+        if (availableCurses.length > 0 && (Math.random() < 0.25 || window.FRACTURED_DEV_MODE)) {
+            const injectedCurse = availableCurses[Math.floor(Math.random() * availableCurses.length)];
+            pool.push(injectedCurse);
+        }
 
         if (pool.length === 0) {
             this.renderSurgeCard(game, onCompleteCallback);
             return;
         }
 
-        // Removed the Dev Mode "hogging" logic. Now it's just a pure random shuffle!
-        const shuffled = pool.sort(() => 0.5 - Math.random());
+        const shuffled = pool.sort((a, b) => {
+            if (window.FRACTURED_DEV_MODE) {
+                const aIsCurse = !!INTRUSIVE_THOUGHTS[a];
+                const bIsCurse = !!INTRUSIVE_THOUGHTS[b];
+                if (aIsCurse && !bIsCurse) return -1;
+                if (!aIsCurse && bIsCurse) return 1;
+            }
+            return 0.5 - Math.random();
+        });
+
         let selected = shuffled.slice(0, 3);
         
         selected.forEach(key => {
             let isSynergy = !!SYNERGIES[key];
-            const item = isSynergy ? SYNERGIES[key] : MANIFESTATIONS[key];
-            const currentLvl = isSynergy ? 0 : (game.state.player.weapons[key]?.level || 0);
+            let isCurse = !!INTRUSIVE_THOUGHTS[key];
+            
+            const item = isCurse ? INTRUSIVE_THOUGHTS[key] : (isSynergy ? SYNERGIES[key] : MANIFESTATIONS[key]);
+            const currentLvl = (isSynergy || isCurse) ? 0 : (game.state.player.weapons[key]?.level || 0);
             
             const card = document.createElement('div'); 
             card.className = 'card';
             
-            if (isSynergy) {
+            if (isCurse) {
+                card.style.borderBottom = '25px solid var(--ui-red)';
+                card.style.boxShadow = '0 0 20px var(--ui-red)';
+                card.innerHTML = `
+                    <h3 style="color: var(--ui-red)">${item.name}</h3>
+                    <p style="font-weight: bold;">${item.desc}</p>
+                    <div class="lvl" style="color: var(--ui-red)">INTRUSIVE THOUGHT</div>
+                `;
+                card.onclick = () => this.selectCard(key, game, onCompleteCallback, 'curse');
+            } else if (isSynergy) {
                 card.style.borderBottom = '25px solid var(--ui-gold)';
                 card.style.boxShadow = '0 0 20px var(--ui-gold)';
                 card.innerHTML = `
@@ -67,14 +94,14 @@ export class LevelUpUI {
                     <p>${item.desc}</p>
                     <div class="lvl" style="color: var(--ui-gold)">SYNERGY DISCOVERED</div>
                 `;
-                card.onclick = () => this.selectCard(key, game, onCompleteCallback, true);
+                card.onclick = () => this.selectCard(key, game, onCompleteCallback, 'synergy');
             } else {
                 card.innerHTML = `
                     <h3>${item.name}</h3>
                     <p>${item.desc}</p>
                     <div class="lvl">Level Up to ${currentLvl + 1}</div>
                 `;
-                card.onclick = () => this.selectCard(key, game, onCompleteCallback, false);
+                card.onclick = () => this.selectCard(key, game, onCompleteCallback, 'normal');
             }
             this.container.appendChild(card);
         });
@@ -98,11 +125,26 @@ export class LevelUpUI {
         this.container.appendChild(card);
     }
 
-    selectCard(key, game, onCompleteCallback, isSynergy = false) {
-        if (isSynergy) {
-            game.state.player.synergies.push(key);
-            console.log(`%c Synergy Selected: ${key} `, 'color: #c5a059; font-weight: bold;');
+    selectCard(key, game, onCompleteCallback, cardType) {
+        if (cardType === 'curse') {
+            game.state.player.curses.push(key);
+            game.state.cameraShake = 40;
             
+            // Apply immediate curse state modifications
+            if (key === 'everything_is_target') {
+                game.state.player.weapons.flashlight.damage *= 2;
+                game.state.player.weapons.static.damage *= 2;
+                game.state.player.weapons.lead_pipe.damage *= 2;
+            } else if (key === 'manic_episode') {
+                game.state.player.weapons.lead_pipe.cooldown = Math.max(15, game.state.player.weapons.lead_pipe.cooldown / 2);
+                game.state.player.weapons.spilled_ink.dropRate = Math.max(5, game.state.player.weapons.spilled_ink.dropRate / 2);
+                game.state.sanityDrainMult *= 2.0;
+            }
+            
+            if (this.audioEngine) this.audioEngine.playSFX('damage', 5); // Scary discordant sound
+        } 
+        else if (cardType === 'synergy') {
+            game.state.player.synergies.push(key);
             if (key === 'blinding_signal') {
                 game.state.cameraShake = 30; 
                 game.state.player.weapons.flashlight.damage *= 1.2;
@@ -110,9 +152,9 @@ export class LevelUpUI {
                 game.state.cameraShake = 30;
                 game.state.player.weapons.lead_pipe.damage *= 1.5; 
             }
-
             if (this.audioEngine) this.audioEngine.playSFX('levelup', 5); 
-        } else {
+        } 
+        else {
             const wep = game.state.player.weapons[key];
             if (wep) wep.level++;
 
