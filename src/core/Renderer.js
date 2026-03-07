@@ -1,6 +1,3 @@
-// src/core/Renderer.js
-// Handles HTML5 Canvas Drawing, Glitch Shaders, and Flashlight Masking
-
 export class Renderer {
     constructor(canvas, ctx) {
         this.canvas = canvas;
@@ -18,7 +15,6 @@ export class Renderer {
 
         this.ctx.save();
         
-        // 1. Camera Shake
         if (state.cameraShake > 0) {
             this.ctx.translate(
                 (Math.random() - 0.5) * state.cameraShake, 
@@ -26,12 +22,10 @@ export class Renderer {
             );
         }
 
-        // 2. Draw Darkness Layer (Entities hidden in fog)
         this.ctx.globalAlpha = 0.15; 
         this.drawWorldItems(state); 
         this.ctx.globalAlpha = 1.0;
 
-        // 3. The Flashlight Mask
         const fl = state.player.weapons.flashlight;
         this.ctx.save(); 
         this.ctx.beginPath(); 
@@ -40,15 +34,14 @@ export class Renderer {
         let jitter = state.sanity < 30 ? (Math.random() - 0.5) * 0.1 : 0;
         let currentAngle = fl.angle;
 
-        // SYNERGY: The Blinding Signal Strobe
         let hasBlindingSignal = state.player.synergies && state.player.synergies.includes('blinding_signal');
         if (hasBlindingSignal) {
             if (state.frame % 6 < 3) {
-                currentAngle *= 1.5; // Strobe wide
+                currentAngle *= 1.5; 
                 this.ctx.fillStyle = 'rgba(255, 255, 230, 0.05)';
                 this.ctx.fillRect(0,0, this.canvas.width, this.canvas.height);
             } else {
-                currentAngle *= 0.8; // Strobe narrow
+                currentAngle *= 0.8; 
             }
         }
         
@@ -60,18 +53,15 @@ export class Renderer {
         this.ctx.closePath(); 
         this.ctx.clip(); 
 
-        // 4. Draw Lit Area
         this.drawWorldItems(state);
         
-        // Flashlight Glare Gradient
         const grad = this.ctx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, fl.radius);
         grad.addColorStop(0, 'rgba(255, 255, 230, 0.4)'); 
         grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
         this.ctx.fillStyle = grad; 
         this.ctx.fillRect(0,0, this.canvas.width, this.canvas.height);
-        this.ctx.restore(); // Drop mask
+        this.ctx.restore(); 
 
-        // 5. Draw Static Aura Weapon
         const staticWep = state.player.weapons.static;
         if (staticWep.active) {
             this.ctx.beginPath(); 
@@ -83,13 +73,11 @@ export class Renderer {
             this.ctx.fill();
         }
 
-        // 6. Draw Player
         this.ctx.fillStyle = 'white'; 
         this.ctx.beginPath(); 
         this.ctx.arc(state.player.x, state.player.y, state.player.radius, 0, Math.PI*2); 
         this.ctx.fill();
         
-        // Direction Indicator
         this.ctx.fillStyle = '#fffae6'; 
         this.ctx.beginPath();
         this.ctx.arc(
@@ -98,12 +86,35 @@ export class Renderer {
             4, 0, Math.PI*2
         );
         this.ctx.fill();
+        
+        // --- DRAW DAMAGE TEXT ON TOP OF EVERYTHING ---
+        this.drawDamageText(state);
 
-        this.ctx.restore(); // Restore camera shake
+        this.ctx.restore(); 
+    }
+
+    drawDamageText(state) {
+        this.ctx.save();
+        this.ctx.textAlign = 'center';
+        
+        state.damageTexts.forEach(dt => {
+            // Math.min(1) ensures that if life > 1 (like death tallies), it stays fully solid until it drops below 1
+            this.ctx.globalAlpha = Math.max(0, Math.min(1, dt.life));
+            
+            // Base size is now 20px, dynamically multiplied by scale
+            this.ctx.font = `bold ${Math.floor(20 * dt.scale)}px var(--ui-font, monospace)`;
+            this.ctx.fillStyle = dt.color;
+            
+            this.ctx.lineWidth = 2;
+            this.ctx.strokeStyle = '#000';
+            this.ctx.strokeText(dt.text, dt.x, dt.y);
+            this.ctx.fillText(dt.text, dt.x, dt.y);
+        });
+        
+        this.ctx.restore();
     }
 
     drawWorldItems(state) {
-        // XP Drops
         state.xpDrops.forEach(xp => {
             this.ctx.fillStyle = '#fff'; 
             const r = 3 + Math.sin(state.frame * 0.1 + xp.x) * 1;
@@ -111,9 +122,7 @@ export class Renderer {
             this.ctx.shadowBlur = 10; this.ctx.shadowColor = "white"; this.ctx.fill(); this.ctx.shadowBlur = 0;
         });
 
-        // Entities
         state.entities.forEach(ent => {
-            // Boss quantum flicker in Breakdown
             if (ent.type === 'BOSS' && state.sanity <= 0) {
                 if (Math.sin(ent.phase * 10) < 0.5) this.ctx.globalAlpha = 0.2;
                 else this.ctx.globalAlpha = 0.8;
@@ -152,7 +161,6 @@ export class Renderer {
                 this.ctx.fillRect(10, 30 + Math.cos(ent.phase * 2)*10, 8, 20);
             }
 
-            // Healthbars
             if (ent.hp < ent.maxHp && ent.flashTime <= 0) {
                 const barW = ent.type === 'BOSS' ? 60 : 20;
                 this.ctx.fillStyle = '#000'; this.ctx.fillRect(-barW/2, ent.type === 'BOSS' ? 60 : 22, barW, 4);
@@ -163,7 +171,6 @@ export class Renderer {
             this.ctx.globalAlpha = 1.0;
         });
 
-        // Particles
         state.particles.forEach(p => { 
             this.ctx.fillStyle = p.color; 
             this.ctx.globalAlpha = Math.max(0, p.life); 

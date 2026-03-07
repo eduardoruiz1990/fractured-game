@@ -1,4 +1,3 @@
-// src/core/Game.js
 import { GAME_CONFIG } from '../data/Config.js';
 import { Combat } from '../systems/Combat.js';
 import { Director } from '../systems/Director.js';
@@ -10,7 +9,6 @@ export class Game {
         this.onLevelUp = null;
         this.audioEngine = null; 
         
-        // Initialize our AI Dungeon Master
         this.director = new Director(this);
     }
 
@@ -34,7 +32,7 @@ export class Game {
             inputBuffer: [],
             sanity: maxSanity, sanityDrainMult: 1.0,
             xp: 0, level: 1, lucidity: 0,
-            entities: [], xpDrops: [], particles: [],
+            entities: [], xpDrops: [], particles: [], damageTexts: [], // Active floating text
             frame: 0, stress: 1.0, cameraShake: 0,
             bossSpawned: false
         };
@@ -43,10 +41,8 @@ export class Game {
     update(inputState, canvasWidth, canvasHeight, currentGameState) {
         if (currentGameState !== 'PLAYING') return;
 
-        // Delegate wave spawning to the Director
         this.director.spawnWave(canvasWidth, canvasHeight);
 
-        // 1. Sanity Logic
         this.state.sanity -= GAME_CONFIG.SANITY_DRAIN_RATE * this.state.sanityDrainMult;
         
         let isBreakdown = this.state.sanity <= 0;
@@ -61,7 +57,6 @@ export class Game {
             if (this.state.inputBuffer.length > 0) this.state.inputBuffer = [];
         }
         
-        // 2. Resolve Input
         let currentInput = inputState;
         if (isBreakdown && this.state.inputBuffer.length >= GAME_CONFIG.BREAKDOWN_DELAY_FRAMES) {
             currentInput = this.state.inputBuffer.shift();
@@ -73,7 +68,6 @@ export class Game {
     }
 
     processGameLogic(moveInput, canvasWidth, canvasHeight) {
-        // --- PLAYER MOVEMENT ---
         if (moveInput.isMoving) {
             this.state.player.x += moveInput.moveX * (GAME_CONFIG.BASE_PLAYER_SPEED * this.state.player.speedMultiplier);
             this.state.player.y += moveInput.moveY * (GAME_CONFIG.BASE_PLAYER_SPEED * this.state.player.speedMultiplier);
@@ -95,20 +89,15 @@ export class Game {
         const staticWep = this.state.player.weapons.static;
         if (staticWep.active) staticWep.pulsePhase += 0.05;
 
-        // --- ECOSYSTEM AI EXECUTION ---
         for (let i = this.state.entities.length - 1; i >= 0; i--) {
             let ent = this.state.entities[i];
-            
-            // The magic of OOP! The entity handles its own brain now.
             ent.update(this.state, this);
         }
         
-        // --- DELEGATED SYSTEMS ---
         Combat.resolveWeapons(this);
         Combat.collectXP(this);
         this.director.updateParticles();
 
-        // --- LEVEL UP CHECK ---
         const currentReq = GAME_CONFIG.BASE_XP_REQ * this.state.level;
         if (this.state.xp >= currentReq) {
             this.state.xp -= currentReq; 
@@ -130,17 +119,23 @@ export class Game {
         if (this.audioEngine) this.audioEngine.playSFX('damage');
         try { if (navigator.vibrate) navigator.vibrate(100); } catch(e){}
         
+        // Huge red text when player gets hit
+        this.spawnDamageText(this.state.player.x, this.state.player.y, `-${Math.floor(amount)}`, '#ff0000', 1.5, 1.5);
+        
         if (this.state.sanity <= -20 && this.onDeath) {
             this.onDeath();
         }
     }
 
-    // Wrappers so the Combat system and Entities can easily trigger VFX through the Game object
     spawnXP(x, y, amount, isMassive = false) {
         this.director.spawnXP(x, y, amount, isMassive);
     }
 
     spawnParticles(x, y, color, count) {
         this.director.spawnParticles(x, y, color, count);
+    }
+
+    spawnDamageText(x, y, text, color = '#ffaaaa', scale = 1.0, life = 1.0) {
+        this.director.spawnDamageText(x, y, text, color, scale, life);
     }
 }

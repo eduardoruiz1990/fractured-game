@@ -1,4 +1,3 @@
-// src/systems/Director.js
 import { ObjectPool } from './ObjectPool.js';
 import { Scavenger } from '../entities/Scavenger.js';
 import { Predator } from '../entities/Predator.js';
@@ -9,14 +8,14 @@ export class Director {
     constructor(game) {
         this.game = game;
         
-        // Create our memory pools to prevent Garbage Collection stutter!
         this.pools = {
             scavenger: new ObjectPool(() => new Scavenger(), 100),
             predator: new ObjectPool(() => new Predator(), 50),
             parasite: new ObjectPool(() => new Parasite(), 30),
             boss: new ObjectPool(() => new Boss(), 2),
             particle: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '', active: false }), 300),
-            xpDrop: new ObjectPool(() => ({ x: 0, y: 0, value: 0, collected: false, active: false }), 300)
+            xpDrop: new ObjectPool(() => ({ x: 0, y: 0, value: 0, collected: false, active: false }), 300),
+            damageText: new ObjectPool(() => ({ x: 0, y: 0, text: '', life: 0, color: '', scale: 1, active: false }), 200)
         };
     }
 
@@ -86,17 +85,42 @@ export class Director {
         }
     }
 
+    spawnDamageText(x, y, text, color = '#ffaaaa', scale = 1.0, life = 1.0) {
+        const state = this.game.state;
+        let dt = this.pools.damageText.get();
+        dt.x = x + (Math.random() * 30 - 15); // Jitter to prevent overlapping
+        dt.y = y - 10;
+        dt.text = text;
+        dt.color = color;
+        dt.scale = scale;
+        dt.life = life;
+        dt.active = true;
+        state.damageTexts.push(dt);
+    }
+
     updateParticles() {
         const state = this.game.state;
+        
         for (let i = state.particles.length - 1; i >= 0; i--) {
             let p = state.particles[i];
             p.x += p.vx; p.y += p.vy; p.life -= 0.05;
             
-            // Release dead particles back to the pool
             if (p.life <= 0) {
                 p.active = false;
                 this.pools.particle.release(p);
                 state.particles.splice(i, 1);
+            }
+        }
+
+        for (let i = state.damageTexts.length - 1; i >= 0; i--) {
+            let dt = state.damageTexts[i];
+            dt.y -= 0.5; // Float upwards
+            dt.life -= 0.02; // Fade out slowly
+            
+            if (dt.life <= 0) {
+                dt.active = false;
+                this.pools.damageText.release(dt);
+                state.damageTexts.splice(i, 1);
             }
         }
     }

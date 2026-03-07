@@ -1,15 +1,10 @@
-// src/entities/Enemy.js
-// The master class that all creatures inherit from.
-
 export class Enemy {
     constructor(type, damage, color) {
-        // These properties never change, so we set them once on memory allocation
         this.type = type;
         this.damage = damage;
         this.originalColor = color;
     }
 
-    // Called every time the entity is pulled from the Object Pool
     initBase(id, x, y, hp, speed) {
         this.id = id;
         this.x = x;
@@ -25,21 +20,46 @@ export class Enemy {
         this.buffed = false;
         this.confused = 0;
         this.active = true;
+        
+        // Damage accumulators for the UI
+        this.damageAccumulator = 0;
+        this.damageTick = 0;
+        
         return this;
     }
 
-    takeDamage(amount) {
+    takeDamage(amount, game) {
         this.hp -= amount;
         this.flashTime = 5;
+        
+        this.damageAccumulator += amount;
+        this.damageTick++;
+        
+        // Pop floating text every quarter-second, or instantly on death
+        if (this.damageTick >= 15 || this.hp <= 0) {
+            if (game && this.damageAccumulator >= 1) {
+                let isFinal = this.hp <= 0;
+                
+                // Color mapping: Regular hits are pinkish, huge hits are gold, final death hits are bloody red
+                let color = this.damageAccumulator > 15 ? '#c5a059' : '#ffaaaa';
+                if (isFinal) color = '#ff3333'; 
+                
+                // Final hits are 150% size and hang on the screen twice as long!
+                let scale = isFinal ? 1.5 : 1.0;
+                let life = isFinal ? 2.5 : 1.0; 
+                
+                game.spawnDamageText(this.x, this.y, Math.floor(this.damageAccumulator).toString(), color, scale, life);
+            }
+            this.damageAccumulator = 0;
+            this.damageTick = 0;
+        }
     }
 
-    // Applies physics at the end of the frame
     applyMovement(state) {
         if (this.confused > 0) {
             this.confused--;
             this.color = '#ffffff'; // White out
             
-            // Override normal AI to attack nearest entity
             let nearest = null; let minDist = 9999;
             if (state && state.entities) {
                 state.entities.forEach(other => {
@@ -62,7 +82,6 @@ export class Enemy {
         if (this.flashTime > 0) this.flashTime--;
     }
 
-    // To be overridden by subclasses
     update(state, game) {
         this.applyMovement(state);
     }
