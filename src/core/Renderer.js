@@ -112,7 +112,7 @@ export class Renderer {
         // Draw Lit Area Entities
         this.drawWorldItems(state);
         
-        // Draw Volumetric Fog inside the Flashlight (Cranked up to 0.35 for thick smoke)
+        // Draw Volumetric Fog inside the Flashlight
         this.ctx.globalAlpha = 0.35;
         this.fogClouds.forEach(cloud => {
             cloud.x += cloud.vx; cloud.y += cloud.vy;
@@ -168,20 +168,8 @@ export class Renderer {
             });
         }
 
-        // 5. Draw Player
-        this.ctx.fillStyle = 'white'; 
-        this.ctx.beginPath(); 
-        this.ctx.arc(state.player.x, state.player.y, state.player.radius, 0, Math.PI*2); 
-        this.ctx.fill();
-        
-        this.ctx.fillStyle = '#fffae6'; 
-        this.ctx.beginPath();
-        this.ctx.arc(
-            state.player.x + Math.cos(state.player.angle) * state.player.radius, 
-            state.player.y + Math.sin(state.player.angle) * state.player.radius, 
-            4, 0, Math.PI*2
-        );
-        this.ctx.fill();
+        // 5. Draw Player (Revamped visuals)
+        this.drawPlayer(state);
         
         // 6. Draw Damage Text
         this.drawDamageText(state);
@@ -210,6 +198,46 @@ export class Renderer {
         this.drawFilmGrain();
     }
 
+    drawPlayer(state) {
+        this.ctx.save();
+        this.ctx.translate(state.player.x, state.player.y);
+        this.ctx.rotate(state.player.angle);
+
+        // Player aura/echoes (shows "fractured" mental state)
+        let sanityRatio = state.sanity / state.player.maxHp;
+        let shake = (1 - Math.max(0, sanityRatio)) * 3;
+
+        this.ctx.globalAlpha = 0.5;
+        this.ctx.fillStyle = 'rgba(200, 220, 255, 0.4)';
+        this.ctx.beginPath();
+        this.ctx.arc((Math.random()-0.5)*shake, (Math.random()-0.5)*shake, state.player.radius + 2, 0, Math.PI*2);
+        this.ctx.fill();
+
+        // Core player body
+        this.ctx.globalAlpha = 1.0;
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, state.player.radius, 0, Math.PI*2);
+        this.ctx.fill();
+
+        // Directional "Visor" / Light source
+        this.ctx.fillStyle = '#fffae6';
+        this.ctx.beginPath();
+        this.ctx.arc(state.player.radius * 0.8, 0, 5, 0, Math.PI*2);
+        this.ctx.fill();
+        
+        // Subtle detail: a dark "crack" representing the fractured mind
+        this.ctx.strokeStyle = '#000000';
+        this.ctx.lineWidth = 1.5;
+        this.ctx.beginPath();
+        this.ctx.moveTo(-state.player.radius * 0.5, state.player.radius * 0.5);
+        this.ctx.lineTo(0, -state.player.radius * 0.2);
+        this.ctx.lineTo(state.player.radius * 0.4, state.player.radius * 0.3);
+        this.ctx.stroke();
+
+        this.ctx.restore();
+    }
+
     drawDamageText(state) {
         this.ctx.save();
         this.ctx.textAlign = 'center';
@@ -230,76 +258,206 @@ export class Renderer {
     }
 
     drawWorldItems(state) {
+        // Draw Ink Puddles
         if (state.inkPuddles) {
             state.inkPuddles.forEach(p => {
-                this.ctx.fillStyle = `rgba(20, 0, 40, ${0.5 * (p.life / 300)})`; // Dark purple
+                this.ctx.fillStyle = `rgba(15, 5, 25, ${0.7 * (p.life / 300)})`; 
                 this.ctx.beginPath();
-                this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                // Add some jaggedness to puddles
+                for (let i = 0; i < 8; i++) {
+                    let angle = (i / 8) * Math.PI * 2;
+                    let radiusJitter = p.radius * (0.8 + Math.sin(p.x * p.y + i) * 0.2);
+                    let x = p.x + Math.cos(angle) * radiusJitter;
+                    let y = p.y + Math.sin(angle) * radiusJitter;
+                    if (i === 0) this.ctx.moveTo(x, y);
+                    else this.ctx.lineTo(x, y);
+                }
+                this.ctx.closePath();
                 this.ctx.fill();
             });
         }
 
+        // Draw XP (Lucidity Fragments)
         state.xpDrops.forEach(xp => {
-            this.ctx.fillStyle = '#fff'; 
-            const r = 3 + Math.sin(state.frame * 0.1 + xp.x) * 1;
-            this.ctx.beginPath(); this.ctx.arc(xp.x, xp.y, r, 0, Math.PI*2); this.ctx.fill();
-            this.ctx.shadowBlur = 10; this.ctx.shadowColor = "white"; this.ctx.fill(); this.ctx.shadowBlur = 0;
+            this.ctx.save();
+            this.ctx.translate(xp.x, xp.y);
+            
+            // Outer glow
+            const pulse = Math.sin(state.frame * 0.1 + xp.x) * 2;
+            const grad = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 8 + pulse);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+            grad.addColorStop(1, 'rgba(200, 220, 255, 0)');
+            this.ctx.fillStyle = grad;
+            this.ctx.beginPath(); this.ctx.arc(0, 0, 8 + pulse, 0, Math.PI*2); this.ctx.fill();
+
+            // Inner core (diamond shape)
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.rotate(state.frame * 0.05);
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, -4); this.ctx.lineTo(4, 0);
+            this.ctx.moveTo(4, 0); this.ctx.lineTo(0, 4);
+            this.ctx.moveTo(0, 4); this.ctx.lineTo(-4, 0);
+            this.ctx.moveTo(-4, 0); this.ctx.lineTo(0, -4);
+            this.ctx.fill();
+            
+            this.ctx.restore();
         });
 
+        // Draw Entities
         state.entities.forEach(ent => {
             if (ent.type === 'BOSS' && state.sanity <= 0) {
                 if (Math.sin(ent.phase * 10) < 0.5) this.ctx.globalAlpha = 0.2;
                 else this.ctx.globalAlpha = 0.8;
             }
 
-            this.ctx.fillStyle = ent.flashTime > 0 ? '#fff' : ent.color;
+            this.ctx.fillStyle = ent.flashTime > 0 ? '#ffffff' : ent.color;
             this.ctx.save(); 
             this.ctx.translate(ent.x, ent.y);
             
             const twitch = state.sanity < 20 ? (Math.random()-0.5)*4 : 0;
             this.ctx.translate(twitch, twitch);
 
+            // Procedural Entity Drawings
             if (ent.type === 'SCAVENGER') {
-                this.ctx.rotate(Math.sin(state.frame * 0.1) * 0.1); 
-                this.ctx.fillRect(-12, -12, 24, 24); 
-                this.ctx.fillStyle = '#111'; this.ctx.fillRect(-8, -8, 16, 16); 
+                // Hunched, dragging figure
+                this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
+                
+                // Body
+                this.ctx.beginPath();
+                this.ctx.ellipse(0, 0, 14, 10, 0, 0, Math.PI*2);
+                this.ctx.fill();
+                
+                // "Broom" / dragging appendage
+                this.ctx.strokeStyle = '#222';
+                this.ctx.lineWidth = 3;
+                this.ctx.beginPath();
+                this.ctx.moveTo(5, 0);
+                this.ctx.lineTo(15 + Math.sin(state.frame * 0.2)*5, 10);
+                this.ctx.stroke();
+
+                // Faint trail behind them
+                this.ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                this.ctx.fillRect(-20, -5, 10, 10);
             } 
             else if (ent.type === 'PREDATOR') {
+                // Towering shadow with red eyes
                 this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
-                this.ctx.fillRect(-10, -20, 20, 40); 
-                this.ctx.fillStyle = ent.buffed ? '#fff' : '#444';
-                this.ctx.beginPath(); this.ctx.moveTo(0, 0); this.ctx.lineTo(20, -15); this.ctx.lineTo(20, 15); this.ctx.fill();
+                
+                // Jagged Body
+                this.ctx.fillStyle = ent.buffed ? '#fff' : '#1a1a1a';
+                if(ent.flashTime > 0) this.ctx.fillStyle = '#fff';
+
+                this.ctx.beginPath();
+                this.ctx.moveTo(15, 0);
+                this.ctx.lineTo(-10, 12);
+                this.ctx.lineTo(-15, 0);
+                this.ctx.lineTo(-10, -12);
+                this.ctx.closePath();
+                this.ctx.fill();
+
+                // Glowing "Searchlight" Eye
+                if (ent.flashTime <= 0) {
+                    this.ctx.fillStyle = ent.buffed ? '#ff0000' : '#8b0000';
+                    this.ctx.beginPath();
+                    this.ctx.arc(10, 0, 3, 0, Math.PI*2);
+                    this.ctx.fill();
+                    
+                    // Eye beam
+                    this.ctx.globalAlpha = 0.3;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(12, 0);
+                    this.ctx.lineTo(30, -5);
+                    this.ctx.lineTo(30, 5);
+                    this.ctx.fill();
+                    this.ctx.globalAlpha = 1.0;
+                }
             }
             else if (ent.type === 'PARASITE') {
+                // Twitching nerve cluster
                 this.ctx.rotate(state.frame * 0.2); 
-                this.ctx.beginPath(); this.ctx.arc(0, 0, 8, 0, Math.PI*2); this.ctx.fill();
-                this.ctx.strokeStyle = ent.color;
-                this.ctx.beginPath(); this.ctx.moveTo(-15, 0); this.ctx.lineTo(15, 0); this.ctx.moveTo(0, -15); this.ctx.lineTo(0, 15); this.ctx.stroke();
+                
+                // Central mass
+                this.ctx.beginPath(); 
+                this.ctx.arc(0, 0, 6, 0, Math.PI*2); 
+                this.ctx.fill();
+                
+                // Twitching tentacles
+                this.ctx.strokeStyle = ent.flashTime > 0 ? '#fff' : ent.color;
+                this.ctx.lineWidth = 1.5;
+                for(let i=0; i<5; i++) {
+                    let angle = (i/5) * Math.PI * 2;
+                    let length = 8 + Math.random() * 6;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(Math.cos(angle)*6, Math.sin(angle)*6);
+                    // Add a joint to the leg
+                    let midX = Math.cos(angle + 0.2) * (length*0.5);
+                    let midY = Math.sin(angle + 0.2) * (length*0.5);
+                    this.ctx.lineTo(midX, midY);
+                    this.ctx.lineTo(Math.cos(angle)*length, Math.sin(angle)*length);
+                    this.ctx.stroke();
+                }
             }
             else if (ent.type === 'BOSS') {
+                // Geometric Nightmare (Sphere Head)
                 this.ctx.rotate(Math.sin(ent.phase)*0.1); 
-                this.ctx.beginPath(); this.ctx.arc(0, 0, 30, 0, Math.PI*2); this.ctx.fill(); 
-                this.ctx.fillStyle = '#111'; this.ctx.beginPath(); this.ctx.arc(15, 0, 10, 0, Math.PI*2); this.ctx.fill(); 
-                this.ctx.fillStyle = ent.color;
-                this.ctx.fillRect(-10, 30 + Math.sin(ent.phase * 2)*10, 8, 20);
-                this.ctx.fillRect(10, 30 + Math.cos(ent.phase * 2)*10, 8, 20);
+                
+                // Main chassis
+                this.ctx.beginPath(); 
+                this.ctx.arc(0, 0, 35, 0, Math.PI*2); 
+                this.ctx.fill(); 
+                
+                // Inner dark void
+                this.ctx.fillStyle = '#050505'; 
+                this.ctx.beginPath(); 
+                this.ctx.arc(5, 0, 20, 0, Math.PI*2); 
+                this.ctx.fill(); 
+                
+                // Glowing floating core
+                this.ctx.fillStyle = ent.flashTime > 0 ? '#ffffff' : ent.color;
+                let coreOffset = Math.sin(state.frame * 0.05) * 5;
+                this.ctx.beginPath();
+                this.ctx.arc(10 + coreOffset, 0, 8, 0, Math.PI*2);
+                this.ctx.fill();
+
+                // Orbiting Ring 1
+                this.ctx.strokeStyle = ent.flashTime > 0 ? '#ffffff' : '#666';
+                this.ctx.lineWidth = 2;
+                this.ctx.beginPath();
+                this.ctx.ellipse(0, 0, 45, 10, ent.phase, 0, Math.PI*2);
+                this.ctx.stroke();
+
+                // Orbiting Ring 2 (Counter-rotating)
+                this.ctx.beginPath();
+                this.ctx.ellipse(0, 0, 10, 45, -ent.phase * 1.5, 0, Math.PI*2);
+                this.ctx.stroke();
             }
 
+            // Healthbars (drawn below the entity)
             if (ent.hp < ent.maxHp && ent.flashTime <= 0) {
-                const barW = ent.type === 'BOSS' ? 60 : 20;
-                this.ctx.fillStyle = '#000'; this.ctx.fillRect(-barW/2, ent.type === 'BOSS' ? 60 : 22, barW, 4);
-                this.ctx.fillStyle = '#8b0000'; this.ctx.fillRect(-barW/2, ent.type === 'BOSS' ? 60 : 22, barW * Math.max(0, ent.hp / ent.maxHp), 4);
+                const barW = ent.type === 'BOSS' ? 80 : 24;
+                const yOffset = ent.type === 'BOSS' ? 55 : 20;
+                this.ctx.fillStyle = 'rgba(0,0,0,0.8)'; 
+                this.ctx.fillRect(-barW/2, yOffset, barW, 4);
+                this.ctx.fillStyle = '#8b0000'; 
+                this.ctx.fillRect(-barW/2, yOffset, barW * Math.max(0, ent.hp / ent.maxHp), 4);
             }
 
             this.ctx.restore();
             this.ctx.globalAlpha = 1.0;
         });
 
+        // Enhanced Particles (Blood/Sparks)
         if (state.particles) {
             state.particles.forEach(p => { 
                 this.ctx.fillStyle = p.color; 
                 this.ctx.globalAlpha = Math.max(0, p.life); 
-                this.ctx.fillRect(p.x, p.y, 4, 4); 
+                // Draw as small lines indicating motion
+                this.ctx.beginPath();
+                this.ctx.moveTo(p.x, p.y);
+                this.ctx.lineTo(p.x - p.vx*2, p.y - p.vy*2);
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeStyle = p.color;
+                this.ctx.stroke();
             });
         }
         this.ctx.globalAlpha = 1.0;
