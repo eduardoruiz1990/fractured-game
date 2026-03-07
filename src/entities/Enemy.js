@@ -15,8 +15,10 @@ export class Enemy {
         this.baseSpeed = speed;
         this.damage = damage;
         this.color = color;
+        this.originalColor = color;
         this.flashTime = 0;
         this.buffed = false;
+        this.confused = 0;
     }
 
     takeDamage(amount) {
@@ -25,7 +27,29 @@ export class Enemy {
     }
 
     // Applies physics at the end of the frame
-    applyMovement() {
+    applyMovement(state) {
+        if (this.confused > 0) {
+            this.confused--;
+            this.color = '#ffffff'; // White out
+            
+            // Override normal AI to attack nearest entity
+            let nearest = null; let minDist = 9999;
+            if (state && state.entities) {
+                state.entities.forEach(other => {
+                    if (other.id !== this.id) {
+                        let d = Math.hypot(other.x - this.x, other.y - this.y);
+                        if (d < minDist) { minDist = d; nearest = other; }
+                    }
+                });
+            }
+            if (nearest) {
+                this.vx = (nearest.x - this.x) / Math.max(minDist, 0.001) * this.speed * 1.5;
+                this.vy = (nearest.y - this.y) / Math.max(minDist, 0.001) * this.speed * 1.5;
+            }
+        } else {
+            this.color = this.buffed ? '#ff0000' : this.originalColor;
+        }
+
         this.x += this.vx || 0;
         this.y += this.vy || 0;
         if (this.flashTime > 0) this.flashTime--;
@@ -33,6 +57,6 @@ export class Enemy {
 
     // To be overridden by subclasses
     update(state, game) {
-        this.applyMovement();
+        this.applyMovement(state);
     }
 }
