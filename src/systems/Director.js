@@ -8,6 +8,7 @@ export class Director {
     constructor(game) {
         this.game = game;
         
+        // Added pools for the Ink and Melee VFX!
         this.pools = {
             scavenger: new ObjectPool(() => new Scavenger(), 100),
             predator: new ObjectPool(() => new Predator(), 50),
@@ -15,7 +16,9 @@ export class Director {
             boss: new ObjectPool(() => new Boss(), 2),
             particle: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '', active: false }), 300),
             xpDrop: new ObjectPool(() => ({ x: 0, y: 0, value: 0, collected: false, active: false }), 300),
-            damageText: new ObjectPool(() => ({ x: 0, y: 0, text: '', life: 0, color: '', scale: 1, active: false }), 200)
+            damageText: new ObjectPool(() => ({ x: 0, y: 0, text: '', life: 0, color: '', scale: 1, active: false }), 200),
+            inkPuddle: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, life: 0, damage: 0, active: false }), 200),
+            meleeSwing: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, maxRadius: 0, life: 0, active: false }), 20)
         };
     }
 
@@ -88,7 +91,7 @@ export class Director {
     spawnDamageText(x, y, text, color = '#ffaaaa', scale = 1.0, life = 1.0) {
         const state = this.game.state;
         let dt = this.pools.damageText.get();
-        dt.x = x + (Math.random() * 30 - 15); // Jitter to prevent overlapping
+        dt.x = x + (Math.random() * 30 - 15);
         dt.y = y - 10;
         dt.text = text;
         dt.color = color;
@@ -98,30 +101,48 @@ export class Director {
         state.damageTexts.push(dt);
     }
 
+    // New Weapon VFX Spawners
+    spawnInkPuddle(x, y, radius, damage) {
+        let p = this.pools.inkPuddle.get();
+        p.x = x; p.y = y; p.radius = radius; p.damage = damage; p.life = 300; // Lasts 5 seconds
+        p.active = true;
+        this.game.state.inkPuddles.push(p);
+    }
+
+    spawnMeleeSwing(x, y, maxRadius) {
+        let m = this.pools.meleeSwing.get();
+        m.x = x; m.y = y; m.radius = 0; m.maxRadius = maxRadius; m.life = 15; // Quick white flash
+        m.active = true;
+        this.game.state.meleeSwings.push(m);
+    }
+
     updateParticles() {
         const state = this.game.state;
         
         for (let i = state.particles.length - 1; i >= 0; i--) {
             let p = state.particles[i];
             p.x += p.vx; p.y += p.vy; p.life -= 0.05;
-            
-            if (p.life <= 0) {
-                p.active = false;
-                this.pools.particle.release(p);
-                state.particles.splice(i, 1);
-            }
+            if (p.life <= 0) { p.active = false; this.pools.particle.release(p); state.particles.splice(i, 1); }
         }
 
         for (let i = state.damageTexts.length - 1; i >= 0; i--) {
             let dt = state.damageTexts[i];
-            dt.y -= 0.5; // Float upwards
-            dt.life -= 0.02; // Fade out slowly
-            
-            if (dt.life <= 0) {
-                dt.active = false;
-                this.pools.damageText.release(dt);
-                state.damageTexts.splice(i, 1);
-            }
+            dt.y -= 0.5; dt.life -= 0.02; 
+            if (dt.life <= 0) { dt.active = false; this.pools.damageText.release(dt); state.damageTexts.splice(i, 1); }
+        }
+
+        // Clean up puddles and swings
+        for (let i = state.inkPuddles.length - 1; i >= 0; i--) {
+            let p = state.inkPuddles[i];
+            p.life--;
+            if (p.life <= 0) { p.active = false; this.pools.inkPuddle.release(p); state.inkPuddles.splice(i, 1); }
+        }
+
+        for (let i = state.meleeSwings.length - 1; i >= 0; i--) {
+            let m = state.meleeSwings[i];
+            m.life--;
+            m.radius += (m.maxRadius - m.radius) * 0.3; // Expands quickly outward
+            if (m.life <= 0) { m.active = false; this.pools.meleeSwing.release(m); state.meleeSwings.splice(i, 1); }
         }
     }
 }

@@ -10,6 +10,14 @@ export class Game {
         this.audioEngine = null; 
         
         this.director = new Director(this);
+
+        // DEV CHEAT: Press '9' to instantly trigger a Level Up
+        window.addEventListener('keydown', (e) => {
+            if (e.key === '9' && this.state && this.state.sanity > 0) {
+                this.state.xp += 1000;
+                console.log('%c DEV CHEAT: +1000 XP applied! ', 'background: #44aa44; color: white;');
+            }
+        });
     }
 
     init(saveManager) {
@@ -25,14 +33,16 @@ export class Game {
                 weapons: {
                     flashlight: { level: 1, damage: 15, radius: 250 * lightMult, angle: 0.4 },
                     static: { level: 0, damage: 0, radius: 60, active: false, pulsePhase: 0 },
-                    adrenaline: { level: 0 }
+                    adrenaline: { level: 0 },
+                    lead_pipe: { level: 0, damage: 50, radius: 80, cooldown: 90, timer: 0 },
+                    spilled_ink: { level: 0, damage: 5, radius: 30, dropRate: 30, timer: 0 }
                 },
                 synergies: []
             },
             inputBuffer: [],
             sanity: maxSanity, sanityDrainMult: 1.0,
             xp: 0, level: 1, lucidity: 0,
-            entities: [], xpDrops: [], particles: [], damageTexts: [], // Active floating text
+            entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [],
             frame: 0, stress: 1.0, cameraShake: 0,
             bossSpawned: false
         };
@@ -119,7 +129,6 @@ export class Game {
         if (this.audioEngine) this.audioEngine.playSFX('damage');
         try { if (navigator.vibrate) navigator.vibrate(100); } catch(e){}
         
-        // Huge red text when player gets hit
         this.spawnDamageText(this.state.player.x, this.state.player.y, `-${Math.floor(amount)}`, '#ff0000', 1.5, 1.5);
         
         if (this.state.sanity <= -20 && this.onDeath) {

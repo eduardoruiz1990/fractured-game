@@ -73,6 +73,15 @@ export class Renderer {
             this.ctx.fill();
         }
 
+        // Draw Melee Swings above ground but below player
+        state.meleeSwings.forEach(m => {
+            this.ctx.strokeStyle = `rgba(255, 255, 255, ${m.life / 15})`;
+            this.ctx.lineWidth = 4;
+            this.ctx.beginPath();
+            this.ctx.arc(m.x, m.y, m.radius, 0, Math.PI * 2);
+            this.ctx.stroke();
+        });
+
         this.ctx.fillStyle = 'white'; 
         this.ctx.beginPath(); 
         this.ctx.arc(state.player.x, state.player.y, state.player.radius, 0, Math.PI*2); 
@@ -87,9 +96,7 @@ export class Renderer {
         );
         this.ctx.fill();
         
-        // --- DRAW DAMAGE TEXT ON TOP OF EVERYTHING ---
         this.drawDamageText(state);
-
         this.ctx.restore(); 
     }
 
@@ -98,13 +105,9 @@ export class Renderer {
         this.ctx.textAlign = 'center';
         
         state.damageTexts.forEach(dt => {
-            // Math.min(1) ensures that if life > 1 (like death tallies), it stays fully solid until it drops below 1
             this.ctx.globalAlpha = Math.max(0, Math.min(1, dt.life));
-            
-            // Base size is now 20px, dynamically multiplied by scale
             this.ctx.font = `bold ${Math.floor(20 * dt.scale)}px var(--ui-font, monospace)`;
             this.ctx.fillStyle = dt.color;
-            
             this.ctx.lineWidth = 2;
             this.ctx.strokeStyle = '#000';
             this.ctx.strokeText(dt.text, dt.x, dt.y);
@@ -115,6 +118,14 @@ export class Renderer {
     }
 
     drawWorldItems(state) {
+        // Draw Ink Puddles under everything
+        state.inkPuddles.forEach(p => {
+            this.ctx.fillStyle = `rgba(20, 0, 40, ${0.5 * (p.life / 300)})`; // Dark purple
+            this.ctx.beginPath();
+            this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            this.ctx.fill();
+        });
+
         state.xpDrops.forEach(xp => {
             this.ctx.fillStyle = '#fff'; 
             const r = 3 + Math.sin(state.frame * 0.1 + xp.x) * 1;

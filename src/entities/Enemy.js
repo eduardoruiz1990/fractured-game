@@ -21,7 +21,9 @@ export class Enemy {
         this.confused = 0;
         this.active = true;
         
-        // Damage accumulators for the UI
+        // Supports the new Ink Puddle slowing effect
+        this.speedModifier = 1.0; 
+        
         this.damageAccumulator = 0;
         this.damageTick = 0;
         
@@ -35,16 +37,14 @@ export class Enemy {
         this.damageAccumulator += amount;
         this.damageTick++;
         
-        // Pop floating text every quarter-second, or instantly on death
         if (this.damageTick >= 15 || this.hp <= 0) {
             if (game && this.damageAccumulator >= 1) {
                 let isFinal = this.hp <= 0;
                 
-                // Color mapping: Regular hits are pinkish, huge hits are gold, final death hits are bloody red
                 let color = this.damageAccumulator > 15 ? '#c5a059' : '#ffaaaa';
                 if (isFinal) color = '#ff3333'; 
                 
-                // Final hits are 150% size and hang on the screen twice as long!
+                // Huge scaling text for death blows!
                 let scale = isFinal ? 1.5 : 1.0;
                 let life = isFinal ? 2.5 : 1.0; 
                 
@@ -58,7 +58,7 @@ export class Enemy {
     applyMovement(state) {
         if (this.confused > 0) {
             this.confused--;
-            this.color = '#ffffff'; // White out
+            this.color = '#ffffff'; 
             
             let nearest = null; let minDist = 9999;
             if (state && state.entities) {
@@ -77,8 +77,9 @@ export class Enemy {
             this.color = this.buffed ? '#ff0000' : this.originalColor;
         }
 
-        this.x += this.vx || 0;
-        this.y += this.vy || 0;
+        // Modifier applies Ink slowness
+        this.x += (this.vx || 0) * this.speedModifier;
+        this.y += (this.vy || 0) * this.speedModifier;
         if (this.flashTime > 0) this.flashTime--;
     }
 
