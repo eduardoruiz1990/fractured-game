@@ -1,20 +1,74 @@
+// src/core/Renderer.js
+// Handles HTML5 Canvas Drawing, Glitch Shaders, and Flashlight Masking
+
 export class Renderer {
     constructor(canvas, ctx) {
         this.canvas = canvas;
         this.ctx = ctx;
+        
+        // Pre-compute visual atmospheric assets on load to save CPU
+        this.noisePattern = this.generateNoisePattern();
+        this.fogClouds = this.generateFogClouds();
+    }
+
+    // Generates the VHS Film Grain texture once
+    generateNoisePattern() {
+        const c = document.createElement('canvas');
+        c.width = 128;
+        c.height = 128;
+        const cx = c.getContext('2d');
+        const imgData = cx.createImageData(128, 128);
+        for (let i = 0; i < imgData.data.length; i += 4) {
+            const val = Math.random() * 255;
+            imgData.data[i] = val;     // R
+            imgData.data[i+1] = val;   // G
+            imgData.data[i+2] = val;   // B
+            imgData.data[i+3] = 35;    // Alpha (Cranked up for prominent VHS grain)
+        }
+        cx.putImageData(imgData, 0, 0);
+        return c;
+    }
+
+    // Generates procedural drifting fog circles
+    generateFogClouds() {
+        let clouds = [];
+        for(let i=0; i<30; i++) {
+            clouds.push({
+                x: Math.random() * 2000,
+                y: Math.random() * 2000,
+                r: 150 + Math.random() * 300,
+                vx: (Math.random() - 0.5) * 1.5,
+                vy: (Math.random() - 0.5) * 1.5
+            });
+        }
+        return clouds;
     }
 
     drawMenuBackground(time) {
         this.ctx.fillStyle = `rgba(139, 0, 0, ${0.05 + Math.sin(time * 0.001) * 0.02})`;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.drawFilmGrain();
+    }
+
+    drawFilmGrain() {
+        this.ctx.save();
+        // Jitter the pattern offset every frame for animation
+        const offsetX = (Math.random() * 128) | 0;
+        const offsetY = (Math.random() * 128) | 0;
+        this.ctx.fillStyle = this.ctx.createPattern(this.noisePattern, 'repeat');
+        this.ctx.translate(-offsetX, -offsetY);
+        this.ctx.fillRect(0, 0, this.canvas.width + 128, this.canvas.height + 128);
+        this.ctx.restore();
     }
 
     drawGame(state) {
-        this.ctx.fillStyle = '#050505'; 
+        // 1. Pitch Black Base Layer (True Darkness)
+        this.ctx.fillStyle = '#010102'; 
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         this.ctx.save();
         
+        // Camera Shake
         if (state.cameraShake > 0) {
             this.ctx.translate(
                 (Math.random() - 0.5) * state.cameraShake, 
@@ -22,10 +76,12 @@ export class Renderer {
             );
         }
 
-        this.ctx.globalAlpha = 0.15; 
+        // 2. Unlit World (Barely visible silhouettes in the fog - reduced to make darkness scarier)
+        this.ctx.globalAlpha = 0.02; 
         this.drawWorldItems(state); 
         this.ctx.globalAlpha = 1.0;
 
+        // 3. Flashlight Mask
         const fl = state.player.weapons.flashlight;
         this.ctx.save(); 
         this.ctx.beginPath(); 
@@ -53,15 +109,43 @@ export class Renderer {
         this.ctx.closePath(); 
         this.ctx.clip(); 
 
+        // Draw Lit Area Entities
         this.drawWorldItems(state);
         
+        // Draw Volumetric Fog inside the Flashlight (Cranked up to 0.35 for thick smoke)
+        this.ctx.globalAlpha = 0.35;
+        this.fogClouds.forEach(cloud => {
+            cloud.x += cloud.vx; cloud.y += cloud.vy;
+            
+            // Wrap relative to player for infinite scrolling fog
+            let dx = (cloud.x - state.player.x) % 2000;
+            if (dx < -1000) dx += 2000; else if (dx > 1000) dx -= 2000;
+            let dy = (cloud.y - state.player.y) % 2000;
+            if (dy < -1000) dy += 2000; else if (dy > 1000) dy -= 2000;
+            
+            let drawX = state.player.x + dx;
+            let drawY = state.player.y + dy;
+
+            const fGrad = this.ctx.createRadialGradient(drawX, drawY, 0, drawX, drawY, cloud.r);
+            fGrad.addColorStop(0, 'rgba(200, 210, 220, 0.8)');
+            fGrad.addColorStop(1, 'rgba(200, 210, 220, 0)');
+            this.ctx.fillStyle = fGrad;
+            this.ctx.beginPath();
+            this.ctx.arc(drawX, drawY, cloud.r, 0, Math.PI * 2);
+            this.ctx.fill();
+        });
+        this.ctx.globalAlpha = 1.0;
+
+        // Flashlight Glare Gradient
         const grad = this.ctx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, fl.radius);
-        grad.addColorStop(0, 'rgba(255, 255, 230, 0.4)'); 
+        grad.addColorStop(0, 'rgba(255, 255, 230, 0.3)'); 
         grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
         this.ctx.fillStyle = grad; 
         this.ctx.fillRect(0,0, this.canvas.width, this.canvas.height);
-        this.ctx.restore(); 
+        
+        this.ctx.restore(); // Drop Mask
 
+        // 4. Draw Static Aura Weapon
         const staticWep = state.player.weapons.static;
         if (staticWep.active) {
             this.ctx.beginPath(); 
@@ -74,14 +158,17 @@ export class Renderer {
         }
 
         // Draw Melee Swings above ground but below player
-        state.meleeSwings.forEach(m => {
-            this.ctx.strokeStyle = `rgba(255, 255, 255, ${m.life / 15})`;
-            this.ctx.lineWidth = 4;
-            this.ctx.beginPath();
-            this.ctx.arc(m.x, m.y, m.radius, 0, Math.PI * 2);
-            this.ctx.stroke();
-        });
+        if (state.meleeSwings) {
+            state.meleeSwings.forEach(m => {
+                this.ctx.strokeStyle = `rgba(255, 255, 255, ${m.life / 15})`;
+                this.ctx.lineWidth = 4;
+                this.ctx.beginPath();
+                this.ctx.arc(m.x, m.y, m.radius, 0, Math.PI * 2);
+                this.ctx.stroke();
+            });
+        }
 
+        // 5. Draw Player
         this.ctx.fillStyle = 'white'; 
         this.ctx.beginPath(); 
         this.ctx.arc(state.player.x, state.player.y, state.player.radius, 0, Math.PI*2); 
@@ -96,35 +183,61 @@ export class Renderer {
         );
         this.ctx.fill();
         
+        // 6. Draw Damage Text
         this.drawDamageText(state);
-        this.ctx.restore(); 
+
+        this.ctx.restore(); // Restore camera shake
+
+        // 7. POST-PROCESSING (Vignette & Film Grain)
+        
+        // Dynamic Vignette (Claustrophobia effect bound to Sanity)
+        let sanityRatio = Math.max(0.01, state.sanity / state.player.maxHp);
+        
+        // Tightened the rings: the darkness closes in much closer to the player now
+        let innerVig = (this.canvas.height / 4) * sanityRatio; 
+        let outerVig = (this.canvas.height) * (0.2 + sanityRatio * 0.8); 
+        
+        const vig = this.ctx.createRadialGradient(
+            state.player.x, state.player.y, innerVig,
+            state.player.x, state.player.y, outerVig
+        );
+        vig.addColorStop(0, 'rgba(0,0,0,0)');
+        vig.addColorStop(1, 'rgba(0,0,0,0.98)');
+        this.ctx.fillStyle = vig;
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Overlay Prominent Film Grain
+        this.drawFilmGrain();
     }
 
     drawDamageText(state) {
         this.ctx.save();
         this.ctx.textAlign = 'center';
         
-        state.damageTexts.forEach(dt => {
-            this.ctx.globalAlpha = Math.max(0, Math.min(1, dt.life));
-            this.ctx.font = `bold ${Math.floor(20 * dt.scale)}px var(--ui-font, monospace)`;
-            this.ctx.fillStyle = dt.color;
-            this.ctx.lineWidth = 2;
-            this.ctx.strokeStyle = '#000';
-            this.ctx.strokeText(dt.text, dt.x, dt.y);
-            this.ctx.fillText(dt.text, dt.x, dt.y);
-        });
+        if (state.damageTexts) {
+            state.damageTexts.forEach(dt => {
+                this.ctx.globalAlpha = Math.max(0, Math.min(1, dt.life));
+                this.ctx.font = `bold ${Math.floor(20 * dt.scale)}px var(--ui-font, monospace)`;
+                this.ctx.fillStyle = dt.color;
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeStyle = '#000';
+                this.ctx.strokeText(dt.text, dt.x, dt.y);
+                this.ctx.fillText(dt.text, dt.x, dt.y);
+            });
+        }
         
         this.ctx.restore();
     }
 
     drawWorldItems(state) {
-        // Draw Ink Puddles under everything
-        state.inkPuddles.forEach(p => {
-            this.ctx.fillStyle = `rgba(20, 0, 40, ${0.5 * (p.life / 300)})`; // Dark purple
-            this.ctx.beginPath();
-            this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-            this.ctx.fill();
-        });
+        if (state.inkPuddles) {
+            state.inkPuddles.forEach(p => {
+                this.ctx.fillStyle = `rgba(20, 0, 40, ${0.5 * (p.life / 300)})`; // Dark purple
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                this.ctx.fill();
+            });
+        }
 
         state.xpDrops.forEach(xp => {
             this.ctx.fillStyle = '#fff'; 
@@ -182,11 +295,13 @@ export class Renderer {
             this.ctx.globalAlpha = 1.0;
         });
 
-        state.particles.forEach(p => { 
-            this.ctx.fillStyle = p.color; 
-            this.ctx.globalAlpha = Math.max(0, p.life); 
-            this.ctx.fillRect(p.x, p.y, 4, 4); 
-        });
+        if (state.particles) {
+            state.particles.forEach(p => { 
+                this.ctx.fillStyle = p.color; 
+                this.ctx.globalAlpha = Math.max(0, p.life); 
+                this.ctx.fillRect(p.x, p.y, 4, 4); 
+            });
+        }
         this.ctx.globalAlpha = 1.0;
     }
 }
