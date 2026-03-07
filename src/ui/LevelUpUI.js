@@ -69,7 +69,8 @@ export class LevelUpUI {
         
         // Helper to match items to creepy visual icons
         const getIcon = (key) => {
-            const icons = { flashlight: '🔦', static: '📻', adrenaline: '💉', lead_pipe: '🪠', spilled_ink: '🦑', corrosive_battery: '🔋', broken_chalk: '🖍️', blinding_signal: '👁️‍🗨️', industrial_bleed: '🩸', scholastic_purge: '☣️', everything_is_target: '🎯', manic_episode: '🌀', compulsive_cleaner: '🧹' };
+            // FIX: Changed lead_pipe from 🪠 to 🔧
+            const icons = { flashlight: '🔦', static: '📻', adrenaline: '💉', lead_pipe: '🔧', spilled_ink: '🦑', corrosive_battery: '🔋', broken_chalk: '🖍️', blinding_signal: '👁️‍🗨️', industrial_bleed: '🩸', scholastic_purge: '☣️', everything_is_target: '🎯', manic_episode: '🌀', compulsive_cleaner: '🧹' };
             return icons[key] || '❓';
         };
         

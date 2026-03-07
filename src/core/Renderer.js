@@ -181,7 +181,7 @@ export class Renderer {
         });
         this.ctx.globalAlpha = 1.0;
 
-        // Flashlight Glare Gradient (Tint green if corrosive battery is active!)
+        // Flashlight Glare Gradient
         const grad = this.ctx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, fl.radius);
         if (state.player.weapons.corrosive_battery && state.player.weapons.corrosive_battery.level > 0) {
             grad.addColorStop(0, 'rgba(180, 255, 150, 0.35)'); 
@@ -206,14 +206,32 @@ export class Renderer {
             this.ctx.fill();
         }
 
-        // Draw Melee Swings
+        // Draw Melee Swings (UPDATED: Sweeping metallic arc)
         if (state.meleeSwings) {
             state.meleeSwings.forEach(m => {
-                this.ctx.strokeStyle = `rgba(255, 255, 255, ${m.life / 15})`;
-                this.ctx.lineWidth = 4;
+                this.ctx.save();
+                this.ctx.translate(m.x, m.y);
+                
+                // Calculate swing angle based on life. 15 life = full 360 rotation
+                let swingProgress = 1 - (m.life / 15);
+                let currentAngle = swingProgress * Math.PI * 2;
+                
+                // Red bloody trail
                 this.ctx.beginPath();
-                this.ctx.arc(m.x, m.y, m.radius, 0, Math.PI * 2);
+                this.ctx.arc(0, 0, m.radius, currentAngle - 1.5, currentAngle, false);
+                this.ctx.strokeStyle = `rgba(150, 0, 0, ${m.life / 15})`;
+                this.ctx.lineWidth = 15;
+                this.ctx.lineCap = 'round';
                 this.ctx.stroke();
+
+                // Metallic Pipe leading edge
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, m.radius, currentAngle - 0.2, currentAngle, false);
+                this.ctx.strokeStyle = `rgba(200, 200, 210, ${m.life / 15})`;
+                this.ctx.lineWidth = 8;
+                this.ctx.stroke();
+
+                this.ctx.restore();
             });
         }
 
