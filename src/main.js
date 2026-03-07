@@ -1,4 +1,3 @@
-// src/main.js
 import './style.css';
 
 import { SaveManager } from './core/SaveManager.js';
@@ -7,7 +6,7 @@ import { InputManager } from './core/Input.js';
 import { Renderer } from './core/Renderer.js';
 import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
-import { LevelUpUI } from './ui/LevelUpUI.js'; // <-- NEW IMPORT
+import { LevelUpUI } from './ui/LevelUpUI.js';
 
 console.log("FRACTURED Engine Bootstrapping...");
 
@@ -28,7 +27,7 @@ const inputManager = new InputManager(canvas);
 const renderer = new Renderer(canvas, ctx);
 const audioEngine = new AudioEngine();
 const game = new Game();
-const levelUpUI = new LevelUpUI(audioEngine); // <-- INSTANTIATE UI
+const levelUpUI = new LevelUpUI(audioEngine);
 
 game.audioEngine = audioEngine;
 
@@ -108,7 +107,8 @@ function gameLoop(time) {
                 document.getElementById('score').innerText = `LUCIDITY: ${game.state.lucidity} | LVL ${game.state.level}`;
             }
             
-            renderer.drawGame(game.state);
+            // THE CRUCIAL FIX: Passing audioEngine to the Renderer for synced footstep sounds!
+            renderer.drawGame(game.state, audioEngine);
         }
     } catch (e) {
         console.error("Main Loop Crash: " + e.message);

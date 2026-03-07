@@ -22,6 +22,7 @@ export class Renderer {
         this.legPhase = 0;
         this.lastPx = -1;
         this.lastPy = -1;
+        this.lastFootstepPhase = 0;
     }
 
     generateFloorPattern() {
@@ -99,7 +100,7 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    drawGame(state) {
+    drawGame(state, audioEngine) {
         // 1. Base Layer
         this.ctx.fillStyle = '#000000'; 
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -280,7 +281,7 @@ export class Renderer {
             });
         }
 
-        this.drawPlayer(state);
+        this.drawPlayer(state, audioEngine);
         this.drawDamageText(state);
 
         this.ctx.restore(); // Restore global zoom and translation
@@ -304,7 +305,7 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    drawPlayer(state) {
+    drawPlayer(state, audioEngine) {
         this.ctx.save();
         
         let sanityRatio = state.sanity / state.player.maxHp;
@@ -320,6 +321,24 @@ export class Renderer {
 
         if (isMoving) {
             this.legPhase += 0.3 + (panic * 0.4);
+            
+            // Check if we passed a "step" threshold to play a sound and kick up dust
+            if (Math.abs(Math.sin(this.legPhase)) > 0.9 && Math.abs(Math.sin(this.lastFootstepPhase)) <= 0.9) {
+                if (audioEngine) audioEngine.playFootstep();
+                
+                // Kick up dust particles
+                for (let i = 0; i < 2; i++) {
+                    state.particles.push({
+                        x: state.player.x + (Math.random() - 0.5) * 10,
+                        y: state.player.y + (Math.random() - 0.5) * 10,
+                        vx: (Math.random() - 0.5) * 0.5,
+                        vy: (Math.random() - 0.5) * 0.5,
+                        life: 0.5 + Math.random() * 0.5,
+                        color: 'rgba(100, 100, 100, 0.5)'
+                    });
+                }
+            }
+            this.lastFootstepPhase = this.legPhase;
         }
 
         let shakeX = (Math.random() - 0.5) * panic * 6;
@@ -499,6 +518,7 @@ export class Renderer {
             this.ctx.arc(0, Math.sin(time*2)*3, 2.5 + pulse*0.5, 0, Math.PI*2);
             this.ctx.fill();
             
+            // Ethereal trail
             this.ctx.strokeStyle = 'rgba(150, 200, 255, 0.6)';
             this.ctx.lineWidth = 1.5;
             this.ctx.beginPath();
