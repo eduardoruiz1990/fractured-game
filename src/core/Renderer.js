@@ -1,5 +1,5 @@
 // src/core/Renderer.js
-// Handles HTML5 Canvas Drawing, Glitch Shaders, and Flashlight Masking
+// Handles HTML5 Canvas Drawing, Procedural Lighting Masks, and VFX
 
 export class Renderer {
     constructor(canvas, ctx) {
@@ -11,6 +11,10 @@ export class Renderer {
         this.fogClouds = this.generateFogClouds();
         this.floorPattern = this.generateFloorPattern();
         
+        // Off-screen canvas for our new advanced Lighting Mask!
+        this.lightCanvas = document.createElement('canvas');
+        this.lightCtx = this.lightCanvas.getContext('2d');
+        
         // Define the global zoom level
         this.zoom = 1.3; 
 
@@ -20,18 +24,15 @@ export class Renderer {
         this.lastPy = -1;
     }
 
-    // Generates the eerie school tile floor pattern once
     generateFloorPattern() {
         const c = document.createElement('canvas');
         c.width = 512;
         c.height = 512;
         const cx = c.getContext('2d');
         
-        // Base creepy tile
         cx.fillStyle = '#0a0a0d';
         cx.fillRect(0, 0, 512, 512);
         
-        // Grid lines (School tiles)
         cx.strokeStyle = '#050505';
         cx.lineWidth = 4;
         for(let i = 0; i <= 512; i += 128) {
@@ -39,7 +40,6 @@ export class Renderer {
             cx.beginPath(); cx.moveTo(0, i); cx.lineTo(512, i); cx.stroke();
         }
 
-        // Blood stains, grime, and scuffs
         for(let i = 0; i < 40; i++) {
             cx.fillStyle = Math.random() > 0.7 ? 'rgba(70, 10, 10, 0.3)' : 'rgba(0, 0, 0, 0.5)';
             cx.beginPath();
@@ -52,7 +52,6 @@ export class Renderer {
         return c;
     }
 
-    // Generates the VHS Film Grain texture once
     generateNoisePattern() {
         const c = document.createElement('canvas');
         c.width = 128;
@@ -70,7 +69,6 @@ export class Renderer {
         return c;
     }
 
-    // Generates procedural drifting fog circles
     generateFogClouds() {
         let clouds = [];
         for(let i=0; i<30; i++) {
@@ -102,8 +100,8 @@ export class Renderer {
     }
 
     drawGame(state) {
-        // 1. Pitch Black Base Layer (True Darkness)
-        this.ctx.fillStyle = '#010102'; 
+        // 1. Base Layer
+        this.ctx.fillStyle = '#000000'; 
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         this.ctx.save();
@@ -112,67 +110,32 @@ export class Renderer {
         this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
         this.ctx.scale(this.zoom, this.zoom);
         this.ctx.translate(-state.player.x, -state.player.y);
-        // -------------------------
-
+        
         // Camera Shake
+        let curShakeX = 0, curShakeY = 0;
         if (state.cameraShake > 0) {
-            this.ctx.translate(
-                (Math.random() - 0.5) * state.cameraShake, 
-                (Math.random() - 0.5) * state.cameraShake
-            );
+            curShakeX = (Math.random() - 0.5) * state.cameraShake;
+            curShakeY = (Math.random() - 0.5) * state.cameraShake;
+            this.ctx.translate(curShakeX, curShakeY);
         }
 
-        // 2. Unlit World
-        this.ctx.globalAlpha = 0.02; 
-        this.drawWorldItems(state); 
-        this.ctx.globalAlpha = 1.0;
-
-        // 3. Flashlight Mask
-        const fl = state.player.weapons.flashlight;
-        this.ctx.save(); 
-        this.ctx.beginPath(); 
-        this.ctx.moveTo(state.player.x, state.player.y);
-        
-        let jitter = state.sanity < 30 ? (Math.random() - 0.5) * 0.1 : 0;
-        let currentAngle = fl.angle;
-
-        let hasBlindingSignal = state.player.synergies && state.player.synergies.includes('blinding_signal');
-        if (hasBlindingSignal) {
-            if (state.frame % 6 < 3) {
-                currentAngle *= 1.5; 
-                this.ctx.fillStyle = 'rgba(255, 255, 230, 0.05)';
-                this.ctx.fillRect(state.player.x - 2000, state.player.y - 2000, 4000, 4000);
-            } else {
-                currentAngle *= 0.8; 
-            }
-        }
-        
-        this.ctx.arc(
-            state.player.x, state.player.y, fl.radius, 
-            state.player.angle - currentAngle + jitter, 
-            state.player.angle + currentAngle + jitter
-        );
-        this.ctx.closePath(); 
-        this.ctx.clip(); 
-
-        // Draw Lit Area Entities & Background
+        // 2. Draw the Fully Bright World! (No clip masks here!)
+        // This dramatically reduces draw calls and fixes glitchy visibility
         this.drawWorldItems(state);
         
-        // Draw Volumetric Fog inside the Flashlight
-        this.ctx.globalAlpha = 0.35;
+        // Draw Volumetric Fog
+        this.ctx.globalAlpha = 0.5;
         this.fogClouds.forEach(cloud => {
             cloud.x += cloud.vx; cloud.y += cloud.vy;
-            
             let dx = (cloud.x - state.player.x) % 2000;
             if (dx < -1000) dx += 2000; else if (dx > 1000) dx -= 2000;
             let dy = (cloud.y - state.player.y) % 2000;
             if (dy < -1000) dy += 2000; else if (dy > 1000) dy -= 2000;
-            
             let drawX = state.player.x + dx;
             let drawY = state.player.y + dy;
 
             const fGrad = this.ctx.createRadialGradient(drawX, drawY, 0, drawX, drawY, cloud.r);
-            fGrad.addColorStop(0, 'rgba(200, 210, 220, 0.8)');
+            fGrad.addColorStop(0, 'rgba(200, 210, 220, 0.5)');
             fGrad.addColorStop(1, 'rgba(200, 210, 220, 0)');
             this.ctx.fillStyle = fGrad;
             this.ctx.beginPath();
@@ -181,20 +144,108 @@ export class Renderer {
         });
         this.ctx.globalAlpha = 1.0;
 
-        // Flashlight Glare Gradient
-        const grad = this.ctx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, fl.radius);
-        if (state.player.weapons.corrosive_battery && state.player.weapons.corrosive_battery.level > 0) {
-            grad.addColorStop(0, 'rgba(180, 255, 150, 0.35)'); 
+        // --- 3. THE LIGHTING ENGINE MASK ---
+        // Resize offscreen canvas if screen size changed
+        if (this.lightCanvas.width !== this.canvas.width || this.lightCanvas.height !== this.canvas.height) {
+            this.lightCanvas.width = this.canvas.width;
+            this.lightCanvas.height = this.canvas.height;
         } else {
-            grad.addColorStop(0, 'rgba(255, 255, 230, 0.3)'); 
+            this.lightCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         }
-        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        this.ctx.fillStyle = grad; 
-        this.ctx.fillRect(state.player.x - fl.radius, state.player.y - fl.radius, fl.radius*2, fl.radius*2);
-        
-        this.ctx.restore(); // Drop Mask
 
-        // 4. Draw Static Aura Weapon
+        this.lightCtx.save();
+        // Mimic the main camera's position and zoom so our lights align perfectly
+        this.lightCtx.translate(this.canvas.width / 2, this.canvas.height / 2);
+        this.lightCtx.scale(this.zoom, this.zoom);
+        this.lightCtx.translate(-state.player.x, -state.player.y);
+        if (state.cameraShake > 0) this.lightCtx.translate(curShakeX, curShakeY);
+
+        // Fill pure darkness (100% opaque so enemies are totally hidden)
+        this.lightCtx.fillStyle = '#010102';
+        this.lightCtx.fillRect(state.player.x - 3000, state.player.y - 3000, 6000, 6000);
+
+        // Subtractive Blending: Any light we draw now ERASES the darkness smoothly
+        this.lightCtx.globalCompositeOperation = 'destination-out';
+
+        const fl = state.player.weapons.flashlight;
+        const ambientRad = fl.radius * 0.45; // Surrounding glow
+        
+        let currentAngle = fl.angle;
+        let jitter = state.sanity < 30 ? (Math.random() - 0.5) * 0.1 : 0;
+        let isStrobing = false;
+
+        if (state.player.synergies && state.player.synergies.includes('blinding_signal')) {
+            if (state.frame % 6 < 3) { currentAngle *= 1.5; isStrobing = true; }
+            else { currentAngle *= 0.8; }
+        }
+
+        // Cutout Ambient Glow (Allows you to barely see behind you)
+        const ambHole = this.lightCtx.createRadialGradient(state.player.x, state.player.y, 0, state.player.x, state.player.y, ambientRad);
+        ambHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        ambHole.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
+        ambHole.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        this.lightCtx.fillStyle = ambHole;
+        this.lightCtx.beginPath();
+        this.lightCtx.arc(state.player.x, state.player.y, ambientRad, 0, Math.PI * 2);
+        this.lightCtx.fill();
+
+        // Cutout Flashlight Cone
+        const flHole = this.lightCtx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, fl.radius);
+        flHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        flHole.addColorStop(0.8, 'rgba(255, 255, 255, 0.9)'); // Stays bright until the very edge
+        flHole.addColorStop(1, 'rgba(255, 255, 255, 0)');     // Then smoothly fades into total darkness
+        
+        this.lightCtx.fillStyle = flHole;
+        this.lightCtx.beginPath();
+        this.lightCtx.moveTo(state.player.x, state.player.y);
+        this.lightCtx.arc(state.player.x, state.player.y, fl.radius, state.player.angle - currentAngle + jitter, state.player.angle + currentAngle + jitter);
+        this.lightCtx.closePath();
+        this.lightCtx.fill();
+
+        this.lightCtx.restore(); // Drop light transform
+
+        // --- 4. DRAW THE LIGHT MASK OVER THE WORLD ---
+        this.ctx.save();
+        // Briefly reset the main canvas transform so the screen-sized mask aligns perfectly
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0); 
+        this.ctx.drawImage(this.lightCanvas, 0, 0);
+        this.ctx.restore(); // Go back to zoomed world space
+
+        // --- 5. INTENSE GLARE TINTING ---
+        // Using 'screen' mode makes light sources look vibrant and prevents color-muddying
+        this.ctx.globalCompositeOperation = 'screen';
+        
+        const glareGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, fl.radius);
+        if (isStrobing) {
+            glareGrad.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
+            glareGrad.addColorStop(1, 'rgba(200, 200, 255, 0)');
+        } else if (state.player.weapons.corrosive_battery && state.player.weapons.corrosive_battery.level > 0) {
+            glareGrad.addColorStop(0, 'rgba(120, 255, 100, 0.4)'); // Acid green
+            glareGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        } else {
+            glareGrad.addColorStop(0, 'rgba(255, 245, 200, 0.35)'); // Warm bulb yellow
+            glareGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        }
+        
+        this.ctx.fillStyle = glareGrad;
+        this.ctx.beginPath();
+        this.ctx.moveTo(state.player.x, state.player.y);
+        this.ctx.arc(state.player.x, state.player.y, fl.radius, state.player.angle - currentAngle + jitter, state.player.angle + currentAngle + jitter);
+        this.ctx.closePath();
+        this.ctx.fill();
+
+        // Subtle ambient tint
+        const ambColorGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, 0, state.player.x, state.player.y, ambientRad);
+        ambColorGrad.addColorStop(0, 'rgba(200, 220, 255, 0.15)');
+        ambColorGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        this.ctx.fillStyle = ambColorGrad;
+        this.ctx.beginPath();
+        this.ctx.arc(state.player.x, state.player.y, ambientRad, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        this.ctx.globalCompositeOperation = 'source-over'; // Return to normal rendering
+
+        // --- 6. FOREGROUND ENTITIES (Drawn on top of shadows so they pop!) ---
         const staticWep = state.player.weapons.static;
         if (staticWep.active) {
             this.ctx.beginPath(); 
@@ -206,44 +257,35 @@ export class Renderer {
             this.ctx.fill();
         }
 
-        // Draw Melee Swings (UPDATED: Sweeping metallic arc)
         if (state.meleeSwings) {
             state.meleeSwings.forEach(m => {
                 this.ctx.save();
                 this.ctx.translate(m.x, m.y);
-                
-                // Calculate swing angle based on life. 15 life = full 360 rotation
                 let swingProgress = 1 - (m.life / 15);
-                let currentAngle = swingProgress * Math.PI * 2;
+                let currentSwingAngle = swingProgress * Math.PI * 2;
                 
-                // Red bloody trail
                 this.ctx.beginPath();
-                this.ctx.arc(0, 0, m.radius, currentAngle - 1.5, currentAngle, false);
+                this.ctx.arc(0, 0, m.radius, currentSwingAngle - 1.5, currentSwingAngle, false);
                 this.ctx.strokeStyle = `rgba(150, 0, 0, ${m.life / 15})`;
                 this.ctx.lineWidth = 15;
                 this.ctx.lineCap = 'round';
                 this.ctx.stroke();
 
-                // Metallic Pipe leading edge
                 this.ctx.beginPath();
-                this.ctx.arc(0, 0, m.radius, currentAngle - 0.2, currentAngle, false);
+                this.ctx.arc(0, 0, m.radius, currentSwingAngle - 0.2, currentSwingAngle, false);
                 this.ctx.strokeStyle = `rgba(200, 200, 210, ${m.life / 15})`;
                 this.ctx.lineWidth = 8;
                 this.ctx.stroke();
-
                 this.ctx.restore();
             });
         }
 
-        // 5. Draw Revamped Player
         this.drawPlayer(state);
-        
-        // 6. Draw Damage Text
         this.drawDamageText(state);
 
-        this.ctx.restore(); // Restore camera shake and ZOOM
+        this.ctx.restore(); // Restore global zoom and translation
 
-        // 7. POST-PROCESSING (Vignette & Film Grain)
+        // --- 7. POST-PROCESSING (Vignette & Film Grain) ---
         this.ctx.save();
         let sanityRatio = Math.max(0.01, state.sanity / state.player.maxHp);
         let innerVig = (this.canvas.height / 4) * sanityRatio; 
@@ -266,9 +308,8 @@ export class Renderer {
         this.ctx.save();
         
         let sanityRatio = state.sanity / state.player.maxHp;
-        let panic = (1 - Math.max(0, sanityRatio)); // 0 = calm, 1 = absolute breakdown
+        let panic = (1 - Math.max(0, sanityRatio)); 
         
-        // Velocity Tracking for Legs Animation
         let isMoving = false;
         if (this.lastPx !== -1) {
             let distMoved = Math.hypot(state.player.x - this.lastPx, state.player.y - this.lastPy);
@@ -278,11 +319,9 @@ export class Renderer {
         this.lastPy = state.player.y;
 
         if (isMoving) {
-            // Legs scramble faster if panicking
             this.legPhase += 0.3 + (panic * 0.4);
         }
 
-        // Whole body violently trembles as sanity decreases
         let shakeX = (Math.random() - 0.5) * panic * 6;
         let shakeY = (Math.random() - 0.5) * panic * 6;
 
@@ -291,7 +330,6 @@ export class Renderer {
 
         let shake = panic * 3;
 
-        // Ethereal aura echoing the player's fractured state
         this.ctx.globalAlpha = 0.3;
         this.ctx.fillStyle = '#88aaff';
         this.ctx.beginPath();
@@ -300,31 +338,25 @@ export class Renderer {
 
         this.ctx.globalAlpha = 1.0;
         
-        // Exaggerated Scrambling Legs
         this.ctx.strokeStyle = '#050505';
         this.ctx.lineWidth = 4;
         this.ctx.lineCap = 'round';
         
-        // Left Leg
         this.ctx.beginPath();
         this.ctx.moveTo(0, 5);
         this.ctx.lineTo(-8 + Math.cos(this.legPhase)*6, 8 + Math.sin(this.legPhase)*6);
         this.ctx.stroke();
-        // Right Leg
         this.ctx.beginPath();
         this.ctx.moveTo(0, -5);
         this.ctx.lineTo(-8 + Math.cos(this.legPhase + Math.PI)*6, -8 + Math.sin(this.legPhase + Math.PI)*6);
         this.ctx.stroke();
 
-        // Top-down survivor body (dark trenchcoat/shoulders)
         this.ctx.fillStyle = '#1a1a24';
         this.ctx.beginPath();
-        // Shoulders heave in and out heavily, scaling with panic
         let breathe = Math.sin(state.frame * 0.15) * (1 + panic * 2);
         this.ctx.ellipse(0, 0, state.player.radius * 0.6 + breathe, state.player.radius, 0, 0, Math.PI*2);
         this.ctx.fill();
 
-        // Floating/Fractured Head
         this.ctx.fillStyle = '#e0e0e0';
         this.ctx.beginPath();
         let headJitterX = (Math.random() - 0.5) * panic * 3;
@@ -332,22 +364,19 @@ export class Renderer {
         this.ctx.arc(3 + headJitterX, headJitterY, state.player.radius * 0.45, 0, Math.PI*2);
         this.ctx.fill();
 
-        // Extended hand holding the lantern/flashlight
         this.ctx.fillStyle = '#1a1a24';
         this.ctx.beginPath();
         this.ctx.ellipse(8 + headJitterX*0.5, 10 + headJitterY*0.5, 5, 3, Math.PI/4, 0, Math.PI*2);
         this.ctx.fill();
         
-        // The Lantern light source
         this.ctx.fillStyle = '#fffae6';
         this.ctx.shadowColor = '#fffae6';
-        this.ctx.shadowBlur = 8 + Math.random() * 5 * panic; // Light flickers with fear
+        this.ctx.shadowBlur = 8 + Math.random() * 5 * panic; 
         this.ctx.beginPath();
         this.ctx.arc(12 + headJitterX*0.5, 10 + headJitterY*0.5, 2.5, 0, Math.PI*2);
         this.ctx.fill();
         this.ctx.shadowBlur = 0;
 
-        // Floating mental shards orbiting the player
         this.ctx.fillStyle = '#ffffff';
         for(let i=0; i<3; i++) {
             let pX = Math.cos(state.frame * 0.05 + i*2) * (10 + shake*2);
@@ -378,26 +407,20 @@ export class Renderer {
     }
 
     drawWorldItems(state) {
-        // --- ARENA BOUNDARY & FLOOR RENDERING ---
         this.ctx.save();
-        // The floor pattern only draws INSIDE the actual playable dimensions
         this.ctx.fillStyle = this.ctx.createPattern(this.floorPattern, 'repeat');
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Draw physical thick walls encapsulating the arena
         this.ctx.strokeStyle = '#020202';
         this.ctx.lineWidth = 25;
         this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Inner Danger Striping (Faded Gold Warning line)
         this.ctx.strokeStyle = 'rgba(197, 160, 89, 0.4)'; 
         this.ctx.lineWidth = 3;
         this.ctx.setLineDash([15, 15]);
         this.ctx.strokeRect(12, 12, this.canvas.width - 24, this.canvas.height - 24);
         this.ctx.restore();
-        // ----------------------------------------
         
-        // Draw Broken Chalk Safe Zones (Underneath everything else)
         if (state.safeZones) {
             state.safeZones.forEach(sz => {
                 this.ctx.save();
@@ -405,14 +428,12 @@ export class Renderer {
                 this.ctx.lineWidth = 3;
                 this.ctx.setLineDash([10, 15]); 
                 
-                // Rotate the chalk circle slowly
                 this.ctx.translate(sz.x, sz.y);
                 this.ctx.rotate(state.frame * 0.01);
                 this.ctx.beginPath();
                 this.ctx.arc(0, 0, sz.radius, 0, Math.PI*2);
                 this.ctx.stroke();
                 
-                // Scholastic Purge acid mist effect
                 if (state.player.synergies && state.player.synergies.includes('scholastic_purge')) {
                     const mistPulse = Math.sin(state.frame * 0.1) * 0.1;
                     this.ctx.fillStyle = `rgba(100, 255, 100, ${0.15 + mistPulse})`;
@@ -422,9 +443,17 @@ export class Renderer {
             });
         }
 
+        // VIBRANT GLOWING TOXIC INK
         if (state.inkPuddles) {
             state.inkPuddles.forEach(p => {
-                this.ctx.fillStyle = `rgba(15, 5, 25, ${0.7 * (p.life / 300)})`; 
+                const lifeRatio = p.life / 300;
+                this.ctx.save();
+                
+                // Intensely bright outer glow
+                this.ctx.shadowColor = '#d900ff'; 
+                this.ctx.shadowBlur = 25 * lifeRatio;
+                this.ctx.fillStyle = `rgba(120, 20, 180, ${0.8 * lifeRatio})`; 
+                
                 this.ctx.beginPath();
                 for (let i = 0; i < 8; i++) {
                     let angle = (i / 8) * Math.PI * 2;
@@ -436,10 +465,25 @@ export class Renderer {
                 }
                 this.ctx.closePath();
                 this.ctx.fill();
+
+                // Blistering hot neon core
+                this.ctx.shadowBlur = 0;
+                this.ctx.fillStyle = `rgba(255, 100, 255, ${0.7 * lifeRatio})`;
+                this.ctx.beginPath();
+                for (let i = 0; i < 8; i++) {
+                    let angle = (i / 8) * Math.PI * 2;
+                    let radiusJitter = (p.radius * 0.5) * (0.8 + Math.sin(p.x * p.y + i + state.frame*0.05) * 0.2);
+                    let x = p.x + Math.cos(angle) * radiusJitter;
+                    let y = p.y + Math.sin(angle) * radiusJitter;
+                    if (i === 0) this.ctx.moveTo(x, y);
+                    else this.ctx.lineTo(x, y);
+                }
+                this.ctx.closePath();
+                this.ctx.fill();
+                this.ctx.restore();
             });
         }
 
-        // Swirling Ethereal XP (Lucidity)
         state.xpDrops.forEach(xp => {
             this.ctx.save();
             this.ctx.translate(xp.x, xp.y);
@@ -455,7 +499,6 @@ export class Renderer {
             this.ctx.arc(0, Math.sin(time*2)*3, 2.5 + pulse*0.5, 0, Math.PI*2);
             this.ctx.fill();
             
-            // Ethereal trail
             this.ctx.strokeStyle = 'rgba(150, 200, 255, 0.6)';
             this.ctx.lineWidth = 1.5;
             this.ctx.beginPath();
@@ -467,7 +510,6 @@ export class Renderer {
             this.ctx.restore();
         });
 
-        // Entities
         state.entities.forEach(ent => {
             let isFlashed = ent.flashTime > 0;
 
@@ -482,29 +524,24 @@ export class Renderer {
             const twitch = state.sanity < 20 ? (Math.random()-0.5)*4 : 0;
             this.ctx.translate(twitch, twitch);
 
-            // --- DETAILED ENTITY SPRITES ---
             if (ent.type === 'SCAVENGER') {
                 this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
                 
-                // Base Body
                 this.ctx.fillStyle = isFlashed ? '#bbbbbb' : '#2a2d2a';
                 this.ctx.beginPath();
                 this.ctx.ellipse(0, 0, 12, 15 + Math.sin(state.frame*0.1)*2, 0, 0, Math.PI*2);
                 this.ctx.fill();
                 
-                // Heavy, tumor-like sack on their back
                 this.ctx.fillStyle = isFlashed ? '#999999' : '#1a1c1a';
                 this.ctx.beginPath();
                 this.ctx.arc(-6, 5, 9, 0, Math.PI*2);
                 this.ctx.fill();
 
-                // Single dim yellow eye
                 this.ctx.fillStyle = '#aaaa00';
                 this.ctx.beginPath();
                 this.ctx.arc(8, -4, 1.5, 0, Math.PI*2);
                 this.ctx.fill();
 
-                // Sweeping appendage
                 this.ctx.strokeStyle = '#111';
                 this.ctx.lineWidth = 2.5;
                 this.ctx.beginPath();
@@ -515,19 +552,17 @@ export class Renderer {
             else if (ent.type === 'PREDATOR') {
                 this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
                 
-                // Shadowy, jagged cloak
                 this.ctx.fillStyle = isFlashed ? '#ddaaaa' : (ent.buffed ? '#3a0a0a' : '#111111');
                 this.ctx.beginPath();
-                this.ctx.moveTo(18, 0); // Beak/Head
+                this.ctx.moveTo(18, 0); 
                 this.ctx.lineTo(5, 12 + Math.sin(state.frame*0.2)*3);
                 this.ctx.lineTo(-15, 10);
-                this.ctx.lineTo(-20, 0); // Tail
+                this.ctx.lineTo(-20, 0); 
                 this.ctx.lineTo(-15, -10);
                 this.ctx.lineTo(5, -12 - Math.cos(state.frame*0.2)*3);
                 this.ctx.closePath();
                 this.ctx.fill();
 
-                // Elongated creeping arms
                 this.ctx.strokeStyle = this.ctx.fillStyle;
                 this.ctx.lineWidth = 2;
                 this.ctx.beginPath();
@@ -537,7 +572,6 @@ export class Renderer {
                 this.ctx.quadraticCurveTo(15, -20, 18, -8);
                 this.ctx.stroke();
 
-                // Piercing Red Eyes (Always drawn on top, never flashed white)
                 this.ctx.fillStyle = ent.buffed ? '#ff0000' : '#cc0000';
                 this.ctx.shadowColor = '#ff0000';
                 this.ctx.shadowBlur = 10;
@@ -545,25 +579,22 @@ export class Renderer {
                 this.ctx.ellipse(10, -4, 3, 1.5, Math.PI/6, 0, Math.PI*2);
                 this.ctx.ellipse(10, 4, 3, 1.5, -Math.PI/6, 0, Math.PI*2);
                 this.ctx.fill();
-                this.ctx.shadowBlur = 0; // Reset shadow
+                this.ctx.shadowBlur = 0; 
             }
             else if (ent.type === 'PARASITE') {
                 this.ctx.rotate(state.frame * 0.2); 
                 
-                // Pulsing fleshy core
                 let pulse = Math.sin(state.frame * 0.3) * 1.5;
                 this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#6b2222';
                 this.ctx.beginPath(); 
                 this.ctx.arc(0, 0, 5 + pulse, 0, Math.PI*2); 
                 this.ctx.fill();
 
-                // Dark center
                 this.ctx.fillStyle = '#050505';
                 this.ctx.beginPath(); 
                 this.ctx.arc(0, 0, 2 + pulse*0.5, 0, Math.PI*2); 
                 this.ctx.fill();
                 
-                // Twitching, multi-jointed legs
                 this.ctx.strokeStyle = isFlashed ? '#ffffff' : ent.color;
                 this.ctx.lineWidth = 1.5;
                 this.ctx.lineCap = 'round';
@@ -580,17 +611,14 @@ export class Renderer {
                 }
             }
             else if (ent.type === 'BOSS') {
-                // THE FLESH MONOLITH OVERHAUL
                 this.ctx.rotate(Math.sin(ent.phase * 0.5) * 0.1); 
                 
                 let pulse = Math.sin(state.frame * 0.1) * 3;
                 
-                // Outer writhing mass (Tendrils/Limbs)
                 this.ctx.fillStyle = isFlashed ? '#ddaaaa' : '#1a0d15';
                 this.ctx.beginPath();
                 for (let i = 0; i < 16; i++) {
                     let angle = (i / 16) * Math.PI * 2;
-                    // Jagged, uneven reach
                     let reach = 35 + Math.sin(ent.phase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
                     if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
                     else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
@@ -598,40 +626,32 @@ export class Renderer {
                 this.ctx.closePath();
                 this.ctx.fill();
 
-                // Inner fleshy core
                 this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#2b1010';
                 this.ctx.beginPath();
                 this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
                 this.ctx.fill();
 
-                // Gaping, jagged maw
                 this.ctx.fillStyle = '#050000';
                 this.ctx.beginPath();
                 for (let i = 0; i < 10; i++) {
                     let angle = (i / 10) * Math.PI * 2;
-                    let innerReach = 10 + Math.random() * 8; // Jagged teeth effect
+                    let innerReach = 10 + Math.random() * 8; 
                     if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
                     else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
                 }
                 this.ctx.closePath();
                 this.ctx.fill();
 
-                // Multiple unblinking, asymmetric red eyes
                 this.ctx.fillStyle = '#ff0000';
                 this.ctx.shadowColor = '#ff0000';
                 this.ctx.shadowBlur = 15;
                 
-                // Eye coordinates (asymmetric)
                 const eyes = [
-                    {x: -12, y: -15, r: 4},
-                    {x: 18, y: -10, r: 3},
-                    {x: 5, y: 22, r: 5},
-                    {x: -20, y: 8, r: 2},
-                    {x: 15, y: 15, r: 2.5}
+                    {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
+                    {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
                 ];
 
                 eyes.forEach(eye => {
-                    // Small jitter for the eyes
                     let jx = Math.cos(state.frame * 0.2 + eye.x) * 1.5;
                     let jy = Math.sin(state.frame * 0.2 + eye.y) * 1.5;
                     
@@ -639,7 +659,6 @@ export class Renderer {
                     this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
                     this.ctx.fill();
                     
-                    // Slit pupil
                     this.ctx.fillStyle = '#000000';
                     this.ctx.shadowBlur = 0;
                     this.ctx.beginPath();
@@ -650,7 +669,6 @@ export class Renderer {
                 });
                 this.ctx.shadowBlur = 0;
 
-                // Orbiting bone/metal debris (replacing the neat rings)
                 this.ctx.strokeStyle = isFlashed ? '#ffffff' : '#555';
                 this.ctx.lineWidth = 3;
                 this.ctx.lineCap = 'round';
@@ -668,7 +686,6 @@ export class Renderer {
                 }
             }
 
-            // Healthbars
             if (ent.hp < ent.maxHp && ent.flashTime <= 0) {
                 const barW = ent.type === 'BOSS' ? 80 : 24;
                 const yOffset = ent.type === 'BOSS' ? 55 : 20;
@@ -682,7 +699,6 @@ export class Renderer {
             this.ctx.globalAlpha = 1.0;
         });
 
-        // Enhanced Particles (Blood/Sparks)
         if (state.particles) {
             state.particles.forEach(p => { 
                 this.ctx.fillStyle = p.color; 
