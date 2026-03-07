@@ -1,96 +1,109 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+    --bg-color: #050505;
+    --ui-gold: #c5a059;
+    --ui-red: #8b0000;
+    --ui-font: 'Courier New', Courier, monospace;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+body, html {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background-color: var(--bg-color);
+    color: white; font-family: var(--ui-font);
+    touch-action: none; user-select: none;
 }
 
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+#game-container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+canvas { display: block; image-rendering: pixelated; }
+
+/* Full Screen Menus */
+.fullscreen-menu {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(5, 5, 5, 0.95);
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    z-index: 200; backdrop-filter: blur(5px);
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+#main-menu { display: flex; } /* Shown by default */
+#synapse-tree { display: none; }
+#death-screen { display: none; z-index: 1000; background: black; }
+
+.title-glitch {
+    font-size: 4rem; color: #fff; text-transform: uppercase; letter-spacing: 10px;
+    margin-bottom: 50px; text-shadow: 4px 0 var(--ui-red), -4px 0 var(--ui-gold);
+    animation: glitch 2s infinite alternate;
 }
 
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+.menu-btn {
+    background: transparent; border: 2px solid #555; color: #aaa;
+    padding: 15px 40px; margin: 10px; font-family: var(--ui-font); font-size: 1.5rem;
+    cursor: pointer; transition: all 0.3s; text-transform: uppercase; width: 300px;
+}
+.menu-btn:hover { border-color: var(--ui-gold); color: white; text-shadow: 0 0 10px var(--ui-gold); transform: scale(1.05); }
+
+/* UI Layer */
+#ui-layer {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; display: none; flex-direction: column; justify-content: space-between;
+    padding: 20px; box-sizing: border-box; z-index: 20;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.vanilla:hover {
-  filter: drop-shadow(0 0 2em #f7df1eaa);
-}
+.hud-top { display: flex; justify-content: space-between; align-items: center; text-shadow: 2px 2px 0px #000; }
+.sanity-bar-container { width: 200px; height: 12px; background: #222; border: 2px solid #555; position: relative; box-shadow: 0 0 10px rgba(0,0,0,0.8); }
+#sanity-bar { height: 100%; width: 100%; background: var(--ui-gold); transition: width 0.1s linear, background-color 0.3s; }
+#score { font-size: 1.2rem; font-weight: bold; color: white; }
 
+/* Level Up */
+.level-up-modal {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: rgba(10, 10, 10, 0.95); border: 2px solid var(--ui-gold);
+    padding: 30px; display: none; flex-direction: column; align-items: center; gap: 20px;
+    pointer-events: auto; z-index: 99999;
+    box-shadow: 0 0 50px rgba(197, 160, 89, 0.2);
+}
+.cards-container { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; }
 .card {
-  padding: 2em;
+    background: #eee; color: #111; padding: 15px; width: 140px; height: 200px;
+    border-bottom: 25px solid #fff; box-shadow: 5px 5px 15px rgba(0,0,0,0.8);
+    cursor: pointer; transition: transform 0.2s, background 0.2s; text-align: center;
+    display: flex; flex-direction: column; justify-content: space-between;
+}
+.card:hover { transform: scale(1.05) rotate(2deg); background: #fff; }
+.card h3 { margin: 0; font-size: 1.1rem; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+.card p { font-size: 0.8rem; flex-grow: 1; display: flex; align-items: center; justify-content: center; }
+.card .lvl { font-weight: bold; color: var(--ui-red); }
+
+/* Synapse Tree */
+.synapse-node {
+    border: 1px solid var(--ui-gold); padding: 20px; margin: 10px; width: 300px;
+    display: flex; justify-content: space-between; align-items: center;
+}
+.synapse-node button { background: var(--ui-gold); border: none; padding: 10px; cursor: pointer; font-weight: bold; color: #000; }
+.synapse-node button:disabled { background: #555; cursor: not-allowed; color: #222; }
+
+/* Joysticks */
+.joystick-base {
+    position: absolute; width: 120px; height: 120px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05); border: 2px solid rgba(255, 255, 255, 0.1);
+    display: none; pointer-events: none; z-index: 50;
+}
+.joystick-knob {
+    position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
+    border-radius: 50%; background: rgba(255, 255, 255, 0.3); transform: translate(-50%, -50%);
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
 }
 
-.read-the-docs {
-  color: #888;
+#glitch-overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 1px, transparent 1px, transparent 2px);
+    opacity: 0; transition: opacity 0.2s; z-index: 10;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+/* ON-SCREEN DEBUGGER */
+#debug-console {
+    position: absolute; top: 10px; left: 10px; width: 350px; max-height: 400px;
+    background: rgba(0, 0, 0, 0.85); color: #0f0; font-family: monospace; font-size: 10px;
+    padding: 10px; overflow-y: auto; pointer-events: none; z-index: 9999; border: 1px solid #0f0;
+    display: none; 
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
-}
+@keyframes glitch { 0% { text-shadow: 2px 0 0 #fff, -2px 0 0 #000; } 100% { text-shadow: -2px 0 0 #fff, 2px 0 0 #000; } }

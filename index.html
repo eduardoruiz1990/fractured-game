@@ -1,13 +1,77 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>fractured-game</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FRACTURED</title>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <div id="glitch-overlay"></div>
+    <div id="debug-console"></div>
+    
+    <!-- Virtual Joysticks for Mobile -->
+    <div id="joy-left" class="joystick-base"><div id="knob-left" class="joystick-knob"></div></div>
+    <div id="joy-right" class="joystick-base"><div id="knob-right" class="joystick-knob"></div></div>
+
+    <!-- MAIN MENU -->
+    <div id="main-menu" class="fullscreen-menu">
+        <div class="title-glitch">FRACTURED</div>
+        <button class="menu-btn" id="btn-start">Start Descent</button>
+        <button class="menu-btn" id="btn-tree">Synapse Tree</button>
+        <div style="margin-top: 30px; color: #888;">Banked Lucidity: <span id="menu-banked-lucidity">0</span></div>
+    </div>
+
+    <!-- SYNAPSE TREE -->
+    <div id="synapse-tree" class="fullscreen-menu">
+        <h2 style="color: var(--ui-gold); font-size: 2rem;">SYNAPSE TREE</h2>
+        <div style="margin-bottom: 20px;">Available Lucidity: <span id="tree-lucidity" style="color: white; font-weight: bold;">0</span></div>
+        
+        <div class="synapse-node">
+            <div><strong>Cognitive Resistance</strong><br><small>Base Sanity +20 (Lvl <span id="upg-hp-lvl">0</span>)</small></div>
+            <button id="btn-upg-hp">50 L</button>
+        </div>
+        <div class="synapse-node">
+            <div><strong>Adrenal Gland</strong><br><small>Base Speed +5% (Lvl <span id="upg-speed-lvl">0</span>)</small></div>
+            <button id="btn-upg-speed">75 L</button>
+        </div>
+        <div class="synapse-node">
+            <div><strong>Halogen Bulb</strong><br><small>Flashlight Range +10% (Lvl <span id="upg-light-lvl">0</span>)</small></div>
+            <button id="btn-upg-light">100 L</button>
+        </div>
+
+        <button class="menu-btn" id="btn-close-tree" style="margin-top: 40px; width: auto;">Back to Reality</button>
+    </div>
+
+    <!-- HUD -->
+    <div id="ui-layer">
+        <div class="hud-top">
+            <div>
+                <div>THE GRIP (SANITY)</div>
+                <div class="sanity-bar-container"><div id="sanity-bar"></div></div>
+            </div>
+            <div id="score">LUCIDITY: 0</div>
+        </div>
+    </div>
+
+    <!-- LEVEL UP MODAL -->
+    <div id="level-up-modal" class="level-up-modal">
+        <h2 style="color: var(--ui-gold); margin: 0; text-shadow: 0 0 10px rgba(197, 160, 89, 0.5);">MANIFESTATION</h2>
+        <div class="cards-container" id="cards-container"></div>
+    </div>
+
+    <!-- DEATH SCREEN -->
+    <div id="death-screen" class="fullscreen-menu">
+        <div class="title-glitch" style="font-size: 2.5rem;">Your mind is still broken...</div>
+        <div id="final-stats" style="margin-top: 20px; color: #888; font-size: 1.2rem; text-align: center;"></div>
+        <button class="menu-btn" id="btn-restart">RECONSTRUCT</button>
+    </div>
+</div>
+
+<!-- This is how Vite loads our modular JavaScript -->
+<script type="module" src="/src/main.js"></script>
+
+</body>
 </html>
