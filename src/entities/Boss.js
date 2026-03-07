@@ -27,6 +27,6 @@ export class Boss extends Enemy {
             this.y -= this.vy * 5; 
         }
 
-        this.applyMovement();
+        this.applyMovement(state);
     }
 }

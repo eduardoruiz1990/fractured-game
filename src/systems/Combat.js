@@ -31,10 +31,20 @@ export class Combat {
                         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                         
-                        if (Math.abs(angleDiff) < state.player.weapons.flashlight.angle) {
+                        let hitAngle = state.player.weapons.flashlight.angle;
+                        if (state.player.synergies && state.player.synergies.includes('blinding_signal')) {
+                            hitAngle *= 1.5; // Wider hit detection during strobe
+                        }
+
+                        if (Math.abs(angleDiff) < hitAngle) {
                             ent.takeDamage(state.player.weapons.flashlight.damage / 60);
                             isDamaged = true;
                             ent.x -= ent.vx * 0.5; ent.y -= ent.vy * 0.5; // Stun effect
+                            
+                            // SYNERGY: Blinding Signal Confusion
+                            if (state.player.synergies && state.player.synergies.includes('blinding_signal')) {
+                                ent.confused = 180; // 3 seconds at 60fps
+                            }
                         }
                     }
                 }

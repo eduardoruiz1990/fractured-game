@@ -45,6 +45,6 @@ export class Scavenger extends Enemy {
             }
         }
         
-        this.applyMovement();
+        this.applyMovement(state);
     }
 }

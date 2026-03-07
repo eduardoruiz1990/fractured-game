@@ -36,6 +36,6 @@ export class Parasite extends Enemy {
             this.vy = Math.sin(angleToPlayer + Math.PI/2) * this.speed;
         }
 
-        this.applyMovement();
+        this.applyMovement(state);
     }
 }

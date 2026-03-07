@@ -37,13 +37,25 @@ export class Renderer {
         this.ctx.beginPath(); 
         this.ctx.moveTo(state.player.x, state.player.y);
         
-        // Jitter logic for low sanity
         let jitter = state.sanity < 30 ? (Math.random() - 0.5) * 0.1 : 0;
+        let currentAngle = fl.angle;
+
+        // SYNERGY: The Blinding Signal Strobe
+        let hasBlindingSignal = state.player.synergies && state.player.synergies.includes('blinding_signal');
+        if (hasBlindingSignal) {
+            if (state.frame % 6 < 3) {
+                currentAngle *= 1.5; // Strobe wide
+                this.ctx.fillStyle = 'rgba(255, 255, 230, 0.05)';
+                this.ctx.fillRect(0,0, this.canvas.width, this.canvas.height);
+            } else {
+                currentAngle *= 0.8; // Strobe narrow
+            }
+        }
         
         this.ctx.arc(
             state.player.x, state.player.y, fl.radius, 
-            state.player.angle - fl.angle + jitter, 
-            state.player.angle + fl.angle + jitter
+            state.player.angle - currentAngle + jitter, 
+            state.player.angle + currentAngle + jitter
         );
         this.ctx.closePath(); 
         this.ctx.clip(); 

@@ -21,3 +21,11 @@ export const MANIFESTATIONS = {
         maxLvl: 5 
     }
 };
+export const SYNERGIES = {
+    blinding_signal: {
+        id: 'blinding_signal',
+        name: 'The Blinding Signal',
+        desc: 'Flashlight strobes violently. Confuses enemies, causing them to attack each other.',
+        reqs: ['flashlight', 'static']
+    }
+};

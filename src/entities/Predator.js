@@ -43,6 +43,6 @@ export class Predator extends Enemy {
             this.y -= this.vy * 10; 
         }
 
-        this.applyMovement();
+        this.applyMovement(state);
     }
 }

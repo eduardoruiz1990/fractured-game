@@ -27,8 +27,9 @@ export class Game {
                 weapons: {
                     flashlight: { level: 1, damage: 15, radius: 250 * lightMult, angle: 0.4 },
                     static: { level: 0, damage: 0, radius: 60, active: false, pulsePhase: 0 },
-                    adrenaline: { level: 0 } // Tracks our stats augment to respect the max level cap
-                }
+                    adrenaline: { level: 0 }
+                },
+                synergies: []
             },
             inputBuffer: [],
             sanity: maxSanity, sanityDrainMult: 1.0,
