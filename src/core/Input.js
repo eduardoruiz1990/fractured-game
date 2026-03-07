@@ -39,8 +39,6 @@ export class InputManager {
         this.canvas.addEventListener('mousemove', (e) => {
             if (this.isTouchDevice) return;
             const rect = this.canvas.getBoundingClientRect();
-            // Note: We need player position to calculate aim angle. We will inject this externally or 
-            // calculate it in the Game loop. For now, we store raw mouse coords.
             this.mouseX = e.clientX - rect.left;
             this.mouseY = e.clientY - rect.top;
             this.state.isAiming = true;
@@ -147,10 +145,14 @@ export class InputManager {
         }
     }
 
-    // Called by the game loop to resolve mouse aiming based on current player pos
+    // Called by the game loop to resolve mouse aiming
     updateAimAngle(playerX, playerY) {
         if (!this.isTouchDevice && this.mouseX !== undefined && this.mouseY !== undefined) {
-            this.state.aimAngle = Math.atan2(this.mouseY - playerY, this.mouseX - playerX);
+            // FIX: Because the camera is zoomed and translated to center the player, 
+            // the player is *always* drawn at exactly the center of the canvas visually!
+            const screenCenterX = this.canvas.width / 2;
+            const screenCenterY = this.canvas.height / 2;
+            this.state.aimAngle = Math.atan2(this.mouseY - screenCenterY, this.mouseX - screenCenterX);
         }
     }
     
