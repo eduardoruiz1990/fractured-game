@@ -172,6 +172,22 @@ export class Renderer {
 
         this.lightCtx.globalCompositeOperation = 'destination-out';
 
+        // --- RENDER INTERACTABLE SAFE ZONES ---
+        if (state.interactables) {
+            state.interactables.forEach(obj => {
+                if (obj.active && obj.type === 'BREAKER_BOX') {
+                    const boxHole = this.lightCtx.createRadialGradient(obj.x, obj.y, 10, obj.x, obj.y, obj.radius);
+                    boxHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
+                    boxHole.addColorStop(0.7, 'rgba(255, 255, 255, 0.8)');
+                    boxHole.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                    this.lightCtx.fillStyle = boxHole;
+                    this.lightCtx.beginPath();
+                    this.lightCtx.arc(obj.x, obj.y, obj.radius, 0, Math.PI * 2);
+                    this.lightCtx.fill();
+                }
+            });
+        }
+
         const fl = state.player.weapons.flashlight;
         const ambientRad = fl.radius * 0.45; 
         
@@ -214,6 +230,22 @@ export class Renderer {
 
         this.ctx.globalCompositeOperation = 'screen';
         
+        // --- ADD GLARE FOR INTERACTABLES ---
+        if (state.interactables) {
+            state.interactables.forEach(obj => {
+                if (obj.active && obj.type === 'BREAKER_BOX') {
+                    let pRadius = obj.radius + Math.sin(this.renderFrame * 0.2) * 20;
+                    const boxGlare = this.ctx.createRadialGradient(obj.x, obj.y, 10, obj.x, obj.y, pRadius);
+                    boxGlare.addColorStop(0, 'rgba(255, 255, 200, 0.6)');
+                    boxGlare.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                    this.ctx.fillStyle = boxGlare;
+                    this.ctx.beginPath();
+                    this.ctx.arc(obj.x, obj.y, pRadius, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+            });
+        }
+
         const glareGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, fl.radius);
         if (isStrobing) {
             glareGrad.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
@@ -634,6 +666,68 @@ export class Renderer {
                     this.ctx.fillStyle = `rgba(100, 255, 100, ${0.15 + mistPulse})`;
                     this.ctx.fill();
                 }
+                this.ctx.restore();
+            });
+        }
+
+        // --- DRAW INTERACTABLES (BREAKER BOXES) ---
+        if (state.interactables) {
+            state.interactables.forEach(obj => {
+                this.ctx.save();
+                this.ctx.translate(obj.x, obj.y);
+                
+                if (obj.type === 'BREAKER_BOX') {
+                    // Industrial rusty box
+                    this.ctx.fillStyle = '#222';
+                    this.ctx.fillRect(-20, -30, 40, 60);
+                    this.ctx.strokeStyle = '#555';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeRect(-20, -30, 40, 60);
+                    
+                    // The Floodlight Bulb
+                    let bulbColor = '#111';
+                    let glow = 0;
+                    if (obj.active) {
+                        bulbColor = '#ffffff';
+                        glow = 30;
+                    } else if (obj.charge > 0) {
+                        bulbColor = `rgba(255, 255, 100, ${obj.charge/60})`;
+                        glow = 15;
+                    }
+
+                    this.ctx.fillStyle = bulbColor;
+                    this.ctx.shadowBlur = glow;
+                    this.ctx.shadowColor = '#ffffaa';
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, -10, 12, 0, Math.PI*2);
+                    this.ctx.fill();
+                    this.ctx.shadowBlur = 0;
+
+                    // Active Zone Ring / Charging Indicator
+                    if (obj.active) {
+                        this.ctx.strokeStyle = `rgba(255, 255, 150, ${0.4 + Math.sin(this.renderFrame * 0.2)*0.2})`;
+                        this.ctx.lineWidth = 3;
+                        this.ctx.setLineDash([20, 20]);
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, obj.radius, 0, Math.PI*2);
+                        this.ctx.stroke();
+                        
+                        // Rotational inner gear effect
+                        this.ctx.rotate(this.renderFrame * 0.05);
+                        this.ctx.setLineDash([10, 40]);
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, obj.radius * 0.8, 0, Math.PI*2);
+                        this.ctx.stroke();
+                    } else if (obj.charge > 0) {
+                        // Charging ring
+                        this.ctx.strokeStyle = '#ffff00';
+                        this.ctx.lineWidth = 4;
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, -10, 25, -Math.PI/2, -Math.PI/2 + (obj.charge/60) * Math.PI*2);
+                        this.ctx.stroke();
+                    }
+                }
+                
                 this.ctx.restore();
             });
         }

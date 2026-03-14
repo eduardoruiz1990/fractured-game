@@ -3,6 +3,69 @@ export class Combat {
         const state = game.state;
         let deathCount = 0;
 
+        // --- RESOLVE INTERACTABLES (TENSION BREAKERS) ---
+        if (state.interactables) {
+            for (let obj of state.interactables) {
+                if (obj.type === 'BREAKER_BOX') {
+                    if (!obj.active) {
+                        const dx = obj.x - state.player.x; 
+                        const dy = obj.y - state.player.y;
+                        const dist = Math.max(Math.hypot(dx, dy), 0.001);
+                        
+                        // Charge up by shining the flashlight on it
+                        if (dist < state.player.weapons.flashlight.radius) {
+                            const angle = Math.atan2(dy, dx);
+                            let diff = angle - state.player.angle;
+                            if (Number.isFinite(diff)) {
+                                while(diff < -Math.PI) diff += Math.PI*2;
+                                while(diff > Math.PI) diff -= Math.PI*2;
+                                
+                                if (Math.abs(diff) < state.player.weapons.flashlight.angle) {
+                                    obj.charge += 1;
+                                    game.spawnParticles(obj.x, obj.y, '#ffffaa', 1);
+                                    
+                                    if (obj.charge > 60) { // 1 second of direct light to activate
+                                        obj.active = true;
+                                        obj.life = 450; // 7.5 seconds of intense safe zone
+                                        state.cameraShake = 30;
+                                        if (game.audioEngine) game.audioEngine.playSFX('pickup', 8);
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Active state: Stun & Burn nearby enemies
+                        obj.life--;
+                        if (state.frame % 10 === 0) game.spawnParticles(obj.x, obj.y, '#ffffff', 3);
+                        
+                        for (let ent of state.entities) {
+                            if (Math.hypot(ent.x - obj.x, ent.y - obj.y) < obj.radius) {
+                                
+                                // FORCE STUN: Visually cancel the movement they applied this frame
+                                ent.x -= (ent.vx || 0) * (ent.speedModifier || 1);
+                                ent.y -= (ent.vy || 0) * (ent.speedModifier || 1);
+                                
+                                // Interrupt special AI attacks
+                                if (ent.attackState) ent.attackState = 'hunting';
+                                if (ent.lashingState) ent.lashingState = 'searching';
+                                if (ent.vacuumState) ent.vacuumState = 'hunting';
+                                if (ent.pulseState) ent.pulseState = 'hunting';
+
+                                // Burn damage
+                                if (state.frame % 30 === 0) {
+                                    ent.takeDamage(20, game);
+                                    game.spawnParticles(ent.x, ent.y, '#ffffaa', 5);
+                                }
+                            }
+                        }
+                        if (obj.life <= 0) obj.dead = true;
+                    }
+                }
+            }
+            state.interactables = state.interactables.filter(i => !i.dead);
+        }
+
+
         const pipe = state.player.weapons.lead_pipe;
         if (pipe && pipe.level > 0) {
             pipe.timer--;
@@ -11,6 +74,7 @@ export class Combat {
                 game.director.spawnMeleeSwing(state.player.x, state.player.y, pipe.radius);
                 if (game.audioEngine) game.audioEngine.playSFX('damage', 2);
                 
+                let didHit = false;
                 for (let i = state.entities.length - 1; i >= 0; i--) {
                     let ent = state.entities[i];
                     let d = Math.max(Math.hypot(ent.x - state.player.x, ent.y - state.player.y), 0.001);
@@ -20,11 +84,17 @@ export class Combat {
                         ent.takeDamage(pipe.damage, game);
                         ent.x += (ent.x - state.player.x) / d * 25; 
                         ent.y += (ent.y - state.player.y) / d * 25;
+                        didHit = true;
                         
                         if (state.player.synergies && state.player.synergies.includes('industrial_bleed')) {
                             game.director.spawnInkPuddle(ent.x, ent.y, pipe.radius * 0.8, pipe.damage * 0.2);
                         }
                     }
+                }
+                
+                if (didHit) {
+                    state.hitStop = 4; 
+                    state.cameraShake = 5;
                 }
             }
         }
@@ -49,7 +119,6 @@ export class Combat {
 
         const staticWep = state.player.weapons.static;
 
-        // CURSE EFFECT: Everything is a Target (Burn your own XP!)
         if (state.player.curses && state.player.curses.includes('everything_is_target')) {
             let hitAngle = state.player.weapons.flashlight.angle;
             if (state.player.synergies && state.player.synergies.includes('blinding_signal')) hitAngle *= 1.5; 
@@ -71,7 +140,7 @@ export class Combat {
                                 game.director.pools.xpDrop.release(xp);
                             }
                             state.xpDrops.splice(j, 1);
-                            game.spawnParticles(xp.x, xp.y, '#ffffff', 3); // Dust poof
+                            game.spawnParticles(xp.x, xp.y, '#ffffff', 3); 
                         }
                     }
                 }
@@ -81,7 +150,6 @@ export class Combat {
         for (let i = state.entities.length - 1; i >= 0; i--) {
             let ent = state.entities[i];
             
-            // Process Acid DoT from Corrosive Battery
             if (ent.acidTime > 0) {
                 ent.acidTime--;
                 if (state.frame % 30 === 0) {
@@ -103,13 +171,12 @@ export class Combat {
             const dy = ent.y - state.player.y;
             const distToPlayer = Math.max(Math.sqrt(dx*dx + dy*dy), 0.001);
             
-            // Chalk Safe Zone check (2x damage taken, Scholastic Purge logic)
             let dmgMult = 1.0;
             for (let sz of state.safeZones) {
                 if (Math.hypot(ent.x - sz.x, ent.y - sz.y) < sz.radius) {
                     dmgMult = 2.0;
                     if (state.player.synergies && state.player.synergies.includes('scholastic_purge')) {
-                        if (ent.type === 'PARASITE') ent.takeDamage(9999, game); // Insta kill
+                        if (ent.type === 'PARASITE') ent.takeDamage(9999, game); 
                         else if (state.frame % 30 === 0) ent.takeDamage(state.player.weapons.corrosive_battery.damage * 2, game);
                     }
                     break;
@@ -135,7 +202,6 @@ export class Combat {
                             ent.x -= ent.vx * 0.5; ent.y -= ent.vy * 0.5; 
                             if (state.player.synergies && state.player.synergies.includes('blinding_signal')) ent.confused = 180; 
                             
-                            // Apply Corrosive Battery Effect
                             const batt = state.player.weapons.corrosive_battery;
                             if (batt && batt.level > 0) {
                                 ent.acidTime = batt.duration;
@@ -161,7 +227,6 @@ export class Combat {
                     let dropAmount = ent.type === 'SCAVENGER' ? 2 : (ent.type === 'PREDATOR' ? 5 : 1);
                     if (ent.maxHp > 30) dropAmount += 5; 
                     
-                    // CURSE EFFECT: Compulsive cleaner logic
                     if (ent.type === 'SCAVENGER' && state.player.curses && state.player.curses.includes('compulsive_cleaner')) {
                         dropAmount += 3; 
                     }

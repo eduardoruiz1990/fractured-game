@@ -45,21 +45,20 @@ export class Game {
             sanity: maxSanity, sanityDrainMult: 1.0,
             xp: 0, level: 1, lucidity: 0,
             entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [], safeZones: [],
+            interactables: [], // NEW: System for environmental objects
             playerAfterimages: [], 
             hitStop: 0, 
             frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false,
-            isDead: false // Track death so we don't trigger game over multiple times
+            isDead: false
         };
     }
 
     update(inputState, canvasWidth, canvasHeight, currentGameState) {
         if (currentGameState !== 'PLAYING') return;
 
-        // --- HIT STOP LOGIC ---
         if (this.state.hitStop > 0) {
             this.state.hitStop--;
             this.state.sanity -= (GAME_CONFIG.SANITY_DRAIN_RATE * 0.1); 
-            // Check if ambient drain kills player during hitstop
             if (this.state.sanity <= -20 && this.onDeath && !this.state.isDead) {
                 this.state.isDead = true;
                 this.onDeath();
@@ -69,9 +68,20 @@ export class Game {
 
         this.director.spawnWave(canvasWidth, canvasHeight);
 
+        // --- SPAWN TENSION BREAKER ---
+        // Spawns a floodlight every ~30 seconds to provide a tactical safe zone
+        if (this.state.frame > 0 && this.state.frame % 1800 === 0) {
+             this.state.interactables.push({
+                 id: Math.random(),
+                 type: 'BREAKER_BOX',
+                 x: 100 + Math.random() * (canvasWidth - 200),
+                 y: 100 + Math.random() * (canvasHeight - 200),
+                 active: false, charge: 0, life: 0, radius: 350, dead: false
+             });
+        }
+
         this.state.sanity -= GAME_CONFIG.SANITY_DRAIN_RATE * this.state.sanityDrainMult;
         
-        // Death check from natural sanity drain
         if (this.state.sanity <= -20 && this.onDeath && !this.state.isDead) {
             this.state.isDead = true;
             this.onDeath();
@@ -80,8 +90,6 @@ export class Game {
         
         let isBreakdown = this.state.sanity <= 0;
         if (isBreakdown) {
-            // FIX: We NO LONGER force this.state.sanity = 0 here. 
-            // This allows sanity to drop to -20 (Death) while in the breakdown state!
             this.state.inputBuffer.push({...inputState});
             if (this.state.inputBuffer.length < GAME_CONFIG.BREAKDOWN_DELAY_FRAMES) {
                 this.processGameLogic({ moveX: 0, moveY: 0, aimAngle: this.state.player.angle, isMoving: false, isAiming: false, dash: false }, canvasWidth, canvasHeight);
@@ -102,7 +110,6 @@ export class Game {
     }
 
     processGameLogic(moveInput, canvasWidth, canvasHeight) {
-        // --- DASH MECHANIC ---
         if (moveInput.dash && this.state.player.dash.cooldown <= 0 && this.state.player.dash.timer <= 0) {
             this.state.player.dash.active = true;
             this.state.player.dash.timer = 15; 
