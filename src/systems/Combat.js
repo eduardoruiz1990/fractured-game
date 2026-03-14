@@ -60,11 +60,29 @@ export class Combat {
                         }
                         if (obj.life <= 0) obj.dead = true;
                     }
+                } else if (obj.type === 'OBJECTIVE_BACKPACK') {
+                    obj.life--;
+                    if (obj.life <= 0) {
+                        obj.dead = true;
+                        game.spawnParticles(obj.x, obj.y, '#555555', 10); // Dust puff on failure
+                    } else {
+                        const distToPlayer = Math.hypot(obj.x - state.player.x, obj.y - state.player.y);
+                        if (distToPlayer < obj.radius + state.player.radius) {
+                            obj.dead = true;
+                            // REWARD: Massive drop and sanity heal
+                            game.spawnXP(obj.x, obj.y, 8, true); // 8 massive XP drops
+                            state.sanity = Math.min(state.player.maxHp, state.sanity + 50); 
+                            state.cameraShake = 20;
+                            
+                            if (game.audioEngine) game.audioEngine.playSFX('pickup', 10);
+                            game.spawnParticles(obj.x, obj.y, '#55ff55', 30);
+                            game.spawnDamageText(obj.x, obj.y - 30, "SUPPLIES RECOVERED!", '#55ff55', 1.5, 2.0);
+                        }
+                    }
                 }
             }
             state.interactables = state.interactables.filter(i => !i.dead);
         }
-
 
         const pipe = state.player.weapons.lead_pipe;
         if (pipe && pipe.level > 0) {

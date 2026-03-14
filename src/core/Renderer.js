@@ -19,11 +19,9 @@ export class Renderer {
         this.lastPy = -1;
         this.lastFootstepPhase = 0;
 
-        // Boss Announcement State
         this.bossAnnouncementTimer = 0;
         this.hasAnnouncedBoss = false;
         
-        // Decoupled frame counter for animations that run during HitStop pauses
         this.renderFrame = 0;
     }
 
@@ -103,14 +101,13 @@ export class Renderer {
     }
 
     drawGame(state, audioEngine) {
-        this.renderFrame++; // Always increments, even during HitStops
+        this.renderFrame++; 
 
-        // --- TRIGGER MASSIVE BOSS ANNOUNCEMENT ---
         if (state.bossSpawned && !this.hasAnnouncedBoss) {
-            this.bossAnnouncementTimer = 240; // 4 second duration
+            this.bossAnnouncementTimer = 240; 
             this.hasAnnouncedBoss = true;
-            state.hitStop = 240; // FREEZE THE GAME LOGIC!
-            if (audioEngine) audioEngine.playSFX('death', 15); // Big bass drop
+            state.hitStop = 240; 
+            if (audioEngine) audioEngine.playSFX('death', 15); 
         }
 
         this.ctx.fillStyle = '#000000'; 
@@ -133,7 +130,6 @@ export class Renderer {
         
         this.ctx.globalAlpha = 0.5;
         this.fogClouds.forEach(cloud => {
-            // Clouds keep moving visually even if game is paused
             if(state.hitStop > 0) { cloud.x += cloud.vx; cloud.y += cloud.vy; }
             else { cloud.x += cloud.vx; cloud.y += cloud.vy; }
             
@@ -172,7 +168,6 @@ export class Renderer {
 
         this.lightCtx.globalCompositeOperation = 'destination-out';
 
-        // --- RENDER INTERACTABLE SAFE ZONES ---
         if (state.interactables) {
             state.interactables.forEach(obj => {
                 if (obj.active && obj.type === 'BREAKER_BOX') {
@@ -183,6 +178,14 @@ export class Renderer {
                     this.lightCtx.fillStyle = boxHole;
                     this.lightCtx.beginPath();
                     this.lightCtx.arc(obj.x, obj.y, obj.radius, 0, Math.PI * 2);
+                    this.lightCtx.fill();
+                } else if (obj.type === 'OBJECTIVE_BACKPACK') {
+                    const packHole = this.lightCtx.createRadialGradient(obj.x, obj.y, 0, obj.x, obj.y, 120);
+                    packHole.addColorStop(0, 'rgba(100, 255, 100, 0.5)');
+                    packHole.addColorStop(1, 'rgba(100, 255, 100, 0)');
+                    this.lightCtx.fillStyle = packHole;
+                    this.lightCtx.beginPath();
+                    this.lightCtx.arc(obj.x, obj.y, 120, 0, Math.PI * 2);
                     this.lightCtx.fill();
                 }
             });
@@ -230,7 +233,6 @@ export class Renderer {
 
         this.ctx.globalCompositeOperation = 'screen';
         
-        // --- ADD GLARE FOR INTERACTABLES ---
         if (state.interactables) {
             state.interactables.forEach(obj => {
                 if (obj.active && obj.type === 'BREAKER_BOX') {
@@ -312,6 +314,51 @@ export class Renderer {
         this.drawPlayer(state, audioEngine);
         this.drawDamageText(state);
 
+        // --- DRAW OBJECTIVE HUD POINTERS ---
+        if (state.interactables) {
+            state.interactables.forEach(obj => {
+                if (obj.type === 'OBJECTIVE_BACKPACK') {
+                    let dx = obj.x - state.player.x;
+                    let dy = obj.y - state.player.y;
+                    let dist = Math.hypot(dx, dy);
+                    
+                    if (dist > 200) { 
+                        this.ctx.save();
+                        this.ctx.translate(state.player.x, state.player.y);
+                        
+                        let angle = Math.atan2(dy, dx);
+                        this.ctx.rotate(angle);
+                        
+                        this.ctx.translate(140, 0); 
+                        let isUrgent = obj.life < 300;
+                        let pulse = Math.sin(this.renderFrame * (isUrgent ? 0.4 : 0.1)) * 0.5 + 0.5;
+                        
+                        // Holographic Arrow
+                        this.ctx.fillStyle = isUrgent ? `rgba(255, 50, 50, ${0.4 + pulse * 0.6})` : `rgba(100, 255, 100, ${0.3 + pulse * 0.5})`;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(15, 0);
+                        this.ctx.lineTo(-10, 10);
+                        this.ctx.lineTo(-5, 0);
+                        this.ctx.lineTo(-10, -10);
+                        this.ctx.closePath();
+                        this.ctx.fill();
+                        
+                        // Holographic Countdown Timer (floating right next to arrow)
+                        this.ctx.translate(30, 0); // Move text slightly outside arrow tip
+                        this.ctx.rotate(-angle); // Un-rotate so it's always readable upright
+                        this.ctx.textAlign = 'center';
+                        this.ctx.textBaseline = 'middle';
+                        this.ctx.font = "bold 16px var(--ui-font, monospace)";
+                        // Text turns red if urgent
+                        this.ctx.fillStyle = isUrgent ? `rgba(255, 100, 100, ${0.8 + pulse * 0.2})` : `rgba(150, 255, 150, ${0.8 + pulse * 0.2})`;
+                        this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, 0);
+                        
+                        this.ctx.restore();
+                    }
+                }
+            });
+        }
+
         this.ctx.restore(); 
 
         this.ctx.save();
@@ -328,7 +375,6 @@ export class Renderer {
         this.ctx.fillStyle = vig;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // --- DRAW BOSS ANNOUNCEMENT (On top of vignette, before film grain) ---
         if (this.bossAnnouncementTimer > 0) {
             this.drawBossAnnouncement(state);
             this.bossAnnouncementTimer--;
@@ -341,18 +387,16 @@ export class Renderer {
     drawBossAnnouncement(state) {
         this.ctx.save();
         
-        // Center of the screen
         const cx = this.canvas.width / 2;
         const cy = this.canvas.height / 2;
         
-        // Dynamic Slide/Slam animation
         let alpha = 1;
         let scale = 1;
         if (this.bossAnnouncementTimer > 210) {
-            alpha = (240 - this.bossAnnouncementTimer) / 30; // Fade in over 0.5s
-            scale = 1 + (1 - alpha) * 0.3; // Slight slam down effect
+            alpha = (240 - this.bossAnnouncementTimer) / 30; 
+            scale = 1 + (1 - alpha) * 0.3; 
         } else if (this.bossAnnouncementTimer < 30) {
-            alpha = this.bossAnnouncementTimer / 30; // Fade out
+            alpha = this.bossAnnouncementTimer / 30; 
             scale = 1 + (1 - alpha) * 0.3; 
         }
 
@@ -360,7 +404,6 @@ export class Renderer {
         this.ctx.translate(cx, cy);
         this.ctx.scale(scale, scale);
 
-        // Massive Cinematic Letterbox Bar
         this.ctx.fillStyle = 'rgba(5, 0, 5, 0.9)';
         this.ctx.fillRect(-this.canvas.width/2, -180, this.canvas.width, 360);
         
@@ -371,7 +414,6 @@ export class Renderer {
         this.ctx.moveTo(-this.canvas.width/2, 180); this.ctx.lineTo(this.canvas.width/2, 180);
         this.ctx.stroke();
 
-        // Intense Glitch Lines inside the letterbox
         if (this.renderFrame % 4 < 2) {
             this.ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
             for (let i=0; i<6; i++) {
@@ -379,17 +421,14 @@ export class Renderer {
             }
         }
 
-        // --- EXACT IN-GAME BOSS VISUAL ---
         this.ctx.save();
-        this.ctx.translate(-280, 0); // Position heavily left
-        this.ctx.scale(2.8, 2.8); // Make it MASSIVE
+        this.ctx.translate(-280, 0); 
+        this.ctx.scale(2.8, 2.8); 
         
-        // We use renderFrame here so the boss keeps writhing even though game logic is paused!
         const simulatedPhase = this.renderFrame * 0.05;
         this.ctx.rotate(Math.sin(simulatedPhase * 0.5) * 0.1); 
         let pulse = Math.sin(this.renderFrame * 0.1) * 3;
 
-        // Outer writhing mass (Tendrils/Limbs)
         this.ctx.fillStyle = '#1a0d15';
         this.ctx.beginPath();
         for (let i = 0; i < 16; i++) {
@@ -401,13 +440,11 @@ export class Renderer {
         this.ctx.closePath();
         this.ctx.fill();
 
-        // Inner fleshy core
         this.ctx.fillStyle = '#2b1010';
         this.ctx.beginPath();
         this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
         this.ctx.fill();
 
-        // Gaping, jagged maw
         this.ctx.fillStyle = '#050000';
         this.ctx.beginPath();
         for (let i = 0; i < 10; i++) {
@@ -419,7 +456,6 @@ export class Renderer {
         this.ctx.closePath();
         this.ctx.fill();
 
-        // Multiple unblinking, asymmetric red eyes
         this.ctx.fillStyle = '#ff0000';
         this.ctx.shadowColor = '#ff0000';
         this.ctx.shadowBlur = 15;
@@ -447,7 +483,6 @@ export class Renderer {
         });
         this.ctx.shadowBlur = 0;
 
-        // Orbiting debris
         this.ctx.strokeStyle = '#555';
         this.ctx.lineWidth = 3;
         this.ctx.lineCap = 'round';
@@ -465,17 +500,14 @@ export class Renderer {
         }
         this.ctx.restore();
 
-        // Epic Typography
         this.ctx.textAlign = 'left';
         this.ctx.textBaseline = 'middle';
         
-        // Title
         this.ctx.font = "900 65px var(--ui-font, monospace)";
         this.ctx.fillStyle = '#ffffff';
         let textJitter = (Math.random() - 0.5) * 5;
         this.ctx.fillText("THE SPHERE HEAD", -80 + textJitter, -25);
         
-        // Subtitle
         this.ctx.font = "italic 30px var(--ui-font, monospace)";
         this.ctx.fillStyle = '#c5a059';
         this.ctx.fillText("Apex Predator of the Wastes", -75 + textJitter, 35);
@@ -670,21 +702,18 @@ export class Renderer {
             });
         }
 
-        // --- DRAW INTERACTABLES (BREAKER BOXES) ---
         if (state.interactables) {
             state.interactables.forEach(obj => {
                 this.ctx.save();
                 this.ctx.translate(obj.x, obj.y);
                 
                 if (obj.type === 'BREAKER_BOX') {
-                    // Industrial rusty box
                     this.ctx.fillStyle = '#222';
                     this.ctx.fillRect(-20, -30, 40, 60);
                     this.ctx.strokeStyle = '#555';
                     this.ctx.lineWidth = 2;
                     this.ctx.strokeRect(-20, -30, 40, 60);
                     
-                    // The Floodlight Bulb
                     let bulbColor = '#111';
                     let glow = 0;
                     if (obj.active) {
@@ -703,7 +732,6 @@ export class Renderer {
                     this.ctx.fill();
                     this.ctx.shadowBlur = 0;
 
-                    // Active Zone Ring / Charging Indicator
                     if (obj.active) {
                         this.ctx.strokeStyle = `rgba(255, 255, 150, ${0.4 + Math.sin(this.renderFrame * 0.2)*0.2})`;
                         this.ctx.lineWidth = 3;
@@ -712,20 +740,45 @@ export class Renderer {
                         this.ctx.arc(0, 0, obj.radius, 0, Math.PI*2);
                         this.ctx.stroke();
                         
-                        // Rotational inner gear effect
                         this.ctx.rotate(this.renderFrame * 0.05);
                         this.ctx.setLineDash([10, 40]);
                         this.ctx.beginPath();
                         this.ctx.arc(0, 0, obj.radius * 0.8, 0, Math.PI*2);
                         this.ctx.stroke();
                     } else if (obj.charge > 0) {
-                        // Charging ring
                         this.ctx.strokeStyle = '#ffff00';
                         this.ctx.lineWidth = 4;
                         this.ctx.beginPath();
                         this.ctx.arc(0, -10, 25, -Math.PI/2, -Math.PI/2 + (obj.charge/60) * Math.PI*2);
                         this.ctx.stroke();
                     }
+                } else if (obj.type === 'OBJECTIVE_BACKPACK') {
+                    let isUrgent = obj.life < 300; 
+                    let pulseRate = isUrgent ? 0.3 : 0.1;
+                    let pulse = Math.sin(this.renderFrame * pulseRate) * 5;
+                    
+                    this.ctx.fillStyle = '#4a5d23'; 
+                    this.ctx.fillRect(-15, -15, 30, 30);
+                    this.ctx.fillStyle = '#222';
+                    this.ctx.fillRect(-10, -10, 20, 20);
+                    
+                    this.ctx.fillStyle = `rgba(100, 255, 100, ${0.5 + Math.sin(this.renderFrame * pulseRate)*0.5})`;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, -20 + pulse, 5 + pulse*0.5, 0, Math.PI*2);
+                    this.ctx.fill();
+
+                    this.ctx.strokeStyle = isUrgent ? '#ff0000' : '#00ff00';
+                    this.ctx.lineWidth = 3;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 30, -Math.PI/2, -Math.PI/2 + (obj.life / 1200) * Math.PI*2);
+                    this.ctx.stroke();
+
+                    // --- EXPLICIT TIMER ABOVE BACKPACK ---
+                    this.ctx.fillStyle = isUrgent ? '#ff0000' : '#00ff00';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.font = "bold 14px var(--ui-font, monospace)";
+                    this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, -35); // Above the backpack
                 }
                 
                 this.ctx.restore();

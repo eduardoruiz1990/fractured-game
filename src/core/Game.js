@@ -45,7 +45,7 @@ export class Game {
             sanity: maxSanity, sanityDrainMult: 1.0,
             xp: 0, level: 1, lucidity: 0,
             entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [], safeZones: [],
-            interactables: [], // NEW: System for environmental objects
+            interactables: [], 
             playerAfterimages: [], 
             hitStop: 0, 
             frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false,
@@ -69,7 +69,6 @@ export class Game {
         this.director.spawnWave(canvasWidth, canvasHeight);
 
         // --- SPAWN TENSION BREAKER ---
-        // Spawns a floodlight every ~30 seconds to provide a tactical safe zone
         if (this.state.frame > 0 && this.state.frame % 1800 === 0) {
              this.state.interactables.push({
                  id: Math.random(),
@@ -78,6 +77,29 @@ export class Game {
                  y: 100 + Math.random() * (canvasHeight - 200),
                  active: false, charge: 0, life: 0, radius: 350, dead: false
              });
+        }
+
+        // --- SPAWN SECONDARY OBJECTIVE ---
+        if (this.state.frame > 0 && this.state.frame % 2400 === 0) {
+            let targetX, targetY;
+            for (let i=0; i<5; i++) {
+                targetX = 100 + Math.random() * (canvasWidth - 200);
+                targetY = 100 + Math.random() * (canvasHeight - 200);
+                if (Math.hypot(targetX - this.state.player.x, targetY - this.state.player.y) > 400) break;
+            }
+            this.state.interactables.push({
+                 id: Math.random(),
+                 type: 'OBJECTIVE_BACKPACK',
+                 x: targetX,
+                 y: targetY,
+                 active: true, charge: 0, life: 1200, radius: 30, dead: false 
+            });
+            
+            if (this.audioEngine) this.audioEngine.playSFX('levelup', 1); 
+            
+            // --- EXPLICIT UI ANNOUNCEMENT ON SPAWN ---
+            // Spawn a long-lasting, bright text right above the player to alert them
+            this.spawnDamageText(this.state.player.x, this.state.player.y - 40, "SUPPLY DROP DETECTED!", '#55ff55', 1.2, 3.0);
         }
 
         this.state.sanity -= GAME_CONFIG.SANITY_DRAIN_RATE * this.state.sanityDrainMult;
