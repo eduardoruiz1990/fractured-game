@@ -18,6 +18,13 @@ export class Renderer {
         this.lastPx = -1;
         this.lastPy = -1;
         this.lastFootstepPhase = 0;
+
+        // Boss Announcement State
+        this.bossAnnouncementTimer = 0;
+        this.hasAnnouncedBoss = false;
+        
+        // Decoupled frame counter for animations that run during HitStop pauses
+        this.renderFrame = 0;
     }
 
     generateFloorPattern() {
@@ -96,6 +103,16 @@ export class Renderer {
     }
 
     drawGame(state, audioEngine) {
+        this.renderFrame++; // Always increments, even during HitStops
+
+        // --- TRIGGER MASSIVE BOSS ANNOUNCEMENT ---
+        if (state.bossSpawned && !this.hasAnnouncedBoss) {
+            this.bossAnnouncementTimer = 240; // 4 second duration
+            this.hasAnnouncedBoss = true;
+            state.hitStop = 240; // FREEZE THE GAME LOGIC!
+            if (audioEngine) audioEngine.playSFX('death', 15); // Big bass drop
+        }
+
         this.ctx.fillStyle = '#000000'; 
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
@@ -116,7 +133,10 @@ export class Renderer {
         
         this.ctx.globalAlpha = 0.5;
         this.fogClouds.forEach(cloud => {
-            cloud.x += cloud.vx; cloud.y += cloud.vy;
+            // Clouds keep moving visually even if game is paused
+            if(state.hitStop > 0) { cloud.x += cloud.vx; cloud.y += cloud.vy; }
+            else { cloud.x += cloud.vx; cloud.y += cloud.vy; }
+            
             let dx = (cloud.x - state.player.x) % 2000;
             if (dx < -1000) dx += 2000; else if (dx > 1000) dx -= 2000;
             let dy = (cloud.y - state.player.y) % 2000;
@@ -160,7 +180,7 @@ export class Renderer {
         let isStrobing = false;
 
         if (state.player.synergies && state.player.synergies.includes('blinding_signal')) {
-            if (state.frame % 6 < 3) { currentAngle *= 1.5; isStrobing = true; }
+            if (this.renderFrame % 6 < 3) { currentAngle *= 1.5; isStrobing = true; }
             else { currentAngle *= 0.8; }
         }
 
@@ -276,7 +296,158 @@ export class Renderer {
         this.ctx.fillStyle = vig;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
+        // --- DRAW BOSS ANNOUNCEMENT (On top of vignette, before film grain) ---
+        if (this.bossAnnouncementTimer > 0) {
+            this.drawBossAnnouncement(state);
+            this.bossAnnouncementTimer--;
+        }
+
         this.drawFilmGrain();
+        this.ctx.restore();
+    }
+
+    drawBossAnnouncement(state) {
+        this.ctx.save();
+        
+        // Center of the screen
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        
+        // Dynamic Slide/Slam animation
+        let alpha = 1;
+        let scale = 1;
+        if (this.bossAnnouncementTimer > 210) {
+            alpha = (240 - this.bossAnnouncementTimer) / 30; // Fade in over 0.5s
+            scale = 1 + (1 - alpha) * 0.3; // Slight slam down effect
+        } else if (this.bossAnnouncementTimer < 30) {
+            alpha = this.bossAnnouncementTimer / 30; // Fade out
+            scale = 1 + (1 - alpha) * 0.3; 
+        }
+
+        this.ctx.globalAlpha = alpha;
+        this.ctx.translate(cx, cy);
+        this.ctx.scale(scale, scale);
+
+        // Massive Cinematic Letterbox Bar
+        this.ctx.fillStyle = 'rgba(5, 0, 5, 0.9)';
+        this.ctx.fillRect(-this.canvas.width/2, -180, this.canvas.width, 360);
+        
+        this.ctx.strokeStyle = '#c5a059';
+        this.ctx.lineWidth = 4;
+        this.ctx.beginPath();
+        this.ctx.moveTo(-this.canvas.width/2, -180); this.ctx.lineTo(this.canvas.width/2, -180);
+        this.ctx.moveTo(-this.canvas.width/2, 180); this.ctx.lineTo(this.canvas.width/2, 180);
+        this.ctx.stroke();
+
+        // Intense Glitch Lines inside the letterbox
+        if (this.renderFrame % 4 < 2) {
+            this.ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
+            for (let i=0; i<6; i++) {
+                this.ctx.fillRect(-this.canvas.width/2, -180 + Math.random() * 360, this.canvas.width, 2 + Math.random() * 8);
+            }
+        }
+
+        // --- EXACT IN-GAME BOSS VISUAL ---
+        this.ctx.save();
+        this.ctx.translate(-280, 0); // Position heavily left
+        this.ctx.scale(2.8, 2.8); // Make it MASSIVE
+        
+        // We use renderFrame here so the boss keeps writhing even though game logic is paused!
+        const simulatedPhase = this.renderFrame * 0.05;
+        this.ctx.rotate(Math.sin(simulatedPhase * 0.5) * 0.1); 
+        let pulse = Math.sin(this.renderFrame * 0.1) * 3;
+
+        // Outer writhing mass (Tendrils/Limbs)
+        this.ctx.fillStyle = '#1a0d15';
+        this.ctx.beginPath();
+        for (let i = 0; i < 16; i++) {
+            let angle = (i / 16) * Math.PI * 2;
+            let reach = 35 + Math.sin(simulatedPhase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
+            if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
+            else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
+        }
+        this.ctx.closePath();
+        this.ctx.fill();
+
+        // Inner fleshy core
+        this.ctx.fillStyle = '#2b1010';
+        this.ctx.beginPath();
+        this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
+        this.ctx.fill();
+
+        // Gaping, jagged maw
+        this.ctx.fillStyle = '#050000';
+        this.ctx.beginPath();
+        for (let i = 0; i < 10; i++) {
+            let angle = (i / 10) * Math.PI * 2;
+            let innerReach = 10 + Math.random() * 8; 
+            if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
+            else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
+        }
+        this.ctx.closePath();
+        this.ctx.fill();
+
+        // Multiple unblinking, asymmetric red eyes
+        this.ctx.fillStyle = '#ff0000';
+        this.ctx.shadowColor = '#ff0000';
+        this.ctx.shadowBlur = 15;
+        
+        const eyes = [
+            {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
+            {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
+        ];
+
+        eyes.forEach(eye => {
+            let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
+            let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
+            
+            this.ctx.beginPath();
+            this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
+            this.ctx.fill();
+            
+            this.ctx.fillStyle = '#000000';
+            this.ctx.shadowBlur = 0;
+            this.ctx.beginPath();
+            this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
+            this.ctx.fill();
+            this.ctx.fillStyle = '#ff0000';
+            this.ctx.shadowBlur = 15;
+        });
+        this.ctx.shadowBlur = 0;
+
+        // Orbiting debris
+        this.ctx.strokeStyle = '#555';
+        this.ctx.lineWidth = 3;
+        this.ctx.lineCap = 'round';
+        
+        for(let i=0; i<3; i++) {
+            let orbitAngle = simulatedPhase * (1 + i*0.5) + (i * Math.PI*0.6);
+            let dist = 45 + Math.sin(simulatedPhase * 2 + i) * 5;
+            let objX = Math.cos(orbitAngle) * dist;
+            let objY = Math.sin(orbitAngle) * dist;
+            
+            this.ctx.beginPath();
+            this.ctx.moveTo(objX - 5, objY - 5);
+            this.ctx.lineTo(objX + 5, objY + 5);
+            this.ctx.stroke();
+        }
+        this.ctx.restore();
+
+        // Epic Typography
+        this.ctx.textAlign = 'left';
+        this.ctx.textBaseline = 'middle';
+        
+        // Title
+        this.ctx.font = "900 65px var(--ui-font, monospace)";
+        this.ctx.fillStyle = '#ffffff';
+        let textJitter = (Math.random() - 0.5) * 5;
+        this.ctx.fillText("THE SPHERE HEAD", -80 + textJitter, -25);
+        
+        // Subtitle
+        this.ctx.font = "italic 30px var(--ui-font, monospace)";
+        this.ctx.fillStyle = '#c5a059';
+        this.ctx.fillText("Apex Predator of the Wastes", -75 + textJitter, 35);
+
         this.ctx.restore();
     }
 
@@ -377,7 +548,7 @@ export class Renderer {
 
         this.ctx.fillStyle = '#1a1a24';
         this.ctx.beginPath();
-        let breathe = Math.sin(state.frame * 0.15) * (1 + panic * 2);
+        let breathe = Math.sin(this.renderFrame * 0.15) * (1 + panic * 2);
         this.ctx.ellipse(0, 0, state.player.radius * 0.6 + breathe, state.player.radius, 0, 0, Math.PI*2);
         this.ctx.fill();
 
@@ -403,8 +574,8 @@ export class Renderer {
 
         this.ctx.fillStyle = '#ffffff';
         for(let i=0; i<3; i++) {
-            let pX = Math.cos(state.frame * 0.05 + i*2) * (10 + shake*2);
-            let pY = Math.sin(state.frame * 0.08 + i*2) * (10 + shake*2);
+            let pX = Math.cos(this.renderFrame * 0.05 + i*2) * (10 + shake*2);
+            let pY = Math.sin(this.renderFrame * 0.08 + i*2) * (10 + shake*2);
             this.ctx.fillRect(pX, pY, 1.5 + Math.random()*panic, 1.5 + Math.random()*panic);
         }
 
@@ -453,13 +624,13 @@ export class Renderer {
                 this.ctx.setLineDash([10, 15]); 
                 
                 this.ctx.translate(sz.x, sz.y);
-                this.ctx.rotate(state.frame * 0.01);
+                this.ctx.rotate(this.renderFrame * 0.01);
                 this.ctx.beginPath();
                 this.ctx.arc(0, 0, sz.radius, 0, Math.PI*2);
                 this.ctx.stroke();
                 
                 if (state.player.synergies && state.player.synergies.includes('scholastic_purge')) {
-                    const mistPulse = Math.sin(state.frame * 0.1) * 0.1;
+                    const mistPulse = Math.sin(this.renderFrame * 0.1) * 0.1;
                     this.ctx.fillStyle = `rgba(100, 255, 100, ${0.15 + mistPulse})`;
                     this.ctx.fill();
                 }
@@ -479,7 +650,7 @@ export class Renderer {
                 this.ctx.beginPath();
                 for (let i = 0; i < 8; i++) {
                     let angle = (i / 8) * Math.PI * 2;
-                    let radiusJitter = p.radius * (0.8 + Math.sin(p.x * p.y + i + state.frame*0.05) * 0.2);
+                    let radiusJitter = p.radius * (0.8 + Math.sin(p.x * p.y + i + this.renderFrame*0.05) * 0.2);
                     let x = p.x + Math.cos(angle) * radiusJitter;
                     let y = p.y + Math.sin(angle) * radiusJitter;
                     if (i === 0) this.ctx.moveTo(x, y);
@@ -493,7 +664,7 @@ export class Renderer {
                 this.ctx.beginPath();
                 for (let i = 0; i < 8; i++) {
                     let angle = (i / 8) * Math.PI * 2;
-                    let radiusJitter = (p.radius * 0.5) * (0.8 + Math.sin(p.x * p.y + i + state.frame*0.05) * 0.2);
+                    let radiusJitter = (p.radius * 0.5) * (0.8 + Math.sin(p.x * p.y + i + this.renderFrame*0.05) * 0.2);
                     let x = p.x + Math.cos(angle) * radiusJitter;
                     let y = p.y + Math.sin(angle) * radiusJitter;
                     if (i === 0) this.ctx.moveTo(x, y);
@@ -509,7 +680,7 @@ export class Renderer {
             this.ctx.save();
             this.ctx.translate(xp.x, xp.y);
             
-            const time = state.frame * 0.1 + xp.x;
+            const time = this.renderFrame * 0.1 + xp.x;
             const pulse = Math.sin(time) * 2;
             
             this.ctx.shadowColor = '#88ccff';
@@ -549,31 +720,27 @@ export class Renderer {
             if (ent.type === 'SCAVENGER') {
                 this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
                 
-                // --- VACUUM TELEGRAPH VISUAL ---
                 if (ent.vacuumState === 'vacuuming') {
                     this.ctx.save();
-                    this.ctx.strokeStyle = `rgba(150, 200, 255, ${0.5 + Math.sin(state.frame * 0.5) * 0.5})`;
+                    this.ctx.strokeStyle = `rgba(150, 200, 255, ${0.5 + Math.sin(this.renderFrame * 0.5) * 0.5})`;
                     this.ctx.lineWidth = 2;
                     this.ctx.setLineDash([5, 5]);
                     this.ctx.beginPath();
-                    // Draw sucking radius (shrinking circle effect)
-                    let vacPulse = 80 - ((state.frame * 2) % 80);
+                    let vacPulse = 80 - ((this.renderFrame * 2) % 80);
                     this.ctx.arc(0, 0, vacPulse, 0, Math.PI*2);
                     this.ctx.stroke();
                     this.ctx.restore();
                     
-                    // Jitter while vacuuming
                     this.ctx.translate((Math.random()-0.5)*2, (Math.random()-0.5)*2);
                 }
 
                 this.ctx.fillStyle = isFlashed ? '#bbbbbb' : '#2a2d2a';
                 this.ctx.beginPath();
-                this.ctx.ellipse(0, 0, 12, 15 + Math.sin(state.frame*0.1)*2, 0, 0, Math.PI*2);
+                this.ctx.ellipse(0, 0, 12, 15 + Math.sin(this.renderFrame*0.1)*2, 0, 0, Math.PI*2);
                 this.ctx.fill();
                 
                 this.ctx.fillStyle = isFlashed ? '#999999' : '#1a1c1a';
                 this.ctx.beginPath();
-                // Sack swells slightly if full
                 let sackSize = 9 + (ent.hp > 30 ? 3 : 0);
                 this.ctx.arc(-6, 5, sackSize, 0, Math.PI*2);
                 this.ctx.fill();
@@ -587,8 +754,7 @@ export class Renderer {
                 this.ctx.lineWidth = 2.5;
                 this.ctx.beginPath();
                 this.ctx.moveTo(0, 10);
-                // Sweeping appendage stops while vacuuming
-                let sweepOffset = ent.vacuumState === 'vacuuming' ? 0 : Math.sin(state.frame * 0.2)*5;
+                let sweepOffset = ent.vacuumState === 'vacuuming' ? 0 : Math.sin(this.renderFrame * 0.2)*5;
                 this.ctx.lineTo(10 + sweepOffset, 18);
                 this.ctx.stroke();
             } 
@@ -617,11 +783,11 @@ export class Renderer {
                 
                 let stretch = ent.attackState === 'lunging' ? 5 : 0;
                 this.ctx.moveTo(18 + stretch, 0); 
-                this.ctx.lineTo(5, 12 - stretch + Math.sin(state.frame*0.2)*3);
+                this.ctx.lineTo(5, 12 - stretch + Math.sin(this.renderFrame*0.2)*3);
                 this.ctx.lineTo(-15 - stretch, 10);
                 this.ctx.lineTo(-20 - stretch, 0); 
                 this.ctx.lineTo(-15 - stretch, -10);
-                this.ctx.lineTo(5, -12 + stretch - Math.cos(state.frame*0.2)*3);
+                this.ctx.lineTo(5, -12 + stretch - Math.cos(this.renderFrame*0.2)*3);
                 this.ctx.closePath();
                 this.ctx.fill();
 
@@ -657,18 +823,14 @@ export class Renderer {
                 this.ctx.shadowBlur = 0; 
             }
             else if (ent.type === 'PARASITE') {
-                this.ctx.rotate(state.frame * 0.2); 
+                this.ctx.rotate(this.renderFrame * 0.2); 
                 
-                // --- LASH TELEGRAPH VISUAL ---
                 if (ent.lashingState === 'lashing' && ent.lashTarget) {
                     this.ctx.save();
-                    // Draw a stretching tether to target
-                    // Need to reverse our local transform to get target's relative position
                     let dx = ent.lashTarget.x - ent.x;
                     let dy = ent.lashTarget.y - ent.y;
                     
-                    // Un-rotate the context just for the line so it points straight at target
-                    this.ctx.rotate(-state.frame * 0.2); 
+                    this.ctx.rotate(-this.renderFrame * 0.2); 
                     
                     this.ctx.strokeStyle = `rgba(255, 100, 100, ${1 - (ent.lashTimer/30)})`;
                     this.ctx.lineWidth = 3;
@@ -680,8 +842,8 @@ export class Renderer {
                     this.ctx.restore();
                 }
 
-                let pulse = Math.sin(state.frame * 0.3) * 1.5;
-                if (ent.lashingState === 'lashing') pulse = Math.sin(state.frame * 1.5) * 3; // Frenzied pulse
+                let pulse = Math.sin(this.renderFrame * 0.3) * 1.5;
+                if (ent.lashingState === 'lashing') pulse = Math.sin(this.renderFrame * 1.5) * 3; 
 
                 this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#6b2222';
                 this.ctx.beginPath(); 
@@ -697,13 +859,12 @@ export class Renderer {
                 this.ctx.lineWidth = 1.5;
                 this.ctx.lineCap = 'round';
                 
-                // Legs curl back if lashing
                 let curl = ent.lashingState === 'lashing' ? 0.5 : 0;
                 
                 for(let i=0; i<8; i++) {
-                    let angle = (i/8) * Math.PI * 2 + (Math.sin(state.frame*0.5 + i)*0.2) + curl;
+                    let angle = (i/8) * Math.PI * 2 + (Math.sin(this.renderFrame*0.5 + i)*0.2) + curl;
                     let length = 8 + Math.random() * 4;
-                    if (ent.lashingState === 'lashing') length -= 3; // Pull legs in tightly
+                    if (ent.lashingState === 'lashing') length -= 3; 
                     
                     this.ctx.beginPath();
                     this.ctx.moveTo(Math.cos(angle)*4, Math.sin(angle)*4);
@@ -715,7 +876,6 @@ export class Renderer {
                 }
             }
             else if (ent.type === 'BOSS') {
-                // --- BOSS PULSE TELEGRAPH VISUAL ---
                 if (ent.pulseState === 'charging' || ent.pulseState === 'pulsing') {
                     this.ctx.save();
                     this.ctx.strokeStyle = ent.pulseState === 'pulsing' ? 'rgba(255, 50, 50, 0.8)' : `rgba(255, 100, 100, ${1 - (ent.pulseTimer/60)})`;
@@ -724,7 +884,6 @@ export class Renderer {
                     this.ctx.arc(0, 0, ent.pulseState === 'pulsing' ? ent.maxPulseRadius : ent.pulseRadius, 0, Math.PI*2);
                     this.ctx.stroke();
                     
-                    // Add fill for actual detonation
                     if (ent.pulseState === 'pulsing') {
                         this.ctx.fillStyle = 'rgba(255, 50, 50, 0.3)';
                         this.ctx.fill();
@@ -734,10 +893,10 @@ export class Renderer {
 
                 this.ctx.rotate(Math.sin(ent.phase * 0.5) * 0.1); 
                 
-                let pulse = Math.sin(state.frame * 0.1) * 3;
+                let pulse = Math.sin(this.renderFrame * 0.1) * 3;
                 if (ent.pulseState === 'charging') {
-                    pulse = Math.sin(state.frame * 0.5) * 5; // Fast, violent pulsing during charge
-                    this.ctx.translate((Math.random()-0.5)*5, (Math.random()-0.5)*5); // Heavy jitter
+                    pulse = Math.sin(this.renderFrame * 0.5) * 5; 
+                    this.ctx.translate((Math.random()-0.5)*5, (Math.random()-0.5)*5); 
                 }
 
                 this.ctx.fillStyle = isFlashed ? '#ddaaaa' : '#1a0d15';
@@ -745,7 +904,7 @@ export class Renderer {
                 for (let i = 0; i < 16; i++) {
                     let angle = (i / 16) * Math.PI * 2;
                     let reach = 35 + Math.sin(ent.phase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
-                    if (ent.pulseState === 'charging') reach -= 10; // Pull tendrils in while charging
+                    if (ent.pulseState === 'charging') reach -= 10; 
                     if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
                     else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
                 }
@@ -762,7 +921,6 @@ export class Renderer {
                 for (let i = 0; i < 10; i++) {
                     let angle = (i / 10) * Math.PI * 2;
                     let innerReach = 10 + Math.random() * 8; 
-                    // Maw opens wide during charge
                     if (ent.pulseState === 'charging') innerReach += 5 + Math.random()*5; 
                     if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
                     else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
@@ -773,7 +931,7 @@ export class Renderer {
                 this.ctx.fillStyle = '#ff0000';
                 this.ctx.shadowColor = '#ff0000';
                 this.ctx.shadowBlur = 15;
-                if (ent.pulseState === 'charging') this.ctx.shadowBlur = 30; // Eyes flare up
+                if (ent.pulseState === 'charging') this.ctx.shadowBlur = 30; 
                 
                 const eyes = [
                     {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
@@ -781,8 +939,8 @@ export class Renderer {
                 ];
 
                 eyes.forEach(eye => {
-                    let jx = Math.cos(state.frame * 0.2 + eye.x) * 1.5;
-                    let jy = Math.sin(state.frame * 0.2 + eye.y) * 1.5;
+                    let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
+                    let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
                     
                     this.ctx.beginPath();
                     this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
@@ -805,8 +963,7 @@ export class Renderer {
                 for(let i=0; i<3; i++) {
                     let orbitAngle = ent.phase * (1 + i*0.5) + (i * Math.PI*0.6);
                     let dist = 45 + Math.sin(ent.phase * 2 + i) * 5;
-                    // Orbiting debris spins crazy fast during charge
-                    if (ent.pulseState === 'charging') orbitAngle += state.frame * 0.2;
+                    if (ent.pulseState === 'charging') orbitAngle += this.renderFrame * 0.2;
                     let objX = Math.cos(orbitAngle) * dist;
                     let objY = Math.sin(orbitAngle) * dist;
                     
