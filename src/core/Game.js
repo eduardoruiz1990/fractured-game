@@ -7,7 +7,7 @@ export class Game {
         this.state = null;
         this.onDeath = null;
         this.onLevelUp = null;
-        this.onFloorComplete = null; // NEW: Callback for reaching the elevator
+        this.onFloorComplete = null; 
         this.audioEngine = null; 
         
         this.director = new Director(this);
@@ -20,7 +20,6 @@ export class Game {
         });
     }
 
-    // Accept carriedState so we can resume suspended runs or descend to next floor
     init(saveManager, carriedState = null) {
         const meta = saveManager.metaState;
         const maxSanity = 100 + (meta.upgrades.hp * 20);
@@ -56,7 +55,7 @@ export class Game {
         this.state = {
             floor: startFloor,
             convergence: 0,
-            maxConvergence: Math.floor(100 * Math.pow(1.3, startFloor - 1)), // Scales per floor!
+            maxConvergence: Math.floor(100 * Math.pow(1.3, startFloor - 1)), 
             
             player: { 
                 x: 0, y: 0, 
@@ -66,7 +65,7 @@ export class Game {
                 synergies: startSynergies, curses: startCurses
             },
             inputBuffer: [],
-            sanity: startSanity, sanityDrainMult: 1.0 + (startFloor - 1) * 0.2, // Drain gets faster!
+            sanity: startSanity, sanityDrainMult: 1.0 + (startFloor - 1) * 0.2, 
             xp: 0, level: startLevel, lucidity: startLucidity,
             entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [], safeZones: [],
             interactables: [], 
@@ -77,7 +76,6 @@ export class Game {
         };
     }
 
-    // Helper to serialize active state for "Suspended" saves
     getCarriedState() {
         if (!this.state) return null;
         return {
@@ -106,35 +104,40 @@ export class Game {
 
         this.director.spawnWave(canvasWidth, canvasHeight);
 
-        // --- SPAWN TENSION BREAKER ---
-        if (this.state.frame > 0 && this.state.frame % 1800 === 0) {
-             this.state.interactables.push({
-                 id: Math.random(),
-                 type: 'BREAKER_BOX',
-                 x: 100 + Math.random() * (canvasWidth - 200),
-                 y: 100 + Math.random() * (canvasHeight - 200),
-                 active: false, charge: 0, life: 0, radius: 350, dead: false
-             });
-        }
+        // --- CHECK IF BOSS IS DEFEATED ---
+        const isBossDefeated = this.state.bossSpawned && !this.state.entities.some(e => e.type === 'BOSS');
 
-        // --- SPAWN SECONDARY OBJECTIVE ---
-        if (this.state.frame > 0 && this.state.frame % 2400 === 0) {
-            let targetX, targetY;
-            for (let i=0; i<5; i++) {
-                targetX = 100 + Math.random() * (canvasWidth - 200);
-                targetY = 100 + Math.random() * (canvasHeight - 200);
-                if (Math.hypot(targetX - this.state.player.x, targetY - this.state.player.y) > 400) break;
+        if (!isBossDefeated) {
+            // --- SPAWN TENSION BREAKER ---
+            if (this.state.frame > 0 && this.state.frame % 1800 === 0) {
+                 this.state.interactables.push({
+                     id: Math.random(),
+                     type: 'BREAKER_BOX',
+                     x: 100 + Math.random() * (canvasWidth - 200),
+                     y: 100 + Math.random() * (canvasHeight - 200),
+                     active: false, charge: 0, life: 0, radius: 350, dead: false
+                 });
             }
-            this.state.interactables.push({
-                 id: Math.random(),
-                 type: 'OBJECTIVE_BACKPACK',
-                 x: targetX,
-                 y: targetY,
-                 active: true, charge: 0, life: 1200, radius: 30, dead: false 
-            });
-            
-            if (this.audioEngine) this.audioEngine.playSFX('levelup', 1); 
-            this.spawnDamageText(this.state.player.x, this.state.player.y - 40, "SUPPLY DROP DETECTED!", '#55ff55', 1.2, 3.0);
+
+            // --- SPAWN SECONDARY OBJECTIVE ---
+            if (this.state.frame > 0 && this.state.frame % 2400 === 0) {
+                let targetX, targetY;
+                for (let i=0; i<5; i++) {
+                    targetX = 100 + Math.random() * (canvasWidth - 200);
+                    targetY = 100 + Math.random() * (canvasHeight - 200);
+                    if (Math.hypot(targetX - this.state.player.x, targetY - this.state.player.y) > 400) break;
+                }
+                this.state.interactables.push({
+                     id: Math.random(),
+                     type: 'OBJECTIVE_BACKPACK',
+                     x: targetX,
+                     y: targetY,
+                     active: true, charge: 0, life: 1200, radius: 30, dead: false 
+                });
+                
+                if (this.audioEngine) this.audioEngine.playSFX('levelup', 1); 
+                this.spawnDamageText(this.state.player.x, this.state.player.y - 40, "SUPPLY DROP DETECTED!", '#55ff55', 1.2, 3.0);
+            }
         }
 
         this.state.sanity -= GAME_CONFIG.SANITY_DRAIN_RATE * this.state.sanityDrainMult;

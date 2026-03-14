@@ -24,6 +24,14 @@ export class Director {
 
     spawnWave(canvasWidth, canvasHeight) {
         const state = this.game.state;
+        
+        // --- NEW: CEASE SPAWNS AFTER BOSS DEFEAT ---
+        // If the boss was spawned but is no longer in the entity list, it's dead.
+        // Halt all new enemy spawns to prevent infinite farming and force the player to leave!
+        if (state.bossSpawned && !state.entities.some(e => e.type === 'BOSS')) {
+            return; 
+        }
+
         state.stress = 1.0 + (state.frame / 3600); 
         
         if (state.frame % Math.max(30, Math.floor(120 / state.stress)) === 0) this.spawnEntity('SCAVENGER', canvasWidth, canvasHeight);
