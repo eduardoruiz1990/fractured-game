@@ -1,4 +1,3 @@
-// src/entities/Predator.js
 import { Enemy } from './Enemy.js';
 
 export class Predator extends Enemy {
@@ -18,7 +17,6 @@ export class Predator extends Enemy {
         let targetY = state.player.y;
         let distToTarget = Math.max(Math.hypot(targetX - this.x, targetY - this.y), 0.001);
 
-        // Predators hunt scavengers unless Boss commands them
         if (!bossExists) { 
             state.entities.forEach(other => {
                 if (other.type === 'SCAVENGER') {
@@ -40,11 +38,14 @@ export class Predator extends Enemy {
         this.vx = (targetX - this.x) / distToTarget * this.speed;
         this.vy = (targetY - this.y) / distToTarget * this.speed;
 
-        // Player collision
         if (distToTarget < 20 && targetX === state.player.x) { 
-            game.takeDamage(this.damage); 
-            this.x -= this.vx * 10; 
-            this.y -= this.vy * 10; 
+            // Dash I-Frames implementation!
+            // The Predator will only deal damage and bounce off the player IF the player is NOT actively dashing.
+            if (!state.player.dash || !state.player.dash.active) {
+                game.takeDamage(this.damage); 
+                this.x -= this.vx * 10; 
+                this.y -= this.vy * 10; 
+            }
         }
 
         this.applyMovement(state);

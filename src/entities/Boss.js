@@ -1,4 +1,3 @@
-// src/entities/Boss.js
 import { Enemy } from './Enemy.js';
 
 export class Boss extends Enemy {
@@ -15,7 +14,6 @@ export class Boss extends Enemy {
         this.phase += 0.02;
         let distToTarget = Math.max(Math.hypot(state.player.x - this.x, state.player.y - this.y), 0.001);
         
-        // Quantum State during player Breakdown
         if (state.sanity <= 0) {
             this.speed = this.baseSpeed * 0.3; 
         } else {
@@ -26,9 +24,12 @@ export class Boss extends Enemy {
         this.vy = (state.player.y - this.y) / distToTarget * this.speed;
 
         if (distToTarget < 40) { 
-            game.takeDamage(this.damage); 
-            this.x -= this.vx * 5; 
-            this.y -= this.vy * 5; 
+            // Dash I-Frames implementation!
+            if (!state.player.dash || !state.player.dash.active) {
+                game.takeDamage(this.damage); 
+                this.x -= this.vx * 5; 
+                this.y -= this.vy * 5; 
+            }
         }
 
         this.applyMovement(state);

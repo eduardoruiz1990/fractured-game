@@ -16,6 +16,9 @@
     <!-- Virtual Joysticks for Mobile -->
     <div id="joy-left" class="joystick-base"><div id="knob-left" class="joystick-knob"></div></div>
     <div id="joy-right" class="joystick-base"><div id="knob-right" class="joystick-knob"></div></div>
+    
+    <!-- Mobile Dash Button -->
+    <div id="btn-dash" class="action-btn">DASH</div>
 
     <!-- MAIN MENU -->
     <div id="main-menu" class="fullscreen-menu">
@@ -52,6 +55,8 @@
             <div>
                 <div>THE GRIP (SANITY)</div>
                 <div class="sanity-bar-container"><div id="sanity-bar"></div></div>
+                <div style="font-size: 10px; margin-top: 6px; color: #88aaff;">DASH RECHARGE</div>
+                <div class="dash-bar-container"><div id="dash-bar"></div></div>
             </div>
             <div id="score">LUCIDITY: 0</div>
         </div>
@@ -71,7 +76,6 @@
     </div>
 </div>
 
-<!-- This is how Vite loads our modular JavaScript -->
 <script type="module" src="/src/main.js"></script>
 
 </body>
