@@ -308,6 +308,33 @@ export class Renderer {
     drawPlayer(state, audioEngine) {
         this.ctx.save();
         
+        // --- DRAW DASH AFTERIMAGES ---
+        if (state.playerAfterimages) {
+            for (let i = state.playerAfterimages.length - 1; i >= 0; i--) {
+                let img = state.playerAfterimages[i];
+                img.life -= 0.1;
+                if (img.life <= 0) {
+                    state.playerAfterimages.splice(i, 1);
+                    continue;
+                }
+                this.ctx.save();
+                this.ctx.translate(img.x, img.y);
+                this.ctx.rotate(img.angle);
+                
+                // Add a slight skew to afterimages for speed effect
+                this.ctx.transform(1, 0, Math.sin(img.life * Math.PI) * 0.5, 1, 0, 0); 
+                
+                this.ctx.globalAlpha = img.life * 0.5;
+                
+                // Ghostly cyan/white silhouette
+                this.ctx.fillStyle = '#aaffff';
+                this.ctx.beginPath();
+                this.ctx.ellipse(0, 0, state.player.radius * 0.8, state.player.radius * 1.2, 0, 0, Math.PI*2);
+                this.ctx.fill();
+                this.ctx.restore();
+            }
+        }
+        
         let sanityRatio = state.sanity / state.player.maxHp;
         let panic = (1 - Math.max(0, sanityRatio)); 
         
@@ -324,7 +351,9 @@ export class Renderer {
             
             // Check if we passed a "step" threshold to play a sound and kick up dust
             if (Math.abs(Math.sin(this.legPhase)) > 0.9 && Math.abs(Math.sin(this.lastFootstepPhase)) <= 0.9) {
-                if (audioEngine) audioEngine.playFootstep();
+                if (audioEngine && (!state.player.dash || !state.player.dash.active)) {
+                    audioEngine.playFootstep();
+                }
                 
                 // Kick up dust particles
                 for (let i = 0; i < 2; i++) {
@@ -345,10 +374,30 @@ export class Renderer {
         let shakeY = (Math.random() - 0.5) * panic * 6;
 
         this.ctx.translate(state.player.x + shakeX, state.player.y + shakeY);
-        this.ctx.rotate(state.player.angle);
+        
+        // --- DYNAMIC DASH ANIMATION ---
+        if (state.player.dash && state.player.dash.active) {
+            // Orient along the movement vector to make the lunge look correct
+            let moveAngle = Math.atan2(state.player.dash.dy, state.player.dash.dx);
+            this.ctx.rotate(moveAngle);
+            
+            // Apply a "lunge" effect: stretch slightly forward, but keep proportion better
+            // We use transform to shear/skew the player forward slightly, making it look like a dynamic leap
+            this.ctx.transform(1, 0, 0.3, 1, 0, 0); // Slight shear
+            this.ctx.scale(1.3, 0.85); // More subtle squash and stretch
+            
+            // Offset the player body slightly forward to emphasize the lunge
+            this.ctx.translate(5, 0);
+            
+            // Rotate back to the look angle for the body parts
+            this.ctx.rotate(state.player.angle - moveAngle);
+        } else {
+            this.ctx.rotate(state.player.angle);
+        }
 
         let shake = panic * 3;
 
+        // Ethereal aura echoing the player's fractured state
         this.ctx.globalAlpha = 0.3;
         this.ctx.fillStyle = '#88aaff';
         this.ctx.beginPath();
@@ -357,25 +406,31 @@ export class Renderer {
 
         this.ctx.globalAlpha = 1.0;
         
+        // Exaggerated Scrambling Legs
         this.ctx.strokeStyle = '#050505';
         this.ctx.lineWidth = 4;
         this.ctx.lineCap = 'round';
         
+        // Left Leg
         this.ctx.beginPath();
         this.ctx.moveTo(0, 5);
         this.ctx.lineTo(-8 + Math.cos(this.legPhase)*6, 8 + Math.sin(this.legPhase)*6);
         this.ctx.stroke();
+        // Right Leg
         this.ctx.beginPath();
         this.ctx.moveTo(0, -5);
         this.ctx.lineTo(-8 + Math.cos(this.legPhase + Math.PI)*6, -8 + Math.sin(this.legPhase + Math.PI)*6);
         this.ctx.stroke();
 
+        // Top-down survivor body (dark trenchcoat/shoulders)
         this.ctx.fillStyle = '#1a1a24';
         this.ctx.beginPath();
+        // Shoulders heave in and out heavily, scaling with panic
         let breathe = Math.sin(state.frame * 0.15) * (1 + panic * 2);
         this.ctx.ellipse(0, 0, state.player.radius * 0.6 + breathe, state.player.radius, 0, 0, Math.PI*2);
         this.ctx.fill();
 
+        // Floating/Fractured Head
         this.ctx.fillStyle = '#e0e0e0';
         this.ctx.beginPath();
         let headJitterX = (Math.random() - 0.5) * panic * 3;
@@ -383,19 +438,22 @@ export class Renderer {
         this.ctx.arc(3 + headJitterX, headJitterY, state.player.radius * 0.45, 0, Math.PI*2);
         this.ctx.fill();
 
+        // Extended hand holding the lantern/flashlight
         this.ctx.fillStyle = '#1a1a24';
         this.ctx.beginPath();
         this.ctx.ellipse(8 + headJitterX*0.5, 10 + headJitterY*0.5, 5, 3, Math.PI/4, 0, Math.PI*2);
         this.ctx.fill();
         
+        // The Lantern light source
         this.ctx.fillStyle = '#fffae6';
         this.ctx.shadowColor = '#fffae6';
-        this.ctx.shadowBlur = 8 + Math.random() * 5 * panic; 
+        this.ctx.shadowBlur = 8 + Math.random() * 5 * panic; // Light flickers with fear
         this.ctx.beginPath();
         this.ctx.arc(12 + headJitterX*0.5, 10 + headJitterY*0.5, 2.5, 0, Math.PI*2);
         this.ctx.fill();
         this.ctx.shadowBlur = 0;
 
+        // Floating mental shards orbiting the player
         this.ctx.fillStyle = '#ffffff';
         for(let i=0; i<3; i++) {
             let pX = Math.cos(state.frame * 0.05 + i*2) * (10 + shake*2);
@@ -426,20 +484,26 @@ export class Renderer {
     }
 
     drawWorldItems(state) {
+        // --- ARENA BOUNDARY & FLOOR RENDERING ---
         this.ctx.save();
+        // The floor pattern only draws INSIDE the actual playable dimensions
         this.ctx.fillStyle = this.ctx.createPattern(this.floorPattern, 'repeat');
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
+        // Draw physical thick walls encapsulating the arena
         this.ctx.strokeStyle = '#020202';
         this.ctx.lineWidth = 25;
         this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
 
+        // Inner Danger Striping (Faded Gold Warning line)
         this.ctx.strokeStyle = 'rgba(197, 160, 89, 0.4)'; 
         this.ctx.lineWidth = 3;
         this.ctx.setLineDash([15, 15]);
         this.ctx.strokeRect(12, 12, this.canvas.width - 24, this.canvas.height - 24);
         this.ctx.restore();
+        // ----------------------------------------
         
+        // Draw Broken Chalk Safe Zones (Underneath everything else)
         if (state.safeZones) {
             state.safeZones.forEach(sz => {
                 this.ctx.save();
@@ -447,12 +511,14 @@ export class Renderer {
                 this.ctx.lineWidth = 3;
                 this.ctx.setLineDash([10, 15]); 
                 
+                // Rotate the chalk circle slowly
                 this.ctx.translate(sz.x, sz.y);
                 this.ctx.rotate(state.frame * 0.01);
                 this.ctx.beginPath();
                 this.ctx.arc(0, 0, sz.radius, 0, Math.PI*2);
                 this.ctx.stroke();
                 
+                // Scholastic Purge acid mist effect
                 if (state.player.synergies && state.player.synergies.includes('scholastic_purge')) {
                     const mistPulse = Math.sin(state.frame * 0.1) * 0.1;
                     this.ctx.fillStyle = `rgba(100, 255, 100, ${0.15 + mistPulse})`;
@@ -462,17 +528,18 @@ export class Renderer {
             });
         }
 
-        // VIBRANT GLOWING TOXIC INK
+        // --- GLOWING TOXIC INK ---
         if (state.inkPuddles) {
             state.inkPuddles.forEach(p => {
                 const lifeRatio = p.life / 300;
+                
                 this.ctx.save();
-                
-                // Intensely bright outer glow
+                // Neon glow effect
                 this.ctx.shadowColor = '#d900ff'; 
-                this.ctx.shadowBlur = 25 * lifeRatio;
-                this.ctx.fillStyle = `rgba(120, 20, 180, ${0.8 * lifeRatio})`; 
+                this.ctx.shadowBlur = 15 * lifeRatio;
+                this.ctx.fillStyle = `rgba(80, 10, 120, ${0.8 * lifeRatio})`; 
                 
+                // Outer Splatter
                 this.ctx.beginPath();
                 for (let i = 0; i < 8; i++) {
                     let angle = (i / 8) * Math.PI * 2;
@@ -485,9 +552,9 @@ export class Renderer {
                 this.ctx.closePath();
                 this.ctx.fill();
 
-                // Blistering hot neon core
+                // Inner Bright Core
                 this.ctx.shadowBlur = 0;
-                this.ctx.fillStyle = `rgba(255, 100, 255, ${0.7 * lifeRatio})`;
+                this.ctx.fillStyle = `rgba(200, 50, 255, ${0.5 * lifeRatio})`;
                 this.ctx.beginPath();
                 for (let i = 0; i < 8; i++) {
                     let angle = (i / 8) * Math.PI * 2;
@@ -503,6 +570,7 @@ export class Renderer {
             });
         }
 
+        // Swirling Ethereal XP (Lucidity)
         state.xpDrops.forEach(xp => {
             this.ctx.save();
             this.ctx.translate(xp.x, xp.y);
@@ -530,6 +598,7 @@ export class Renderer {
             this.ctx.restore();
         });
 
+        // Entities
         state.entities.forEach(ent => {
             let isFlashed = ent.flashTime > 0;
 
@@ -544,24 +613,29 @@ export class Renderer {
             const twitch = state.sanity < 20 ? (Math.random()-0.5)*4 : 0;
             this.ctx.translate(twitch, twitch);
 
+            // --- DETAILED ENTITY SPRITES ---
             if (ent.type === 'SCAVENGER') {
                 this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
                 
+                // Base Body
                 this.ctx.fillStyle = isFlashed ? '#bbbbbb' : '#2a2d2a';
                 this.ctx.beginPath();
                 this.ctx.ellipse(0, 0, 12, 15 + Math.sin(state.frame*0.1)*2, 0, 0, Math.PI*2);
                 this.ctx.fill();
                 
+                // Heavy, tumor-like sack on their back
                 this.ctx.fillStyle = isFlashed ? '#999999' : '#1a1c1a';
                 this.ctx.beginPath();
                 this.ctx.arc(-6, 5, 9, 0, Math.PI*2);
                 this.ctx.fill();
 
+                // Single dim yellow eye
                 this.ctx.fillStyle = '#aaaa00';
                 this.ctx.beginPath();
                 this.ctx.arc(8, -4, 1.5, 0, Math.PI*2);
                 this.ctx.fill();
 
+                // Sweeping appendage
                 this.ctx.strokeStyle = '#111';
                 this.ctx.lineWidth = 2.5;
                 this.ctx.beginPath();
@@ -572,17 +646,19 @@ export class Renderer {
             else if (ent.type === 'PREDATOR') {
                 this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
                 
+                // Shadowy, jagged cloak
                 this.ctx.fillStyle = isFlashed ? '#ddaaaa' : (ent.buffed ? '#3a0a0a' : '#111111');
                 this.ctx.beginPath();
-                this.ctx.moveTo(18, 0); 
+                this.ctx.moveTo(18, 0); // Beak/Head
                 this.ctx.lineTo(5, 12 + Math.sin(state.frame*0.2)*3);
                 this.ctx.lineTo(-15, 10);
-                this.ctx.lineTo(-20, 0); 
+                this.ctx.lineTo(-20, 0); // Tail
                 this.ctx.lineTo(-15, -10);
                 this.ctx.lineTo(5, -12 - Math.cos(state.frame*0.2)*3);
                 this.ctx.closePath();
                 this.ctx.fill();
 
+                // Elongated creeping arms
                 this.ctx.strokeStyle = this.ctx.fillStyle;
                 this.ctx.lineWidth = 2;
                 this.ctx.beginPath();
@@ -592,6 +668,7 @@ export class Renderer {
                 this.ctx.quadraticCurveTo(15, -20, 18, -8);
                 this.ctx.stroke();
 
+                // Piercing Red Eyes (Always drawn on top, never flashed white)
                 this.ctx.fillStyle = ent.buffed ? '#ff0000' : '#cc0000';
                 this.ctx.shadowColor = '#ff0000';
                 this.ctx.shadowBlur = 10;
@@ -599,22 +676,25 @@ export class Renderer {
                 this.ctx.ellipse(10, -4, 3, 1.5, Math.PI/6, 0, Math.PI*2);
                 this.ctx.ellipse(10, 4, 3, 1.5, -Math.PI/6, 0, Math.PI*2);
                 this.ctx.fill();
-                this.ctx.shadowBlur = 0; 
+                this.ctx.shadowBlur = 0; // Reset shadow
             }
             else if (ent.type === 'PARASITE') {
                 this.ctx.rotate(state.frame * 0.2); 
                 
+                // Pulsing fleshy core
                 let pulse = Math.sin(state.frame * 0.3) * 1.5;
                 this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#6b2222';
                 this.ctx.beginPath(); 
                 this.ctx.arc(0, 0, 5 + pulse, 0, Math.PI*2); 
                 this.ctx.fill();
 
+                // Dark center
                 this.ctx.fillStyle = '#050505';
                 this.ctx.beginPath(); 
                 this.ctx.arc(0, 0, 2 + pulse*0.5, 0, Math.PI*2); 
                 this.ctx.fill();
                 
+                // Twitching, multi-jointed legs
                 this.ctx.strokeStyle = isFlashed ? '#ffffff' : ent.color;
                 this.ctx.lineWidth = 1.5;
                 this.ctx.lineCap = 'round';
@@ -631,14 +711,17 @@ export class Renderer {
                 }
             }
             else if (ent.type === 'BOSS') {
+                // THE FLESH MONOLITH OVERHAUL
                 this.ctx.rotate(Math.sin(ent.phase * 0.5) * 0.1); 
                 
                 let pulse = Math.sin(state.frame * 0.1) * 3;
                 
+                // Outer writhing mass (Tendrils/Limbs)
                 this.ctx.fillStyle = isFlashed ? '#ddaaaa' : '#1a0d15';
                 this.ctx.beginPath();
                 for (let i = 0; i < 16; i++) {
                     let angle = (i / 16) * Math.PI * 2;
+                    // Jagged, uneven reach
                     let reach = 35 + Math.sin(ent.phase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
                     if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
                     else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
@@ -646,32 +729,40 @@ export class Renderer {
                 this.ctx.closePath();
                 this.ctx.fill();
 
+                // Inner fleshy core
                 this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#2b1010';
                 this.ctx.beginPath();
                 this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
                 this.ctx.fill();
 
+                // Gaping, jagged maw
                 this.ctx.fillStyle = '#050000';
                 this.ctx.beginPath();
                 for (let i = 0; i < 10; i++) {
                     let angle = (i / 10) * Math.PI * 2;
-                    let innerReach = 10 + Math.random() * 8; 
+                    let innerReach = 10 + Math.random() * 8; // Jagged teeth effect
                     if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
                     else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
                 }
                 this.ctx.closePath();
                 this.ctx.fill();
 
+                // Multiple unblinking, asymmetric red eyes
                 this.ctx.fillStyle = '#ff0000';
                 this.ctx.shadowColor = '#ff0000';
                 this.ctx.shadowBlur = 15;
                 
+                // Eye coordinates (asymmetric)
                 const eyes = [
-                    {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
-                    {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
+                    {x: -12, y: -15, r: 4},
+                    {x: 18, y: -10, r: 3},
+                    {x: 5, y: 22, r: 5},
+                    {x: -20, y: 8, r: 2},
+                    {x: 15, y: 15, r: 2.5}
                 ];
 
                 eyes.forEach(eye => {
+                    // Small jitter for the eyes
                     let jx = Math.cos(state.frame * 0.2 + eye.x) * 1.5;
                     let jy = Math.sin(state.frame * 0.2 + eye.y) * 1.5;
                     
@@ -679,6 +770,7 @@ export class Renderer {
                     this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
                     this.ctx.fill();
                     
+                    // Slit pupil
                     this.ctx.fillStyle = '#000000';
                     this.ctx.shadowBlur = 0;
                     this.ctx.beginPath();
@@ -689,6 +781,7 @@ export class Renderer {
                 });
                 this.ctx.shadowBlur = 0;
 
+                // Orbiting bone/metal debris (replacing the neat rings)
                 this.ctx.strokeStyle = isFlashed ? '#ffffff' : '#555';
                 this.ctx.lineWidth = 3;
                 this.ctx.lineCap = 'round';
@@ -706,6 +799,7 @@ export class Renderer {
                 }
             }
 
+            // Healthbars
             if (ent.hp < ent.maxHp && ent.flashTime <= 0) {
                 const barW = ent.type === 'BOSS' ? 80 : 24;
                 const yOffset = ent.type === 'BOSS' ? 55 : 20;
@@ -719,6 +813,7 @@ export class Renderer {
             this.ctx.globalAlpha = 1.0;
         });
 
+        // Enhanced Particles (Blood/Sparks)
         if (state.particles) {
             state.particles.forEach(p => { 
                 this.ctx.fillStyle = p.color; 
