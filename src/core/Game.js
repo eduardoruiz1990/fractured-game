@@ -11,7 +11,6 @@ export class Game {
         
         this.director = new Director(this);
 
-        // DEV CHEAT: Press '9' to instantly trigger a Level Up
         window.addEventListener('keydown', (e) => {
             if (e.key === '9' && this.state && this.state.sanity > 0) {
                 this.state.xp += 1000;
@@ -30,6 +29,7 @@ export class Game {
             player: { 
                 x: 0, y: 0, 
                 radius: 12, angle: 0, targetAngle: 0, hp: maxSanity, maxHp: maxSanity, speedMultiplier: speedMult,
+                dash: { active: false, timer: 0, cooldown: 0, dx: 0, dy: 0 },
                 weapons: {
                     flashlight: { level: 1, damage: 15, radius: 250 * lightMult, angle: 0.4 },
                     static: { level: 0, damage: 0, radius: 60, active: false, pulsePhase: 0 },
@@ -39,20 +39,27 @@ export class Game {
                     corrosive_battery: { level: 0, damage: 2, duration: 60 },
                     broken_chalk: { level: 0, radius: 70, duration: 180, cooldown: 120, timer: 0 }
                 },
-                synergies: [],
-                curses: [] // Tracks active Intrusive Thoughts
+                synergies: [], curses: []
             },
             inputBuffer: [],
             sanity: maxSanity, sanityDrainMult: 1.0,
             xp: 0, level: 1, lucidity: 0,
             entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [], safeZones: [],
-            frame: 0, stress: 1.0, cameraShake: 0,
-            bossSpawned: false
+            playerAfterimages: [], // VFX for dashing
+            hitStop: 0, // NEW: Freezes game logic for crunchy impacts!
+            frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false
         };
     }
 
     update(inputState, canvasWidth, canvasHeight, currentGameState) {
         if (currentGameState !== 'PLAYING') return;
+
+        // --- HIT STOP LOGIC ---
+        if (this.state.hitStop > 0) {
+            this.state.hitStop--;
+            this.state.sanity -= (GAME_CONFIG.SANITY_DRAIN_RATE * 0.1); 
+            return this.state.sanity <= 0;
+        }
 
         this.director.spawnWave(canvasWidth, canvasHeight);
 
@@ -63,7 +70,7 @@ export class Game {
             this.state.sanity = 0;
             this.state.inputBuffer.push({...inputState});
             if (this.state.inputBuffer.length < GAME_CONFIG.BREAKDOWN_DELAY_FRAMES) {
-                this.processGameLogic({ moveX: 0, moveY: 0, aimAngle: this.state.player.angle, isMoving: false, isAiming: false }, canvasWidth, canvasHeight);
+                this.processGameLogic({ moveX: 0, moveY: 0, aimAngle: this.state.player.angle, isMoving: false, isAiming: false, dash: false }, canvasWidth, canvasHeight);
                 return isBreakdown; 
             }
         } else {
@@ -81,9 +88,53 @@ export class Game {
     }
 
     processGameLogic(moveInput, canvasWidth, canvasHeight) {
-        if (moveInput.isMoving) {
-            this.state.player.x += moveInput.moveX * (GAME_CONFIG.BASE_PLAYER_SPEED * this.state.player.speedMultiplier);
-            this.state.player.y += moveInput.moveY * (GAME_CONFIG.BASE_PLAYER_SPEED * this.state.player.speedMultiplier);
+        // --- DASH MECHANIC ---
+        if (moveInput.dash && this.state.player.dash.cooldown <= 0 && this.state.player.dash.timer <= 0) {
+            this.state.player.dash.active = true;
+            this.state.player.dash.timer = 15; // I-frames duration
+            this.state.player.dash.cooldown = 90; // 1.5s cooldown
+            if (this.audioEngine) this.audioEngine.playSFX('dash');
+            
+            // Calculate dash vector
+            let dx = moveInput.moveX;
+            let dy = moveInput.moveY;
+            if (dx === 0 && dy === 0) {
+                dx = Math.cos(this.state.player.angle);
+                dy = Math.sin(this.state.player.angle);
+            }
+            let dist = Math.max(Math.hypot(dx, dy), 0.001);
+            this.state.player.dash.dx = dx / dist;
+            this.state.player.dash.dy = dy / dist;
+        }
+
+        if (this.state.player.dash.cooldown > 0) {
+            this.state.player.dash.cooldown--;
+        }
+
+        let currentSpeed = GAME_CONFIG.BASE_PLAYER_SPEED * this.state.player.speedMultiplier;
+
+        // Apply Movement
+        if (this.state.player.dash.active) {
+            currentSpeed *= 3.5; // Huge burst of speed
+            this.state.player.dash.timer--;
+            
+            this.state.player.x += this.state.player.dash.dx * currentSpeed;
+            this.state.player.y += this.state.player.dash.dy * currentSpeed;
+
+            // Spawn Ghost Afterimages
+            if (this.state.frame % 2 === 0) {
+                this.state.playerAfterimages.push({
+                    x: this.state.player.x, y: this.state.player.y, 
+                    angle: this.state.player.angle, life: 1.0
+                });
+            }
+
+            if (this.state.player.dash.timer <= 0) {
+                this.state.player.dash.active = false;
+            }
+        } else if (moveInput.isMoving) {
+            this.state.player.x += moveInput.moveX * currentSpeed;
+            this.state.player.y += moveInput.moveY * currentSpeed;
         }
 
         this.state.player.x = Math.max(0, Math.min(canvasWidth, this.state.player.x));
@@ -127,8 +178,12 @@ export class Game {
     }
 
     takeDamage(amount) {
+        if (this.state.player.dash.active) return; // I-FRAMES! Totally invincible while dashing.
+
         this.state.sanity -= amount;
-        this.state.cameraShake = 10;
+        this.state.cameraShake = 15; // Bigger shake
+        this.state.hitStop = 8; // Freeze the game for 8 frames to emphasize taking damage
+        
         if (this.audioEngine) this.audioEngine.playSFX('damage');
         try { if (navigator.vibrate) navigator.vibrate(100); } catch(e){}
         
