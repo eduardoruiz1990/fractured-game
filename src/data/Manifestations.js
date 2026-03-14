@@ -83,3 +83,36 @@ export const INTRUSIVE_THOUGHTS = {
         desc: 'Janitors drop more XP, but Hall Monitors hunt you at 2x speed.'
     }
 };
+
+// --- EPIC 2: PERSONAL TOKENS (EQUIPMENT) ---
+
+export const TOKEN_RARITIES = {
+    COMMON: { color: '#aaaaaa', costToUpgrade: 100, multiplier: 1.0 },
+    RARE: { color: '#5555ff', costToUpgrade: 300, multiplier: 1.5 },
+    EPIC: { color: '#aa55ff', costToUpgrade: 1000, multiplier: 2.0 },
+    ANOMALOUS: { color: '#ff5555', costToUpgrade: null, multiplier: 3.0 } // Cannot be upgraded, only found
+};
+
+export const TOKEN_SETS = {
+    insomniac: { name: "The Insomniac", 2: "Move Speed +10%", 4: "Permanent outer safe zone that burns enemies." },
+    institutionalized: { name: "Institutionalized", 2: "Max Sanity +50", 4: "Damage triggers AoE shockwave, but you cannot dash." }
+};
+
+export const TOKENS = {
+    head_paranoia: { 
+        id: 'head_paranoia', type: 'head', set: 'insomniac', 
+        name: 'Paranoid Gaze', desc: 'Flashlight range +50%, angle -20%.' 
+    },
+    body_denial: { 
+        id: 'body_denial', type: 'body', set: 'institutionalized', 
+        name: 'Straitjacket of Denial', desc: 'Ignore the first instance of damage per floor.' 
+    },
+    hands_twitch: { 
+        id: 'hands_twitch', type: 'hands', set: 'insomniac', 
+        name: 'Twitching Fingers', desc: 'Weapon cooldowns decrease as Sanity drops.' 
+    },
+    legs_panic: { 
+        id: 'legs_panic', type: 'legs', set: 'institutionalized', 
+        name: 'Panic Sprint', desc: 'Dash cooldown halved, dash distance reduced.' 
+    }
+};

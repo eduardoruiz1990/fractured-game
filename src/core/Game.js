@@ -41,6 +41,10 @@ export class Game {
         let startSynergies = [];
         let startCurses = [];
         let startLevel = 1;
+        
+        // FUTURE-PROOFING: Groundwork for Epic 2 Equipment & Inventory System
+        let startTokens = { head: null, body: null, hands: null, legs: null };
+        let startRunInventory = [];
 
         if (carriedState) {
             startFloor = carriedState.floor;
@@ -50,6 +54,15 @@ export class Game {
             startSynergies = carriedState.synergies;
             startCurses = carriedState.curses;
             startLevel = carriedState.level;
+            
+            // Carry over items found or equipped during the suspended run
+            if (carriedState.tokens) startTokens = carriedState.tokens;
+            if (carriedState.runInventory) startRunInventory = carriedState.runInventory;
+        } else {
+            // Load equipped tokens from Meta-Progression (SaveManager) on a fresh run
+            if (meta.equippedTokens) {
+                startTokens = JSON.parse(JSON.stringify(meta.equippedTokens));
+            }
         }
 
         this.state = {
@@ -62,13 +75,17 @@ export class Game {
                 radius: 12, angle: 0, targetAngle: 0, hp: maxSanity, maxHp: maxSanity, speedMultiplier: speedMult,
                 dash: { active: false, timer: 0, cooldown: 0, dx: 0, dy: 0 },
                 weapons: startWeapons,
-                synergies: startSynergies, curses: startCurses
+                synergies: startSynergies, 
+                curses: startCurses,
+                tokens: startTokens // Active equipped items
             },
+            runInventory: startRunInventory, // Items collected during this descent
             inputBuffer: [],
             sanity: startSanity, sanityDrainMult: 1.0 + (startFloor - 1) * 0.2, 
             xp: 0, level: startLevel, lucidity: startLucidity,
             entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [], safeZones: [],
             interactables: [], 
+            tokenDrops: [], // Physical items on the ground
             playerAfterimages: [], 
             hitStop: 0, 
             frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false,
@@ -85,8 +102,36 @@ export class Game {
             weapons: this.state.player.weapons,
             synergies: this.state.player.synergies,
             curses: this.state.player.curses,
-            level: this.state.level
+            level: this.state.level,
+            tokens: this.state.player.tokens,         // Save active equipment
+            runInventory: this.state.runInventory     // Save found items in backpack
         };
+    }
+
+    // --- FUTURE-PROOFING: Placeholder for spawning rarity-based items ---
+    spawnTokenDrop(x, y) {
+        // Defines the mathematical drop curve for our rarity system
+        const rarities = [
+            { type: 'COMMON', chance: 0.60, color: '#aaaaaa' },
+            { type: 'RARE', chance: 0.30, color: '#5555ff' },
+            { type: 'EPIC', chance: 0.09, color: '#aa55ff' },
+            { type: 'ANOMALOUS', chance: 0.01, color: '#ff5555' } // Super rare, massive currency sink to upgrade
+        ];
+        
+        let roll = Math.random();
+        let selectedRarity = rarities[0];
+        let accum = 0;
+        
+        for (let r of rarities) {
+            accum += r.chance;
+            if (roll <= accum) {
+                selectedRarity = r;
+                break;
+            }
+        }
+
+        console.log(`[SYSTEM] A ${selectedRarity.type} Personal Token dropped!`);
+        // TODO: In future updates, tell the Director to physically spawn this item on the floor
     }
 
     update(inputState, canvasWidth, canvasHeight, currentGameState) {

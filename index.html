@@ -25,8 +25,47 @@
         <div class="title-glitch">FRACTURED</div>
         <button class="menu-btn" id="btn-resume-run" style="display:none; border-color: #55ff55; color: #55ff55;">Resume Suspended Run</button>
         <button class="menu-btn" id="btn-start">Start Descent</button>
+        <button class="menu-btn" id="btn-loadout">Therapy Regimen</button>
         <button class="menu-btn" id="btn-tree">Synapse Tree</button>
         <div style="margin-top: 30px; color: #888;">Banked Lucidity: <span id="menu-banked-lucidity">0</span></div>
+    </div>
+
+    <!-- LOADOUT MENU (THERAPY REGIMEN) -->
+    <div id="loadout-menu" class="fullscreen-menu" style="display:none;">
+        <h2 style="color: var(--ui-gold); font-size: 2rem;">THERAPY REGIMEN (LOADOUT)</h2>
+        
+        <div class="loadout-container">
+            <!-- Left: Equipped Slots -->
+            <div class="equipped-panel">
+                <div style="font-size: 0.8rem; color: #aaa; margin-bottom: 10px;">EQUIPPED TOKENS</div>
+                <div class="token-slot" id="slot-head" data-type="head">STATE OF MIND<br>(Head)</div>
+                <div class="token-slot" id="slot-body" data-type="body">COPING MECHANISM<br>(Body)</div>
+                <div class="token-slot" id="slot-hands" data-type="hands">NERVOUS HABIT<br>(Hands)</div>
+                <div class="token-slot" id="slot-legs" data-type="legs">FLIGHT RESPONSE<br>(Legs)</div>
+            </div>
+            
+            <!-- Right: Inventory Grid -->
+            <div class="inventory-panel-container">
+                <div style="font-size: 0.8rem; color: #aaa; margin-bottom: 10px;">INVENTORY</div>
+                <div class="inventory-panel" id="inventory-grid">
+                    <!-- Items injected via JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom: Details Panel -->
+        <div class="item-details-panel" id="item-details">
+            <h3 id="detail-name" style="margin:0 0 5px 0;">Select a Token</h3>
+            <p id="detail-desc" style="color:#aaa; font-size: 0.9rem; margin: 5px 0;">Configure your fractured mind before descending.</p>
+            <p id="detail-set" style="color:var(--ui-gold); font-size: 0.8rem; margin: 5px 0;"></p>
+            <div class="detail-actions">
+                <button class="menu-btn" id="btn-equip-item" style="font-size: 1rem; width: auto; display: none; padding: 10px 20px;">Equip</button>
+                <button class="menu-btn" id="btn-unequip-item" style="font-size: 1rem; width: auto; display: none; padding: 10px 20px; border-color: var(--ui-red); color: var(--ui-red);">Unequip</button>
+                <button class="menu-btn" id="btn-upgrade-item" style="font-size: 1rem; width: auto; display: none; padding: 10px 20px;">Upgrade</button>
+            </div>
+        </div>
+
+        <button class="menu-btn" id="btn-close-loadout" style="margin-top: 20px; width: auto;">Back to Reality</button>
     </div>
 
     <!-- SYNAPSE TREE -->
@@ -60,7 +99,6 @@
                 <div class="dash-bar-container"><div id="dash-bar"></div></div>
             </div>
             
-            <!-- NEW CONVERGENCE BAR -->
             <div class="convergence-section">
                 <div id="convergence-text">CONVERGENCE: 0%</div>
                 <div class="convergence-bar-container"><div id="convergence-bar"></div></div>
