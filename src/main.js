@@ -20,173 +20,180 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-const saveManager = new SaveManager();
-const inputManager = new InputManager(canvas);
-const renderer = new Renderer(canvas, ctx);
-const audioEngine = new AudioEngine();
-const game = new Game();
-const levelUpUI = new LevelUpUI(audioEngine);
-
-game.audioEngine = audioEngine;
-
+// 1. Declare Global Singletons (Bypasses Vite HMR TDZ quirks)
+let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager;
 let gameState = 'MENU'; // MENU, PLAYING, LEVEL_UP, DEAD, PAUSED, EXIT_REACHED
 let suspendedRunState = null; // Temp holder for descents
 
-// 1. Setup UI / Main Menu Callbacks
-const uiManager = new UIManager(saveManager, () => {
-    // Start fresh Descent
-    game.init(saveManager);
-    game.state.player.x = canvas.width / 2;
-    game.state.player.y = canvas.height / 2;
-    
-    audioEngine.init();
-    gameState = 'PLAYING';
-    document.getElementById('btn-resume-run').style.display = 'none'; // Clear suspended visual
-});
+// 2. Master Initialization Function
+function initEngine() {
+    saveManager = new SaveManager();
+    inputManager = new InputManager(canvas);
+    renderer = new Renderer(canvas, ctx);
+    audioEngine = new AudioEngine();
+    game = new Game();
+    levelUpUI = new LevelUpUI(audioEngine);
 
-// Hook for resuming a suspended run
-document.getElementById('btn-resume-run').addEventListener('click', () => {
-    const savedRun = localStorage.getItem('fractured_suspended_run');
-    if (savedRun) {
-        const carriedData = JSON.parse(savedRun);
-        game.init(saveManager, carriedData);
+    game.audioEngine = audioEngine;
+
+    // Setup UI / Main Menu Callbacks
+    uiManager = new UIManager(saveManager, () => {
+        // Start fresh Descent
+        game.init(saveManager);
         game.state.player.x = canvas.width / 2;
         game.state.player.y = canvas.height / 2;
         
         audioEngine.init();
-        document.getElementById('main-menu').style.display = 'none';
-        document.getElementById('ui-layer').style.display = 'flex';
-        document.getElementById('btn-resume-run').style.display = 'none';
-        localStorage.removeItem('fractured_suspended_run'); // Clear it so they can't save scum
         gameState = 'PLAYING';
-    }
-});
+        document.getElementById('btn-resume-run').style.display = 'none'; // Clear suspended visual
+    });
 
-// Check if a suspended run exists on boot
-if (localStorage.getItem('fractured_suspended_run')) {
-    document.getElementById('btn-resume-run').style.display = 'block';
-}
+    // Hook for resuming a suspended run
+    document.getElementById('btn-resume-run').addEventListener('click', () => {
+        const savedRun = localStorage.getItem('fractured_suspended_run');
+        if (savedRun) {
+            const carriedData = JSON.parse(savedRun);
+            game.init(saveManager, carriedData);
+            game.state.player.x = canvas.width / 2;
+            game.state.player.y = canvas.height / 2;
+            
+            audioEngine.init();
+            document.getElementById('main-menu').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'flex';
+            document.getElementById('btn-resume-run').style.display = 'none';
+            localStorage.removeItem('fractured_suspended_run'); // Clear it so they can't save scum
+            gameState = 'PLAYING';
+        }
+    });
 
-document.getElementById('btn-restart').addEventListener('click', () => {
-    document.getElementById('death-screen').style.display = 'none';
-    document.getElementById('main-menu').style.display = 'flex';
-    uiManager.updateMenuUI();
-    gameState = 'MENU';
-});
-
-// 2. Pause Menu Logic
-const pauseMenu = document.getElementById('pause-menu');
-const pauseTitle = document.getElementById('pause-title');
-const btnDescend = document.getElementById('btn-descend');
-
-function togglePause() {
-    if (gameState === 'PLAYING') {
-        gameState = 'PAUSED';
-        pauseTitle.innerText = "SUSPENDED";
-        pauseTitle.style.color = "white";
-        pauseTitle.style.textShadow = "4px 0 var(--ui-red), -4px 0 var(--ui-gold)";
-        document.getElementById('pause-desc').innerText = "The nightmare pauses, but it does not end.";
-        btnDescend.style.display = 'none';
-        pauseMenu.style.display = 'flex';
-        inputManager.hideJoysticks();
-    } else if (gameState === 'PAUSED') {
-        gameState = 'PLAYING';
-        pauseMenu.style.display = 'none';
-    }
-}
-
-// Bind pause toggle
-document.getElementById('btn-pause').addEventListener('click', togglePause);
-window.addEventListener('keydown', (e) => { if (e.key === 'Escape') togglePause(); });
-
-document.getElementById('btn-unpause').addEventListener('click', togglePause);
-
-document.getElementById('btn-awaken').addEventListener('click', () => {
-    // 1. Bank Lucidity 
-    saveManager.addLucidity(game.state.lucidity);
-    
-    // 2. Save suspended run logic (only if pausing midway, not if finishing a floor)
-    if (gameState === 'PAUSED') {
-        const stateToSave = game.getCarriedState();
-        localStorage.setItem('fractured_suspended_run', JSON.stringify(stateToSave));
+    // Check if a suspended run exists on boot
+    if (localStorage.getItem('fractured_suspended_run')) {
         document.getElementById('btn-resume-run').style.display = 'block';
-    } else if (gameState === 'EXIT_REACHED') {
-        // Just cleanly end the run, do not suspend it
     }
 
-    // 3. UI Cleanup
-    pauseMenu.style.display = 'none';
-    document.getElementById('ui-layer').style.display = 'none';
-    document.getElementById('main-menu').style.display = 'flex';
-    uiManager.updateMenuUI();
-    audioEngine.stop();
-    gameState = 'MENU';
-});
+    document.getElementById('btn-restart').addEventListener('click', () => {
+        document.getElementById('death-screen').style.display = 'none';
+        document.getElementById('main-menu').style.display = 'flex';
+        uiManager.updateMenuUI();
+        gameState = 'MENU';
+    });
 
-document.getElementById('btn-descend').addEventListener('click', () => {
-    // Player chose to go to Floor N+1
-    const carryData = game.getCarriedState();
-    carryData.floor += 1; // Bump floor!
-    
-    game.init(saveManager, carryData);
-    game.state.player.x = canvas.width / 2;
-    game.state.player.y = canvas.height / 2;
-    
-    pauseMenu.style.display = 'none';
-    gameState = 'PLAYING';
-});
+    // Pause Menu Logic
+    const pauseMenu = document.getElementById('pause-menu');
+    const pauseTitle = document.getElementById('pause-title');
+    const btnDescend = document.getElementById('btn-descend');
 
+    function togglePause() {
+        if (gameState === 'PLAYING') {
+            gameState = 'PAUSED';
+            pauseTitle.innerText = "SUSPENDED";
+            pauseTitle.style.color = "white";
+            pauseTitle.style.textShadow = "4px 0 var(--ui-red), -4px 0 var(--ui-gold)";
+            document.getElementById('pause-desc').innerText = "The nightmare pauses, but it does not end.";
+            btnDescend.style.display = 'none';
+            pauseMenu.style.display = 'flex';
+            inputManager.hideJoysticks();
+        } else if (gameState === 'PAUSED') {
+            gameState = 'PLAYING';
+            pauseMenu.style.display = 'none';
+        }
+    }
 
-// 3. Game State Callbacks
-game.onDeath = () => {
-    gameState = 'DEAD';
-    document.getElementById('ui-layer').style.display = 'none';
-    document.getElementById('death-screen').style.display = 'flex';
-    document.getElementById('glitch-overlay').style.opacity = '0';
-    
-    // Death Penalty: Lose 50% of unbanked Lucidity if you die deep in the descent!
-    const recovered = Math.floor(game.state.lucidity * 0.5);
-    saveManager.addLucidity(recovered);
-    audioEngine.stop();
+    // Bind pause toggle
+    document.getElementById('btn-pause').addEventListener('click', togglePause);
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') togglePause(); });
 
-    document.getElementById('final-stats').innerHTML = `
-        Died on <strong>Floor ${game.state.floor}</strong>.<br><br>
-        Earned <strong>${game.state.lucidity}</strong> Lucidity.<br>
-        Lost to the Void: <strong>${game.state.lucidity - recovered}</strong>.<br>
-        Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
-    `;
-    inputManager.hideJoysticks();
-};
+    document.getElementById('btn-unpause').addEventListener('click', togglePause);
 
-game.onLevelUp = () => {
-    if (gameState === 'DEAD') return;
-    gameState = 'LEVEL_UP';
-    
-    inputManager.keys = { w: false, a: false, s: false, d: false, space: false }; 
-    inputManager.updateKeyboardInput();
-    audioEngine.playSFX('levelup');
+    document.getElementById('btn-awaken').addEventListener('click', () => {
+        // Bank Lucidity 
+        saveManager.addLucidity(game.state.lucidity);
+        
+        // Save suspended run logic (only if pausing midway, not if finishing a floor)
+        if (gameState === 'PAUSED') {
+            const stateToSave = game.getCarriedState();
+            localStorage.setItem('fractured_suspended_run', JSON.stringify(stateToSave));
+            document.getElementById('btn-resume-run').style.display = 'block';
+        } else if (gameState === 'EXIT_REACHED') {
+            // Just cleanly end the run, do not suspend it
+        }
 
-    levelUpUI.show(game, () => {
+        // UI Cleanup
+        pauseMenu.style.display = 'none';
+        document.getElementById('ui-layer').style.display = 'none';
+        document.getElementById('main-menu').style.display = 'flex';
+        uiManager.updateMenuUI();
+        audioEngine.stop();
+        gameState = 'MENU';
+    });
+
+    document.getElementById('btn-descend').addEventListener('click', () => {
+        // Player chose to go to Floor N+1
+        const carryData = game.getCarriedState();
+        carryData.floor += 1; // Bump floor!
+        
+        game.init(saveManager, carryData);
+        game.state.player.x = canvas.width / 2;
+        game.state.player.y = canvas.height / 2;
+        
+        pauseMenu.style.display = 'none';
         gameState = 'PLAYING';
     });
-};
 
-game.onFloorComplete = () => {
-    gameState = 'EXIT_REACHED';
-    
-    pauseTitle.innerText = "THE DESCENT CALLS";
-    pauseTitle.style.color = "var(--ui-red)";
-    pauseTitle.style.textShadow = "4px 0 white, -4px 0 var(--ui-gold)";
-    document.getElementById('pause-desc').innerText = `You survived Floor ${game.state.floor}. Awaken with your Lucidity, or risk descending deeper into the nightmare?`;
-    
-    document.getElementById('btn-unpause').style.display = 'none'; // Cannot just 'resume' an ended floor
-    btnDescend.style.display = 'block'; // Show the Descend button
-    pauseMenu.style.display = 'flex';
-    
-    inputManager.hideJoysticks();
-};
+    // Game State Callbacks
+    game.onDeath = () => {
+        gameState = 'DEAD';
+        document.getElementById('ui-layer').style.display = 'none';
+        document.getElementById('death-screen').style.display = 'flex';
+        document.getElementById('glitch-overlay').style.opacity = '0';
+        
+        // Death Penalty: Lose 50% of unbanked Lucidity if you die deep in the descent!
+        const recovered = Math.floor(game.state.lucidity * 0.5);
+        saveManager.addLucidity(recovered);
+        audioEngine.stop();
 
-// 4. The Main Loop
+        document.getElementById('final-stats').innerHTML = `
+            Died on <strong>Floor ${game.state.floor}</strong>.<br><br>
+            Earned <strong>${game.state.lucidity}</strong> Lucidity.<br>
+            Lost to the Void: <strong>${game.state.lucidity - recovered}</strong>.<br>
+            Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
+        `;
+        inputManager.hideJoysticks();
+    };
+
+    game.onLevelUp = () => {
+        if (gameState === 'DEAD') return;
+        gameState = 'LEVEL_UP';
+        
+        inputManager.keys = { w: false, a: false, s: false, d: false, space: false }; 
+        inputManager.updateKeyboardInput();
+        audioEngine.playSFX('levelup');
+
+        levelUpUI.show(game, () => {
+            gameState = 'PLAYING';
+        });
+    };
+
+    game.onFloorComplete = () => {
+        gameState = 'EXIT_REACHED';
+        
+        pauseTitle.innerText = "THE DESCENT CALLS";
+        pauseTitle.style.color = "var(--ui-red)";
+        pauseTitle.style.textShadow = "4px 0 white, -4px 0 var(--ui-gold)";
+        document.getElementById('pause-desc').innerText = `You survived Floor ${game.state.floor}. Awaken with your Lucidity, or risk descending deeper into the nightmare?`;
+        
+        document.getElementById('btn-unpause').style.display = 'none'; // Cannot just 'resume' an ended floor
+        btnDescend.style.display = 'block'; // Show the Descend button
+        pauseMenu.style.display = 'flex';
+        
+        inputManager.hideJoysticks();
+    };
+
+    // Kick off the loop
+    requestAnimationFrame(gameLoop);
+}
+
+// 3. The Main Loop
 function gameLoop(time) {
     try {
         if (gameState === 'MENU') {
@@ -215,8 +222,8 @@ function gameLoop(time) {
                 // Update Convergence Bar
                 const conBar = document.getElementById('convergence-bar');
                 const conText = document.getElementById('convergence-text');
-                if (conBar && game.state.convergenceMax) {
-                    let conRatio = Math.min(1, game.state.convergence / game.state.convergenceMax);
+                if (conBar && game.state.maxConvergence) {
+                    let conRatio = Math.min(1, game.state.convergence / game.state.maxConvergence);
                     conBar.style.width = (conRatio * 100) + '%';
                     conText.innerText = conRatio >= 1 ? "ANOMALY DETECTED" : `CONVERGENCE: ${Math.floor(conRatio * 100)}%`;
                     
@@ -243,5 +250,6 @@ function gameLoop(time) {
     requestAnimationFrame(gameLoop);
 }
 
-requestAnimationFrame(gameLoop);
+// 4. Boot Engine
+initEngine();
 console.log("FRACTURED Engine Online.");
