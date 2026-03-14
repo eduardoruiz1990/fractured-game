@@ -5,20 +5,21 @@ export class InputManager {
     constructor(canvas) {
         this.canvas = canvas;
         
-        // State
-        this.state = { moveX: 0, moveY: 0, aimAngle: 0, isMoving: false, isAiming: true };
+        // Added 'dash' intent to state
+        this.state = { moveX: 0, moveY: 0, aimAngle: 0, isMoving: false, isAiming: true, dash: false };
         
-        // Trackers
         this.isTouchDevice = false;
-        this.keys = { w: false, a: false, s: false, d: false };
+        this.dashBtnShown = false;
+        // Track spacebar for dash
+        this.keys = { w: false, a: false, s: false, d: false, space: false };
         this.leftTouch = { id: null, ox: 0, oy: 0, cx: 0, cy: 0 };
         this.rightTouch = { id: null, ox: 0, oy: 0, cx: 0, cy: 0 };
 
-        // DOM Elements for Mobile Joysticks
         this.joyLeft = document.getElementById('joy-left');
         this.knobLeft = document.getElementById('knob-left');
         this.joyRight = document.getElementById('joy-right');
         this.knobRight = document.getElementById('knob-right');
+        this.btnDash = document.getElementById('btn-dash');
 
         this.bindEvents();
     }
@@ -28,11 +29,13 @@ export class InputManager {
         window.addEventListener('keydown', (e) => {
             const key = e.key.toLowerCase();
             if (['w', 'a', 's', 'd'].includes(key)) { this.keys[key] = true; this.updateKeyboardInput(); }
+            if (e.code === 'Space') { this.keys.space = true; this.updateKeyboardInput(); }
         });
         
         window.addEventListener('keyup', (e) => {
             const key = e.key.toLowerCase();
             if (['w', 'a', 's', 'd'].includes(key)) { this.keys[key] = false; this.updateKeyboardInput(); }
+            if (e.code === 'Space') { this.keys.space = false; this.updateKeyboardInput(); }
         });
 
         // Mouse Aiming
@@ -49,6 +52,19 @@ export class InputManager {
         this.canvas.addEventListener('touchmove', (e) => this.handleTouch(e), { passive: false });
         this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e), { passive: false });
         this.canvas.addEventListener('touchcancel', (e) => this.handleTouchEnd(e), { passive: false });
+        
+        // Dedicated Mobile Dash Button
+        if (this.btnDash) {
+            this.btnDash.addEventListener('touchstart', (e) => {
+                e.preventDefault(); // Stop canvas from grabbing it
+                this.state.dash = true;
+            }, { passive: false });
+            
+            this.btnDash.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                this.state.dash = false;
+            }, { passive: false });
+        }
     }
 
     updateKeyboardInput() {
@@ -65,17 +81,26 @@ export class InputManager {
         } else {
             this.state.moveX = 0; this.state.moveY = 0; this.state.isMoving = false;
         }
+        
+        // Map spacebar to dash
+        this.state.dash = this.keys.space;
     }
 
     handleTouch(e) {
+        if (e.target.id === 'btn-dash') return; // Ignore dash button touches
+        
         e.preventDefault(); 
         this.isTouchDevice = true;
+        if (!this.dashBtnShown && this.btnDash) {
+            this.btnDash.style.display = 'flex'; // Reveal dash button on first touch
+            this.dashBtnShown = true;
+        }
+
         const halfWidth = window.innerWidth / 2;
 
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
             if (t.clientX < halfWidth) {
-                // Left Joy
                 if (this.leftTouch.id === null) {
                     this.leftTouch.id = t.identifier; 
                     this.leftTouch.ox = t.clientX; this.leftTouch.oy = t.clientY;
@@ -87,7 +112,6 @@ export class InputManager {
                     this.leftTouch.cx = t.clientX; this.leftTouch.cy = t.clientY; 
                 }
             } else {
-                // Right Joy
                 if (this.rightTouch.id === null) {
                     this.rightTouch.id = t.identifier; 
                     this.rightTouch.ox = t.clientX; this.rightTouch.oy = t.clientY;
@@ -104,6 +128,8 @@ export class InputManager {
     }
 
     handleTouchEnd(e) {
+        if (e.target.id === 'btn-dash') return;
+
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
             if (t.identifier === this.leftTouch.id) {
@@ -145,12 +171,8 @@ export class InputManager {
         }
     }
 
-    // Called by the game loop to resolve mouse aiming
     updateAimAngle(playerX, playerY) {
         if (!this.isTouchDevice && this.mouseX !== undefined && this.mouseY !== undefined) {
-            // Because the camera is zoomed and translated to strictly center the player, 
-            // the logical center of the screen is ALWAYS the player visually.
-            // We calculate angle relative strictly to the middle of the monitor.
             const screenCenterX = this.canvas.width / 2;
             const screenCenterY = this.canvas.height / 2;
             this.state.aimAngle = Math.atan2(this.mouseY - screenCenterY, this.mouseX - screenCenterX);
@@ -160,5 +182,6 @@ export class InputManager {
     hideJoysticks() {
         this.joyLeft.style.display = 'none';
         this.joyRight.style.display = 'none';
+        if (this.btnDash) this.btnDash.style.display = 'none';
     }
 }
