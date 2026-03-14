@@ -30,12 +30,11 @@ export class Director {
         if (state.frame % Math.max(90, Math.floor(300 / state.stress)) === 0) this.spawnEntity('PREDATOR', canvasWidth, canvasHeight);
         if (state.frame > 1800 && state.frame % 600 === 0) this.spawnEntity('PARASITE', canvasWidth, canvasHeight); 
 
-        if (state.level >= 4 && !state.bossSpawned) {
+        // --- CONVERGENCE BOSS SPAWN ---
+        if (state.convergence >= state.maxConvergence && !state.bossSpawned) {
             this.spawnEntity('BOSS', canvasWidth, canvasHeight);
             state.bossSpawned = true;
-            state.cameraShake = 30; 
-            try { if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]); } catch(e){}
-            if (this.game.audioEngine) this.game.audioEngine.playSFX('levelup'); 
+            // The Boss Announcement visual handled in Renderer now
         }
     }
 
@@ -54,7 +53,6 @@ export class Director {
         if (type === 'SCAVENGER') ent = this.pools.scavenger.get().init(Math.random(), x, y, state.stress);
         else if (type === 'PREDATOR') {
             ent = this.pools.predator.get().init(Math.random(), x, y, state.stress);
-            // CURSE EFFECT: Compulsive Cleaner makes predators horrifyingly fast
             if (state.player.curses && state.player.curses.includes('compulsive_cleaner')) {
                 ent.speed *= 2.0;
                 ent.baseSpeed *= 2.0;

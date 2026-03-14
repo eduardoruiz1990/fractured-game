@@ -23,6 +23,7 @@
     <!-- MAIN MENU -->
     <div id="main-menu" class="fullscreen-menu">
         <div class="title-glitch">FRACTURED</div>
+        <button class="menu-btn" id="btn-resume-run" style="display:none; border-color: #55ff55; color: #55ff55;">Resume Suspended Run</button>
         <button class="menu-btn" id="btn-start">Start Descent</button>
         <button class="menu-btn" id="btn-tree">Synapse Tree</button>
         <div style="margin-top: 30px; color: #888;">Banked Lucidity: <span id="menu-banked-lucidity">0</span></div>
@@ -52,13 +53,23 @@
     <!-- HUD -->
     <div id="ui-layer">
         <div class="hud-top">
-            <div>
+            <div class="sanity-section">
                 <div>THE GRIP (SANITY)</div>
                 <div class="sanity-bar-container"><div id="sanity-bar"></div></div>
                 <div style="font-size: 10px; margin-top: 6px; color: #88aaff;">DASH RECHARGE</div>
                 <div class="dash-bar-container"><div id="dash-bar"></div></div>
             </div>
-            <div id="score">LUCIDITY: 0</div>
+            
+            <!-- NEW CONVERGENCE BAR -->
+            <div class="convergence-section">
+                <div id="convergence-text">CONVERGENCE: 0%</div>
+                <div class="convergence-bar-container"><div id="convergence-bar"></div></div>
+            </div>
+
+            <div class="score-section">
+                <div id="score">LUCIDITY: 0<br>FLOOR: 1</div>
+                <button id="btn-pause" class="icon-btn" title="Pause Game (ESC)">⏸ PAUSE</button>
+            </div>
         </div>
     </div>
 
@@ -68,9 +79,20 @@
         <div class="cards-container" id="cards-container"></div>
     </div>
 
+    <!-- PAUSE & EXIT MENU -->
+    <div id="pause-menu" class="fullscreen-menu">
+        <div class="title-glitch" id="pause-title" style="font-size: 3rem;">SUSPENDED</div>
+        <p id="pause-desc" style="color:#aaa; text-align:center; max-width:400px; margin-bottom: 30px; font-size: 1.2rem;">
+            The nightmare pauses, but it does not end.
+        </p>
+        <button class="menu-btn" id="btn-unpause">Resume</button>
+        <button class="menu-btn" id="btn-descend" style="display:none; color: var(--ui-red); border-color: var(--ui-red); box-shadow: 0 0 15px rgba(139,0,0,0.5);">Descend Deeper</button>
+        <button class="menu-btn" id="btn-awaken" style="border-color: #55ff55; color: #55ff55;">Awaken (Save & Quit)</button>
+    </div>
+
     <!-- DEATH SCREEN -->
     <div id="death-screen" class="fullscreen-menu">
-        <div class="title-glitch" style="font-size: 2.5rem;">Your mind is still broken...</div>
+        <div class="title-glitch" style="font-size: 2.5rem;">Your mind is broken...</div>
         <div id="final-stats" style="margin-top: 20px; color: #888; font-size: 1.2rem; text-align: center;"></div>
         <button class="menu-btn" id="btn-restart">RECONSTRUCT</button>
     </div>

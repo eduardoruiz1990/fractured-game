@@ -187,6 +187,15 @@ export class Renderer {
                     this.lightCtx.beginPath();
                     this.lightCtx.arc(obj.x, obj.y, 120, 0, Math.PI * 2);
                     this.lightCtx.fill();
+                } else if (obj.type === 'EXIT_ELEVATOR') {
+                    // Huge glowing pillar for the exit
+                    const exitHole = this.lightCtx.createRadialGradient(obj.x, obj.y, 10, obj.x, obj.y, 150);
+                    exitHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
+                    exitHole.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                    this.lightCtx.fillStyle = exitHole;
+                    this.lightCtx.beginPath();
+                    this.lightCtx.arc(obj.x, obj.y, 150, 0, Math.PI * 2);
+                    this.lightCtx.fill();
                 }
             });
         }
@@ -243,6 +252,15 @@ export class Renderer {
                     this.ctx.fillStyle = boxGlare;
                     this.ctx.beginPath();
                     this.ctx.arc(obj.x, obj.y, pRadius, 0, Math.PI * 2);
+                    this.ctx.fill();
+                } else if (obj.type === 'EXIT_ELEVATOR') {
+                    let pulse = Math.sin(this.renderFrame * 0.1) * 20;
+                    const exitGlare = this.ctx.createRadialGradient(obj.x, obj.y, 10, obj.x, obj.y, 150 + pulse);
+                    exitGlare.addColorStop(0, 'rgba(200, 200, 255, 0.5)');
+                    exitGlare.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                    this.ctx.fillStyle = exitGlare;
+                    this.ctx.beginPath();
+                    this.ctx.arc(obj.x, obj.y, 150 + pulse, 0, Math.PI * 2);
                     this.ctx.fill();
                 }
             });
@@ -317,7 +335,7 @@ export class Renderer {
         // --- DRAW OBJECTIVE HUD POINTERS ---
         if (state.interactables) {
             state.interactables.forEach(obj => {
-                if (obj.type === 'OBJECTIVE_BACKPACK') {
+                if (obj.type === 'OBJECTIVE_BACKPACK' || obj.type === 'EXIT_ELEVATOR') {
                     let dx = obj.x - state.player.x;
                     let dy = obj.y - state.player.y;
                     let dist = Math.hypot(dx, dy);
@@ -328,30 +346,33 @@ export class Renderer {
                         
                         let angle = Math.atan2(dy, dx);
                         this.ctx.rotate(angle);
-                        
                         this.ctx.translate(140, 0); 
-                        let isUrgent = obj.life < 300;
-                        let pulse = Math.sin(this.renderFrame * (isUrgent ? 0.4 : 0.1)) * 0.5 + 0.5;
                         
-                        // Holographic Arrow
-                        this.ctx.fillStyle = isUrgent ? `rgba(255, 50, 50, ${0.4 + pulse * 0.6})` : `rgba(100, 255, 100, ${0.3 + pulse * 0.5})`;
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(15, 0);
-                        this.ctx.lineTo(-10, 10);
-                        this.ctx.lineTo(-5, 0);
-                        this.ctx.lineTo(-10, -10);
-                        this.ctx.closePath();
-                        this.ctx.fill();
-                        
-                        // Holographic Countdown Timer (floating right next to arrow)
-                        this.ctx.translate(30, 0); // Move text slightly outside arrow tip
-                        this.ctx.rotate(-angle); // Un-rotate so it's always readable upright
-                        this.ctx.textAlign = 'center';
-                        this.ctx.textBaseline = 'middle';
-                        this.ctx.font = "bold 16px var(--ui-font, monospace)";
-                        // Text turns red if urgent
-                        this.ctx.fillStyle = isUrgent ? `rgba(255, 100, 100, ${0.8 + pulse * 0.2})` : `rgba(150, 255, 150, ${0.8 + pulse * 0.2})`;
-                        this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, 0);
+                        if (obj.type === 'OBJECTIVE_BACKPACK') {
+                            let isUrgent = obj.life < 300;
+                            let pulse = Math.sin(this.renderFrame * (isUrgent ? 0.4 : 0.1)) * 0.5 + 0.5;
+                            
+                            this.ctx.fillStyle = isUrgent ? `rgba(255, 50, 50, ${0.4 + pulse * 0.6})` : `rgba(100, 255, 100, ${0.3 + pulse * 0.5})`;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(15, 0); this.ctx.lineTo(-10, 10); this.ctx.lineTo(-5, 0); this.ctx.lineTo(-10, -10);
+                            this.ctx.closePath();
+                            this.ctx.fill();
+                            
+                            this.ctx.translate(30, 0); 
+                            this.ctx.rotate(-angle); 
+                            this.ctx.textAlign = 'center';
+                            this.ctx.textBaseline = 'middle';
+                            this.ctx.font = "bold 16px var(--ui-font, monospace)";
+                            this.ctx.fillStyle = isUrgent ? `rgba(255, 100, 100, ${0.8 + pulse * 0.2})` : `rgba(150, 255, 150, ${0.8 + pulse * 0.2})`;
+                            this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, 0);
+                        } else if (obj.type === 'EXIT_ELEVATOR') {
+                            let pulse = Math.sin(this.renderFrame * 0.2) * 0.5 + 0.5;
+                            this.ctx.fillStyle = `rgba(200, 200, 255, ${0.4 + pulse * 0.6})`;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(20, 0); this.ctx.lineTo(-15, 15); this.ctx.lineTo(-10, 0); this.ctx.lineTo(-15, -15);
+                            this.ctx.closePath();
+                            this.ctx.fill();
+                        }
                         
                         this.ctx.restore();
                     }
@@ -773,12 +794,31 @@ export class Renderer {
                     this.ctx.arc(0, 0, 30, -Math.PI/2, -Math.PI/2 + (obj.life / 1200) * Math.PI*2);
                     this.ctx.stroke();
 
-                    // --- EXPLICIT TIMER ABOVE BACKPACK ---
                     this.ctx.fillStyle = isUrgent ? '#ff0000' : '#00ff00';
                     this.ctx.textAlign = 'center';
                     this.ctx.textBaseline = 'middle';
                     this.ctx.font = "bold 14px var(--ui-font, monospace)";
-                    this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, -35); // Above the backpack
+                    this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, -35); 
+                } else if (obj.type === 'EXIT_ELEVATOR') {
+                    // --- RENDER THE ELEVATOR SHAFT ---
+                    let pulse = Math.sin(this.renderFrame * 0.1) * 5;
+                    
+                    // Dark square shaft
+                    this.ctx.fillStyle = '#111';
+                    this.ctx.fillRect(-30, -30, 60, 60); 
+                    
+                    // Bright glowing center pad
+                    this.ctx.shadowColor = '#fff';
+                    this.ctx.shadowBlur = 15 + pulse;
+                    this.ctx.fillStyle = `rgba(255, 255, 255, ${0.8 + Math.sin(this.renderFrame * 0.2)*0.2})`;
+                    this.ctx.fillRect(-20, -20, 40, 40); 
+                    this.ctx.shadowBlur = 0;
+                    
+                    // Downward Arrows
+                    this.ctx.fillStyle = '#000';
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(-10, -5); this.ctx.lineTo(10, -5); this.ctx.lineTo(0, 10);
+                    this.ctx.fill();
                 }
                 
                 this.ctx.restore();

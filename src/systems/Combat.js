@@ -3,7 +3,7 @@ export class Combat {
         const state = game.state;
         let deathCount = 0;
 
-        // --- RESOLVE INTERACTABLES (TENSION BREAKERS) ---
+        // --- RESOLVE INTERACTABLES (TENSION BREAKERS & EXITS) ---
         if (state.interactables) {
             for (let obj of state.interactables) {
                 if (obj.type === 'BREAKER_BOX') {
@@ -78,6 +78,13 @@ export class Combat {
                             game.spawnParticles(obj.x, obj.y, '#55ff55', 30);
                             game.spawnDamageText(obj.x, obj.y - 30, "SUPPLIES RECOVERED!", '#55ff55', 1.5, 2.0);
                         }
+                    }
+                } else if (obj.type === 'EXIT_ELEVATOR') {
+                    // --- FLOOR EXIT LOGIC ---
+                    const distToPlayer = Math.hypot(obj.x - state.player.x, obj.y - state.player.y);
+                    if (distToPlayer < obj.radius + state.player.radius) {
+                        if (game.onFloorComplete) game.onFloorComplete();
+                        obj.dead = true; // Prevent multiple triggers
                     }
                 }
             }
@@ -241,6 +248,16 @@ export class Combat {
                     game.spawnXP(ent.x, ent.y, 25, true); 
                     state.cameraShake = 50;
                     if (game.audioEngine) game.audioEngine.playSFX('death', 10);
+                    
+                    // --- SPAWN THE EXIT ELEVATOR ON BOSS DEATH ---
+                    state.interactables.push({
+                         id: Math.random(),
+                         type: 'EXIT_ELEVATOR',
+                         x: ent.x,
+                         y: ent.y,
+                         active: true, charge: 0, life: 99999, radius: 40, dead: false 
+                    });
+                    
                 } else {
                     let dropAmount = ent.type === 'SCAVENGER' ? 2 : (ent.type === 'PREDATOR' ? 5 : 1);
                     if (ent.maxHp > 30) dropAmount += 5; 
@@ -250,6 +267,11 @@ export class Combat {
                     }
                     
                     game.spawnXP(ent.x, ent.y, dropAmount);
+                    
+                    // --- PROGRESS THE CONVERGENCE BAR ---
+                    if (!state.bossSpawned) {
+                        state.convergence += (ent.type === 'PREDATOR' ? 3 : 1);
+                    }
                 }
                 game.spawnParticles(ent.x, ent.y, ent.color, ent.type === 'BOSS' ? 100 : 15);
                 

@@ -7,6 +7,7 @@ export class Game {
         this.state = null;
         this.onDeath = null;
         this.onLevelUp = null;
+        this.onFloorComplete = null; // NEW: Callback for reaching the elevator
         this.audioEngine = null; 
         
         this.director = new Director(this);
@@ -19,37 +20,74 @@ export class Game {
         });
     }
 
-    init(saveManager) {
+    // Accept carriedState so we can resume suspended runs or descend to next floor
+    init(saveManager, carriedState = null) {
         const meta = saveManager.metaState;
         const maxSanity = 100 + (meta.upgrades.hp * 20);
         const speedMult = 1.0 + (meta.upgrades.speed * 0.05);
         const lightMult = 1.0 + (meta.upgrades.light * 0.1);
 
+        let startFloor = 1;
+        let startLucidity = 0;
+        let startSanity = maxSanity;
+        let startWeapons = {
+            flashlight: { level: 1, damage: 15, radius: 250 * lightMult, angle: 0.4 },
+            static: { level: 0, damage: 0, radius: 60, active: false, pulsePhase: 0 },
+            adrenaline: { level: 0 },
+            lead_pipe: { level: 0, damage: 50, radius: 80, cooldown: 90, timer: 0 },
+            spilled_ink: { level: 0, damage: 5, radius: 30, dropRate: 30, timer: 0 },
+            corrosive_battery: { level: 0, damage: 2, duration: 60 },
+            broken_chalk: { level: 0, radius: 70, duration: 180, cooldown: 120, timer: 0 }
+        };
+        let startSynergies = [];
+        let startCurses = [];
+        let startLevel = 1;
+
+        if (carriedState) {
+            startFloor = carriedState.floor;
+            startLucidity = carriedState.lucidity;
+            startSanity = carriedState.sanity;
+            startWeapons = carriedState.weapons;
+            startSynergies = carriedState.synergies;
+            startCurses = carriedState.curses;
+            startLevel = carriedState.level;
+        }
+
         this.state = {
+            floor: startFloor,
+            convergence: 0,
+            maxConvergence: Math.floor(100 * Math.pow(1.3, startFloor - 1)), // Scales per floor!
+            
             player: { 
                 x: 0, y: 0, 
                 radius: 12, angle: 0, targetAngle: 0, hp: maxSanity, maxHp: maxSanity, speedMultiplier: speedMult,
                 dash: { active: false, timer: 0, cooldown: 0, dx: 0, dy: 0 },
-                weapons: {
-                    flashlight: { level: 1, damage: 15, radius: 250 * lightMult, angle: 0.4 },
-                    static: { level: 0, damage: 0, radius: 60, active: false, pulsePhase: 0 },
-                    adrenaline: { level: 0 },
-                    lead_pipe: { level: 0, damage: 50, radius: 80, cooldown: 90, timer: 0 },
-                    spilled_ink: { level: 0, damage: 5, radius: 30, dropRate: 30, timer: 0 },
-                    corrosive_battery: { level: 0, damage: 2, duration: 60 },
-                    broken_chalk: { level: 0, radius: 70, duration: 180, cooldown: 120, timer: 0 }
-                },
-                synergies: [], curses: []
+                weapons: startWeapons,
+                synergies: startSynergies, curses: startCurses
             },
             inputBuffer: [],
-            sanity: maxSanity, sanityDrainMult: 1.0,
-            xp: 0, level: 1, lucidity: 0,
+            sanity: startSanity, sanityDrainMult: 1.0 + (startFloor - 1) * 0.2, // Drain gets faster!
+            xp: 0, level: startLevel, lucidity: startLucidity,
             entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [], safeZones: [],
             interactables: [], 
             playerAfterimages: [], 
             hitStop: 0, 
             frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false,
             isDead: false
+        };
+    }
+
+    // Helper to serialize active state for "Suspended" saves
+    getCarriedState() {
+        if (!this.state) return null;
+        return {
+            floor: this.state.floor,
+            lucidity: this.state.lucidity,
+            sanity: this.state.sanity,
+            weapons: this.state.player.weapons,
+            synergies: this.state.player.synergies,
+            curses: this.state.player.curses,
+            level: this.state.level
         };
     }
 
@@ -96,9 +134,6 @@ export class Game {
             });
             
             if (this.audioEngine) this.audioEngine.playSFX('levelup', 1); 
-            
-            // --- EXPLICIT UI ANNOUNCEMENT ON SPAWN ---
-            // Spawn a long-lasting, bright text right above the player to alert them
             this.spawnDamageText(this.state.player.x, this.state.player.y - 40, "SUPPLY DROP DETECTED!", '#55ff55', 1.2, 3.0);
         }
 
