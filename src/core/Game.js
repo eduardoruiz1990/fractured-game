@@ -45,9 +45,10 @@ export class Game {
             sanity: maxSanity, sanityDrainMult: 1.0,
             xp: 0, level: 1, lucidity: 0,
             entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [], safeZones: [],
-            playerAfterimages: [], // VFX for dashing
-            hitStop: 0, // NEW: Freezes game logic for crunchy impacts!
-            frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false
+            playerAfterimages: [], 
+            hitStop: 0, 
+            frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false,
+            isDead: false // Track death so we don't trigger game over multiple times
         };
     }
 
@@ -58,6 +59,11 @@ export class Game {
         if (this.state.hitStop > 0) {
             this.state.hitStop--;
             this.state.sanity -= (GAME_CONFIG.SANITY_DRAIN_RATE * 0.1); 
+            // Check if ambient drain kills player during hitstop
+            if (this.state.sanity <= -20 && this.onDeath && !this.state.isDead) {
+                this.state.isDead = true;
+                this.onDeath();
+            }
             return this.state.sanity <= 0;
         }
 
@@ -65,9 +71,17 @@ export class Game {
 
         this.state.sanity -= GAME_CONFIG.SANITY_DRAIN_RATE * this.state.sanityDrainMult;
         
+        // Death check from natural sanity drain
+        if (this.state.sanity <= -20 && this.onDeath && !this.state.isDead) {
+            this.state.isDead = true;
+            this.onDeath();
+            return true; 
+        }
+        
         let isBreakdown = this.state.sanity <= 0;
         if (isBreakdown) {
-            this.state.sanity = 0;
+            // FIX: We NO LONGER force this.state.sanity = 0 here. 
+            // This allows sanity to drop to -20 (Death) while in the breakdown state!
             this.state.inputBuffer.push({...inputState});
             if (this.state.inputBuffer.length < GAME_CONFIG.BREAKDOWN_DELAY_FRAMES) {
                 this.processGameLogic({ moveX: 0, moveY: 0, aimAngle: this.state.player.angle, isMoving: false, isAiming: false, dash: false }, canvasWidth, canvasHeight);
@@ -91,11 +105,10 @@ export class Game {
         // --- DASH MECHANIC ---
         if (moveInput.dash && this.state.player.dash.cooldown <= 0 && this.state.player.dash.timer <= 0) {
             this.state.player.dash.active = true;
-            this.state.player.dash.timer = 15; // I-frames duration
-            this.state.player.dash.cooldown = 90; // 1.5s cooldown
+            this.state.player.dash.timer = 15; 
+            this.state.player.dash.cooldown = 90; 
             if (this.audioEngine) this.audioEngine.playSFX('dash');
             
-            // Calculate dash vector
             let dx = moveInput.moveX;
             let dy = moveInput.moveY;
             if (dx === 0 && dy === 0) {
@@ -113,15 +126,13 @@ export class Game {
 
         let currentSpeed = GAME_CONFIG.BASE_PLAYER_SPEED * this.state.player.speedMultiplier;
 
-        // Apply Movement
         if (this.state.player.dash.active) {
-            currentSpeed *= 3.5; // Huge burst of speed
+            currentSpeed *= 3.5; 
             this.state.player.dash.timer--;
             
             this.state.player.x += this.state.player.dash.dx * currentSpeed;
             this.state.player.y += this.state.player.dash.dy * currentSpeed;
 
-            // Spawn Ghost Afterimages
             if (this.state.frame % 2 === 0) {
                 this.state.playerAfterimages.push({
                     x: this.state.player.x, y: this.state.player.y, 
@@ -178,11 +189,11 @@ export class Game {
     }
 
     takeDamage(amount) {
-        if (this.state.player.dash.active) return; // I-FRAMES! Totally invincible while dashing.
+        if (this.state.player.dash.active || this.state.isDead) return;
 
         this.state.sanity -= amount;
-        this.state.cameraShake = 15; // Bigger shake
-        this.state.hitStop = 8; // Freeze the game for 8 frames to emphasize taking damage
+        this.state.cameraShake = 15; 
+        this.state.hitStop = 8; 
         
         if (this.audioEngine) this.audioEngine.playSFX('damage');
         try { if (navigator.vibrate) navigator.vibrate(100); } catch(e){}
@@ -190,6 +201,7 @@ export class Game {
         this.spawnDamageText(this.state.player.x, this.state.player.y, `-${Math.floor(amount)}`, '#ff0000', 1.5, 1.5);
         
         if (this.state.sanity <= -20 && this.onDeath) {
+            this.state.isDead = true;
             this.onDeath();
         }
     }
