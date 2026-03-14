@@ -188,7 +188,6 @@ export class Renderer {
                     this.lightCtx.arc(obj.x, obj.y, 120, 0, Math.PI * 2);
                     this.lightCtx.fill();
                 } else if (obj.type === 'EXIT_ELEVATOR') {
-                    // Huge glowing pillar for the exit
                     const exitHole = this.lightCtx.createRadialGradient(obj.x, obj.y, 10, obj.x, obj.y, 150);
                     exitHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
                     exitHole.addColorStop(1, 'rgba(255, 255, 255, 0)');
@@ -239,6 +238,25 @@ export class Renderer {
         this.ctx.setTransform(1, 0, 0, 1, 0, 0); 
         this.ctx.drawImage(this.lightCanvas, 0, 0);
         this.ctx.restore(); 
+
+        // --- EPIC 2: RENDER INSOMNIAC 4-PIECE VISUAL ---
+        if (state.player.sets && state.player.sets.insomniac >= 4) {
+            const inner = fl.radius;
+            const outer = inner + 200;
+            
+            this.ctx.globalCompositeOperation = 'screen';
+            const auraGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, inner, state.player.x, state.player.y, outer);
+            // Fiery orange rim
+            auraGrad.addColorStop(0, `rgba(255, 150, 0, ${0.15 + Math.sin(this.renderFrame * 0.1) * 0.05})`);
+            auraGrad.addColorStop(0.5, 'rgba(255, 50, 0, 0.05)');
+            auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            
+            this.ctx.fillStyle = auraGrad;
+            this.ctx.beginPath();
+            this.ctx.arc(state.player.x, state.player.y, outer, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.globalCompositeOperation = 'source-over';
+        }
 
         this.ctx.globalCompositeOperation = 'screen';
         
@@ -332,7 +350,6 @@ export class Renderer {
         this.drawPlayer(state, audioEngine);
         this.drawDamageText(state);
 
-        // --- DRAW OBJECTIVE HUD POINTERS ---
         if (state.interactables) {
             state.interactables.forEach(obj => {
                 if (obj.type === 'OBJECTIVE_BACKPACK' || obj.type === 'EXIT_ELEVATOR') {
@@ -538,6 +555,18 @@ export class Renderer {
 
     drawPlayer(state, audioEngine) {
         this.ctx.save();
+        
+        // --- EPIC 2: RENDER DENIAL SHIELD VISUAL ---
+        if (state.player.denialShieldActive) {
+            let shieldPulse = Math.sin(this.renderFrame * 0.1) * 2;
+            this.ctx.strokeStyle = `rgba(200, 200, 255, ${0.4 + Math.sin(this.renderFrame * 0.3) * 0.2})`;
+            this.ctx.lineWidth = 2;
+            this.ctx.setLineDash([5, 5]);
+            this.ctx.beginPath();
+            this.ctx.arc(state.player.x, state.player.y, state.player.radius * 2 + shieldPulse, 0, Math.PI * 2);
+            this.ctx.stroke();
+            this.ctx.setLineDash([]);
+        }
         
         if (state.playerAfterimages) {
             for (let i = state.playerAfterimages.length - 1; i >= 0; i--) {
@@ -800,21 +829,17 @@ export class Renderer {
                     this.ctx.font = "bold 14px var(--ui-font, monospace)";
                     this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, -35); 
                 } else if (obj.type === 'EXIT_ELEVATOR') {
-                    // --- RENDER THE ELEVATOR SHAFT ---
                     let pulse = Math.sin(this.renderFrame * 0.1) * 5;
                     
-                    // Dark square shaft
                     this.ctx.fillStyle = '#111';
                     this.ctx.fillRect(-30, -30, 60, 60); 
                     
-                    // Bright glowing center pad
                     this.ctx.shadowColor = '#fff';
                     this.ctx.shadowBlur = 15 + pulse;
                     this.ctx.fillStyle = `rgba(255, 255, 255, ${0.8 + Math.sin(this.renderFrame * 0.2)*0.2})`;
                     this.ctx.fillRect(-20, -20, 40, 40); 
                     this.ctx.shadowBlur = 0;
                     
-                    // Downward Arrows
                     this.ctx.fillStyle = '#000';
                     this.ctx.beginPath();
                     this.ctx.moveTo(-10, -5); this.ctx.lineTo(10, -5); this.ctx.lineTo(0, 10);

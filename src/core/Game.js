@@ -1,6 +1,7 @@
 import { GAME_CONFIG } from '../data/Config.js';
 import { Combat } from '../systems/Combat.js';
 import { Director } from '../systems/Director.js';
+import { TOKENS } from '../data/Manifestations.js'; // NEW: Need token data
 
 export class Game {
     constructor() {
@@ -22,15 +23,16 @@ export class Game {
 
     init(saveManager, carriedState = null) {
         const meta = saveManager.metaState;
-        const maxSanity = 100 + (meta.upgrades.hp * 20);
-        const speedMult = 1.0 + (meta.upgrades.speed * 0.05);
-        const lightMult = 1.0 + (meta.upgrades.light * 0.1);
-
+        
         let startFloor = 1;
         let startLucidity = 0;
-        let startSanity = maxSanity;
+        let startLevel = 1;
+        
+        let startTokens = { head: null, body: null, hands: null, legs: null };
+        let startRunInventory = [];
+
         let startWeapons = {
-            flashlight: { level: 1, damage: 15, radius: 250 * lightMult, angle: 0.4 },
+            flashlight: { level: 1, damage: 15, radius: 250, angle: 0.4 },
             static: { level: 0, damage: 0, radius: 60, active: false, pulsePhase: 0 },
             adrenaline: { level: 0 },
             lead_pipe: { level: 0, damage: 50, radius: 80, cooldown: 90, timer: 0 },
@@ -40,30 +42,59 @@ export class Game {
         };
         let startSynergies = [];
         let startCurses = [];
-        let startLevel = 1;
-        
-        // FUTURE-PROOFING: Groundwork for Epic 2 Equipment & Inventory System
-        let startTokens = { head: null, body: null, hands: null, legs: null };
-        let startRunInventory = [];
 
         if (carriedState) {
             startFloor = carriedState.floor;
             startLucidity = carriedState.lucidity;
-            startSanity = carriedState.sanity;
             startWeapons = carriedState.weapons;
             startSynergies = carriedState.synergies;
             startCurses = carriedState.curses;
             startLevel = carriedState.level;
             
-            // Carry over items found or equipped during the suspended run
             if (carriedState.tokens) startTokens = carriedState.tokens;
             if (carriedState.runInventory) startRunInventory = carriedState.runInventory;
         } else {
-            // Load equipped tokens from Meta-Progression (SaveManager) on a fresh run
             if (meta.equippedTokens) {
                 startTokens = JSON.parse(JSON.stringify(meta.equippedTokens));
             }
         }
+
+        // --- EPIC 2: CALCULATE SET BONUSES & TOKEN STATS ---
+        let setCounts = { insomniac: 0, institutionalized: 0 };
+        let activeTokens = { hasParanoia: false, hasDenial: false, hasTwitch: false, hasPanic: false };
+
+        Object.values(startTokens).forEach(uid => {
+            if (!uid) return;
+            const invItem = meta.inventory.find(i => i.uid === uid);
+            if (invItem && TOKENS[invItem.id]) {
+                const tData = TOKENS[invItem.id];
+                if (setCounts[tData.set] !== undefined) setCounts[tData.set]++;
+                if (tData.id === 'head_paranoia') activeTokens.hasParanoia = true;
+                if (tData.id === 'body_denial') activeTokens.hasDenial = true;
+                if (tData.id === 'hands_twitch') activeTokens.hasTwitch = true;
+                if (tData.id === 'legs_panic') activeTokens.hasPanic = true;
+            }
+        });
+
+        // Apply Base Modifiers from Synapse Tree AND Sets
+        let maxSanity = 100 + (meta.upgrades.hp * 20);
+        if (setCounts.institutionalized >= 2) maxSanity += 50; // Set Bonus!
+
+        let speedMult = 1.0 + (meta.upgrades.speed * 0.05);
+        if (setCounts.insomniac >= 2) speedMult += 0.10; // Set Bonus!
+
+        let lightMult = 1.0 + (meta.upgrades.light * 0.1);
+        startWeapons.flashlight.radius = 250 * lightMult;
+        startWeapons.flashlight.angle = 0.4;
+        
+        // Token Modifiers
+        if (activeTokens.hasParanoia) {
+            startWeapons.flashlight.radius *= 1.5; // +50% range
+            startWeapons.flashlight.angle *= 0.8;  // -20% angle
+        }
+
+        // Keep current sanity if descending, otherwise heal to max
+        let startSanity = carriedState ? carriedState.sanity : maxSanity;
 
         this.state = {
             floor: startFloor,
@@ -77,15 +108,18 @@ export class Game {
                 weapons: startWeapons,
                 synergies: startSynergies, 
                 curses: startCurses,
-                tokens: startTokens // Active equipped items
+                tokens: startTokens, 
+                activeTokens: activeTokens, // Extracted boolean flags for logic
+                sets: setCounts,            // 2-piece / 4-piece tracking
+                denialShieldActive: activeTokens.hasDenial // Resets shield every floor
             },
-            runInventory: startRunInventory, // Items collected during this descent
+            runInventory: startRunInventory, 
             inputBuffer: [],
             sanity: startSanity, sanityDrainMult: 1.0 + (startFloor - 1) * 0.2, 
             xp: 0, level: startLevel, lucidity: startLucidity,
             entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [], safeZones: [],
             interactables: [], 
-            tokenDrops: [], // Physical items on the ground
+            tokenDrops: [], 
             playerAfterimages: [], 
             hitStop: 0, 
             frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false,
@@ -103,19 +137,17 @@ export class Game {
             synergies: this.state.player.synergies,
             curses: this.state.player.curses,
             level: this.state.level,
-            tokens: this.state.player.tokens,         // Save active equipment
-            runInventory: this.state.runInventory     // Save found items in backpack
+            tokens: this.state.player.tokens,         
+            runInventory: this.state.runInventory     
         };
     }
 
-    // --- FUTURE-PROOFING: Placeholder for spawning rarity-based items ---
     spawnTokenDrop(x, y) {
-        // Defines the mathematical drop curve for our rarity system
         const rarities = [
             { type: 'COMMON', chance: 0.60, color: '#aaaaaa' },
             { type: 'RARE', chance: 0.30, color: '#5555ff' },
             { type: 'EPIC', chance: 0.09, color: '#aa55ff' },
-            { type: 'ANOMALOUS', chance: 0.01, color: '#ff5555' } // Super rare, massive currency sink to upgrade
+            { type: 'ANOMALOUS', chance: 0.01, color: '#ff5555' }
         ];
         
         let roll = Math.random();
@@ -129,9 +161,7 @@ export class Game {
                 break;
             }
         }
-
         console.log(`[SYSTEM] A ${selectedRarity.type} Personal Token dropped!`);
-        // TODO: In future updates, tell the Director to physically spawn this item on the floor
     }
 
     update(inputState, canvasWidth, canvasHeight, currentGameState) {
@@ -149,11 +179,9 @@ export class Game {
 
         this.director.spawnWave(canvasWidth, canvasHeight);
 
-        // --- CHECK IF BOSS IS DEFEATED ---
         const isBossDefeated = this.state.bossSpawned && !this.state.entities.some(e => e.type === 'BOSS');
 
         if (!isBossDefeated) {
-            // --- SPAWN TENSION BREAKER ---
             if (this.state.frame > 0 && this.state.frame % 1800 === 0) {
                  this.state.interactables.push({
                      id: Math.random(),
@@ -164,7 +192,6 @@ export class Game {
                  });
             }
 
-            // --- SPAWN SECONDARY OBJECTIVE ---
             if (this.state.frame > 0 && this.state.frame % 2400 === 0) {
                 let targetX, targetY;
                 for (let i=0; i<5; i++) {
@@ -215,10 +242,19 @@ export class Game {
     }
 
     processGameLogic(moveInput, canvasWidth, canvasHeight) {
-        if (moveInput.dash && this.state.player.dash.cooldown <= 0 && this.state.player.dash.timer <= 0) {
+        
+        // --- EPIC 2: DASH MODIFICATIONS ---
+        let canDash = true;
+        // Institutionalized 4-piece removes Dash!
+        if (this.state.player.sets.institutionalized >= 4) canDash = false;
+
+        if (moveInput.dash && canDash && this.state.player.dash.cooldown <= 0 && this.state.player.dash.timer <= 0) {
+            // Panic Sprint Token: Dash Cooldown is halved
+            let dashCooldown = this.state.player.activeTokens.hasPanic ? 45 : 90;
+            
             this.state.player.dash.active = true;
             this.state.player.dash.timer = 15; 
-            this.state.player.dash.cooldown = 90; 
+            this.state.player.dash.cooldown = dashCooldown; 
             if (this.audioEngine) this.audioEngine.playSFX('dash');
             
             let dx = moveInput.moveX;
@@ -239,7 +275,8 @@ export class Game {
         let currentSpeed = GAME_CONFIG.BASE_PLAYER_SPEED * this.state.player.speedMultiplier;
 
         if (this.state.player.dash.active) {
-            currentSpeed *= 3.5; 
+            // Panic Sprint Token: Dash distance is reduced (speed multiplier lower)
+            currentSpeed *= this.state.player.activeTokens.hasPanic ? 2.5 : 3.5; 
             this.state.player.dash.timer--;
             
             this.state.player.x += this.state.player.dash.dx * currentSpeed;
@@ -303,9 +340,40 @@ export class Game {
     takeDamage(amount) {
         if (this.state.player.dash.active || this.state.isDead) return;
 
+        // --- EPIC 2: DAMAGE OVERRIDES ---
+        
+        // 1. Straitjacket of Denial (Body Token) - Block first hit
+        if (this.state.player.denialShieldActive) {
+            this.state.player.denialShieldActive = false; // Shatter the shield
+            this.spawnDamageText(this.state.player.x, this.state.player.y - 20, "DENIED!", '#ffffff', 1.5, 2.0);
+            this.spawnParticles(this.state.player.x, this.state.player.y, '#aaaaff', 30);
+            if (this.audioEngine) this.audioEngine.playSFX('pickup', 5); // Tink sound
+            return; // Ignore the damage!
+        }
+
         this.state.sanity -= amount;
         this.state.cameraShake = 15; 
         this.state.hitStop = 8; 
+
+        // 2. Institutionalized (4-Piece Set) - Damage causes explosive AoE
+        if (this.state.player.sets.institutionalized >= 4) {
+            this.spawnDamageText(this.state.player.x, this.state.player.y, "SHOCKWAVE", '#aa55ff', 2.0, 1.5);
+            this.spawnParticles(this.state.player.x, this.state.player.y, '#aa55ff', 50);
+            this.state.cameraShake = 40;
+            
+            // Blast enemies away and damage them
+            this.state.entities.forEach(ent => {
+                let d = Math.hypot(ent.x - this.state.player.x, ent.y - this.state.player.y);
+                if (d < 300) {
+                    ent.takeDamage(40, this);
+                    ent.x += (ent.x - this.state.player.x) / d * 150; // Massive knockback
+                    ent.y += (ent.y - this.state.player.y) / d * 150;
+                }
+            });
+
+            // Heal 10% of missing sanity as a reward for being hit
+            this.state.sanity = Math.min(this.state.player.maxHp, this.state.sanity + (this.state.player.maxHp * 0.10));
+        }
         
         if (this.audioEngine) this.audioEngine.playSFX('damage');
         try { if (navigator.vibrate) navigator.vibrate(100); } catch(e){}

@@ -12,7 +12,6 @@ export class Combat {
                         const dy = obj.y - state.player.y;
                         const dist = Math.max(Math.hypot(dx, dy), 0.001);
                         
-                        // Charge up by shining the flashlight on it
                         if (dist < state.player.weapons.flashlight.radius) {
                             const angle = Math.atan2(dy, dx);
                             let diff = angle - state.player.angle;
@@ -24,9 +23,9 @@ export class Combat {
                                     obj.charge += 1;
                                     game.spawnParticles(obj.x, obj.y, '#ffffaa', 1);
                                     
-                                    if (obj.charge > 60) { // 1 second of direct light to activate
+                                    if (obj.charge > 60) { 
                                         obj.active = true;
-                                        obj.life = 450; // 7.5 seconds of intense safe zone
+                                        obj.life = 450; 
                                         state.cameraShake = 30;
                                         if (game.audioEngine) game.audioEngine.playSFX('pickup', 8);
                                     }
@@ -34,24 +33,19 @@ export class Combat {
                             }
                         }
                     } else {
-                        // Active state: Stun & Burn nearby enemies
                         obj.life--;
                         if (state.frame % 10 === 0) game.spawnParticles(obj.x, obj.y, '#ffffff', 3);
                         
                         for (let ent of state.entities) {
                             if (Math.hypot(ent.x - obj.x, ent.y - obj.y) < obj.radius) {
-                                
-                                // FORCE STUN: Visually cancel the movement they applied this frame
                                 ent.x -= (ent.vx || 0) * (ent.speedModifier || 1);
                                 ent.y -= (ent.vy || 0) * (ent.speedModifier || 1);
                                 
-                                // Interrupt special AI attacks
                                 if (ent.attackState) ent.attackState = 'hunting';
                                 if (ent.lashingState) ent.lashingState = 'searching';
                                 if (ent.vacuumState) ent.vacuumState = 'hunting';
                                 if (ent.pulseState) ent.pulseState = 'hunting';
 
-                                // Burn damage
                                 if (state.frame % 30 === 0) {
                                     ent.takeDamage(20, game);
                                     game.spawnParticles(ent.x, ent.y, '#ffffaa', 5);
@@ -64,13 +58,12 @@ export class Combat {
                     obj.life--;
                     if (obj.life <= 0) {
                         obj.dead = true;
-                        game.spawnParticles(obj.x, obj.y, '#555555', 10); // Dust puff on failure
+                        game.spawnParticles(obj.x, obj.y, '#555555', 10); 
                     } else {
                         const distToPlayer = Math.hypot(obj.x - state.player.x, obj.y - state.player.y);
                         if (distToPlayer < obj.radius + state.player.radius) {
                             obj.dead = true;
-                            // REWARD: Massive drop and sanity heal
-                            game.spawnXP(obj.x, obj.y, 8, true); // 8 massive XP drops
+                            game.spawnXP(obj.x, obj.y, 8, true); 
                             state.sanity = Math.min(state.player.maxHp, state.sanity + 50); 
                             state.cameraShake = 20;
                             
@@ -80,20 +73,27 @@ export class Combat {
                         }
                     }
                 } else if (obj.type === 'EXIT_ELEVATOR') {
-                    // --- FLOOR EXIT LOGIC ---
                     const distToPlayer = Math.hypot(obj.x - state.player.x, obj.y - state.player.y);
                     if (distToPlayer < obj.radius + state.player.radius) {
                         if (game.onFloorComplete) game.onFloorComplete();
-                        obj.dead = true; // Prevent multiple triggers
+                        obj.dead = true; 
                     }
                 }
             }
             state.interactables = state.interactables.filter(i => !i.dead);
         }
 
+        // --- EPIC 2: WEAPON COOLDOWN MODIFIERS ---
+        // Twitching Fingers Token: Cooldowns get faster as Sanity drops (up to 3x faster!)
+        let cooldownTick = 1;
+        if (state.player.activeTokens.hasTwitch) {
+            let sanityRatio = Math.max(0, state.sanity / state.player.maxHp);
+            cooldownTick = 1 + (1 - sanityRatio) * 2.0; 
+        }
+
         const pipe = state.player.weapons.lead_pipe;
         if (pipe && pipe.level > 0) {
-            pipe.timer--;
+            pipe.timer -= cooldownTick; // Apply modified tick
             if (pipe.timer <= 0) {
                 pipe.timer = pipe.cooldown;
                 game.director.spawnMeleeSwing(state.player.x, state.player.y, pipe.radius);
@@ -126,7 +126,7 @@ export class Combat {
 
         const ink = state.player.weapons.spilled_ink;
         if (ink && ink.level > 0) {
-            ink.timer--;
+            ink.timer -= cooldownTick; // Apply modified tick
             if (ink.timer <= 0) {
                 ink.timer = ink.dropRate;
                 game.director.spawnInkPuddle(state.player.x, state.player.y, ink.radius, ink.damage);
@@ -135,7 +135,7 @@ export class Combat {
         
         const chalk = state.player.weapons.broken_chalk;
         if (chalk && chalk.level > 0) {
-            chalk.timer--;
+            chalk.timer -= cooldownTick; // Apply modified tick
             if (chalk.timer <= 0) {
                 chalk.timer = chalk.cooldown;
                 game.director.spawnSafeZone(state.player.x, state.player.y, chalk.radius, chalk.duration);
@@ -211,6 +211,20 @@ export class Combat {
             let canTakeDamage = !(ent.type === 'BOSS' && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
             if (canTakeDamage) {
+                
+                // --- EPIC 2: THE INSOMNIAC (4-PIECE SET) BURN AURA ---
+                if (state.player.sets.insomniac >= 4) {
+                    // Outer safe zone burns enemies
+                    const innerRad = state.player.weapons.flashlight.radius;
+                    const outerRad = innerRad + 200;
+                    if (distToPlayer > innerRad && distToPlayer < outerRad) {
+                        if (state.frame % 30 === 0) {
+                            ent.takeDamage(5, game); // Passive burn damage
+                            game.spawnParticles(ent.x, ent.y, '#ffaa00', 3);
+                        }
+                    }
+                }
+
                 if (distToPlayer < state.player.weapons.flashlight.radius) {
                     const angleToEnt = Math.atan2(dy, dx);
                     let angleDiff = angleToEnt - state.player.angle;
@@ -249,7 +263,6 @@ export class Combat {
                     state.cameraShake = 50;
                     if (game.audioEngine) game.audioEngine.playSFX('death', 10);
                     
-                    // --- SPAWN THE EXIT ELEVATOR ON BOSS DEATH ---
                     state.interactables.push({
                          id: Math.random(),
                          type: 'EXIT_ELEVATOR',
@@ -268,7 +281,6 @@ export class Combat {
                     
                     game.spawnXP(ent.x, ent.y, dropAmount);
                     
-                    // --- PROGRESS THE CONVERGENCE BAR ---
                     if (!state.bossSpawned) {
                         state.convergence += (ent.type === 'PREDATOR' ? 3 : 1);
                     }
