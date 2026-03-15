@@ -8,9 +8,8 @@ export class UIManager {
         this.saveManager = saveManager;
         this.onStartGameCallback = onStartGameCallback;
         
-        // Epic 2 Loadout State
-        this.selectedInventoryItem = null; // UID of selected item
-        this.selectedSlotType = null;      // 'head', 'body', etc.
+        this.selectedInventoryItem = null; 
+        this.selectedSlotType = null;      
         
         this.bindElements();
         this.attachEvents();
@@ -18,26 +17,23 @@ export class UIManager {
     }
 
     bindElements() {
-        // Screens
         this.mainMenu = document.getElementById('main-menu');
         this.synapseTree = document.getElementById('synapse-tree');
         this.loadoutMenu = document.getElementById('loadout-menu');
         this.uiLayer = document.getElementById('ui-layer');
         this.deathScreen = document.getElementById('death-screen');
         
-        // Main Menu Buttons
         this.btnStart = document.getElementById('btn-start');
         this.btnTree = document.getElementById('btn-tree');
         this.btnCloseTree = document.getElementById('btn-close-tree');
         this.btnLoadout = document.getElementById('btn-loadout');
         this.btnCloseLoadout = document.getElementById('btn-close-loadout');
         
-        // Upgrade Buttons
         this.btnUpgHp = document.getElementById('btn-upg-hp');
         this.btnUpgSpeed = document.getElementById('btn-upg-speed');
         this.btnUpgLight = document.getElementById('btn-upg-light');
+        this.btnWipeSave = document.getElementById('btn-wipe-save'); // NEW: Wipe Save button
 
-        // Loadout Panel Elements
         this.inventoryGrid = document.getElementById('inventory-grid');
         this.detailName = document.getElementById('detail-name');
         this.detailDesc = document.getElementById('detail-desc');
@@ -48,7 +44,6 @@ export class UIManager {
     }
 
     attachEvents() {
-        // Main Menu Navigation
         this.btnStart.addEventListener('click', () => {
             this.mainMenu.style.display = 'none';
             this.uiLayer.style.display = 'flex';
@@ -67,7 +62,16 @@ export class UIManager {
             this.updateMenuUI();
         });
 
-        // --- LOADOUT MENU NAVIGATION ---
+        // --- NEW: WIPE SAVE EVENT ---
+        if (this.btnWipeSave) {
+            this.btnWipeSave.addEventListener('click', () => {
+                const isConfirmed = confirm("WARNING: This will completely erase your clinical file, destroying all tokens, upgrades, and banked lucidity. Do you wish to proceed?");
+                if (isConfirmed) {
+                    this.saveManager.wipeSave();
+                }
+            });
+        }
+
         this.btnLoadout.addEventListener('click', () => {
             this.mainMenu.style.display = 'none';
             this.loadoutMenu.style.display = 'flex';
@@ -82,7 +86,6 @@ export class UIManager {
             this.updateMenuUI();
         });
 
-        // Equipment Actions
         this.btnEquipItem.addEventListener('click', () => {
             if (this.selectedInventoryItem) {
                 const invItem = this.saveManager.metaState.inventory.find(i => i.uid === this.selectedInventoryItem);
@@ -101,7 +104,18 @@ export class UIManager {
             }
         });
 
-        // Synapse Tree Purchases
+        this.btnUpgradeItem.addEventListener('click', () => {
+            if (this.selectedInventoryItem) {
+                if (this.saveManager.upgradeToken(this.selectedInventoryItem)) {
+                    this.updateMenuUI(); 
+                    const invItem = this.saveManager.metaState.inventory.find(i => i.uid === this.selectedInventoryItem);
+                    const tokenData = TOKENS[invItem.id];
+                    this.selectInventoryItem(invItem, tokenData);
+                    this.renderLoadoutUI();
+                }
+            }
+        });
+
         this.btnUpgHp.addEventListener('click', () => {
             if (this.saveManager.buyUpgrade('hp', 50)) this.updateMenuUI();
         });
@@ -116,6 +130,10 @@ export class UIManager {
     updateMenuUI() {
         const meta = this.saveManager.metaState;
         
+        const patLvl = this.saveManager.getPatientLevel();
+        const levelDisplay = document.getElementById('patient-level-display');
+        if (levelDisplay) levelDisplay.innerText = `CLINICAL FILE: PATIENT LEVEL ${patLvl}`;
+
         document.getElementById('menu-banked-lucidity').innerText = meta.lucidityBank;
         document.getElementById('tree-lucidity').innerText = meta.lucidityBank;
         
@@ -129,28 +147,25 @@ export class UIManager {
             const currentLvl = meta.upgrades[stat.id];
             document.getElementById(`upg-${stat.id}-lvl`).innerText = currentLvl;
             
-            const cost = stat.baseCost + (currentLvl * 25);
+            // Exponential cost matching SaveManager
+            const cost = Math.floor(stat.baseCost * Math.pow(1.1, currentLvl));
             stat.element.innerText = `${cost} L`;
             
             const canAfford = meta.lucidityBank >= cost;
-            const isMaxed = currentLvl >= 5;
+            const isMaxed = currentLvl >= 100; // Increased cap to 100
             
             stat.element.disabled = !canAfford || isMaxed;
             if (isMaxed) stat.element.innerText = "MAX";
         });
     }
 
-    // --- EPIC 2: LOADOUT RENDERING ---
-
     renderLoadoutUI() {
         const meta = this.saveManager.metaState;
         
-        // 1. Render Equipped Slots
         ['head', 'body', 'hands', 'legs'].forEach(slotType => {
             const slotEl = document.getElementById(`slot-${slotType}`);
             const equippedUid = meta.equippedTokens[slotType];
             
-            // Clear old classes
             slotEl.className = 'token-slot';
             
             if (equippedUid) {
@@ -163,7 +178,6 @@ export class UIManager {
                     
                     slotEl.onclick = () => this.selectEquippedSlot(slotType, invItem);
                 } else {
-                    // Fallback if data is corrupted
                     slotEl.innerHTML = `${slotType.toUpperCase()}<br>Empty`;
                     slotEl.onclick = null;
                 }
@@ -174,15 +188,13 @@ export class UIManager {
             }
         });
 
-        // 2. Render Inventory Grid
         this.inventoryGrid.innerHTML = '';
         meta.inventory.forEach(invItem => {
-            // Don't show items that are currently equipped in the inventory grid to avoid confusion
             const isEquipped = Object.values(meta.equippedTokens).includes(invItem.uid);
             if (isEquipped) return;
 
             const tokenData = TOKENS[invItem.id];
-            if (!tokenData) return; // Safety check
+            if (!tokenData) return; 
 
             const el = document.createElement('div');
             el.className = `inventory-item filled rarity-${invItem.rarity}`;
@@ -193,7 +205,6 @@ export class UIManager {
             this.inventoryGrid.appendChild(el);
         });
 
-        // 3. Clear Details Panel
         this.detailName.innerText = "Select a Token";
         this.detailDesc.innerText = "Configure your fractured mind before descending.";
         this.detailSet.innerText = "";
@@ -208,6 +219,7 @@ export class UIManager {
         
         const rarityData = TOKEN_RARITIES[invItem.rarity];
         const setData = TOKEN_SETS[tokenData.set];
+        const patLvl = this.saveManager.getPatientLevel();
 
         this.detailName.innerText = `[${invItem.rarity}] ${tokenData.name} (Lv.${invItem.level})`;
         this.detailName.style.color = rarityData.color;
@@ -218,11 +230,15 @@ export class UIManager {
         this.btnEquipItem.style.display = 'block';
         this.btnUnequipItem.style.display = 'none';
         
-        // Setup Upgrade Button (Future feature placeholder)
         if (rarityData.costToUpgrade) {
             this.btnUpgradeItem.style.display = 'block';
-            this.btnUpgradeItem.innerText = `Upgrade (${rarityData.costToUpgrade} L)`;
-            this.btnUpgradeItem.disabled = this.saveManager.metaState.lucidityBank < rarityData.costToUpgrade;
+            if (patLvl >= 10) {
+                this.btnUpgradeItem.innerText = `Upgrade (${rarityData.costToUpgrade} L)`;
+                this.btnUpgradeItem.disabled = this.saveManager.metaState.lucidityBank < rarityData.costToUpgrade;
+            } else {
+                this.btnUpgradeItem.innerText = `Requires Patient Lvl 10`;
+                this.btnUpgradeItem.disabled = true;
+            }
         } else {
             this.btnUpgradeItem.style.display = 'none';
         }
@@ -244,6 +260,6 @@ export class UIManager {
 
         this.btnEquipItem.style.display = 'none';
         this.btnUnequipItem.style.display = 'block';
-        this.btnUpgradeItem.style.display = 'none'; // Only allow upgrading from inventory to prevent edge cases
+        this.btnUpgradeItem.style.display = 'none'; 
     }
 }

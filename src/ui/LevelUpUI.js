@@ -1,13 +1,17 @@
 import { MANIFESTATIONS, SYNERGIES, INTRUSIVE_THOUGHTS } from '../data/Manifestations.js';
 
 export class LevelUpUI {
-    constructor(audioEngine) {
+    // Inject SaveManager to read Patient Level dynamically
+    constructor(audioEngine, saveManager) {
         this.modal = document.getElementById('level-up-modal');
         this.container = document.getElementById('cards-container');
+        this.btnReroll = document.getElementById('btn-reroll'); // Reference the new button
         this.audioEngine = audioEngine;
+        this.saveManager = saveManager;
 
         window.FRACTURED_DEV_MODE = false;
         this.setupDevShortcuts();
+        this.attachRerollEvent();
     }
 
     setupDevShortcuts() {
@@ -20,19 +24,55 @@ export class LevelUpUI {
         });
     }
 
+    attachRerollEvent() {
+        if (this.btnReroll) {
+            this.btnReroll.addEventListener('click', () => {
+                if (this.currentGame && this.currentGame.state.sanity > 20) {
+                    this.currentGame.state.sanity -= 20; // Exact a toll for a second opinion
+                    this.currentGame.state.cameraShake = 15;
+                    if (this.audioEngine) this.audioEngine.playSFX('damage', 2);
+                    
+                    // Rerender the screen with new cards!
+                    this.show(this.currentGame, this.currentCallback);
+                }
+            });
+        }
+    }
+
     show(game, onCompleteCallback) {
+        this.currentGame = game;
+        this.currentCallback = onCompleteCallback;
+        
         this.modal.style.display = 'flex';
         this.container.innerHTML = '';
         
         if (!game.state.player.synergies) game.state.player.synergies = [];
         if (!game.state.player.curses) game.state.player.curses = [];
+        if (!game.state.banished) game.state.banished = []; // Initialize banish array for this run
 
+        const patLvl = this.saveManager ? this.saveManager.getPatientLevel() : 1;
+
+        // EPIC 3: Render Reroll Button (Unlocks at Patient Level 3)
+        if (this.btnReroll) {
+            if (patLvl >= 3) {
+                this.btnReroll.style.display = 'block';
+                const canAfford = game.state.sanity > 20;
+                this.btnReroll.disabled = !canAfford;
+                this.btnReroll.innerText = canAfford ? "Reroll Choices (-20 Sanity)" : "Insufficient Sanity";
+            } else {
+                this.btnReroll.style.display = 'none';
+            }
+        }
+
+        // Filter out items that the player permanently banished this run
         let availableManifestations = Object.keys(MANIFESTATIONS).filter(key => {
+            if (game.state.banished.includes(key)) return false;
             const currentLvl = game.state.player.weapons[key]?.level || 0;
             return currentLvl < MANIFESTATIONS[key].maxLvl;
         });
 
         let availableSynergies = Object.keys(SYNERGIES).filter(synKey => {
+            if (game.state.banished.includes(synKey)) return false;
             const syn = SYNERGIES[synKey];
             const hasReqs = window.FRACTURED_DEV_MODE || 
                             syn.reqs.every(req => game.state.player.weapons[req] && game.state.player.weapons[req].level >= 5);
@@ -40,11 +80,10 @@ export class LevelUpUI {
             return hasReqs && !alreadyHas;
         });
 
-        let availableCurses = Object.keys(INTRUSIVE_THOUGHTS).filter(cKey => !game.state.player.curses.includes(cKey));
+        let availableCurses = Object.keys(INTRUSIVE_THOUGHTS).filter(cKey => !game.state.player.curses.includes(cKey) && !game.state.banished.includes(cKey));
 
         let pool = [...availableManifestations, ...availableSynergies];
 
-        // Intrusive Thoughts have a 25% chance to infect the pool (or 100% in Dev Mode)
         if (availableCurses.length > 0 && (Math.random() < 0.25 || window.FRACTURED_DEV_MODE)) {
             const injectedCurse = availableCurses[Math.floor(Math.random() * availableCurses.length)];
             pool.push(injectedCurse);
@@ -67,9 +106,7 @@ export class LevelUpUI {
 
         let selected = shuffled.slice(0, 3);
         
-        // Helper to match items to creepy visual icons
         const getIcon = (key) => {
-            // FIX: Changed lead_pipe from 🪠 to 🔧
             const icons = { flashlight: '🔦', static: '📻', adrenaline: '💉', lead_pipe: '🔧', spilled_ink: '🦑', corrosive_battery: '🔋', broken_chalk: '🖍️', blinding_signal: '👁️‍🗨️', industrial_bleed: '🩸', scholastic_purge: '☣️', everything_is_target: '🎯', manic_episode: '🌀', compulsive_cleaner: '🧹' };
             return icons[key] || '❓';
         };
@@ -83,7 +120,6 @@ export class LevelUpUI {
             
             const card = document.createElement('div'); 
             card.className = 'card';
-            // Slight random rotation to look like physical photos scattered on a table
             const rot = (Math.random() - 0.5) * 6;
             card.style.transform = `rotate(${rot}deg)`;
             
@@ -108,6 +144,23 @@ export class LevelUpUI {
             `;
             
             card.onclick = () => this.selectCard(key, game, onCompleteCallback, isCurse ? 'curse' : (isSynergy ? 'synergy' : 'normal'));
+            
+            // EPIC 3: Render Banish Button (Unlocks at Patient Level 7)
+            if (patLvl >= 7) {
+                const banishBtn = document.createElement('button');
+                banishBtn.className = 'banish-btn';
+                banishBtn.innerText = 'X';
+                banishBtn.title = 'Suppress Memory (Banish)';
+                banishBtn.onclick = (e) => {
+                    e.stopPropagation(); // Stop card from being selected!
+                    game.state.banished.push(key);
+                    if (this.audioEngine) this.audioEngine.playSFX('damage', 4);
+                    game.state.cameraShake = 10;
+                    this.show(game, onCompleteCallback); // Instantly reroll the card away
+                };
+                card.appendChild(banishBtn);
+            }
+
             this.container.appendChild(card);
         });
     }
@@ -135,7 +188,6 @@ export class LevelUpUI {
             game.state.player.curses.push(key);
             game.state.cameraShake = 40;
             
-            // Apply immediate curse state modifications
             if (key === 'everything_is_target') {
                 game.state.player.weapons.flashlight.damage *= 2;
                 game.state.player.weapons.static.damage *= 2;
@@ -146,7 +198,7 @@ export class LevelUpUI {
                 game.state.sanityDrainMult *= 2.0;
             }
             
-            if (this.audioEngine) this.audioEngine.playSFX('damage', 5); // Scary discordant sound
+            if (this.audioEngine) this.audioEngine.playSFX('damage', 5); 
         } 
         else if (cardType === 'synergy') {
             game.state.player.synergies.push(key);

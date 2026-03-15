@@ -20,35 +20,31 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// 1. Declare Global Singletons (Bypasses Vite HMR TDZ quirks)
 let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager;
-let gameState = 'MENU'; // MENU, PLAYING, LEVEL_UP, DEAD, PAUSED, EXIT_REACHED
-let suspendedRunState = null; // Temp holder for descents
+let gameState = 'MENU'; 
+let suspendedRunState = null; 
 
-// 2. Master Initialization Function
 function initEngine() {
     saveManager = new SaveManager();
     inputManager = new InputManager(canvas);
     renderer = new Renderer(canvas, ctx);
     audioEngine = new AudioEngine();
     game = new Game();
-    levelUpUI = new LevelUpUI(audioEngine);
+    // Pass SaveManager in so LevelUp UI can read the Patient Level!
+    levelUpUI = new LevelUpUI(audioEngine, saveManager);
 
     game.audioEngine = audioEngine;
 
-    // Setup UI / Main Menu Callbacks
     uiManager = new UIManager(saveManager, () => {
-        // Start fresh Descent
         game.init(saveManager);
         game.state.player.x = canvas.width / 2;
         game.state.player.y = canvas.height / 2;
         
         audioEngine.init();
         gameState = 'PLAYING';
-        document.getElementById('btn-resume-run').style.display = 'none'; // Clear suspended visual
+        document.getElementById('btn-resume-run').style.display = 'none'; 
     });
 
-    // Hook for resuming a suspended run
     document.getElementById('btn-resume-run').addEventListener('click', () => {
         const savedRun = localStorage.getItem('fractured_suspended_run');
         if (savedRun) {
@@ -61,12 +57,11 @@ function initEngine() {
             document.getElementById('main-menu').style.display = 'none';
             document.getElementById('ui-layer').style.display = 'flex';
             document.getElementById('btn-resume-run').style.display = 'none';
-            localStorage.removeItem('fractured_suspended_run'); // Clear it so they can't save scum
+            localStorage.removeItem('fractured_suspended_run'); 
             gameState = 'PLAYING';
         }
     });
 
-    // Check if a suspended run exists on boot
     if (localStorage.getItem('fractured_suspended_run')) {
         document.getElementById('btn-resume-run').style.display = 'block';
     }
@@ -78,7 +73,6 @@ function initEngine() {
         gameState = 'MENU';
     });
 
-    // Pause Menu Logic
     const pauseMenu = document.getElementById('pause-menu');
     const pauseTitle = document.getElementById('pause-title');
     const btnDescend = document.getElementById('btn-descend');
@@ -99,26 +93,22 @@ function initEngine() {
         }
     }
 
-    // Bind pause toggle
     document.getElementById('btn-pause').addEventListener('click', togglePause);
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape') togglePause(); });
 
     document.getElementById('btn-unpause').addEventListener('click', togglePause);
 
     document.getElementById('btn-awaken').addEventListener('click', () => {
-        // Bank Lucidity 
         saveManager.addLucidity(game.state.lucidity);
         
-        // Save suspended run logic (only if pausing midway, not if finishing a floor)
         if (gameState === 'PAUSED') {
             const stateToSave = game.getCarriedState();
             localStorage.setItem('fractured_suspended_run', JSON.stringify(stateToSave));
             document.getElementById('btn-resume-run').style.display = 'block';
         } else if (gameState === 'EXIT_REACHED') {
-            // Just cleanly end the run, do not suspend it
+            // End cleanly
         }
 
-        // UI Cleanup
         pauseMenu.style.display = 'none';
         document.getElementById('ui-layer').style.display = 'none';
         document.getElementById('main-menu').style.display = 'flex';
@@ -128,9 +118,8 @@ function initEngine() {
     });
 
     document.getElementById('btn-descend').addEventListener('click', () => {
-        // Player chose to go to Floor N+1
         const carryData = game.getCarriedState();
-        carryData.floor += 1; // Bump floor!
+        carryData.floor += 1; 
         
         game.init(saveManager, carryData);
         game.state.player.x = canvas.width / 2;
@@ -140,14 +129,12 @@ function initEngine() {
         gameState = 'PLAYING';
     });
 
-    // Game State Callbacks
     game.onDeath = () => {
         gameState = 'DEAD';
         document.getElementById('ui-layer').style.display = 'none';
         document.getElementById('death-screen').style.display = 'flex';
         document.getElementById('glitch-overlay').style.opacity = '0';
         
-        // Death Penalty: Lose 50% of unbanked Lucidity if you die deep in the descent!
         const recovered = Math.floor(game.state.lucidity * 0.5);
         saveManager.addLucidity(recovered);
         audioEngine.stop();
@@ -182,18 +169,16 @@ function initEngine() {
         pauseTitle.style.textShadow = "4px 0 white, -4px 0 var(--ui-gold)";
         document.getElementById('pause-desc').innerText = `You survived Floor ${game.state.floor}. Awaken with your Lucidity, or risk descending deeper into the nightmare?`;
         
-        document.getElementById('btn-unpause').style.display = 'none'; // Cannot just 'resume' an ended floor
-        btnDescend.style.display = 'block'; // Show the Descend button
+        document.getElementById('btn-unpause').style.display = 'none'; 
+        btnDescend.style.display = 'block'; 
         pauseMenu.style.display = 'flex';
         
         inputManager.hideJoysticks();
     };
 
-    // Kick off the loop
     requestAnimationFrame(gameLoop);
 }
 
-// 3. The Main Loop
 function gameLoop(time) {
     try {
         if (gameState === 'MENU') {
@@ -205,7 +190,6 @@ function gameLoop(time) {
                 inputManager.updateAimAngle(game.state.player.x, game.state.player.y);
                 const isBreakdown = game.update(inputManager.state, canvas.width, canvas.height, gameState);
                 
-                // Update HUD
                 const sanityBar = document.getElementById('sanity-bar');
                 let ratio = game.state.sanity / game.state.player.maxHp;
                 if (!Number.isFinite(ratio)) ratio = 0;
@@ -219,7 +203,6 @@ function gameLoop(time) {
                     dashBar.style.background = dashReady ? '#88aaff' : '#555';
                 }
 
-                // Update Convergence Bar
                 const conBar = document.getElementById('convergence-bar');
                 const conText = document.getElementById('convergence-text');
                 if (conBar && game.state.maxConvergence) {
@@ -250,6 +233,5 @@ function gameLoop(time) {
     requestAnimationFrame(gameLoop);
 }
 
-// 4. Boot Engine
 initEngine();
 console.log("FRACTURED Engine Online.");
