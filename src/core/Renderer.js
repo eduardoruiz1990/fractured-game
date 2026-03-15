@@ -1,6 +1,6 @@
 // src/core/Renderer.js
 // Handles HTML5 Canvas Drawing, Procedural Lighting Masks, and VFX
-// FULLY RESTORED: All rendering layers, boss intros, and player avatars included.
+// BUGFIX: Failsafe Matrix Reset to permanently prevent Black Void crashes.
 
 export class Renderer {
     constructor(canvas, ctx) {
@@ -25,7 +25,6 @@ export class Renderer {
         
         this.renderFrame = 0;
 
-        // Storm Particle Arrays
         this.rain = [];
         for(let i = 0; i < 150; i++) {
             this.rain.push({
@@ -97,7 +96,6 @@ export class Renderer {
         return clouds;
     }
 
-    // --- EPIC 6: DYNAMIC MENU BACKGROUNDS ---
     drawMenuBackground(time, gameState) {
         this.ctx.fillStyle = `rgba(139, 0, 0, ${0.05 + Math.sin(time * 0.001) * 0.02})`;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -117,7 +115,6 @@ export class Renderer {
         
         this.ctx.save();
         
-        // 1. Massive slow rotating Sphere Head on the right
         this.ctx.save();
         this.ctx.translate(cx + this.canvas.width * 0.3, cy);
         this.ctx.scale(25, 25); 
@@ -135,7 +132,6 @@ export class Renderer {
         this.ctx.fill();
         this.ctx.restore();
 
-        // 2. Pulsing Rorschach on the left
         this.ctx.save();
         this.ctx.translate(cx - this.canvas.width * 0.3, cy + 100);
         this.ctx.scale(30, 30); 
@@ -205,73 +201,67 @@ export class Renderer {
     }
 
     // ==========================================
-    // THE MASTER GAME RENDERING LOOP
+    // THE MASTER GAME RENDERING LOOP (BULLETPROOF)
     // ==========================================
     drawGame(state, audioEngine) {
-        this.renderFrame++; 
-        
-        // 1. Check Boss Intro Status
-        if (!state.bossSpawned) {
-            this.hasAnnouncedBoss = false;
+        try {
+            this.renderFrame++; 
+            
+            if (!state.bossSpawned) {
+                this.hasAnnouncedBoss = false;
+            }
+
+            if (state.bossSpawned && !this.hasAnnouncedBoss) {
+                this.bossAnnouncementTimer = 240; 
+                this.hasAnnouncedBoss = true;
+                state.hitStop = 240; 
+            }
+
+            this.ctx.fillStyle = '#000000'; 
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+            this.ctx.save();
+            this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+            this.ctx.scale(this.zoom, this.zoom);
+            this.ctx.translate(-state.player.x, -state.player.y);
+            
+            let curShakeX = 0, curShakeY = 0;
+            if (state.cameraShake > 0) {
+                curShakeX = (Math.random() - 0.5) * state.cameraShake;
+                curShakeY = (Math.random() - 0.5) * state.cameraShake;
+                this.ctx.translate(curShakeX, curShakeY);
+            }
+
+            this.drawWorldItems(state, audioEngine);
+            this.drawFog(state);
+            this.drawLightingMasks(state, curShakeX, curShakeY);
+            this.drawEffectsAndAuras(state);
+            this.drawPlayer(state, audioEngine);
+            this.drawDamageText(state);
+            this.drawObjectivePointers(state);
+
+            this.ctx.restore(); 
+
+            this.drawVignette(state);
+
+            if (this.bossAnnouncementTimer > 0) {
+                this.drawBossAnnouncement(state);
+                this.bossAnnouncementTimer--; 
+            }
+
+            this.drawFilmGrain();
+
+        } catch (e) {
+            console.error("CRITICAL RENDERER CRASH PREVENTED:", e);
+        } finally {
+            // FIX: Absolute failsafe to prevent the "Black Void" loop
+            // If anything above crashes, this guarantees the matrix resets.
+            this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         }
-
-        if (state.bossSpawned && !this.hasAnnouncedBoss) {
-            this.bossAnnouncementTimer = 240; 
-            this.hasAnnouncedBoss = true;
-            state.hitStop = 240; 
-            if (audioEngine) audioEngine.playSFX('death', 15); 
-        }
-
-        // 2. Base Canvas Prep
-        this.ctx.fillStyle = '#000000'; 
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        this.ctx.save();
-        this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
-        this.ctx.scale(this.zoom, this.zoom);
-        this.ctx.translate(-state.player.x, -state.player.y);
-        
-        let curShakeX = 0, curShakeY = 0;
-        if (state.cameraShake > 0) {
-            curShakeX = (Math.random() - 0.5) * state.cameraShake;
-            curShakeY = (Math.random() - 0.5) * state.cameraShake;
-            this.ctx.translate(curShakeX, curShakeY);
-        }
-
-        // 3. Draw All Floor & Entities 
-        this.drawWorldItems(state, audioEngine);
-        
-        // 4. Draw Atmospheric Fog
-        this.drawFog(state);
-
-        // 5. Calculate and apply Darkness / Flashlight Masks
-        this.drawLightingMasks(state, curShakeX, curShakeY);
-
-        // 6. Draw glowing effects (Screen blending)
-        this.drawEffectsAndAuras(state);
-
-        // 7. Draw Player Avatar
-        this.drawPlayer(state, audioEngine);
-
-        // 8. Draw UI Overlays (Damage text, objective arrows)
-        this.drawDamageText(state);
-        this.drawObjectivePointers(state);
-
-        this.ctx.restore(); 
-
-        // 9. Post-Processing
-        this.drawVignette(state);
-
-        if (this.bossAnnouncementTimer > 0) {
-            this.drawBossAnnouncement(state);
-            this.bossAnnouncementTimer--; 
-        }
-
-        this.drawFilmGrain();
     }
 
     // ==========================================
-    // HELPER FUNCTIONS (Keeps code safe and modular)
+    // HELPER FUNCTIONS 
     // ==========================================
 
     drawFog(state) {
@@ -571,7 +561,7 @@ export class Renderer {
                             this.ctx.rotate(-angle); 
                             this.ctx.textAlign = 'center';
                             this.ctx.textBaseline = 'middle';
-                            this.ctx.font = "bold 16px var(--ui-font, monospace)";
+                            this.ctx.font = "bold 16px 'Courier New', Courier, monospace";
                             this.ctx.fillStyle = isUrgent ? `rgba(255, 100, 100, ${0.8 + pulse * 0.2})` : `rgba(150, 255, 150, ${0.8 + pulse * 0.2})`;
                             this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, 0);
                         } else if (obj.type === 'EXIT_ELEVATOR') {
@@ -734,7 +724,7 @@ export class Renderer {
                     this.ctx.fillStyle = isUrgent ? '#ff0000' : '#00ff00';
                     this.ctx.textAlign = 'center';
                     this.ctx.textBaseline = 'middle';
-                    this.ctx.font = "bold 14px var(--ui-font, monospace)";
+                    this.ctx.font = "bold 14px 'Courier New', Courier, monospace";
                     this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, -35); 
                 } else if (obj.type === 'EXIT_ELEVATOR') {
                     let pulse = Math.sin(this.renderFrame * 0.1) * 5;
@@ -936,6 +926,22 @@ export class Renderer {
                         this.ctx.setLineDash([]);
                     } else if (ent.attackState === 'lunging') {
                         this.ctx.rotate(Math.atan2(ent.lungeVy, ent.lungeVx));
+                        
+                        this.ctx.save();
+                        this.ctx.globalAlpha = 0.6;
+                        this.ctx.strokeStyle = ent.buffed ? '#ff0000' : '#ff3333';
+                        this.ctx.lineWidth = 3;
+                        this.ctx.lineCap = 'round';
+                        this.ctx.shadowColor = this.ctx.strokeStyle;
+                        this.ctx.shadowBlur = 10;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(15, -4);
+                        this.ctx.lineTo(15 - (ent.vx * 1.5), -4 - (ent.vy * 1.5));
+                        this.ctx.moveTo(15, 4);
+                        this.ctx.lineTo(15 - (ent.vx * 1.5), 4 - (ent.vy * 1.5));
+                        this.ctx.stroke();
+                        this.ctx.restore();
+
                     } else {
                         this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
                     }
@@ -1038,96 +1044,104 @@ export class Renderer {
                     }
                 }
                 else if (ent.type === 'BOSS') {
-                    if (ent.pulseState === 'charging' || ent.pulseState === 'pulsing') {
-                        this.ctx.save();
-                        this.ctx.strokeStyle = ent.pulseState === 'pulsing' ? 'rgba(255, 50, 50, 0.8)' : `rgba(255, 100, 100, ${1 - (ent.pulseTimer/60)})`;
-                        this.ctx.lineWidth = ent.pulseState === 'pulsing' ? 10 : 3;
-                        this.ctx.beginPath();
-                        this.ctx.arc(0, 0, ent.pulseState === 'pulsing' ? ent.maxPulseRadius : ent.pulseRadius, 0, Math.PI*2);
-                        this.ctx.stroke();
-                        
-                        if (ent.pulseState === 'pulsing') {
-                            this.ctx.fillStyle = 'rgba(255, 50, 50, 0.3)';
-                            this.ctx.fill();
+                    // BUGFIX: Enclose boss rendering in its own safe try/catch so a geometry bug here 
+                    // doesn't wipe out the rest of the canvas loop.
+                    try {
+                        if (ent.pulseState === 'charging' || ent.pulseState === 'pulsing') {
+                            this.ctx.save();
+                            this.ctx.strokeStyle = ent.pulseState === 'pulsing' ? 'rgba(255, 50, 50, 0.8)' : `rgba(255, 100, 100, ${1 - (ent.pulseTimer/60)})`;
+                            this.ctx.lineWidth = ent.pulseState === 'pulsing' ? 10 : 3;
+                            this.ctx.beginPath();
+                            this.ctx.arc(0, 0, ent.pulseState === 'pulsing' ? ent.maxPulseRadius : ent.pulseRadius, 0, Math.PI*2);
+                            this.ctx.stroke();
+                            
+                            if (ent.pulseState === 'pulsing') {
+                                this.ctx.fillStyle = 'rgba(255, 50, 50, 0.3)';
+                                this.ctx.fill();
+                            }
+                            this.ctx.restore();
                         }
-                        this.ctx.restore();
-                    }
 
-                    this.ctx.rotate(Math.sin(ent.phase * 0.5) * 0.1); 
-                    
-                    let pulse = Math.sin(this.renderFrame * 0.1) * 3;
-                    if (ent.pulseState === 'charging') {
-                        pulse = Math.sin(this.renderFrame * 0.5) * 5; 
-                        this.ctx.translate((Math.random()-0.5)*5, (Math.random()-0.5)*5); 
-                    }
+                        // Safeguard against missing phase variables
+                        let phase = ent.phase || 0;
+                        this.ctx.rotate(Math.sin(phase * 0.5) * 0.1); 
+                        
+                        let pulse = Math.sin(this.renderFrame * 0.1) * 3;
+                        if (ent.pulseState === 'charging') {
+                            pulse = Math.sin(this.renderFrame * 0.5) * 5; 
+                            this.ctx.translate((Math.random()-0.5)*5, (Math.random()-0.5)*5); 
+                        }
 
-                    this.ctx.fillStyle = isFlashed ? '#ddaaaa' : '#1a0d15';
-                    this.ctx.beginPath();
-                    for (let i = 0; i < 16; i++) {
-                        let angle = (i / 16) * Math.PI * 2;
-                        let reach = 35 + Math.sin(ent.phase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
-                        if (ent.pulseState === 'charging') reach -= 10; 
-                        if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
-                        else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
-                    }
-                    this.ctx.closePath();
-                    this.ctx.fill();
-
-                    this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#2b1010';
-                    this.ctx.beginPath();
-                    this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
-                    this.ctx.fill();
-
-                    this.ctx.fillStyle = '#050000';
-                    this.ctx.beginPath();
-                    for (let i = 0; i < 10; i++) {
-                        let angle = (i / 10) * Math.PI * 2;
-                        let innerReach = 10 + Math.random() * 8; 
-                        if (ent.pulseState === 'charging') innerReach += 5 + Math.random()*5; 
-                        if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
-                        else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
-                    }
-                    this.ctx.closePath();
-                    this.ctx.fill();
-
-                    this.ctx.fillStyle = '#ff0000';
-                    this.ctx.shadowColor = '#ff0000';
-                    this.ctx.shadowBlur = 15;
-                    
-                    const eyes = [
-                        {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
-                        {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
-                    ];
-
-                    eyes.forEach(eye => {
-                        let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
-                        let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
+                        this.ctx.fillStyle = isFlashed ? '#ddaaaa' : '#1a0d15';
                         this.ctx.beginPath();
-                        this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
+                        for (let i = 0; i < 16; i++) {
+                            let angle = (i / 16) * Math.PI * 2;
+                            let reach = 35 + Math.sin(phase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
+                            if (ent.pulseState === 'charging') reach -= 10; 
+                            if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
+                            else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
+                        }
+                        this.ctx.closePath();
                         this.ctx.fill();
-                        this.ctx.fillStyle = '#000000';
-                        this.ctx.shadowBlur = 0;
+
+                        this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#2b1010';
                         this.ctx.beginPath();
-                        this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
+                        this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
                         this.ctx.fill();
+
+                        this.ctx.fillStyle = '#050000';
+                        this.ctx.beginPath();
+                        for (let i = 0; i < 10; i++) {
+                            let angle = (i / 10) * Math.PI * 2;
+                            let innerReach = 10 + Math.random() * 8; 
+                            if (ent.pulseState === 'charging') innerReach += 5 + Math.random()*5; 
+                            if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
+                            else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
+                        }
+                        this.ctx.closePath();
+                        this.ctx.fill();
+
                         this.ctx.fillStyle = '#ff0000';
-                        this.ctx.shadowBlur = ent.pulseState === 'charging' ? 30 : 15;
-                    });
-                    this.ctx.shadowBlur = 0;
+                        this.ctx.shadowColor = '#ff0000';
+                        this.ctx.shadowBlur = 15;
+                        
+                        const eyes = [
+                            {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
+                            {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
+                        ];
 
-                    this.ctx.strokeStyle = '#555';
-                    this.ctx.lineWidth = 3;
-                    this.ctx.lineCap = 'round';
-                    for(let i=0; i<3; i++) {
-                        let orbitAngle = ent.phase * (1 + i*0.5) + (i * Math.PI*0.6);
-                        let dist = 45 + Math.sin(ent.phase * 2 + i) * 5;
-                        if (ent.pulseState === 'charging') orbitAngle += this.renderFrame * 0.2;
-                        let objX = Math.cos(orbitAngle) * dist;
-                        let objY = Math.sin(orbitAngle) * dist;
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(objX - 5, objY - 5);
-                        this.ctx.lineTo(objX + 5, objY + 5);
-                        this.ctx.stroke();
+                        eyes.forEach(eye => {
+                            let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
+                            let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
+                            this.ctx.beginPath();
+                            this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
+                            this.ctx.fill();
+                            this.ctx.fillStyle = '#000000';
+                            this.ctx.shadowBlur = 0;
+                            this.ctx.beginPath();
+                            this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
+                            this.ctx.fill();
+                            this.ctx.fillStyle = '#ff0000';
+                            this.ctx.shadowBlur = ent.pulseState === 'charging' ? 30 : 15;
+                        });
+                        this.ctx.shadowBlur = 0;
+
+                        this.ctx.strokeStyle = '#555';
+                        this.ctx.lineWidth = 3;
+                        this.ctx.lineCap = 'round';
+                        for(let i=0; i<3; i++) {
+                            let orbitAngle = phase * (1 + i*0.5) + (i * Math.PI*0.6);
+                            let dist = 45 + Math.sin(phase * 2 + i) * 5;
+                            if (ent.pulseState === 'charging') orbitAngle += this.renderFrame * 0.2;
+                            let objX = Math.cos(orbitAngle) * dist;
+                            let objY = Math.sin(orbitAngle) * dist;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(objX - 5, objY - 5);
+                            this.ctx.lineTo(objX + 5, objY + 5);
+                            this.ctx.stroke();
+                        }
+                    } catch(bossError) {
+                        console.warn("Recoverable boss rendering error:", bossError);
                     }
                 }
 
@@ -1168,7 +1182,7 @@ export class Renderer {
         if (state.damageTexts) {
             state.damageTexts.forEach(dt => {
                 this.ctx.globalAlpha = Math.max(0, Math.min(1, dt.life));
-                this.ctx.font = `bold ${Math.floor((20 * dt.scale)/this.zoom)}px var(--ui-font, monospace)`;
+                this.ctx.font = `bold ${Math.floor((20 * dt.scale)/this.zoom)}px 'Courier New', Courier, monospace`;
                 this.ctx.fillStyle = dt.color;
                 this.ctx.lineWidth = 2;
                 this.ctx.strokeStyle = '#000';
@@ -1183,6 +1197,7 @@ export class Renderer {
     drawBossAnnouncement(state) {
         this.ctx.save();
         
+        // BUGFIX: Safely check for active boss to prevent reference errors during the text drawing phase
         const activeBoss = state.entities.find(e => e.type === 'BOSS' || e.type === 'RORSCHACH');
         const bossType = activeBoss ? activeBoss.type : 'BOSS';
         
@@ -1223,6 +1238,7 @@ export class Renderer {
         const simulatedPhase = this.renderFrame * 0.05;
         this.ctx.rotate(Math.sin(simulatedPhase * 0.5) * 0.1); 
 
+        // BUGFIX: Removed all references to 'ent' here, strictly using 'simulatedPhase' for animations
         if (bossType === 'RORSCHACH') {
             let pulse = Math.sin(this.renderFrame * 0.1) * 3;
             this.ctx.fillStyle = '#1a0525';
@@ -1296,7 +1312,7 @@ export class Renderer {
                 this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
                 this.ctx.fill();
                 this.ctx.fillStyle = '#ff0000';
-                this.ctx.shadowBlur = 15;
+                this.ctx.shadowBlur = 15; // Safely set without pulseState dependency
             });
             this.ctx.shadowBlur = 0;
 
@@ -1325,13 +1341,13 @@ export class Renderer {
         const titleText = bossType === 'RORSCHACH' ? "THE RORSCHACH" : "THE SPHERE HEAD";
         const subText = bossType === 'RORSCHACH' ? "The Mind Divided" : "Apex Predator of the Wastes";
         
-        this.ctx.font = "900 110px var(--ui-font, monospace)";
+        this.ctx.font = "900 110px 'Courier New', Courier, monospace";
         this.ctx.fillStyle = '#ffffff';
         this.ctx.shadowColor = 'var(--ui-red)';
         this.ctx.shadowBlur = 20;
         this.ctx.fillText(titleText, -100 + textJitter, -50);
         
-        this.ctx.font = "italic 45px var(--ui-font, monospace)";
+        this.ctx.font = "italic 45px 'Courier New', Courier, monospace";
         this.ctx.fillStyle = '#c5a059';
         this.ctx.shadowBlur = 0;
         this.ctx.fillText(subText, -90 + textJitter, 60);
@@ -1383,6 +1399,21 @@ export class Renderer {
             let distMoved = Math.hypot(state.player.x - this.lastPx, state.player.y - this.lastPy);
             if (distMoved > 0.5) isMoving = true;
         }
+
+        let moveX = 0, moveY = 0;
+        if (isMoving || (state.player.dash && state.player.dash.active)) {
+            let globalVx = state.player.x - this.lastPx;
+            let globalVy = state.player.y - this.lastPy;
+            if (state.player.dash && state.player.dash.active) {
+                globalVx = state.player.dash.dx * 10;
+                globalVy = state.player.dash.dy * 10;
+            }
+            let cosA = Math.cos(-state.player.angle);
+            let sinA = Math.sin(-state.player.angle);
+            moveX = globalVx * cosA - globalVy * sinA;
+            moveY = globalVx * sinA + globalVy * cosA;
+        }
+
         this.lastPx = state.player.x;
         this.lastPy = state.player.y;
 
@@ -1447,27 +1478,30 @@ export class Renderer {
 
         this.ctx.fillStyle = '#1a1a24';
         this.ctx.beginPath();
-        let breathe = Math.sin(this.renderFrame * 0.15) * (1 + panic * 2);
+        let breathe = Math.sin(this.renderFrame * 0.15) * (1 + panic * 3); 
         this.ctx.ellipse(0, 0, state.player.radius * 0.6 + breathe, state.player.radius, 0, 0, Math.PI*2);
         this.ctx.fill();
 
+        let headShiftX = Math.max(-5, Math.min(5, moveX * 0.5));
+        let headShiftY = Math.max(-5, Math.min(5, moveY * 0.5));
+
         this.ctx.fillStyle = '#e0e0e0';
         this.ctx.beginPath();
-        let headJitterX = (Math.random() - 0.5) * panic * 3;
-        let headJitterY = (Math.random() - 0.5) * panic * 3;
-        this.ctx.arc(3 + headJitterX, headJitterY, state.player.radius * 0.45, 0, Math.PI*2);
+        let headJitterX = (Math.random() - 0.5) * panic * 4;
+        let headJitterY = (Math.random() - 0.5) * panic * 4;
+        this.ctx.arc(3 + headJitterX + headShiftX, headJitterY + headShiftY, state.player.radius * 0.45, 0, Math.PI*2);
         this.ctx.fill();
 
         this.ctx.fillStyle = '#1a1a24';
         this.ctx.beginPath();
-        this.ctx.ellipse(8 + headJitterX*0.5, 10 + headJitterY*0.5, 5, 3, Math.PI/4, 0, Math.PI*2);
+        this.ctx.ellipse(8 + headJitterX*0.5 + headShiftX, 10 + headJitterY*0.5 + headShiftY, 5, 3, Math.PI/4, 0, Math.PI*2);
         this.ctx.fill();
         
         this.ctx.fillStyle = '#fffae6';
         this.ctx.shadowColor = '#fffae6';
         this.ctx.shadowBlur = 8 + Math.random() * 5 * panic; 
         this.ctx.beginPath();
-        this.ctx.arc(12 + headJitterX*0.5, 10 + headJitterY*0.5, 2.5, 0, Math.PI*2);
+        this.ctx.arc(12 + headJitterX*0.5 + headShiftX, 10 + headJitterY*0.5 + headShiftY, 2.5, 0, Math.PI*2);
         this.ctx.fill();
         this.ctx.shadowBlur = 0;
 

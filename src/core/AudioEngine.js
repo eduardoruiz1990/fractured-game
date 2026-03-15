@@ -1,5 +1,5 @@
 // src/core/AudioEngine.js
-// Procedural Web Audio API synthesizer for BGM and SFX.
+// Hybrid Audio Manager: Tries to load local files, falls back to advanced procedural synth if missing.
 
 export class AudioEngine {
     constructor() {
@@ -7,154 +7,261 @@ export class AudioEngine {
         this.audioCtx = null;
         this.masterGain = null;
         
-        // Loop trackers for continuous sounds
         this.lastFootstepTime = 0;
-        this.breathPhase = 0;
-        this.breathNode = null;
-        this.breathFilter = null;
-        this.breathGain = null;
+        this.lastHeartbeatTime = 0;
+        
+        // Dictionary to hold our downloaded audio buffers
+        this.buffers = {};
+        
+        this.activeLoops = {
+            menuTheme: null,
+            drone: null,
+            spinner: null,
+            static: null,
+            heartbeat: null
+        };
+        
+        this.gains = {
+            menuTheme: null,
+            drone: null,
+            spinner: null,
+            static: null,
+            heartbeat: null
+        };
+
+        // --- LOCAL ASSET PATHS (Place these in public/sounds/) ---
+        this.assetUrls = {
+            menu_theme: "/sounds/menu_theme.mp3", 
+            game_drone: "/sounds/game_drone.mp3", 
+            heartbeat: "/sounds/heartbeat.mp3",  
+            polaroid: "/sounds/polaroid.mp3",   
+            pipe_swing: "/sounds/pipe_swing.mp3", 
+            pipe_hit: "/sounds/pipe_hit.mp3",   
+            boss_intro: "/sounds/boss_intro.mp3", 
+            ui_hover: "/sounds/ui_hover.mp3",   
+            ui_click: "/sounds/ui_click.mp3",   
+            ui_upgrade: "/sounds/ui_upgrade.mp3"  
+        };
+
+        // Procedural Fallback states
+        this.fallbackOscillators = {
+            menuTheme: [],
+            drone: []
+        };
     }
 
-    init() {
-        try {
-            if (this.isInitialized) {
-                if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
-                this.masterGain.gain.setTargetAtTime(0.5, this.audioCtx.currentTime, 0.5); // Fade in
-                return;
-            }
+    async init() {
+        if (this.isInitialized) {
+            if (this.audioCtx && this.audioCtx.state === 'suspended') this.audioCtx.resume();
+            return;
+        }
 
+        try {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             this.audioCtx = new AudioContext();
+            
             this.masterGain = this.audioCtx.createGain();
-            this.masterGain.gain.value = 0.6; // Slightly boosted master headroom
+            this.masterGain.gain.value = 1.0; 
             this.masterGain.connect(this.audioCtx.destination);
 
-            // --- BGM SETUP ---
-            // Sub-Bass Drone (Pushed to the deep background)
-            this.subOsc = this.audioCtx.createOscillator();
-            this.subOsc.type = 'sine';
-            this.subOsc.frequency.value = 45;
-            let subGain = this.audioCtx.createGain();
-            subGain.gain.value = 0.15; // LOWERED from 0.7
-            this.subOsc.connect(subGain).connect(this.masterGain);
-            this.subOsc.start();
-
-            // Grinding Metallic Drone (Pushed to the background)
-            this.droneOsc = this.audioCtx.createOscillator();
-            this.droneOsc.type = 'sawtooth';
-            this.droneOsc.frequency.value = 55;
-
-            this.filter = this.audioCtx.createBiquadFilter();
-            this.filter.type = 'lowpass';
-            this.filter.frequency.value = 200;
-
-            // Pulse LFO
-            this.lfo = this.audioCtx.createOscillator();
-            this.lfo.type = 'sine';
-            this.lfo.frequency.value = 0.5;
-
-            let lfoGain = this.audioCtx.createGain();
-            lfoGain.gain.value = 150; 
-
-            this.lfo.connect(lfoGain).connect(this.filter.frequency);
-
-            let droneVol = this.audioCtx.createGain();
-            droneVol.gain.value = 0.08; // LOWERED from 0.3
-
-            this.droneOsc.connect(this.filter).connect(droneVol).connect(this.masterGain);
+            this.gains.menuTheme = this.audioCtx.createGain();
+            this.gains.menuTheme.gain.value = 0;
+            this.gains.menuTheme.connect(this.masterGain);
             
-            this.lfo.start();
-            this.droneOsc.start();
-
-            // --- CONTINUOUS PLAYER SFX SETUP ---
-            this.initBreathing();
+            this.gains.drone = this.audioCtx.createGain();
+            this.gains.drone.gain.value = 0;
+            this.gains.drone.connect(this.masterGain);
+            
+            this.gains.heartbeat = this.audioCtx.createGain();
+            this.gains.heartbeat.gain.value = 0;
+            this.gains.heartbeat.connect(this.masterGain);
 
             this.isInitialized = true;
+
+            // Start downloading local assets
+            await this.loadAllAssets();
+            this.playMenuTheme();
+            
         } catch (e) {
-            console.warn("Audio Initialization Failed: " + e.message);
+            console.warn("Audio Context Initialization Failed: " + e.message);
         }
     }
 
-    // Creates a continuous white noise buffer for breathing
-    initBreathing() {
-        const bufferSize = this.audioCtx.sampleRate * 2; // 2 seconds
-        const noiseBuffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
-        const output = noiseBuffer.getChannelData(0);
-        for (let i = 0; i < bufferSize; i++) {
-            output[i] = Math.random() * 2 - 1;
+    async loadAllAssets() {
+        for (const [key, url] of Object.entries(this.assetUrls)) {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const arrayBuffer = await response.arrayBuffer();
+                this.buffers[key] = await this.audioCtx.decodeAudioData(arrayBuffer);
+                console.log(`[AudioEngine] Successfully loaded: ${key}`);
+            } catch (err) {
+                console.info(`[AudioEngine] Missing local file for '${key}'. Will use procedural fallback.`);
+                this.buffers[key] = null; // Mark as explicitly missing
+            }
         }
-
-        this.breathNode = this.audioCtx.createBufferSource();
-        this.breathNode.buffer = noiseBuffer;
-        this.breathNode.loop = true;
-
-        // Bandpass filter to make noise sound like air
-        this.breathFilter = this.audioCtx.createBiquadFilter();
-        this.breathFilter.type = 'bandpass';
-        this.breathFilter.frequency.value = 1000;
-        this.breathFilter.Q.value = 1.0;
-
-        this.breathGain = this.audioCtx.createGain();
-        this.breathGain.gain.value = 0; // Starts silent
-
-        this.breathNode.connect(this.breathFilter).connect(this.breathGain).connect(this.masterGain);
-        this.breathNode.start();
     }
 
-    updateState(stress, sanityRatio, isMoving, dt) {
-        if (!this.isInitialized || !this.audioCtx) return;
+    safeFade(gainNode, targetValue, duration) {
+        if (!gainNode || !this.audioCtx) return;
+        const now = this.audioCtx.currentTime;
+        gainNode.gain.cancelScheduledValues(now);
+        gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+        gainNode.gain.linearRampToValueAtTime(targetValue, now + duration);
+    }
+
+    playMenuTheme() {
+        if (!this.isInitialized) return;
+        this.safeFade(this.masterGain, 1.0, 0.5);
+
+        if (this.activeLoops.drone) {
+            this.safeFade(this.gains.drone, 0, 1.0);
+            const staleDrone = this.activeLoops.drone;
+            setTimeout(() => { try { staleDrone.stop(); } catch(e){} }, 1000);
+            this.activeLoops.drone = null;
+        }
+        this.stopFallbackDrone();
+
+        if (this.buffers['menu_theme']) {
+            if (!this.activeLoops.menuTheme) {
+                const source = this.audioCtx.createBufferSource();
+                source.buffer = this.buffers['menu_theme'];
+                source.loop = true;
+                source.connect(this.gains.menuTheme);
+                source.start();
+                this.activeLoops.menuTheme = source;
+            }
+        } else {
+            this.startFallbackMenuTheme();
+        }
         
-        const danger = Math.max(0, Math.min(1, 1.0 - sanityRatio)); 
+        this.safeFade(this.gains.menuTheme, 0.25, 1.0);
+    }
+
+    stopMenuTheme() {
+        if (!this.isInitialized) return;
+        this.safeFade(this.gains.menuTheme, 0, 1.0);
+        
+        if (this.activeLoops.menuTheme) {
+            const staleTheme = this.activeLoops.menuTheme;
+            setTimeout(() => { try { staleTheme.stop(); } catch(e){} }, 1000);
+            this.activeLoops.menuTheme = null;
+        }
+        this.stopFallbackMenuTheme();
+
+        this.startGameDrone();
+    }
+
+    startGameDrone() {
+        if (!this.isInitialized) return;
+        this.safeFade(this.masterGain, 1.0, 0.5);
+
+        if (this.buffers['game_drone']) {
+            if (!this.activeLoops.drone) {
+                const source = this.audioCtx.createBufferSource();
+                source.buffer = this.buffers['game_drone'];
+                source.loop = true;
+                source.connect(this.gains.drone);
+                source.start();
+                this.activeLoops.drone = source;
+            }
+        } else {
+            this.startFallbackDrone();
+        }
+        
+        this.safeFade(this.gains.drone, 0.15, 2.0);
+    }
+
+    updateState(stress, sanityRatio, state = null) {
+        if (!this.isInitialized || !this.audioCtx) return;
+        const now = this.audioCtx.currentTime;
         
         try {
-            // Update BGM
-            this.lfo.frequency.setTargetAtTime(0.5 + (danger * 4.5) + (stress * 0.2), this.audioCtx.currentTime, 0.2);
-            this.filter.frequency.setTargetAtTime(200 + (danger * 800) + (stress * 150), this.audioCtx.currentTime, 0.2);
-            this.droneOsc.frequency.setTargetAtTime(55 + (danger * 12), this.audioCtx.currentTime, 0.2);
-
-            // Update Breathing
-            const breathSpeed = 0.05 + (danger * 0.1); // ~15 to ~45 breaths per minute
-            this.breathPhase += breathSpeed;
-            
-            // Map sine wave (-1 to 1) to volume (0 to maxVol)
-            const breathVol = Math.max(0, Math.sin(this.breathPhase));
-            
-            // LOUDER: Max volume massively boosted so breathing is distinct and stressful
-            const maxBreathVol = 0.25 + (danger * 0.4); 
-            
-            this.breathGain.gain.setTargetAtTime(breathVol * maxBreathVol, this.audioCtx.currentTime, 0.1);
-            // Pitch up slightly on inhale
-            this.breathFilter.frequency.setTargetAtTime(800 + (breathVol * 400) + (danger * 500), this.audioCtx.currentTime, 0.1);
-
+            if (sanityRatio < 0.3) {
+                this.safeFade(this.gains.drone, 0.05, 1.0);
+                
+                if (this.buffers['heartbeat']) {
+                    if (!this.activeLoops.heartbeat) {
+                        const source = this.audioCtx.createBufferSource();
+                        source.buffer = this.buffers['heartbeat'];
+                        source.loop = true;
+                        source.playbackRate.value = 1.0 + ((0.3 - sanityRatio) * 2.0); 
+                        source.connect(this.gains.heartbeat);
+                        source.start();
+                        this.activeLoops.heartbeat = source;
+                        this.safeFade(this.gains.heartbeat, 0.6, 0.5); 
+                    } else {
+                        this.activeLoops.heartbeat.playbackRate.setTargetAtTime(1.0 + ((0.3 - sanityRatio) * 2.5), now, 0.2);
+                    }
+                } else {
+                    // Procedural Heartbeat Fallback
+                    const beatInterval = 0.4 + (sanityRatio * 1.5); 
+                    if (now - this.lastHeartbeatTime > beatInterval) {
+                        this.playProceduralSFX('heartbeat', 0.8);
+                        this.lastHeartbeatTime = now;
+                    }
+                }
+            } else {
+                this.safeFade(this.gains.drone, 0.15 + (stress * 0.05), 1.0);
+                
+                if (this.activeLoops.heartbeat) {
+                    this.safeFade(this.gains.heartbeat, 0, 0.5);
+                    const staleHeart = this.activeLoops.heartbeat;
+                    setTimeout(() => { try { staleHeart.stop(); } catch(e){} }, 1000);
+                    this.activeLoops.heartbeat = null;
+                }
+            }
         } catch(e) { }
     }
 
-    // Procedural crunchy footstep
-    playFootstep() {
+    playSFX(key, volumeMult = 1.0) {
         if (!this.isInitialized || !this.audioCtx || this.audioCtx.state === 'suspended') return;
         
+        // If we have the real file, play it!
+        if (this.buffers[key]) {
+            try {
+                const source = this.audioCtx.createBufferSource();
+                source.buffer = this.buffers[key];
+                
+                const gainNode = this.audioCtx.createGain();
+                source.playbackRate.value = 0.95 + Math.random() * 0.1; 
+                
+                let finalVolume = volumeMult;
+                if (key.includes('ui_')) finalVolume *= 0.4;
+                if (key === 'pipe_swing') finalVolume *= 0.6;
+                if (key === 'boss_intro') finalVolume *= 1.2;
+                
+                gainNode.gain.value = Math.max(0, Math.min(finalVolume, 1.5));
+                source.connect(gainNode).connect(this.masterGain);
+                source.start();
+            } catch (e) { console.warn(`Failed to play buffer ${key}:`, e); }
+        } else {
+            // No file? Play the high-quality procedural fallback!
+            this.playProceduralSFX(key, volumeMult);
+        }
+    }
+
+    playFootstep() {
+        if (!this.isInitialized || !this.audioCtx || this.audioCtx.state === 'suspended') return;
         const now = this.audioCtx.currentTime;
         if (now - this.lastFootstepTime < 0.15) return;
         this.lastFootstepTime = now;
 
         try {
-            const bufferSize = this.audioCtx.sampleRate * 0.1; // 100ms
+            const bufferSize = this.audioCtx.sampleRate * 0.1; 
             const noiseBuffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
             const output = noiseBuffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) {
-                output[i] = Math.random() * 2 - 1;
-            }
+            for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
 
             const noise = this.audioCtx.createBufferSource();
             noise.buffer = noiseBuffer;
 
             const filter = this.audioCtx.createBiquadFilter();
             filter.type = 'lowpass';
-            filter.frequency.value = 800 + Math.random() * 400;
+            filter.frequency.value = 600 + Math.random() * 200;
 
             const gain = this.audioCtx.createGain();
-            // LOUDER: Footstep burst volume boosted significantly
-            gain.gain.setValueAtTime(0.6, now); 
+            gain.gain.setValueAtTime(0.15, now); 
             gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
 
             noise.connect(filter).connect(gain).connect(this.masterGain);
@@ -162,64 +269,207 @@ export class AudioEngine {
         } catch(e) {}
     }
 
-    playSFX(type, intensity = 1) {
-        if (!this.isInitialized || !this.audioCtx || this.audioCtx.state === 'suspended') return;
-        
-        try {
-            let osc = this.audioCtx.createOscillator();
-            let gain = this.audioCtx.createGain();
-            
-            osc.connect(gain);
-            gain.connect(this.masterGain);
-            
-            const now = this.audioCtx.currentTime;
-
-            if (type === 'pickup') {
-                osc.type = 'sine';
-                const baseFreq = 600 + (Math.min(intensity, 10) * 50) + (Math.random() * 200);
-                osc.frequency.setValueAtTime(baseFreq, now);
-                osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, now + 0.1);
-                
-                const vol = Math.min(0.05 + (intensity * 0.01), 0.15);
-                gain.gain.setValueAtTime(vol, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-                osc.start(now); osc.stop(now + 0.1);
-            }
-            else if (type === 'death') {
-                osc.type = 'sawtooth';
-                const baseFreq = 150 - (Math.min(intensity, 5) * 10) + (Math.random() * 50);
-                osc.frequency.setValueAtTime(baseFreq, now);
-                osc.frequency.exponentialRampToValueAtTime(20, now + 0.2);
-                
-                const vol = Math.min(0.1 + (intensity * 0.02), 0.25);
-                gain.gain.setValueAtTime(vol, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-                osc.start(now); osc.stop(now + 0.2);
-            }
-            else if (type === 'damage') {
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(300, now);
-                osc.frequency.exponentialRampToValueAtTime(50, now + 0.4);
-                
-                gain.gain.setValueAtTime(0.4, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-                osc.start(now); osc.stop(now + 0.4);
-            }
-            else if (type === 'levelup') {
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(200, now);
-                osc.frequency.linearRampToValueAtTime(800, now + 0.4);
-                
-                gain.gain.setValueAtTime(0.2, now);
-                gain.gain.linearRampToValueAtTime(0.001, now + 0.5);
-                osc.start(now); osc.stop(now + 0.5);
-            }
-        } catch (e) {}
-    }
-
     stop() {
         if (this.masterGain && this.audioCtx) {
-            this.masterGain.gain.setTargetAtTime(0, this.audioCtx.currentTime, 2.0);
+            this.safeFade(this.masterGain, 0, 2.0);
+        }
+    }
+
+    // =========================================================================
+    // THE PROCEDURAL FALLBACK SYSTEM
+    // Generates high-quality synthesized sound if local assets aren't downloaded
+    // =========================================================================
+    
+    startFallbackMenuTheme() {
+        if (this.fallbackOscillators.menuTheme.length > 0) return;
+        const osc1 = this.audioCtx.createOscillator();
+        const osc2 = this.audioCtx.createOscillator();
+        osc1.type = 'sine'; osc2.type = 'triangle';
+        osc1.frequency.value = 110; osc2.frequency.value = 112; // Dissonant beating
+        
+        osc1.connect(this.gains.menuTheme);
+        osc2.connect(this.gains.menuTheme);
+        osc1.start(); osc2.start();
+        this.fallbackOscillators.menuTheme.push(osc1, osc2);
+    }
+
+    stopFallbackMenuTheme() {
+        this.fallbackOscillators.menuTheme.forEach(osc => {
+            setTimeout(() => { try{ osc.stop(); }catch(e){} }, 1000);
+        });
+        this.fallbackOscillators.menuTheme = [];
+    }
+
+    startFallbackDrone() {
+        if (this.fallbackOscillators.drone.length > 0) return;
+        const osc = this.audioCtx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.value = 45;
+        
+        const filter = this.audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 150;
+
+        osc.connect(filter).connect(this.gains.drone);
+        osc.start();
+        this.fallbackOscillators.drone.push(osc);
+    }
+
+    stopFallbackDrone() {
+        this.fallbackOscillators.drone.forEach(osc => {
+            setTimeout(() => { try{ osc.stop(); }catch(e){} }, 1000);
+        });
+        this.fallbackOscillators.drone = [];
+    }
+
+    playProceduralSFX(key, volumeMult) {
+        const now = this.audioCtx.currentTime;
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.connect(gain).connect(this.masterGain);
+
+        if (key === 'ui_hover') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(800, now);
+            gain.gain.setValueAtTime(0.03 * volumeMult, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+            osc.start(now); osc.stop(now + 0.05);
+        }
+        else if (key === 'ui_click') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1200, now);
+            osc.frequency.exponentialRampToValueAtTime(1800, now + 0.05);
+            gain.gain.setValueAtTime(0.1 * volumeMult, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+            osc.start(now); osc.stop(now + 0.05);
+        }
+        else if (key === 'ui_upgrade') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(400, now);
+            osc.frequency.setValueAtTime(600, now + 0.1);
+            osc.frequency.setValueAtTime(1200, now + 0.2);
+            gain.gain.setValueAtTime(0.2 * volumeMult, now);
+            gain.gain.linearRampToValueAtTime(0.001, now + 0.4);
+            osc.start(now); osc.stop(now + 0.4);
+        }
+        else if (key === 'polaroid') {
+            // Mechanical Shutter Click
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(1000, now);
+            osc.frequency.exponentialRampToValueAtTime(100, now + 0.05);
+            gain.gain.setValueAtTime(0.5 * volumeMult, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+            osc.start(now); osc.stop(now + 0.05);
+
+            // High-Pitched Capacitor Whine
+            let whineOsc = this.audioCtx.createOscillator();
+            let whineGain = this.audioCtx.createGain();
+            whineOsc.type = 'sine';
+            whineOsc.frequency.setValueAtTime(400, now + 0.05);
+            whineOsc.frequency.exponentialRampToValueAtTime(4000, now + 0.6);
+            whineGain.gain.setValueAtTime(0, now);
+            whineGain.gain.setValueAtTime(0.1 * volumeMult, now + 0.05);
+            whineGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+            whineOsc.connect(whineGain).connect(this.masterGain);
+            whineOsc.start(now + 0.05); whineOsc.stop(now + 0.6);
+        }
+        else if (key === 'pipe_swing') {
+            const bufferSize = this.audioCtx.sampleRate * 0.3;
+            const noiseBuffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
+            const noise = this.audioCtx.createBufferSource();
+            noise.buffer = noiseBuffer;
+
+            let filter = this.audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(100, now);
+            filter.frequency.exponentialRampToValueAtTime(1500, now + 0.15);
+            filter.frequency.exponentialRampToValueAtTime(100, now + 0.3);
+
+            let noiseGain = this.audioCtx.createGain();
+            noiseGain.gain.setValueAtTime(0.4 * volumeMult, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+            noise.connect(filter).connect(noiseGain).connect(this.masterGain);
+            noise.start(now);
+        }
+        else if (key === 'pipe_hit') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(120, now);
+            osc.frequency.exponentialRampToValueAtTime(30, now + 0.2);
+            gain.gain.setValueAtTime(0.5 * volumeMult, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            osc.start(now); osc.stop(now + 0.2);
+        }
+        else if (key === 'boss_intro') {
+            // Massive Cinematic Braaam
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(100, now);
+            osc.frequency.exponentialRampToValueAtTime(30, now + 1.0);
+            
+            const filter = this.audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(2000, now);
+            filter.frequency.exponentialRampToValueAtTime(100, now + 1.5);
+            
+            gain.gain.setValueAtTime(0.8 * volumeMult, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 2.0);
+            
+            osc.disconnect();
+            osc.connect(filter).connect(gain);
+            osc.start(now); osc.stop(now + 2.0);
+        }
+        else if (key === 'heartbeat') {
+            // Fallback heartbeat logic
+            osc.type = 'sine';
+            osc.frequency.value = 50;
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(0.5 * volumeMult, now + 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
+
+            let osc2 = this.audioCtx.createOscillator();
+            let gain2 = this.audioCtx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.value = 45;
+            osc2.connect(gain2).connect(this.masterGain);
+            gain2.gain.setValueAtTime(0, now + 0.2);
+            gain2.gain.linearRampToValueAtTime(0.4 * volumeMult, now + 0.3);
+            gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+            osc2.start(now + 0.2); osc2.stop(now + 0.6);
+        }
+        else if (key === 'pickup') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600 + Math.random()*200, now);
+            osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+            gain.gain.setValueAtTime(0.15 * volumeMult, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            osc.start(now); osc.stop(now + 0.1);
+        }
+        else if (key === 'damage') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(300, now);
+            osc.frequency.exponentialRampToValueAtTime(50, now + 0.4);
+            gain.gain.setValueAtTime(0.3 * volumeMult, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+            osc.start(now); osc.stop(now + 0.4);
+        }
+        else if (key === 'death') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(20, now + 0.3);
+            gain.gain.setValueAtTime(0.4 * volumeMult, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+            osc.start(now); osc.stop(now + 0.4);
+        }
+        else if (key === 'levelup') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(200, now);
+            osc.frequency.linearRampToValueAtTime(800, now + 0.4);
+            gain.gain.setValueAtTime(0.2 * volumeMult, now);
+            gain.gain.linearRampToValueAtTime(0.001, now + 0.5);
+            osc.start(now); osc.stop(now + 0.5);
         }
     }
 }

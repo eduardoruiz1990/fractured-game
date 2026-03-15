@@ -20,7 +20,7 @@ window.addEventListener('resize', resize);
 resize();
 
 let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager;
-let gameState = 'TITLE'; // Boot into the new Title screen state
+let gameState = 'TITLE'; // Boot into the Title screen
 
 function initEngine() {
     saveManager = new SaveManager();
@@ -32,11 +32,13 @@ function initEngine() {
 
     game.audioEngine = audioEngine;
 
-    uiManager = new UIManager(saveManager, () => {
+    uiManager = new UIManager(saveManager, audioEngine, () => {
         game.init(saveManager);
         game.state.player.x = canvas.width / 2;
         game.state.player.y = canvas.height / 2;
-        audioEngine.init();
+        
+        if (audioEngine) audioEngine.stopMenuTheme(); // Transition from menu theme to game drone
+        
         gameState = 'PLAYING';
         const resumeBtn = document.getElementById('btn-resume-run');
         if (resumeBtn) resumeBtn.style.display = 'none'; 
@@ -52,7 +54,8 @@ function initEngine() {
                 game.state.player.x = canvas.width / 2;
                 game.state.player.y = canvas.height / 2;
                 
-                audioEngine.init();
+                if (audioEngine) audioEngine.stopMenuTheme();
+
                 document.getElementById('clinical-folder-menu').style.display = 'none';
                 document.getElementById('ui-layer').style.display = 'flex';
                 resumeBtn.style.display = 'none';
@@ -70,7 +73,8 @@ function initEngine() {
         document.getElementById('death-screen').style.display = 'none';
         document.getElementById('clinical-folder-menu').style.display = 'flex';
         uiManager.updateMenuUI();
-        gameState = 'MENU'; // Bypass Title Screen on subsequent deaths
+        if (audioEngine) audioEngine.playMenuTheme(); 
+        gameState = 'MENU'; 
     });
 
     const pauseMenu = document.getElementById('pause-menu');
@@ -107,7 +111,7 @@ function initEngine() {
         document.getElementById('ui-layer').style.display = 'none';
         document.getElementById('clinical-folder-menu').style.display = 'flex';
         uiManager.updateMenuUI();
-        audioEngine.stop();
+        if (audioEngine) audioEngine.playMenuTheme(); // Restart menu theme
         gameState = 'MENU';
     });
 
@@ -129,7 +133,7 @@ function initEngine() {
         
         const recovered = Math.floor(game.state.lucidity * 0.5);
         saveManager.addLucidity(recovered);
-        audioEngine.stop();
+        audioEngine.stop(); // Kill all sounds on death
 
         document.getElementById('final-stats').innerHTML = `
             Died on <strong>Floor ${game.state.floor}</strong>.<br><br>
@@ -167,7 +171,6 @@ function initEngine() {
 function gameLoop(time) {
     try {
         if (gameState === 'MENU' || gameState === 'TITLE') {
-            // FIX: Now securely passes the gameState to the renderer!
             renderer.drawMenuBackground(time, gameState);
         } 
         else if (gameState === 'PLAYING' || gameState === 'LEVEL_UP' || gameState === 'PAUSED' || gameState === 'EXIT_REACHED') {

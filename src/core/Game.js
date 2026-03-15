@@ -34,7 +34,6 @@ export class Game {
         let startTokens = { head: null, body: null, hands: null, legs: null };
         let startRunInventory = [];
 
-        // Fixed duplicate declaration here
         let startWeapons = {
             flashlight: { level: 1, damage: 15, radius: 250 * lightMult, angle: 0.4 },
             static: { level: 0, damage: 0, radius: 60, active: false, pulsePhase: 0 },
@@ -118,7 +117,7 @@ export class Game {
             entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [], safeZones: [],
             interactables: [], 
             tokenDrops: [], 
-            projectiles: [], // Epic 4/5 Rorschach Bullets
+            projectiles: [], 
             playerAfterimages: [], 
             hitStop: 0, 
             frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false,
@@ -331,7 +330,9 @@ export class Game {
         
         let ratio = this.state.sanity / this.state.player.maxHp;
         if (!Number.isFinite(ratio)) ratio = 0;
-        if (this.audioEngine) this.audioEngine.updateState(this.state.stress, ratio);
+        
+        // --- EPIC 7: PASS ENTIRE STATE TO AUDIO ENGINE FOR WEAPON SFX SYNC ---
+        if (this.audioEngine) this.audioEngine.updateState(this.state.stress, ratio, this.state);
     }
 
     takeDamage(amount) {

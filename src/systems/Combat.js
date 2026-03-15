@@ -118,7 +118,9 @@ export class Combat {
                 camera.timer = camera.cooldown;
                 state.cameraFlash = 15; 
                 state.cameraShake = 10;
-                if (game.audioEngine) game.audioEngine.playSFX('damage', 2); 
+                
+                // --- EPIC 7: BESPOKE POLAROID SOUND ---
+                if (game.audioEngine) game.audioEngine.playSFX('polaroid'); 
                 
                 for (let i = state.entities.length - 1; i >= 0; i--) {
                     let ent = state.entities[i];
@@ -168,9 +170,11 @@ export class Combat {
             if (pipe.timer <= 0) {
                 pipe.timer = pipe.cooldown;
                 game.director.spawnMeleeSwing(state.player.x, state.player.y, pipe.radius);
-                if (game.audioEngine) game.audioEngine.playSFX('damage', 2);
                 
-                let didHit = false;
+                // --- EPIC 7: BESPOKE PIPE SWING SOUND ---
+                if (game.audioEngine) game.audioEngine.playSFX('pipe_swing');
+                
+                let hitCount = 0;
                 for (let i = state.entities.length - 1; i >= 0; i--) {
                     let ent = state.entities[i];
                     let d = Math.max(Math.hypot(ent.x - state.player.x, ent.y - state.player.y), 0.001);
@@ -180,7 +184,7 @@ export class Combat {
                         ent.takeDamage(pipe.damage, game);
                         ent.x += (ent.x - state.player.x) / d * 25; 
                         ent.y += (ent.y - state.player.y) / d * 25;
-                        didHit = true;
+                        hitCount++;
                         
                         if (state.player.synergies && state.player.synergies.includes('industrial_bleed')) {
                             game.director.spawnInkPuddle(ent.x, ent.y, pipe.radius * 0.8, pipe.damage * 0.2);
@@ -188,9 +192,13 @@ export class Combat {
                     }
                 }
                 
-                if (didHit) {
-                    state.hitStop = 4; 
-                    state.cameraShake = 5;
+                // --- EPIC 8: MASSIVE IMPACT HIT-STOP FREEZES ---
+                if (hitCount > 0) {
+                    // Game physically freezes for longer based on how many enemies you hit at once!
+                    state.hitStop = Math.min(25, state.hitStop + 6 + (hitCount * 3)); 
+                    state.cameraShake = Math.max(state.cameraShake, 10 + hitCount * 3);
+                    // Epic 7 Crunch Sound
+                    if (game.audioEngine) game.audioEngine.playSFX('pipe_hit', hitCount);
                 }
             }
         }

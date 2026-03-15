@@ -2,8 +2,9 @@
 import { TOKENS, TOKEN_RARITIES, TOKEN_SETS } from '../data/Manifestations.js';
 
 export class UIManager {
-    constructor(saveManager, onStartGameCallback) {
+    constructor(saveManager, audioEngine, onStartGameCallback) {
         this.saveManager = saveManager;
+        this.audioEngine = audioEngine;
         this.onStartGameCallback = onStartGameCallback;
         
         this.selectedInventoryItem = null; 
@@ -16,7 +17,6 @@ export class UIManager {
     }
 
     bindElements() {
-        // NEW: Title Screen Binding
         this.titleScreen = document.getElementById('title-screen');
         this.btnEnterSystem = document.getElementById('btn-enter-system');
 
@@ -24,7 +24,6 @@ export class UIManager {
         this.uiLayer = document.getElementById('ui-layer');
         this.deathScreen = document.getElementById('death-screen');
         
-        // Buttons
         this.btnStart = document.getElementById('btn-start');
         this.btnResume = document.getElementById('btn-resume-run');
         this.btnWipeSave = document.getElementById('btn-wipe-save'); 
@@ -33,7 +32,6 @@ export class UIManager {
         this.btnUpgSpeed = document.getElementById('btn-upg-speed');
         this.btnUpgLight = document.getElementById('btn-upg-light');
 
-        // Loadout Elements
         this.inventoryGrid = document.getElementById('inventory-grid');
         this.detailName = document.getElementById('detail-name');
         this.detailDesc = document.getElementById('detail-desc');
@@ -42,14 +40,12 @@ export class UIManager {
         this.btnUnequipItem = document.getElementById('btn-unequip-item');
         this.btnUpgradeItem = document.getElementById('btn-upgrade-item');
 
-        // XP Toast
         this.xpToast = document.getElementById('xp-toast');
         this.toastLevel = document.getElementById('toast-level-display');
         this.toastBar = document.getElementById('toast-xp-bar');
         this.toastText = document.getElementById('toast-xp-text');
         this.toastTimer = null;
 
-        // Tabs
         this.tabBtns = document.querySelectorAll('.tab-btn');
         this.tabPanes = document.querySelectorAll('.tab-pane');
     }
@@ -73,9 +69,22 @@ export class UIManager {
     }
 
     attachEvents() {
-        // --- NEW: Title Screen Boot Event ---
+        // --- NEW: UI SOUNDSCAPES DEPLOYMENT ---
+        document.querySelectorAll('.file-btn, .tab-btn').forEach(btn => {
+            btn.addEventListener('mouseenter', () => {
+                if (!btn.disabled && this.audioEngine) this.audioEngine.playSFX('ui_hover');
+            });
+            btn.addEventListener('click', () => {
+                if (!btn.disabled && this.audioEngine) this.audioEngine.playSFX('ui_click');
+            });
+        });
+
         if (this.btnEnterSystem) {
             this.btnEnterSystem.addEventListener('click', () => {
+                if (this.audioEngine) {
+                    this.audioEngine.init(); 
+                    this.audioEngine.playMenuTheme(); // Start ambient music!
+                }
                 this.titleScreen.style.display = 'none';
                 this.clinicalFolder.style.display = 'flex';
                 this.updateMenuUI();
@@ -135,6 +144,7 @@ export class UIManager {
         this.btnUpgradeItem.addEventListener('click', () => {
             if (this.selectedInventoryItem) {
                 if (this.saveManager.upgradeToken(this.selectedInventoryItem)) {
+                    if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade');
                     this.updateMenuUI(); 
                     this.showXPToast(); 
                     
@@ -146,9 +156,24 @@ export class UIManager {
             }
         });
 
-        this.btnUpgHp.addEventListener('click', () => { if (this.saveManager.buyUpgrade('hp', 50)) { this.updateMenuUI(); this.showXPToast(); } });
-        this.btnUpgSpeed.addEventListener('click', () => { if (this.saveManager.buyUpgrade('speed', 75)) { this.updateMenuUI(); this.showXPToast(); } });
-        this.btnUpgLight.addEventListener('click', () => { if (this.saveManager.buyUpgrade('light', 100)) { this.updateMenuUI(); this.showXPToast(); } });
+        this.btnUpgHp.addEventListener('click', () => { 
+            if (this.saveManager.buyUpgrade('hp', 50)) { 
+                if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade');
+                this.updateMenuUI(); this.showXPToast(); 
+            } 
+        });
+        this.btnUpgSpeed.addEventListener('click', () => { 
+            if (this.saveManager.buyUpgrade('speed', 75)) { 
+                if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade');
+                this.updateMenuUI(); this.showXPToast(); 
+            } 
+        });
+        this.btnUpgLight.addEventListener('click', () => { 
+            if (this.saveManager.buyUpgrade('light', 100)) { 
+                if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade');
+                this.updateMenuUI(); this.showXPToast(); 
+            } 
+        });
     }
 
     updateMenuUI() {
@@ -186,7 +211,6 @@ export class UIManager {
 
     renderRoadmap() {
         // Logic to update active/locked states based on max floor reached
-        // Currently hardcoded in HTML as per Epic 6 foundation
     }
 
     renderLoadoutUI() {
@@ -224,7 +248,7 @@ export class UIManager {
 
             const el = document.createElement('div');
             el.className = `inventory-item filled rarity-${invItem.rarity}`;
-            // Use emojis as placeholders for Point 9 iconography
+            
             let icon = '💊';
             if (tokenData.type === 'head') icon = '🧠';
             else if (tokenData.type === 'body') icon = '🦺';
