@@ -35,7 +35,8 @@ export class Predator extends Enemy {
             if (this.attackTimer <= 0) {
                 this.attackState = 'lunging';
                 this.attackTimer = 20; 
-                if (game.audioEngine) game.audioEngine.playSFX('dash', 0.5); 
+                // NEW: Now uses 'enemy_dash' so it pitch shifts down heavily instead of sounding like the player
+                if (game.audioEngine) game.audioEngine.playSFX('enemy_dash', 0.6); 
             }
         } 
         else if (this.attackState === 'lunging') {

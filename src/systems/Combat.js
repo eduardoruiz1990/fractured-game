@@ -48,7 +48,8 @@ export class Combat {
                                         obj.active = true;
                                         obj.life = 450; 
                                         state.cameraShake = 30;
-                                        if (game.audioEngine) game.audioEngine.playSFX('breaker_box', 0.8);
+                                        // Normalized volume
+                                        if (game.audioEngine) game.audioEngine.playSFX('breaker_box', 0.6);
                                     }
                                 }
                             }
@@ -89,7 +90,8 @@ export class Combat {
                             state.sanity = Math.min(state.player.maxHp, state.sanity + 50); 
                             state.cameraShake = 20;
                             
-                            if (game.audioEngine) game.audioEngine.playSFX('backpack', 0.8);
+                            // Normalized volume
+                            if (game.audioEngine) game.audioEngine.playSFX('backpack', 0.6);
                             
                             game.spawnParticles(obj.x, obj.y, '#55ff55', 30);
                             game.spawnDamageText(obj.x, obj.y - 30, "SUPPLIES RECOVERED!", '#55ff55', 1.5, 2.0);
@@ -119,7 +121,8 @@ export class Combat {
                 camera.timer = camera.cooldown;
                 state.cameraFlash = 15; 
                 state.cameraShake = 10;
-                if (game.audioEngine) game.audioEngine.playSFX('polaroid'); 
+                // Normalized volume
+                if (game.audioEngine) game.audioEngine.playSFX('polaroid', 0.5); 
                 
                 for (let i = state.entities.length - 1; i >= 0; i--) {
                     let ent = state.entities[i];
@@ -169,7 +172,8 @@ export class Combat {
             if (pipe.timer <= 0) {
                 pipe.timer = pipe.cooldown;
                 game.director.spawnMeleeSwing(state.player.x, state.player.y, pipe.radius);
-                if (game.audioEngine) game.audioEngine.playSFX('pipe_swing');
+                // Normalized volume
+                if (game.audioEngine) game.audioEngine.playSFX('pipe_swing', 0.4);
                 
                 let hitCount = 0;
                 for (let i = state.entities.length - 1; i >= 0; i--) {
@@ -192,7 +196,8 @@ export class Combat {
                 if (hitCount > 0) {
                     state.hitStop = Math.min(25, state.hitStop + 6 + (hitCount * 3)); 
                     state.cameraShake = Math.max(state.cameraShake, 10 + hitCount * 3);
-                    if (game.audioEngine) game.audioEngine.playSFX('pipe_hit', hitCount);
+                    // Capped volume: Never exceeds 1.2x, scales slightly per hit
+                    if (game.audioEngine) game.audioEngine.playSFX('pipe_hit', Math.min(1.2, 0.5 + hitCount * 0.05));
                 }
             }
         }
@@ -356,7 +361,8 @@ export class Combat {
                     
                     if (otherBosses.length === 0) {
                         state.cameraShake = 50;
-                        if (game.audioEngine) game.audioEngine.playSFX('death', 10);
+                        // Don't blow out speakers on boss death either
+                        if (game.audioEngine) game.audioEngine.playSFX('death', 1.5);
                         
                         state.interactables.push({
                              id: Math.random(),
@@ -391,7 +397,8 @@ export class Combat {
             }
         }
         
-        if (deathCount > 0 && game.audioEngine) game.audioEngine.playSFX('death', deathCount);
+        // Capped death volume
+        if (deathCount > 0 && game.audioEngine) game.audioEngine.playSFX('death', Math.min(1.2, 0.6 + deathCount * 0.1));
     }
 
     static collectXP(game) {
@@ -423,6 +430,7 @@ export class Combat {
                 state.xpDrops.splice(i, 1);
             }
         }
-        if (pickupCount > 0 && game.audioEngine) game.audioEngine.playSFX('pickup', pickupCount);
+        // Capped pickup volume
+        if (pickupCount > 0 && game.audioEngine) game.audioEngine.playSFX('pickup', Math.min(0.8, 0.3 + pickupCount * 0.05));
     }
 }

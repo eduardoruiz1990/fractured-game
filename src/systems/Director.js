@@ -40,6 +40,9 @@ export class Director {
         if (state.convergence >= state.maxConvergence && !state.bossSpawned) {
             if (this.game.audioEngine) {
                 this.game.audioEngine.playSFX('boss_intro', 1.0);
+                
+                // NEW: Triggers the 4-second TV static audio to match the visual glitch overlay perfectly
+                this.game.audioEngine.playSFX('boss_static', 0.8);
             }
             
             if (state.floor % 2 === 0) {

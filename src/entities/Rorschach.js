@@ -67,7 +67,8 @@ export class Rorschach {
                 let pSpeed = 3.0 + this.generation; 
                 let pDmg = 35 / this.generation; 
                 
-                if (game.audioEngine) game.audioEngine.playSFX('dash', 0.5); 
+                // NEW: Enemy Dash Hook
+                if (game.audioEngine) game.audioEngine.playSFX('enemy_dash', 0.8); 
                 
                 for (let i = 0; i < count; i++) {
                     let angle = this.shootAngle;

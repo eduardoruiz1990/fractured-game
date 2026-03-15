@@ -27,6 +27,7 @@ export class Enemy {
         this.acidDmg = 0;
         this.damageAccumulator = 0;
         this.damageTick = 0;
+        this.painCooldown = 0; // NEW: Audio throttle for individual enemy hits
         
         return this;
     }
@@ -35,8 +36,10 @@ export class Enemy {
         this.hp -= amount;
         this.flashTime = 5;
         
-        if (this.damageTick === 0 && game && game.audioEngine && this.painSound) {
-            game.audioEngine.playSFX(this.painSound, 0.4);
+        // NEW: Check if the enemy is allowed to scream again (prevents machine-gun audio overlap)
+        if (this.painCooldown <= 0 && game && game.audioEngine && this.painSound) {
+            game.audioEngine.playSFX(this.painSound, 0.3);
+            this.painCooldown = 90; // Sets a 1.5 second silence period before it can scream again
         }
         
         this.damageAccumulator += amount;
@@ -58,6 +61,9 @@ export class Enemy {
     }
 
     applyMovement(state, game) {
+        // Tick down the audio pain cooldown
+        if (this.painCooldown > 0) this.painCooldown--;
+
         if (this.confused > 0) {
             this.confused--;
             this.color = '#ffffff'; 
@@ -83,8 +89,8 @@ export class Enemy {
             }
         }
 
-        if (Math.random() < 0.001 && game && game.audioEngine) {
-            game.audioEngine.playSFX('enemy_ambient', 0.2);
+        if (Math.random() < 0.0005 && game && game.audioEngine) {
+            game.audioEngine.playSFX('enemy_ambient', 0.15);
         }
 
         this.x += (this.vx || 0) * this.speedModifier;
