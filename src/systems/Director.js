@@ -40,8 +40,6 @@ export class Director {
         if (state.convergence >= state.maxConvergence && !state.bossSpawned) {
             if (this.game.audioEngine) {
                 this.game.audioEngine.playSFX('boss_intro', 1.0);
-                
-                // NEW: Triggers the 4-second TV static audio to match the visual glitch overlay perfectly
                 this.game.audioEngine.playSFX('boss_static', 0.8);
             }
             
@@ -56,17 +54,15 @@ export class Director {
 
     spawnEntity(type, canvasWidth, canvasHeight, forceX = null, forceY = null, generation = 1) {
         const state = this.game.state;
-        const side = Math.floor(Math.random() * 4);
-        let x = forceX;
-        let y = forceY;
-        const pad = (type === 'BOSS' || type === 'RORSCHACH') ? 150 : 50;
         
-        if (x === null || y === null) {
-            if (side === 0) { x = Math.random() * canvasWidth; y = -pad; } 
-            else if (side === 1) { x = canvasWidth + pad; y = Math.random() * canvasHeight; } 
-            else if (side === 2) { x = Math.random() * canvasWidth; y = canvasHeight + pad; } 
-            else { x = -pad; y = Math.random() * canvasHeight; }
-        }
+        // --- NEW: RADIAL SPAWNING AROUND PLAYER ---
+        // Instead of spawning at fixed screen coordinates, enemies spawn in the darkness 
+        // just outside the player's view, allowing for infinite void exploration!
+        const spawnRadius = Math.max(canvasWidth, canvasHeight) * 0.6 + 100;
+        const angle = Math.random() * Math.PI * 2;
+        
+        let x = forceX !== null ? forceX : state.player.x + Math.cos(angle) * spawnRadius;
+        let y = forceY !== null ? forceY : state.player.y + Math.sin(angle) * spawnRadius;
 
         let ent;
         if (type === 'SCAVENGER') ent = this.pools.scavenger.get().init(Math.random(), x, y, state.stress);

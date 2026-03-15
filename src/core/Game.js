@@ -98,6 +98,11 @@ export class Game {
             convergence: 0,
             maxConvergence: Math.floor(100 * Math.pow(1.3, startFloor - 1)), 
             
+            // --- NEW: Map Center Tracking for the Organic Void ---
+            mapOriginX: null,
+            mapOriginY: null,
+            inVoid: false,
+            
             player: { 
                 x: 0, y: 0, 
                 radius: 12, angle: 0, targetAngle: 0, hp: effectiveMaxSanity, maxHp: effectiveMaxSanity, speedMultiplier: effectiveSpeedMult,
@@ -182,11 +187,15 @@ export class Game {
 
         if (!isBossDefeated) {
             if (this.state.frame > 0 && this.state.frame % 1800 === 0) {
+                // Adjust interactable spawning to remain within the soft map bounds
+                let bx = (this.state.mapOriginX || 0) + (Math.random() - 0.5) * 2000;
+                let by = (this.state.mapOriginY || 0) + (Math.random() - 0.5) * 2000;
+                
                  this.state.interactables.push({
                      id: Math.random(),
                      type: 'BREAKER_BOX',
-                     x: 100 + Math.random() * (canvasWidth - 200),
-                     y: 100 + Math.random() * (canvasHeight - 200),
+                     x: bx,
+                     y: by,
                      active: false, charge: 0, life: 0, radius: 350, dead: false
                  });
             }
@@ -194,8 +203,8 @@ export class Game {
             if (this.state.frame > 0 && this.state.frame % 2400 === 0) {
                 let targetX, targetY;
                 for (let i=0; i<5; i++) {
-                    targetX = 100 + Math.random() * (canvasWidth - 200);
-                    targetY = 100 + Math.random() * (canvasHeight - 200);
+                    targetX = (this.state.mapOriginX || 0) + (Math.random() - 0.5) * 2000;
+                    targetY = (this.state.mapOriginY || 0) + (Math.random() - 0.5) * 2000;
                     if (Math.hypot(targetX - this.state.player.x, targetY - this.state.player.y) > 400) break;
                 }
                 this.state.interactables.push({
@@ -241,6 +250,12 @@ export class Game {
     }
 
     processGameLogic(moveInput, canvasWidth, canvasHeight) {
+        // Capture initial map center to prevent resizing glitches
+        if (this.state.mapOriginX === null) {
+            this.state.mapOriginX = this.state.player.x;
+            this.state.mapOriginY = this.state.player.y;
+        }
+
         let canDash = true;
         if (this.state.player.sets.institutionalized >= 4) canDash = false;
 
@@ -268,6 +283,7 @@ export class Game {
         }
 
         let currentSpeed = GAME_CONFIG.BASE_PLAYER_SPEED * this.state.player.speedMultiplier;
+        if (this.state.inVoid) currentSpeed *= 0.6; // The void slows you down
 
         if (this.state.player.dash.active) {
             currentSpeed *= this.state.player.activeTokens.hasPanic ? 2.5 : 3.5; 
@@ -291,8 +307,38 @@ export class Game {
             this.state.player.y += moveInput.moveY * currentSpeed;
         }
 
-        this.state.player.x = Math.max(0, Math.min(canvasWidth, this.state.player.x));
-        this.state.player.y = Math.max(0, Math.min(canvasHeight, this.state.player.y));
+        // --- THE ENCROACHING VOID LOGIC ---
+        // Removed hard clamps (Math.max/min). The player can walk infinitely, but the void will consume them.
+        const mapCenterX = this.state.mapOriginX;
+        const mapCenterY = this.state.mapOriginY;
+        const mapRadius = 1600; 
+        const distFromCenter = Math.hypot(this.state.player.x - mapCenterX, this.state.player.y - mapCenterY);
+        
+        // Organic void boundary distance check (matches the visual noise threshold exactly)
+        const phase = this.state.frame * 0.02;
+        const angleToCenter = Math.atan2(this.state.player.y - mapCenterY, this.state.player.x - mapCenterX);
+        const noise = Math.sin(angleToCenter * 4 + phase) * 80 
+                    + Math.cos(angleToCenter * 7 - phase * 1.5) * 50
+                    + Math.sin(angleToCenter * 13 + phase * 0.5) * 30;
+        
+        const dynamicRadius = mapRadius + noise - 20; // -20 buffer so visual edge hits player immediately
+        
+        if (distFromCenter > dynamicRadius) {
+            this.state.inVoid = true;
+            this.state.sanity -= 0.6 * this.state.sanityDrainMult; // Massive sanity drain
+            this.state.cameraShake = Math.max(this.state.cameraShake, 3);
+            
+            if (this.state.frame % 45 === 0 && this.audioEngine) {
+                // TWEAKED: Player Hurt sound triggers subtly when in the void
+                this.audioEngine.playSFX('player_hurt', 0.2); 
+            }
+            
+            if (this.state.frame % 2 === 0) {
+                this.spawnParticles(this.state.player.x + (Math.random()-0.5)*50, this.state.player.y + (Math.random()-0.5)*50, '#1a0024', 3);
+            }
+        } else {
+            this.state.inVoid = false;
+        }
 
         if (moveInput.isAiming) {
             let diff = moveInput.aimAngle - this.state.player.angle;
@@ -331,7 +377,6 @@ export class Game {
         let ratio = this.state.sanity / this.state.player.maxHp;
         if (!Number.isFinite(ratio)) ratio = 0;
         
-        // --- EPIC 7: PASS ENTIRE STATE TO AUDIO ENGINE FOR WEAPON SFX SYNC ---
         if (this.audioEngine) this.audioEngine.updateState(this.state.stress, ratio, this.state);
     }
 
@@ -372,7 +417,7 @@ export class Game {
         
         this.spawnDamageText(this.state.player.x, this.state.player.y, `-${Math.floor(amount)}`, '#ff0000', 1.5, 1.5);
         
-        if (this.state.sanity <= -20 && this.onDeath) {
+        if (this.state.sanity <= -20 && this.onDeath && !this.state.isDead) {
             this.state.isDead = true;
             this.onDeath();
         }

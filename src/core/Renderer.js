@@ -1,6 +1,6 @@
 // src/core/Renderer.js
 // Handles HTML5 Canvas Drawing, Procedural Lighting Masks, and VFX
-// BUGFIX: Failsafe Matrix Reset to permanently prevent Black Void crashes.
+// OVERHAUL: Replaced static yellow box with an infinite floor and procedural Encroaching Void.
 
 export class Renderer {
     constructor(canvas, ctx) {
@@ -200,9 +200,6 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    // ==========================================
-    // THE MASTER GAME RENDERING LOOP (BULLETPROOF)
-    // ==========================================
     drawGame(state, audioEngine) {
         try {
             this.renderFrame++; 
@@ -245,7 +242,11 @@ export class Renderer {
             this.drawVignette(state);
 
             if (this.bossAnnouncementTimer > 0) {
-                this.drawBossAnnouncement(state);
+                try {
+                    this.drawBossAnnouncement(state);
+                } catch(e) {
+                    console.warn("Recoverable Boss Intro error:", e);
+                }
                 this.bossAnnouncementTimer--; 
             }
 
@@ -254,15 +255,9 @@ export class Renderer {
         } catch (e) {
             console.error("CRITICAL RENDERER CRASH PREVENTED:", e);
         } finally {
-            // FIX: Absolute failsafe to prevent the "Black Void" loop
-            // If anything above crashes, this guarantees the matrix resets.
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         }
     }
-
-    // ==========================================
-    // HELPER FUNCTIONS 
-    // ==========================================
 
     drawFog(state) {
         this.ctx.globalAlpha = 0.5;
@@ -615,23 +610,68 @@ export class Renderer {
             this.ctx.stroke();
         }
 
+        // --- NEW: SICKLY VOID OVERLAY EFFECT ---
+        if (state.inVoid) {
+            this.ctx.fillStyle = `rgba(40, 0, 50, ${0.4 + Math.sin(this.renderFrame * 0.2) * 0.2})`;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+
         this.ctx.restore();
     }
 
     drawWorldItems(state) {
         this.ctx.save();
         this.ctx.fillStyle = this.ctx.createPattern(this.floorPattern, 'repeat');
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        this.ctx.strokeStyle = '#020202';
-        this.ctx.lineWidth = 25;
-        this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
-
-        this.ctx.strokeStyle = 'rgba(197, 160, 89, 0.4)'; 
-        this.ctx.lineWidth = 3;
-        this.ctx.setLineDash([15, 15]);
-        this.ctx.strokeRect(12, 12, this.canvas.width - 24, this.canvas.height - 24);
+        
+        // --- NEW: INFINITE EXPLORATION FLOOR ---
+        // Fills an absolutely massive area around the camera to support the unbounded void
+        this.ctx.fillRect(state.player.x - 4000, state.player.y - 4000, 8000, 8000);
         this.ctx.restore();
+
+        // --- NEW: THE ENCROACHING VOID DRAWING ---
+        if (state.mapOriginX !== null) {
+            this.ctx.save();
+            const mapCenterX = state.mapOriginX;
+            const mapCenterY = state.mapOriginY;
+            const mapRadius = 1600;
+            const phase = state.frame * 0.02;
+
+            this.ctx.fillStyle = '#030105'; // Pitch black void with a hint of sickly purple
+            this.ctx.beginPath();
+            
+            // Draw outer gigantic rect bounding box (Reverse Winding to create the cutout)
+            this.ctx.rect(mapCenterX - 10000, mapCenterY - 10000, 20000, 20000);
+            
+            // Draw the inner organic cutout (Forward Winding)
+            for (let i = 0; i <= Math.PI * 2 + 0.1; i += 0.05) {
+                // Multi-octave sine noise creates a beautiful, creepy, bleeding ink-blot shape
+                let noise = Math.sin(i * 4 + phase) * 80 
+                          + Math.cos(i * 7 - phase * 1.5) * 50
+                          + Math.sin(i * 13 + phase * 0.5) * 30;
+                
+                let r = mapRadius + noise;
+                let vx = mapCenterX + Math.cos(i) * r;
+                let vy = mapCenterY + Math.sin(i) * r;
+                
+                if (i === 0) this.ctx.moveTo(vx, vy);
+                else this.ctx.lineTo(vx, vy);
+            }
+            this.ctx.closePath();
+            
+            // Fill using the Even-Odd rule, leaving the inner organic shape completely clear!
+            this.ctx.fill('evenodd');
+            
+            // Bleeding organic edges of the void
+            this.ctx.strokeStyle = 'rgba(40, 5, 50, 0.8)';
+            this.ctx.lineWidth = 150;
+            this.ctx.stroke();
+            
+            this.ctx.strokeStyle = 'rgba(80, 10, 80, 0.4)';
+            this.ctx.lineWidth = 50;
+            this.ctx.stroke();
+            
+            this.ctx.restore();
+        }
         
         if (state.safeZones) {
             state.safeZones.forEach(sz => {
@@ -1044,8 +1084,6 @@ export class Renderer {
                     }
                 }
                 else if (ent.type === 'BOSS') {
-                    // BUGFIX: Enclose boss rendering in its own safe try/catch so a geometry bug here 
-                    // doesn't wipe out the rest of the canvas loop.
                     try {
                         if (ent.pulseState === 'charging' || ent.pulseState === 'pulsing') {
                             this.ctx.save();
@@ -1062,7 +1100,6 @@ export class Renderer {
                             this.ctx.restore();
                         }
 
-                        // Safeguard against missing phase variables
                         let phase = ent.phase || 0;
                         this.ctx.rotate(Math.sin(phase * 0.5) * 0.1); 
                         
@@ -1197,7 +1234,6 @@ export class Renderer {
     drawBossAnnouncement(state) {
         this.ctx.save();
         
-        // BUGFIX: Safely check for active boss to prevent reference errors during the text drawing phase
         const activeBoss = state.entities.find(e => e.type === 'BOSS' || e.type === 'RORSCHACH');
         const bossType = activeBoss ? activeBoss.type : 'BOSS';
         
@@ -1238,7 +1274,6 @@ export class Renderer {
         const simulatedPhase = this.renderFrame * 0.05;
         this.ctx.rotate(Math.sin(simulatedPhase * 0.5) * 0.1); 
 
-        // BUGFIX: Removed all references to 'ent' here, strictly using 'simulatedPhase' for animations
         if (bossType === 'RORSCHACH') {
             let pulse = Math.sin(this.renderFrame * 0.1) * 3;
             this.ctx.fillStyle = '#1a0525';
@@ -1312,7 +1347,7 @@ export class Renderer {
                 this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
                 this.ctx.fill();
                 this.ctx.fillStyle = '#ff0000';
-                this.ctx.shadowBlur = 15; // Safely set without pulseState dependency
+                this.ctx.shadowBlur = 15; 
             });
             this.ctx.shadowBlur = 0;
 
@@ -1341,7 +1376,6 @@ export class Renderer {
         const titleText = bossType === 'RORSCHACH' ? "THE RORSCHACH" : "THE SPHERE HEAD";
         const subText = bossType === 'RORSCHACH' ? "The Mind Divided" : "Apex Predator of the Wastes";
         
-        // BUGFIX: Standard 'Courier New' safely avoids Canvas Parsing Crashes
         this.ctx.font = "900 110px 'Courier New', Courier, monospace";
         this.ctx.fillStyle = '#ffffff';
         this.ctx.shadowColor = 'var(--ui-red)';
