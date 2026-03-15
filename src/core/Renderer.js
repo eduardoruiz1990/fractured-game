@@ -161,7 +161,7 @@ export class Renderer {
 
         if (this.bossAnnouncementTimer > 0) {
             this.drawBossAnnouncement(state);
-            this.bossAnnouncementTimer--; // FIX: This single missing line caused the "invisible freeze"!
+            this.bossAnnouncementTimer--; 
         }
 
         this.drawFilmGrain();
@@ -493,6 +493,7 @@ export class Renderer {
         let innerVig = (this.canvas.height / 4) * sanityRatio; 
         let outerVig = (this.canvas.height) * (0.2 + sanityRatio * 0.8); 
         
+        // Base Vignette
         const vig = this.ctx.createRadialGradient(
             this.canvas.width/2, this.canvas.height/2, innerVig,
             this.canvas.width/2, this.canvas.height/2, outerVig
@@ -501,6 +502,29 @@ export class Renderer {
         vig.addColorStop(1, 'rgba(0,0,0,0.98)');
         this.ctx.fillStyle = vig;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // --- EPIC 6: Broken CRT effect when Sanity is dangerously low ---
+        if (sanityRatio < 0.4) {
+            this.ctx.strokeStyle = `rgba(255,255,255,${0.1 + (0.4 - sanityRatio)})`;
+            this.ctx.lineWidth = 1;
+            this.ctx.beginPath();
+            
+            // Draw a few jagged "cracks" originating from the corners
+            for (let i = 0; i < 3; i++) {
+                let startX = i === 0 ? 0 : (i === 1 ? this.canvas.width : Math.random() * this.canvas.width);
+                let startY = i === 2 ? 0 : (Math.random() * this.canvas.height);
+                this.ctx.moveTo(startX, startY);
+                
+                let currX = startX; let currY = startY;
+                for (let j = 0; j < 5; j++) {
+                    currX += (this.canvas.width/2 - currX) * 0.2 + (Math.random() - 0.5) * 100;
+                    currY += (this.canvas.height/2 - currY) * 0.2 + (Math.random() - 0.5) * 100;
+                    this.ctx.lineTo(currX, currY);
+                }
+            }
+            this.ctx.stroke();
+        }
+
         this.ctx.restore();
     }
 
@@ -1014,12 +1038,10 @@ export class Renderer {
                     }
                 }
 
-                // Entity Healthbars
-                if (ent.hp < ent.maxHp && ent.flashTime <= 0) {
+                // Entity Healthbars (Hidden for Bosses because it's in the HUD now)
+                if (ent.hp < ent.maxHp && ent.flashTime <= 0 && ent.type !== 'BOSS' && ent.type !== 'RORSCHACH') {
                     let barW = 24;
                     let yOffset = 20;
-                    if (ent.type === 'BOSS') { barW = 80; yOffset = 55; }
-                    else if (ent.type === 'RORSCHACH') { barW = ent.radius * 1.5; yOffset = ent.radius + 10; }
                     
                     this.ctx.fillStyle = 'rgba(0,0,0,0.8)'; 
                     this.ctx.fillRect(-barW/2, yOffset, barW, 4);
@@ -1067,6 +1089,7 @@ export class Renderer {
         this.ctx.restore();
     }
 
+    // --- EPIC 6: MASSIVE BOSS INTRO OVERHAUL ---
     drawBossAnnouncement(state) {
         this.ctx.save();
         
@@ -1077,39 +1100,37 @@ export class Renderer {
         const cy = this.canvas.height / 2;
         
         let alpha = 1;
-        let scale = 1;
         if (this.bossAnnouncementTimer > 210) {
             alpha = (240 - this.bossAnnouncementTimer) / 30; 
-            scale = 1 + (1 - alpha) * 0.3; 
         } else if (this.bossAnnouncementTimer < 30) {
             alpha = this.bossAnnouncementTimer / 30; 
-            scale = 1 + (1 - alpha) * 0.3; 
         }
 
         this.ctx.globalAlpha = alpha;
         this.ctx.translate(cx, cy);
-        this.ctx.scale(scale, scale);
 
-        this.ctx.fillStyle = 'rgba(5, 0, 5, 0.9)';
-        this.ctx.fillRect(-this.canvas.width/2, -180, this.canvas.width, 360);
+        // Deep red/black cinematic letterbox banner
+        this.ctx.fillStyle = 'rgba(10, 0, 0, 0.95)';
+        this.ctx.fillRect(-this.canvas.width/2, -300, this.canvas.width, 600); // Taller
         
-        this.ctx.strokeStyle = '#c5a059';
-        this.ctx.lineWidth = 4;
-        this.ctx.beginPath();
-        this.ctx.moveTo(-this.canvas.width/2, -180); this.ctx.lineTo(this.canvas.width/2, -180);
-        this.ctx.moveTo(-this.canvas.width/2, 180); this.ctx.lineTo(this.canvas.width/2, 180);
-        this.ctx.stroke();
-
-        if (this.renderFrame % 4 < 2) {
-            this.ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
-            for (let i=0; i<6; i++) {
-                this.ctx.fillRect(-this.canvas.width/2, -180 + Math.random() * 360, this.canvas.width, 2 + Math.random() * 8);
+        // Intense Screen Tearing Glitch effect
+        if (this.renderFrame % 3 === 0) {
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            for (let i=0; i<15; i++) {
+                this.ctx.fillRect(-this.canvas.width/2, -300 + Math.random() * 600, this.canvas.width, 5 + Math.random() * 15);
             }
         }
+        
+        this.ctx.strokeStyle = '#c5a059';
+        this.ctx.lineWidth = 6;
+        this.ctx.beginPath();
+        this.ctx.moveTo(-this.canvas.width/2, -300); this.ctx.lineTo(this.canvas.width/2, -300);
+        this.ctx.moveTo(-this.canvas.width/2, 300); this.ctx.lineTo(this.canvas.width/2, 300);
+        this.ctx.stroke();
 
         this.ctx.save();
-        this.ctx.translate(-280, 0); 
-        this.ctx.scale(2.8, 2.8); 
+        this.ctx.translate(-400, 0); // Move portrait far to the left
+        this.ctx.scale(5.5, 5.5); // MASSIVE Portrait Scale
         
         const simulatedPhase = this.renderFrame * 0.05;
         this.ctx.rotate(Math.sin(simulatedPhase * 0.5) * 0.1); 
@@ -1207,22 +1228,27 @@ export class Renderer {
             }
         }
         
-        this.ctx.restore();
+        this.ctx.restore(); // Restore from portrait scaling
 
+        // HUGE Text Rendering
         this.ctx.textAlign = 'left';
         this.ctx.textBaseline = 'middle';
         
-        this.ctx.font = "900 65px var(--ui-font, monospace)";
-        this.ctx.fillStyle = '#ffffff';
-        let textJitter = (Math.random() - 0.5) * 5;
+        let textJitter = (Math.random() - 0.5) * 10;
         
         const titleText = bossType === 'RORSCHACH' ? "THE RORSCHACH" : "THE SPHERE HEAD";
         const subText = bossType === 'RORSCHACH' ? "The Mind Divided" : "Apex Predator of the Wastes";
         
-        this.ctx.fillText(titleText, -80 + textJitter, -25);
-        this.ctx.font = "italic 30px var(--ui-font, monospace)";
+        this.ctx.font = "900 110px var(--ui-font, monospace)";
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.shadowColor = 'var(--ui-red)';
+        this.ctx.shadowBlur = 20;
+        this.ctx.fillText(titleText, -100 + textJitter, -50);
+        
+        this.ctx.font = "italic 45px var(--ui-font, monospace)";
         this.ctx.fillStyle = '#c5a059';
-        this.ctx.fillText(subText, -75 + textJitter, 35);
+        this.ctx.shadowBlur = 0;
+        this.ctx.fillText(subText, -90 + textJitter, 60);
 
         this.ctx.restore();
     }

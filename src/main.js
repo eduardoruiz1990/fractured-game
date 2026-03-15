@@ -1,5 +1,4 @@
 import './style.css';
-
 import { SaveManager } from './core/SaveManager.js';
 import { UIManager } from './ui/UIManager.js';
 import { InputManager } from './core/Input.js';
@@ -21,8 +20,7 @@ window.addEventListener('resize', resize);
 resize();
 
 let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager;
-let gameState = 'MENU'; 
-let suspendedRunState = null; 
+let gameState = 'TITLE'; // Boot into the new Title screen state
 
 function initEngine() {
     saveManager = new SaveManager();
@@ -30,7 +28,6 @@ function initEngine() {
     renderer = new Renderer(canvas, ctx);
     audioEngine = new AudioEngine();
     game = new Game();
-    // Pass SaveManager in so LevelUp UI can read the Patient Level!
     levelUpUI = new LevelUpUI(audioEngine, saveManager);
 
     game.audioEngine = audioEngine;
@@ -39,38 +36,41 @@ function initEngine() {
         game.init(saveManager);
         game.state.player.x = canvas.width / 2;
         game.state.player.y = canvas.height / 2;
-        
         audioEngine.init();
         gameState = 'PLAYING';
-        document.getElementById('btn-resume-run').style.display = 'none'; 
+        const resumeBtn = document.getElementById('btn-resume-run');
+        if (resumeBtn) resumeBtn.style.display = 'none'; 
     });
 
-    document.getElementById('btn-resume-run').addEventListener('click', () => {
-        const savedRun = localStorage.getItem('fractured_suspended_run');
-        if (savedRun) {
-            const carriedData = JSON.parse(savedRun);
-            game.init(saveManager, carriedData);
-            game.state.player.x = canvas.width / 2;
-            game.state.player.y = canvas.height / 2;
-            
-            audioEngine.init();
-            document.getElementById('main-menu').style.display = 'none';
-            document.getElementById('ui-layer').style.display = 'flex';
-            document.getElementById('btn-resume-run').style.display = 'none';
-            localStorage.removeItem('fractured_suspended_run'); 
-            gameState = 'PLAYING';
-        }
-    });
+    const resumeBtn = document.getElementById('btn-resume-run');
+    if (resumeBtn) {
+        resumeBtn.addEventListener('click', () => {
+            const savedRun = localStorage.getItem('fractured_suspended_run');
+            if (savedRun) {
+                const carriedData = JSON.parse(savedRun);
+                game.init(saveManager, carriedData);
+                game.state.player.x = canvas.width / 2;
+                game.state.player.y = canvas.height / 2;
+                
+                audioEngine.init();
+                document.getElementById('clinical-folder-menu').style.display = 'none';
+                document.getElementById('ui-layer').style.display = 'flex';
+                resumeBtn.style.display = 'none';
+                localStorage.removeItem('fractured_suspended_run'); 
+                gameState = 'PLAYING';
+            }
+        });
+    }
 
-    if (localStorage.getItem('fractured_suspended_run')) {
-        document.getElementById('btn-resume-run').style.display = 'block';
+    if (localStorage.getItem('fractured_suspended_run') && resumeBtn) {
+        resumeBtn.style.display = 'block';
     }
 
     document.getElementById('btn-restart').addEventListener('click', () => {
         document.getElementById('death-screen').style.display = 'none';
-        document.getElementById('main-menu').style.display = 'flex';
+        document.getElementById('clinical-folder-menu').style.display = 'flex';
         uiManager.updateMenuUI();
-        gameState = 'MENU';
+        gameState = 'MENU'; // Bypass Title Screen on subsequent deaths
     });
 
     const pauseMenu = document.getElementById('pause-menu');
@@ -80,9 +80,8 @@ function initEngine() {
     function togglePause() {
         if (gameState === 'PLAYING') {
             gameState = 'PAUSED';
-            pauseTitle.innerText = "SUSPENDED";
-            pauseTitle.style.color = "white";
-            pauseTitle.style.textShadow = "4px 0 var(--ui-red), -4px 0 var(--ui-gold)";
+            pauseTitle.innerText = "PROTOCOL SUSPENDED";
+            pauseTitle.style.color = "var(--ink-black)";
             document.getElementById('pause-desc').innerText = "The nightmare pauses, but it does not end.";
             btnDescend.style.display = 'none';
             pauseMenu.style.display = 'flex';
@@ -95,23 +94,18 @@ function initEngine() {
 
     document.getElementById('btn-pause').addEventListener('click', togglePause);
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape') togglePause(); });
-
     document.getElementById('btn-unpause').addEventListener('click', togglePause);
 
     document.getElementById('btn-awaken').addEventListener('click', () => {
         saveManager.addLucidity(game.state.lucidity);
-        
         if (gameState === 'PAUSED') {
             const stateToSave = game.getCarriedState();
             localStorage.setItem('fractured_suspended_run', JSON.stringify(stateToSave));
-            document.getElementById('btn-resume-run').style.display = 'block';
-        } else if (gameState === 'EXIT_REACHED') {
-            // End cleanly
+            if (resumeBtn) resumeBtn.style.display = 'block';
         }
-
         pauseMenu.style.display = 'none';
         document.getElementById('ui-layer').style.display = 'none';
-        document.getElementById('main-menu').style.display = 'flex';
+        document.getElementById('clinical-folder-menu').style.display = 'flex';
         uiManager.updateMenuUI();
         audioEngine.stop();
         gameState = 'MENU';
@@ -120,11 +114,9 @@ function initEngine() {
     document.getElementById('btn-descend').addEventListener('click', () => {
         const carryData = game.getCarriedState();
         carryData.floor += 1; 
-        
         game.init(saveManager, carryData);
         game.state.player.x = canvas.width / 2;
         game.state.player.y = canvas.height / 2;
-        
         pauseMenu.style.display = 'none';
         gameState = 'PLAYING';
     });
@@ -151,28 +143,21 @@ function initEngine() {
     game.onLevelUp = () => {
         if (gameState === 'DEAD') return;
         gameState = 'LEVEL_UP';
-        
         inputManager.keys = { w: false, a: false, s: false, d: false, space: false }; 
         inputManager.updateKeyboardInput();
         audioEngine.playSFX('levelup');
-
-        levelUpUI.show(game, () => {
-            gameState = 'PLAYING';
-        });
+        levelUpUI.show(game, () => { gameState = 'PLAYING'; });
     };
 
     game.onFloorComplete = () => {
         gameState = 'EXIT_REACHED';
-        
         pauseTitle.innerText = "THE DESCENT CALLS";
         pauseTitle.style.color = "var(--ui-red)";
-        pauseTitle.style.textShadow = "4px 0 white, -4px 0 var(--ui-gold)";
         document.getElementById('pause-desc').innerText = `You survived Floor ${game.state.floor}. Awaken with your Lucidity, or risk descending deeper into the nightmare?`;
         
         document.getElementById('btn-unpause').style.display = 'none'; 
         btnDescend.style.display = 'block'; 
         pauseMenu.style.display = 'flex';
-        
         inputManager.hideJoysticks();
     };
 
@@ -181,7 +166,7 @@ function initEngine() {
 
 function gameLoop(time) {
     try {
-        if (gameState === 'MENU') {
+        if (gameState === 'MENU' || gameState === 'TITLE') {
             renderer.drawMenuBackground(time);
         } 
         else if (gameState === 'PLAYING' || gameState === 'LEVEL_UP' || gameState === 'PAUSED' || gameState === 'EXIT_REACHED') {
@@ -194,7 +179,10 @@ function gameLoop(time) {
                 let ratio = game.state.sanity / game.state.player.maxHp;
                 if (!Number.isFinite(ratio)) ratio = 0;
                 sanityBar.style.width = Math.max(0, ratio) * 100 + '%';
-                sanityBar.style.backgroundColor = isBreakdown ? 'var(--ui-red)' : 'var(--ui-gold)';
+                
+                if (isBreakdown) { sanityBar.style.backgroundColor = 'var(--ui-red)'; sanityBar.style.boxShadow = '0 0 15px var(--ui-red)'; }
+                else if (ratio < 0.3) { sanityBar.style.backgroundColor = '#ffaa00'; sanityBar.style.boxShadow = '0 0 10px #ffaa00'; }
+                else { sanityBar.style.backgroundColor = 'var(--hud-green)'; sanityBar.style.boxShadow = '0 0 10px var(--hud-green)'; }
                 
                 const dashBar = document.getElementById('dash-bar');
                 if (dashBar && game.state.player.dash) {
@@ -205,7 +193,19 @@ function gameLoop(time) {
 
                 const conBar = document.getElementById('convergence-bar');
                 const conText = document.getElementById('convergence-text');
-                if (conBar && game.state.maxConvergence) {
+                const conContainer = document.querySelector('.convergence-section');
+                
+                const activeBoss = game.state.entities.find(e => e.type === 'BOSS' || e.type === 'RORSCHACH');
+
+                if (activeBoss) {
+                    let hpRatio = Math.max(0, activeBoss.hp / activeBoss.maxHp);
+                    conBar.style.width = (hpRatio * 100) + '%';
+                    conText.innerText = `${activeBoss.type === 'RORSCHACH' ? 'SUBJECT: RORSCHACH' : 'SUBJECT: SPHERE HEAD'} - VITAL SIGNS: ${Math.ceil(hpRatio * 100)}%`;
+                    conBar.style.background = 'linear-gradient(90deg, #8b0000, #ff0000)';
+                    conText.style.color = 'var(--ui-red)';
+                    conContainer.style.borderColor = 'var(--ui-red)';
+                    conContainer.style.boxShadow = '0 0 20px rgba(139, 0, 0, 0.8)';
+                } else if (conBar && game.state.maxConvergence) {
                     let conRatio = Math.min(1, game.state.convergence / game.state.maxConvergence);
                     conBar.style.width = (conRatio * 100) + '%';
                     conText.innerText = conRatio >= 1 ? "ANOMALY DETECTED" : `CONVERGENCE: ${Math.floor(conRatio * 100)}%`;
@@ -214,10 +214,14 @@ function gameLoop(time) {
                         conBar.style.background = 'var(--ui-gold)';
                         conText.style.color = 'var(--ui-gold)';
                         conText.style.textShadow = '0 0 10px var(--ui-gold)';
+                        conContainer.style.borderColor = 'var(--ui-gold)';
+                        conContainer.style.boxShadow = '0 0 15px var(--ui-gold)';
                     } else {
-                        conBar.style.background = 'linear-gradient(90deg, #8b0000, #ff3333)';
-                        conText.style.color = 'var(--ui-red)';
-                        conText.style.textShadow = '0 0 5px var(--ui-red)';
+                        conBar.style.background = 'linear-gradient(90deg, #555, #aaa)';
+                        conText.style.color = 'rgba(255,255,255,0.7)';
+                        conText.style.textShadow = '1px 1px 0 #000';
+                        conContainer.style.borderColor = '#555';
+                        conContainer.style.boxShadow = '0 0 15px rgba(0, 0, 0, 0.5)';
                     }
                 }
 

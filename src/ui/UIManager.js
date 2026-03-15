@@ -1,6 +1,4 @@
 // src/ui/UIManager.js
-// Master controller for DOM manipulation, screen transitions, and Epic 2 Loadout Logic.
-
 import { TOKENS, TOKEN_RARITIES, TOKEN_SETS } from '../data/Manifestations.js';
 
 export class UIManager {
@@ -14,26 +12,28 @@ export class UIManager {
         this.bindElements();
         this.attachEvents();
         this.updateMenuUI();
+        this.renderRoadmap();
     }
 
     bindElements() {
-        this.mainMenu = document.getElementById('main-menu');
-        this.synapseTree = document.getElementById('synapse-tree');
-        this.loadoutMenu = document.getElementById('loadout-menu');
+        // NEW: Title Screen Binding
+        this.titleScreen = document.getElementById('title-screen');
+        this.btnEnterSystem = document.getElementById('btn-enter-system');
+
+        this.clinicalFolder = document.getElementById('clinical-folder-menu');
         this.uiLayer = document.getElementById('ui-layer');
         this.deathScreen = document.getElementById('death-screen');
         
+        // Buttons
         this.btnStart = document.getElementById('btn-start');
-        this.btnTree = document.getElementById('btn-tree');
-        this.btnCloseTree = document.getElementById('btn-close-tree');
-        this.btnLoadout = document.getElementById('btn-loadout');
-        this.btnCloseLoadout = document.getElementById('btn-close-loadout');
-        
+        this.btnResume = document.getElementById('btn-resume-run');
+        this.btnWipeSave = document.getElementById('btn-wipe-save'); 
+
         this.btnUpgHp = document.getElementById('btn-upg-hp');
         this.btnUpgSpeed = document.getElementById('btn-upg-speed');
         this.btnUpgLight = document.getElementById('btn-upg-light');
-        this.btnWipeSave = document.getElementById('btn-wipe-save'); 
 
+        // Loadout Elements
         this.inventoryGrid = document.getElementById('inventory-grid');
         this.detailName = document.getElementById('detail-name');
         this.detailDesc = document.getElementById('detail-desc');
@@ -42,75 +42,77 @@ export class UIManager {
         this.btnUnequipItem = document.getElementById('btn-unequip-item');
         this.btnUpgradeItem = document.getElementById('btn-upgrade-item');
 
-        // EPIC 3: XP Toast Elements
+        // XP Toast
         this.xpToast = document.getElementById('xp-toast');
         this.toastLevel = document.getElementById('toast-level-display');
         this.toastBar = document.getElementById('toast-xp-bar');
         this.toastText = document.getElementById('toast-xp-text');
         this.toastTimer = null;
+
+        // Tabs
+        this.tabBtns = document.querySelectorAll('.tab-btn');
+        this.tabPanes = document.querySelectorAll('.tab-pane');
     }
 
-    // --- NEW: Display the sliding XP notification ---
     showXPToast() {
         if (!this.xpToast) return;
-        
         const levelInfo = this.saveManager.getPatientLevelInfo();
         
-        this.toastLevel.innerText = `PATIENT LEVEL ${levelInfo.level}`;
-        this.toastBar.style.width = `${levelInfo.progressPercent}%`;
-        this.toastText.innerText = `${levelInfo.currentXP} / ${levelInfo.nextXP} L Spent`;
+        this.xpToast.style.top = '30px'; 
 
-        // Slide the toast down
-        this.xpToast.style.top = '20px'; 
+        setTimeout(() => {
+            this.toastLevel.innerText = `PATIENT LEVEL ${levelInfo.level}`;
+            this.toastBar.style.width = `${levelInfo.progressPercent}%`;
+            this.toastText.innerText = `${levelInfo.currentXP} / ${levelInfo.nextXP} L Spent`;
+        }, 150);
 
-        // Reset the hide timer every time they click
         if (this.toastTimer) clearTimeout(this.toastTimer);
         this.toastTimer = setTimeout(() => {
-            this.xpToast.style.top = '-100px'; 
+            this.xpToast.style.top = '-150px'; 
         }, 2500);
     }
 
     attachEvents() {
+        // --- NEW: Title Screen Boot Event ---
+        if (this.btnEnterSystem) {
+            this.btnEnterSystem.addEventListener('click', () => {
+                this.titleScreen.style.display = 'none';
+                this.clinicalFolder.style.display = 'flex';
+                this.updateMenuUI();
+            });
+        }
+
+        this.tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.tabBtns.forEach(b => b.classList.remove('active'));
+                this.tabPanes.forEach(p => p.classList.remove('active'));
+                
+                btn.classList.add('active');
+                const targetId = btn.getAttribute('data-target');
+                document.getElementById(targetId).classList.add('active');
+                
+                if (targetId === 'tab-loadout') {
+                    this.selectedInventoryItem = null;
+                    this.selectedSlotType = null;
+                    this.renderLoadoutUI();
+                } else if (targetId === 'tab-tree' || targetId === 'tab-main') {
+                    this.updateMenuUI();
+                }
+            });
+        });
+
         this.btnStart.addEventListener('click', () => {
-            this.mainMenu.style.display = 'none';
+            this.clinicalFolder.style.display = 'none';
             this.uiLayer.style.display = 'flex';
             if (this.onStartGameCallback) this.onStartGameCallback();
-        });
-
-        this.btnTree.addEventListener('click', () => {
-            this.mainMenu.style.display = 'none';
-            this.synapseTree.style.display = 'flex';
-            this.updateMenuUI();
-        });
-
-        this.btnCloseTree.addEventListener('click', () => {
-            this.synapseTree.style.display = 'none';
-            this.mainMenu.style.display = 'flex';
-            this.updateMenuUI();
         });
 
         if (this.btnWipeSave) {
             this.btnWipeSave.addEventListener('click', () => {
                 const isConfirmed = confirm("WARNING: This will completely erase your clinical file, destroying all tokens, upgrades, and banked lucidity. Do you wish to proceed?");
-                if (isConfirmed) {
-                    this.saveManager.wipeSave();
-                }
+                if (isConfirmed) this.saveManager.wipeSave();
             });
         }
-
-        this.btnLoadout.addEventListener('click', () => {
-            this.mainMenu.style.display = 'none';
-            this.loadoutMenu.style.display = 'flex';
-            this.selectedInventoryItem = null;
-            this.selectedSlotType = null;
-            this.renderLoadoutUI();
-        });
-
-        this.btnCloseLoadout.addEventListener('click', () => {
-            this.loadoutMenu.style.display = 'none';
-            this.mainMenu.style.display = 'flex';
-            this.updateMenuUI();
-        });
 
         this.btnEquipItem.addEventListener('click', () => {
             if (this.selectedInventoryItem) {
@@ -134,7 +136,7 @@ export class UIManager {
             if (this.selectedInventoryItem) {
                 if (this.saveManager.upgradeToken(this.selectedInventoryItem)) {
                     this.updateMenuUI(); 
-                    this.showXPToast(); // POP UP THE TOAST
+                    this.showXPToast(); 
                     
                     const invItem = this.saveManager.metaState.inventory.find(i => i.uid === this.selectedInventoryItem);
                     const tokenData = TOKENS[invItem.id];
@@ -144,40 +146,23 @@ export class UIManager {
             }
         });
 
-        this.btnUpgHp.addEventListener('click', () => {
-            if (this.saveManager.buyUpgrade('hp', 50)) {
-                this.updateMenuUI();
-                this.showXPToast(); // POP UP THE TOAST
-            }
-        });
-        this.btnUpgSpeed.addEventListener('click', () => {
-            if (this.saveManager.buyUpgrade('speed', 75)) {
-                this.updateMenuUI();
-                this.showXPToast(); // POP UP THE TOAST
-            }
-        });
-        this.btnUpgLight.addEventListener('click', () => {
-            if (this.saveManager.buyUpgrade('light', 100)) {
-                this.updateMenuUI();
-                this.showXPToast(); // POP UP THE TOAST
-            }
-        });
+        this.btnUpgHp.addEventListener('click', () => { if (this.saveManager.buyUpgrade('hp', 50)) { this.updateMenuUI(); this.showXPToast(); } });
+        this.btnUpgSpeed.addEventListener('click', () => { if (this.saveManager.buyUpgrade('speed', 75)) { this.updateMenuUI(); this.showXPToast(); } });
+        this.btnUpgLight.addEventListener('click', () => { if (this.saveManager.buyUpgrade('light', 100)) { this.updateMenuUI(); this.showXPToast(); } });
     }
 
     updateMenuUI() {
         const meta = this.saveManager.metaState;
-        
-        // Retrieve exponential level data and update the Main Menu HUD
         const levelInfo = this.saveManager.getPatientLevelInfo();
-        const levelDisplay = document.getElementById('patient-level-display');
+        
+        const levelDisplays = document.querySelectorAll('.patient-stamp');
+        levelDisplays.forEach(el => el.innerText = `PATIENT LVL ${levelInfo.level}`);
+        
         const xpBar = document.getElementById('patient-xp-bar');
         const xpText = document.getElementById('patient-xp-text');
-
-        if (levelDisplay) levelDisplay.innerText = `CLINICAL FILE: PATIENT LEVEL ${levelInfo.level}`;
         if (xpBar) xpBar.style.width = `${levelInfo.progressPercent}%`;
         if (xpText) xpText.innerText = `${levelInfo.currentXP} / ${levelInfo.nextXP} L`;
 
-        document.getElementById('menu-banked-lucidity').innerText = meta.lucidityBank;
         document.getElementById('tree-lucidity').innerText = meta.lucidityBank;
         
         const upgradeStats = [
@@ -189,17 +174,19 @@ export class UIManager {
         upgradeStats.forEach(stat => {
             const currentLvl = meta.upgrades[stat.id];
             document.getElementById(`upg-${stat.id}-lvl`).innerText = currentLvl;
-            
-            // Exponential cost math
             const cost = Math.floor(stat.baseCost * Math.pow(1.1, currentLvl));
             stat.element.innerText = `${cost} L`;
             
             const canAfford = meta.lucidityBank >= cost;
             const isMaxed = currentLvl >= 100;
-            
             stat.element.disabled = !canAfford || isMaxed;
             if (isMaxed) stat.element.innerText = "MAX";
         });
+    }
+
+    renderRoadmap() {
+        // Logic to update active/locked states based on max floor reached
+        // Currently hardcoded in HTML as per Epic 6 foundation
     }
 
     renderLoadoutUI() {
@@ -215,17 +202,13 @@ export class UIManager {
                 const invItem = meta.inventory.find(i => i.uid === equippedUid);
                 if (invItem) {
                     const tokenData = TOKENS[invItem.id];
-                    slotEl.innerHTML = `<strong>${tokenData.name}</strong><br><small>Lv.${invItem.level}</small>`;
+                    slotEl.innerHTML = `<div>${tokenData.name}</div><div style="font-size:0.6rem; color:var(--ink-black);">Lv.${invItem.level}</div>`;
                     slotEl.classList.add('filled');
                     slotEl.classList.add(`rarity-${invItem.rarity}`);
-                    
                     slotEl.onclick = () => this.selectEquippedSlot(slotType, invItem);
-                } else {
-                    slotEl.innerHTML = `${slotType.toUpperCase()}<br>Empty`;
-                    slotEl.onclick = null;
                 }
             } else {
-                let slotName = slotType === 'head' ? 'STATE OF MIND' : (slotType === 'body' ? 'COPING MECHANISM' : (slotType === 'hands' ? 'NERVOUS HABIT' : 'FLIGHT RESPONSE'));
+                let slotName = slotType === 'head' ? 'HEAD' : (slotType === 'body' ? 'BODY' : (slotType === 'hands' ? 'HANDS' : 'LEGS'));
                 slotEl.innerHTML = `${slotName}<br>Empty`;
                 slotEl.onclick = null;
             }
@@ -241,14 +224,19 @@ export class UIManager {
 
             const el = document.createElement('div');
             el.className = `inventory-item filled rarity-${invItem.rarity}`;
-            el.innerHTML = `<strong>${tokenData.name}</strong><br><small>Lv.${invItem.level}</small>`;
-            
+            // Use emojis as placeholders for Point 9 iconography
+            let icon = '💊';
+            if (tokenData.type === 'head') icon = '🧠';
+            else if (tokenData.type === 'body') icon = '🦺';
+            else if (tokenData.type === 'hands') icon = '🧤';
+            else if (tokenData.type === 'legs') icon = '🥾';
+
+            el.innerHTML = `<div style="font-size:1.5rem;">${icon}</div><div>${tokenData.name}</div>`;
             el.onclick = () => this.selectInventoryItem(invItem, tokenData);
-            
             this.inventoryGrid.appendChild(el);
         });
 
-        this.detailName.innerText = "Select a Token";
+        this.detailName.innerText = "Select an Item";
         this.detailDesc.innerText = "Configure your fractured mind before descending.";
         this.detailSet.innerText = "";
         this.btnEquipItem.style.display = 'none';
@@ -276,10 +264,10 @@ export class UIManager {
         if (rarityData.costToUpgrade) {
             this.btnUpgradeItem.style.display = 'block';
             if (levelInfo.level >= 10) {
-                this.btnUpgradeItem.innerText = `Upgrade (${rarityData.costToUpgrade} L)`;
+                this.btnUpgradeItem.innerText = `FORGE (${rarityData.costToUpgrade} L)`;
                 this.btnUpgradeItem.disabled = this.saveManager.metaState.lucidityBank < rarityData.costToUpgrade;
             } else {
-                this.btnUpgradeItem.innerText = `Requires Patient Lvl 10`;
+                this.btnUpgradeItem.innerText = `REQUIRES PATIENT LVL 10`;
                 this.btnUpgradeItem.disabled = true;
             }
         } else {

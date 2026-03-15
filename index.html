@@ -10,6 +10,9 @@
 
 <div id="game-container">
     <canvas id="gameCanvas"></canvas>
+    
+    <!-- EPIC 6: CRT Medical Monitor Overlay -->
+    <div id="crt-scanlines"></div>
     <div id="glitch-overlay"></div>
     <div id="debug-console"></div>
     
@@ -20,115 +23,149 @@
     <!-- Mobile Dash Button -->
     <div id="btn-dash" class="action-btn">DASH</div>
 
-    <!-- NEW: XP TOAST NOTIFICATION -->
-    <div id="xp-toast" style="position: absolute; top: -100px; left: 50%; transform: translateX(-50%); transition: top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 9999; background: rgba(5,5,5,0.95); padding: 15px 30px; border: 2px solid var(--ui-gold); text-align: center; border-radius: 5px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); pointer-events: none;">
-        <div id="toast-level-display" style="color: var(--ui-gold); font-size: 1.2rem; font-weight: bold; margin-bottom: 8px; text-shadow: 0 0 10px var(--ui-gold);">PATIENT LEVEL 1</div>
-        <div style="width: 300px; height: 12px; background: #222; border: 1px solid #555; position: relative;">
-            <div id="toast-xp-bar" style="height: 100%; width: 0%; background: var(--ui-gold); transition: width 0.3s ease-out;"></div>
-        </div>
-        <div id="toast-xp-text" style="color: #888; font-size: 0.8rem; margin-top: 5px;">0 / 1000 L Spent</div>
+    <!-- NEW: TITLE / BOOT SCREEN -->
+    <div id="title-screen" class="fullscreen-menu">
+        <div class="title-glitch" style="font-size: 5rem; margin-bottom: 10px;">FRACTURED</div>
+        <div style="color: #888; font-size: 1.2rem; margin-bottom: 50px; letter-spacing: 8px; text-align: center;">PSYCHOLOGICAL EVALUATION ENGINE</div>
+        <button class="file-btn primary" id="btn-enter-system" style="width: auto; padding: 15px 50px; font-size: 1.5rem; border-color: var(--ui-gold); color: var(--ui-gold); background: transparent; text-shadow: 0 0 10px var(--ui-gold); box-shadow: 0 0 20px rgba(197, 160, 89, 0.1);">INITIALIZE</button>
     </div>
 
-    <!-- MAIN MENU -->
-    <div id="main-menu" class="fullscreen-menu">
-        <div class="title-glitch">FRACTURED</div>
+    <!-- EPIC 6: THE CLINICAL FILE (UNIFIED MENU SYSTEM) -->
+    <div id="clinical-folder-menu" class="fullscreen-menu" style="display:none;">
         
-        <!-- EPIC 3: PATIENT LEVEL HUD & XP BAR -->
-        <div style="text-align: center; margin-bottom: 30px;">
-            <div id="patient-level-display" style="color: var(--ui-gold); font-size: 1.5rem; font-weight: bold; text-shadow: 0 0 10px var(--ui-gold);">CLINICAL FILE: PATIENT LEVEL 1</div>
-            <div style="width: 300px; height: 12px; background: #222; border: 2px solid #555; margin: 10px auto 5px auto; position: relative; box-shadow: 0 0 10px rgba(0,0,0,0.8);">
-                <div id="patient-xp-bar" style="height: 100%; width: 0%; background: var(--ui-gold); transition: width 0.3s ease-out;"></div>
+        <!-- Global XP Toast -->
+        <div id="xp-toast" class="medical-toast">
+            <div id="toast-level-display" style="font-weight: 900; margin-bottom: 5px;">PATIENT LEVEL 1</div>
+            <div style="width: 100%; height: 8px; background: rgba(0,0,0,0.5); border: 1px solid #111;">
+                <div id="toast-xp-bar" style="height: 100%; width: 0%; background: #8b0000; transition: width 0.3s ease-out;"></div>
             </div>
-            <div id="patient-xp-text" style="color: #888; font-size: 0.9rem;">0 / 1000 L</div>
+            <div id="toast-xp-text" style="color: #444; font-size: 0.75rem; margin-top: 5px; font-weight: bold;">0 / 1000 L Spent</div>
         </div>
-        
-        <button class="menu-btn" id="btn-resume-run" style="display:none; border-color: #55ff55; color: #55ff55;">Resume Suspended Run</button>
-        <button class="menu-btn" id="btn-start">Start Descent</button>
-        <button class="menu-btn" id="btn-loadout">Therapy Regimen</button>
-        <button class="menu-btn" id="btn-tree">Synapse Tree</button>
-        <div style="margin-top: 30px; color: #888;">Banked Lucidity: <span id="menu-banked-lucidity">0</span></div>
-    </div>
 
-    <!-- LOADOUT MENU (THERAPY REGIMEN) -->
-    <div id="loadout-menu" class="fullscreen-menu" style="display:none;">
-        <h2 style="color: var(--ui-gold); font-size: 2rem;">THERAPY REGIMEN (LOADOUT)</h2>
-        
-        <div class="loadout-container">
-            <!-- Left: Equipped Slots -->
-            <div class="equipped-panel">
-                <div style="font-size: 0.8rem; color: #aaa; margin-bottom: 10px;">EQUIPPED TOKENS</div>
-                <div class="token-slot" id="slot-head" data-type="head">STATE OF MIND<br>(Head)</div>
-                <div class="token-slot" id="slot-body" data-type="body">COPING MECHANISM<br>(Body)</div>
-                <div class="token-slot" id="slot-hands" data-type="hands">NERVOUS HABIT<br>(Hands)</div>
-                <div class="token-slot" id="slot-legs" data-type="legs">FLIGHT RESPONSE<br>(Legs)</div>
+        <!-- The Physical Folder Wrapper -->
+        <div class="medical-folder">
+            <div class="folder-header">
+                <div class="title-typewriter">PROJECT: FRACTURED</div>
+                <div id="patient-level-display" class="patient-stamp">PATIENT LVL 1</div>
             </div>
             
-            <!-- Right: Inventory Grid -->
-            <div class="inventory-panel-container">
-                <div style="font-size: 0.8rem; color: #aaa; margin-bottom: 10px;">INVENTORY</div>
-                <div class="inventory-panel" id="inventory-grid">
-                    <!-- Items injected via JS -->
+            <div class="folder-tabs">
+                <button class="tab-btn active" data-target="tab-main">EVALUATION</button>
+                <button class="tab-btn" data-target="tab-loadout">THERAPY REGIMEN</button>
+                <button class="tab-btn" data-target="tab-tree">SYNAPSE RECORDS</button>
+                <button class="tab-btn" data-target="tab-roadmap">DESCENT ROADMAP</button>
+            </div>
+
+            <div class="folder-content">
+                
+                <!-- TAB: MAIN EVALUATION -->
+                <div id="tab-main" class="tab-pane active">
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <p class="typewriter-text" style="font-size: 1.2rem; color: #555;">Subject exhibits severe dissociative tendencies. <br>Ready for further descent protocol.</p>
+                        
+                        <div class="xp-bar-wrapper">
+                            <div id="patient-xp-bar" class="xp-bar-fill"></div>
+                        </div>
+                        <div id="patient-xp-text" style="color: #888; font-size: 0.9rem; font-weight: bold; margin-bottom: 30px;">0 / 1000 L</div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+                        <button class="file-btn primary" id="btn-resume-run" style="display:none;">RESUME SUSPENDED PROTOCOL</button>
+                        <button class="file-btn primary" id="btn-start">AUTHORIZE DESCENT</button>
+                    </div>
                 </div>
+
+                <!-- TAB: THERAPY REGIMEN (LOADOUT) -->
+                <div id="tab-loadout" class="tab-pane">
+                    <div class="loadout-container">
+                        <div class="equipped-panel">
+                            <div class="section-label">PRESCRIBED TOKENS</div>
+                            <div class="token-slot" id="slot-head" data-type="head">HEAD<br>Empty</div>
+                            <div class="token-slot" id="slot-body" data-type="body">BODY<br>Empty</div>
+                            <div class="token-slot" id="slot-hands" data-type="hands">HANDS<br>Empty</div>
+                            <div class="token-slot" id="slot-legs" data-type="legs">LEGS<br>Empty</div>
+                        </div>
+                        
+                        <div class="inventory-panel-container">
+                            <div class="section-label">CONFISCATED ITEMS</div>
+                            <div class="inventory-panel" id="inventory-grid">
+                                <!-- Items injected via JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="item-details-panel" id="item-details">
+                        <div style="flex: 1; text-align: left;">
+                            <h3 id="detail-name" style="margin:0 0 5px 0; font-family: var(--ui-font); font-size: 1.3rem;">Select an Item</h3>
+                            <p id="detail-desc" class="typewriter-text" style="font-size: 0.9rem; margin: 5px 0;">Awaiting selection...</p>
+                            <p id="detail-set" style="color:#8b0000; font-size: 0.8rem; margin: 5px 0; font-weight: bold;"></p>
+                        </div>
+                        <div class="detail-actions">
+                            <button class="file-btn" id="btn-equip-item" style="display: none;">PRESCRIBE</button>
+                            <button class="file-btn danger" id="btn-unequip-item" style="display: none;">REVOKE</button>
+                            <button class="file-btn" id="btn-upgrade-item" style="display: none;">FORGE</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB: SYNAPSE RECORDS -->
+                <div id="tab-tree" class="tab-pane">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <span class="section-label">LUCIDITY RESERVES: <span id="tree-lucidity" style="color: #8b0000;">0</span> L</span>
+                    </div>
+                    
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <div class="synapse-node-file">
+                            <div class="node-info"><strong>Cognitive Resistance</strong><br><span class="typewriter-text">Base Sanity +20 (Lvl <span id="upg-hp-lvl">0</span>)</span></div>
+                            <button class="file-btn small" id="btn-upg-hp">50 L</button>
+                        </div>
+                        <div class="synapse-node-file">
+                            <div class="node-info"><strong>Adrenal Gland</strong><br><span class="typewriter-text">Base Speed +5% (Lvl <span id="upg-speed-lvl">0</span>)</span></div>
+                            <button class="file-btn small" id="btn-upg-speed">75 L</button>
+                        </div>
+                        <div class="synapse-node-file">
+                            <div class="node-info"><strong>Halogen Bulb</strong><br><span class="typewriter-text">Light Range +10% (Lvl <span id="upg-light-lvl">0</span>)</span></div>
+                            <button class="file-btn small" id="btn-upg-light">100 L</button>
+                        </div>
+
+                        <button class="file-btn danger" id="btn-wipe-save" style="margin-top: 30px;">WIPE CLINICAL FILE (HARD RESET)</button>
+                    </div>
+                </div>
+
+                <!-- TAB: DESCENT ROADMAP -->
+                <div id="tab-roadmap" class="tab-pane">
+                    <p class="typewriter-text" style="text-align: center; margin-bottom: 20px;">Projected psychological deterioration path.</p>
+                    <div class="roadmap-timeline">
+                        <div class="roadmap-node completed">Floor 1: The Wastes (Sphere Head)</div>
+                        <div class="roadmap-node active">Floor 2: The Divide (Rorschach)</div>
+                        <div class="roadmap-node locked">Floor 3: The Panopticon (UNKNOWN)</div>
+                        <div class="roadmap-node locked">Floor 4: The Amalgamation (UNKNOWN)</div>
+                        <div class="roadmap-node locked boss">Floor 5: The Architect (FINAL)</div>
+                    </div>
+                </div>
+
             </div>
         </div>
-
-        <!-- Bottom: Details Panel -->
-        <div class="item-details-panel" id="item-details">
-            <h3 id="detail-name" style="margin:0 0 5px 0;">Select a Token</h3>
-            <p id="detail-desc" style="color:#aaa; font-size: 0.9rem; margin: 5px 0;">Configure your fractured mind before descending.</p>
-            <p id="detail-set" style="color:var(--ui-gold); font-size: 0.8rem; margin: 5px 0;"></p>
-            <div class="detail-actions">
-                <button class="menu-btn" id="btn-equip-item" style="font-size: 1rem; width: auto; display: none; padding: 10px 20px;">Equip</button>
-                <button class="menu-btn" id="btn-unequip-item" style="font-size: 1rem; width: auto; display: none; padding: 10px 20px; border-color: var(--ui-red); color: var(--ui-red);">Unequip</button>
-                <button class="menu-btn" id="btn-upgrade-item" style="font-size: 1rem; width: auto; display: none; padding: 10px 20px;">Upgrade</button>
-            </div>
-        </div>
-
-        <button class="menu-btn" id="btn-close-loadout" style="margin-top: 20px; width: auto;">Back to Reality</button>
-    </div>
-
-    <!-- SYNAPSE TREE -->
-    <div id="synapse-tree" class="fullscreen-menu">
-        <h2 style="color: var(--ui-gold); font-size: 2rem;">SYNAPSE TREE</h2>
-        <div style="margin-bottom: 20px;">Available Lucidity: <span id="tree-lucidity" style="color: white; font-weight: bold;">0</span></div>
-        
-        <div class="synapse-node">
-            <div><strong>Cognitive Resistance</strong><br><small>Base Sanity +20 (Lvl <span id="upg-hp-lvl">0</span>)</small></div>
-            <button id="btn-upg-hp">50 L</button>
-        </div>
-        <div class="synapse-node">
-            <div><strong>Adrenal Gland</strong><br><small>Base Speed +5% (Lvl <span id="upg-speed-lvl">0</span>)</small></div>
-            <button id="btn-upg-speed">75 L</button>
-        </div>
-        <div class="synapse-node">
-            <div><strong>Halogen Bulb</strong><br><small>Flashlight Range +10% (Lvl <span id="upg-light-lvl">0</span>)</small></div>
-            <button id="btn-upg-light">100 L</button>
-        </div>
-
-        <button class="menu-btn" id="btn-close-tree" style="margin-top: 40px; width: auto;">Back to Reality</button>
-        
-        <!-- NEW: HARD RESET BUTTON -->
-        <button class="menu-btn" id="btn-wipe-save" style="margin-top: 20px; width: auto; border-color: var(--ui-red); color: var(--ui-red); font-size: 1rem; padding: 10px 20px;">WIPE CLINICAL FILE (HARD RESET)</button>
     </div>
 
     <!-- HUD -->
     <div id="ui-layer">
         <div class="hud-top">
             <div class="sanity-section">
-                <div>THE GRIP (SANITY)</div>
+                <div class="hud-label">VITAL: GRIP (SANITY)</div>
                 <div class="sanity-bar-container"><div id="sanity-bar"></div></div>
-                <div style="font-size: 10px; margin-top: 6px; color: #88aaff;">DASH RECHARGE</div>
+                <div class="hud-label" style="margin-top: 6px; color: #88aaff;">ADRENAL RECHARGE</div>
                 <div class="dash-bar-container"><div id="dash-bar"></div></div>
             </div>
             
             <div class="convergence-section">
-                <div id="convergence-text">CONVERGENCE: 0%</div>
+                <div id="convergence-text" class="hud-label-large">CONVERGENCE: 0%</div>
                 <div class="convergence-bar-container"><div id="convergence-bar"></div></div>
             </div>
 
             <div class="score-section">
-                <div id="score">LUCIDITY: 0<br>FLOOR: 1</div>
-                <button id="btn-pause" class="icon-btn" title="Pause Game (ESC)">⏸ PAUSE</button>
+                <div id="score" class="hud-label-large">LUCIDITY: 0<br>FLOOR: 1</div>
+                <button id="btn-pause" class="hud-icon-btn" title="Pause Game (ESC)">⏸ PAUSE</button>
             </div>
         </div>
     </div>
@@ -137,26 +174,37 @@
     <div id="level-up-modal" class="level-up-modal">
         <h2 style="color: var(--ui-gold); margin: 0; text-shadow: 0 0 10px rgba(197, 160, 89, 0.5);">MANIFESTATION</h2>
         <div class="cards-container" id="cards-container"></div>
-        <!-- EPIC 3: REROLL BUTTON -->
-        <button class="menu-btn" id="btn-reroll" style="display:none; font-size: 1rem; width: auto; margin-top: 20px; border-color: var(--ui-gold);">Reroll Choices (-20 Sanity)</button>
+        <button class="file-btn" id="btn-reroll" style="display:none; margin-top: 20px;">Reroll Choices (-20 Sanity)</button>
     </div>
 
     <!-- PAUSE & EXIT MENU -->
     <div id="pause-menu" class="fullscreen-menu">
-        <div class="title-glitch" id="pause-title" style="font-size: 3rem;">SUSPENDED</div>
-        <p id="pause-desc" style="color:#aaa; text-align:center; max-width:400px; margin-bottom: 30px; font-size: 1.2rem;">
-            The nightmare pauses, but it does not end.
-        </p>
-        <button class="menu-btn" id="btn-unpause">Resume</button>
-        <button class="menu-btn" id="btn-descend" style="display:none; color: var(--ui-red); border-color: var(--ui-red); box-shadow: 0 0 15px rgba(139,0,0,0.5);">Descend Deeper</button>
-        <button class="menu-btn" id="btn-awaken" style="border-color: #55ff55; color: #55ff55;">Awaken (Save & Quit)</button>
+        <div class="medical-folder" style="height: auto; max-width: 600px;">
+            <div class="folder-header" style="justify-content: center;">
+                <div class="title-typewriter" id="pause-title">PROTOCOL SUSPENDED</div>
+            </div>
+            <div class="folder-content" style="text-align: center;">
+                <p id="pause-desc" class="typewriter-text" style="font-size: 1.2rem; margin-bottom: 30px;">The nightmare pauses, but it does not end.</p>
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+                    <button class="file-btn primary" id="btn-unpause">RESUME</button>
+                    <button class="file-btn danger" id="btn-descend" style="display:none;">DESCEND DEEPER</button>
+                    <button class="file-btn" id="btn-awaken">AWAKEN (SAVE & QUIT)</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- DEATH SCREEN -->
     <div id="death-screen" class="fullscreen-menu">
-        <div class="title-glitch" style="font-size: 2.5rem;">Your mind is broken...</div>
-        <div id="final-stats" style="margin-top: 20px; color: #888; font-size: 1.2rem; text-align: center;"></div>
-        <button class="menu-btn" id="btn-restart">RECONSTRUCT</button>
+        <div class="medical-folder" style="height: auto; max-width: 600px; border-color: var(--ui-red);">
+            <div class="folder-header" style="justify-content: center; border-bottom-color: var(--ui-red);">
+                <div class="title-typewriter" style="color: var(--ui-red);">MIND BROKEN</div>
+            </div>
+            <div class="folder-content" style="text-align: center;">
+                <div id="final-stats" class="typewriter-text" style="font-size: 1.2rem; margin-bottom: 30px; color: #111;"></div>
+                <button class="file-btn primary" id="btn-restart">RECONSTRUCT FILE</button>
+            </div>
+        </div>
     </div>
 </div>
 
