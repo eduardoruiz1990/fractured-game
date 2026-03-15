@@ -3,7 +3,7 @@ import { Scavenger } from '../entities/Scavenger.js';
 import { Predator } from '../entities/Predator.js';
 import { Parasite } from '../entities/Parasite.js';
 import { Boss } from '../entities/Boss.js';
-import { Rorschach } from '../entities/Rorschach.js'; // NEW: Import Split-Boss
+import { Rorschach } from '../entities/Rorschach.js'; 
 
 export class Director {
     constructor(game) {
@@ -14,13 +14,14 @@ export class Director {
             predator: new ObjectPool(() => new Predator(), 50),
             parasite: new ObjectPool(() => new Parasite(), 30),
             boss: new ObjectPool(() => new Boss(), 2),
-            rorschach: new ObjectPool(() => new Rorschach(), 15), // Need pool for splitting
+            rorschach: new ObjectPool(() => new Rorschach(), 15), 
             particle: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '', active: false }), 300),
             xpDrop: new ObjectPool(() => ({ x: 0, y: 0, value: 0, collected: false, active: false }), 300),
             damageText: new ObjectPool(() => ({ x: 0, y: 0, text: '', life: 0, color: '', scale: 1, active: false }), 200),
             inkPuddle: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, life: 0, damage: 0, active: false }), 200),
             meleeSwing: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, maxRadius: 0, life: 0, active: false }), 20),
-            safeZone: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, life: 0, maxLife: 0, active: false }), 20)
+            safeZone: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, life: 0, maxLife: 0, active: false }), 20),
+            projectile: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, radius: 0, damage: 0, color: '', life: 0, active: false }), 100)
         };
     }
 
@@ -28,7 +29,6 @@ export class Director {
         const state = this.game.state;
         state.stress = 1.0 + (state.frame / 3600); 
         
-        // --- EPIC 5: CEASE SPAWNS AFTER BOSS DEFEAT ---
         if (state.bossSpawned && !state.entities.some(e => e.type === 'BOSS' || e.type === 'RORSCHACH')) {
             return; 
         }
@@ -37,9 +37,7 @@ export class Director {
         if (state.frame % Math.max(90, Math.floor(300 / state.stress)) === 0) this.spawnEntity('PREDATOR', canvasWidth, canvasHeight);
         if (state.frame > 1800 && state.frame % 600 === 0) this.spawnEntity('PARASITE', canvasWidth, canvasHeight); 
 
-        // --- CONVERGENCE BOSS SPAWN ---
         if (state.convergence >= state.maxConvergence && !state.bossSpawned) {
-            // Alternate Bosses! Even floors get Rorschach, Odd floors get Sphere Head
             if (state.floor % 2 === 0) {
                 this.spawnEntity('RORSCHACH', canvasWidth, canvasHeight);
             } else {
@@ -73,12 +71,20 @@ export class Director {
         }
         else if (type === 'PARASITE') ent = this.pools.parasite.get().init(Math.random(), x, y);
         else if (type === 'BOSS') ent = this.pools.boss.get().init(Math.random(), x, y);
-        else if (type === 'RORSCHACH') ent = this.pools.rorschach.get().init(Math.random(), x, y, generation); // Spawn Split-Boss
+        else if (type === 'RORSCHACH') ent = this.pools.rorschach.get().init(Math.random(), x, y, generation);
         
         if (ent) state.entities.push(ent);
     }
 
-    // ... XP, Particles, and other systems remain exactly the same below ...
+    spawnProjectile(x, y, vx, vy, radius, damage, color, life) {
+        const state = this.game.state;
+        let p = this.pools.projectile.get();
+        p.x = x; p.y = y; p.vx = vx; p.vy = vy; 
+        p.radius = radius; p.damage = damage; p.color = color; 
+        p.life = life; p.active = true;
+        state.projectiles.push(p);
+    }
+
     spawnXP(x, y, amount, isMassive = false) {
         const state = this.game.state;
         for(let i=0; i<amount; i++) {

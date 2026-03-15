@@ -251,4 +251,4 @@ export class LevelUpUI {
         try { if (navigator.vibrate) navigator.vibrate([50, 50, 50]); } catch(e){}
         onCompleteCallback();
     }
-}
+}  

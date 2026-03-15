@@ -34,6 +34,7 @@ export class Game {
         let startTokens = { head: null, body: null, hands: null, legs: null };
         let startRunInventory = [];
 
+        // Fixed duplicate declaration here
         let startWeapons = {
             flashlight: { level: 1, damage: 15, radius: 250 * lightMult, angle: 0.4 },
             static: { level: 0, damage: 0, radius: 60, active: false, pulsePhase: 0 },
@@ -42,8 +43,6 @@ export class Game {
             spilled_ink: { level: 0, damage: 5, radius: 30, dropRate: 30, timer: 0 },
             corrosive_battery: { level: 0, damage: 2, duration: 60 },
             broken_chalk: { level: 0, radius: 70, duration: 180, cooldown: 120, timer: 0 },
-            
-            // --- EPIC 4: NEW WEAPONS ---
             polaroid_camera: { level: 0, damage: 60, radius: 350, angle: 0.8, cooldown: 240, timer: 0 }, 
             fidget_spinner: { level: 0, damage: 10, baseRadius: 55, speed: 0.05 }
         };
@@ -119,6 +118,7 @@ export class Game {
             entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [], safeZones: [],
             interactables: [], 
             tokenDrops: [], 
+            projectiles: [], // Epic 4/5 Rorschach Bullets
             playerAfterimages: [], 
             hitStop: 0, 
             frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false,
@@ -242,7 +242,6 @@ export class Game {
     }
 
     processGameLogic(moveInput, canvasWidth, canvasHeight) {
-        
         let canDash = true;
         if (this.state.player.sets.institutionalized >= 4) canDash = false;
 

@@ -3,6 +3,28 @@ export class Combat {
         const state = game.state;
         let deathCount = 0;
 
+        for (let i = state.projectiles.length - 1; i >= 0; i--) {
+            let p = state.projectiles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life--;
+            
+            let distToPlayer = Math.hypot(p.x - state.player.x, p.y - state.player.y);
+            if (distToPlayer < p.radius + state.player.radius && (!state.player.dash || !state.player.dash.active)) {
+                game.takeDamage(p.damage);
+                p.life = 0; 
+                game.spawnParticles(p.x, p.y, p.color, 10);
+            }
+            
+            if (p.life <= 0) {
+                p.active = false;
+                if (game.director && game.director.pools && game.director.pools.projectile) {
+                    game.director.pools.projectile.release(p);
+                }
+                state.projectiles.splice(i, 1);
+            }
+        }
+
         if (state.interactables) {
             for (let obj of state.interactables) {
                 if (obj.type === 'BREAKER_BOX') {
@@ -44,6 +66,7 @@ export class Combat {
                                 if (ent.lashingState) ent.lashingState = 'searching';
                                 if (ent.vacuumState) ent.vacuumState = 'hunting';
                                 if (ent.pulseState) ent.pulseState = 'hunting';
+                                if (ent.shootState) ent.shootState = 'hunting';
 
                                 if (state.frame % 30 === 0) {
                                     ent.takeDamage(20, game);

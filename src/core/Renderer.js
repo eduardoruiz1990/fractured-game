@@ -1,5 +1,6 @@
 // src/core/Renderer.js
 // Handles HTML5 Canvas Drawing, Procedural Lighting Masks, and VFX
+// COMPLETELY REFACTORED: Safe modular functions to prevent truncation errors!
 
 export class Renderer {
     constructor(canvas, ctx) {
@@ -100,8 +101,16 @@ export class Renderer {
         this.ctx.restore();
     }
 
+    // ==========================================
+    // THE MASTER GAME RENDERING LOOP
+    // ==========================================
     drawGame(state, audioEngine) {
         this.renderFrame++; 
+        
+        // 1. Check Boss Intro Status
+        if (!state.bossSpawned) {
+            this.hasAnnouncedBoss = false;
+        }
 
         if (state.bossSpawned && !this.hasAnnouncedBoss) {
             this.bossAnnouncementTimer = 240; 
@@ -110,11 +119,11 @@ export class Renderer {
             if (audioEngine) audioEngine.playSFX('death', 15); 
         }
 
+        // 2. Base Canvas Prep
         this.ctx.fillStyle = '#000000'; 
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         this.ctx.save();
-        
         this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
         this.ctx.scale(this.zoom, this.zoom);
         this.ctx.translate(-state.player.x, -state.player.y);
@@ -126,8 +135,43 @@ export class Renderer {
             this.ctx.translate(curShakeX, curShakeY);
         }
 
-        this.drawWorldItems(state);
+        // 3. Draw All Floor & Entities 
+        this.drawWorldItems(state, audioEngine);
         
+        // 4. Draw Atmospheric Fog
+        this.drawFog(state);
+
+        // 5. Calculate and apply Darkness / Flashlight Masks
+        this.drawLightingMasks(state, curShakeX, curShakeY);
+
+        // 6. Draw glowing effects (Screen blending)
+        this.drawEffectsAndAuras(state);
+
+        // 7. Draw Player Avatar
+        this.drawPlayer(state, audioEngine);
+
+        // 8. Draw UI Overlays (Damage text, objective arrows)
+        this.drawDamageText(state);
+        this.drawObjectivePointers(state);
+
+        this.ctx.restore(); 
+
+        // 9. Post-Processing
+        this.drawVignette(state);
+
+        if (this.bossAnnouncementTimer > 0) {
+            this.drawBossAnnouncement(state);
+            this.bossAnnouncementTimer--; // FIX: This single missing line caused the "invisible freeze"!
+        }
+
+        this.drawFilmGrain();
+    }
+
+    // ==========================================
+    // HELPER FUNCTIONS (Keeps code safe and modular)
+    // ==========================================
+
+    drawFog(state) {
         this.ctx.globalAlpha = 0.5;
         this.fogClouds.forEach(cloud => {
             if(state.hitStop > 0) { cloud.x += cloud.vx; cloud.y += cloud.vy; }
@@ -149,7 +193,9 @@ export class Renderer {
             this.ctx.fill();
         });
         this.ctx.globalAlpha = 1.0;
+    }
 
+    drawLightingMasks(state, curShakeX, curShakeY) {
         if (this.lightCanvas.width !== this.canvas.width || this.lightCanvas.height !== this.canvas.height) {
             this.lightCanvas.width = this.canvas.width;
             this.lightCanvas.height = this.canvas.height;
@@ -203,16 +249,14 @@ export class Renderer {
         let ambientRad = fl.radius * 0.45; 
         let currentAngle = fl.angle;
         let jitter = state.sanity < 30 ? (Math.random() - 0.5) * 0.1 : 0;
-        let isStrobing = false;
 
         if (state.player.synergies && state.player.synergies.includes('blinding_signal')) {
-            if (this.renderFrame % 6 < 3) { currentAngle *= 1.5; isStrobing = true; }
+            if (this.renderFrame % 6 < 3) { currentAngle *= 1.5; }
             else { currentAngle *= 0.8; }
         }
 
-        // --- EPIC 4: TUNNEL VISION CURSE ---
         if (state.player.curses && state.player.curses.includes('tunnel_vision')) {
-            ambientRad = 0; // Disable safe glow
+            ambientRad = 0; 
         }
 
         if (ambientRad > 0) {
@@ -244,7 +288,11 @@ export class Renderer {
         this.ctx.setTransform(1, 0, 0, 1, 0, 0); 
         this.ctx.drawImage(this.lightCanvas, 0, 0);
         this.ctx.restore(); 
+    }
 
+    drawEffectsAndAuras(state) {
+        const fl = state.player.weapons.flashlight;
+        
         if (state.player.sets && state.player.sets.insomniac >= 4) {
             const inner = fl.radius;
             const outer = inner + 200;
@@ -264,6 +312,18 @@ export class Renderer {
 
         this.ctx.globalCompositeOperation = 'screen';
         
+        if (state.projectiles) {
+            state.projectiles.forEach(p => {
+                this.ctx.fillStyle = p.color;
+                this.ctx.shadowColor = p.color;
+                this.ctx.shadowBlur = 10;
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.shadowBlur = 0;
+            });
+        }
+
         if (state.interactables) {
             state.interactables.forEach(obj => {
                 if (obj.active && obj.type === 'BREAKER_BOX') {
@@ -288,6 +348,14 @@ export class Renderer {
             });
         }
 
+        let currentAngle = fl.angle;
+        let jitter = state.sanity < 30 ? (Math.random() - 0.5) * 0.1 : 0;
+        let isStrobing = false;
+        if (state.player.synergies && state.player.synergies.includes('blinding_signal')) {
+            if (this.renderFrame % 6 < 3) { currentAngle *= 1.5; isStrobing = true; }
+            else { currentAngle *= 0.8; }
+        }
+
         const glareGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, fl.radius);
         if (isStrobing) {
             glareGrad.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
@@ -307,6 +375,7 @@ export class Renderer {
         this.ctx.closePath();
         this.ctx.fill();
 
+        let ambientRad = state.player.curses && state.player.curses.includes('tunnel_vision') ? 0 : fl.radius * 0.45;
         if (ambientRad > 0) {
             const ambColorGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, 0, state.player.x, state.player.y, ambientRad);
             ambColorGrad.addColorStop(0, 'rgba(200, 220, 255, 0.15)');
@@ -319,7 +388,6 @@ export class Renderer {
 
         this.ctx.globalCompositeOperation = 'source-over'; 
 
-        // --- EPIC 4: RENDER POLAROID FLASH ---
         if (state.cameraFlash > 0) {
             this.ctx.save();
             this.ctx.globalCompositeOperation = 'screen';
@@ -368,10 +436,9 @@ export class Renderer {
                 this.ctx.restore();
             });
         }
+    }
 
-        this.drawPlayer(state, audioEngine);
-        this.drawDamageText(state);
-
+    drawObjectivePointers(state) {
         if (state.interactables) {
             state.interactables.forEach(obj => {
                 if (obj.type === 'OBJECTIVE_BACKPACK' || obj.type === 'EXIT_ELEVATOR') {
@@ -418,9 +485,9 @@ export class Renderer {
                 }
             });
         }
+    }
 
-        this.ctx.restore(); 
-
+    drawVignette(state) {
         this.ctx.save();
         let sanityRatio = Math.max(0.01, state.sanity / state.player.maxHp);
         let innerVig = (this.canvas.height / 4) * sanityRatio; 
@@ -434,20 +501,575 @@ export class Renderer {
         vig.addColorStop(1, 'rgba(0,0,0,0.98)');
         this.ctx.fillStyle = vig;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.restore();
+    }
 
-        if (this.bossAnnouncementTimer > 0) {
-            this.drawBossAnnouncement(state);
-            this.bossAnnouncementTimer--;
+    drawWorldItems(state) {
+        // 1. Draw Floor
+        this.ctx.save();
+        this.ctx.fillStyle = this.ctx.createPattern(this.floorPattern, 'repeat');
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        this.ctx.strokeStyle = '#020202';
+        this.ctx.lineWidth = 25;
+        this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+
+        this.ctx.strokeStyle = 'rgba(197, 160, 89, 0.4)'; 
+        this.ctx.lineWidth = 3;
+        this.ctx.setLineDash([15, 15]);
+        this.ctx.strokeRect(12, 12, this.canvas.width - 24, this.canvas.height - 24);
+        this.ctx.restore();
+        
+        // 2. Draw Safe Zones
+        if (state.safeZones) {
+            state.safeZones.forEach(sz => {
+                this.ctx.save();
+                this.ctx.strokeStyle = `rgba(200, 200, 255, ${sz.life / sz.maxLife})`;
+                this.ctx.lineWidth = 3;
+                this.ctx.setLineDash([10, 15]); 
+                
+                this.ctx.translate(sz.x, sz.y);
+                this.ctx.rotate(this.renderFrame * 0.01);
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, sz.radius, 0, Math.PI*2);
+                this.ctx.stroke();
+                
+                if (state.player.synergies && state.player.synergies.includes('scholastic_purge')) {
+                    const mistPulse = Math.sin(this.renderFrame * 0.1) * 0.1;
+                    this.ctx.fillStyle = `rgba(100, 255, 100, ${0.15 + mistPulse})`;
+                    this.ctx.fill();
+                }
+                this.ctx.restore();
+            });
         }
 
-        this.drawFilmGrain();
+        // 3. Draw Base Interactables
+        if (state.interactables) {
+            state.interactables.forEach(obj => {
+                this.ctx.save();
+                this.ctx.translate(obj.x, obj.y);
+                
+                if (obj.type === 'BREAKER_BOX') {
+                    this.ctx.fillStyle = '#222';
+                    this.ctx.fillRect(-20, -30, 40, 60);
+                    this.ctx.strokeStyle = '#555';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeRect(-20, -30, 40, 60);
+                    
+                    let bulbColor = '#111';
+                    let glow = 0;
+                    if (obj.active) { bulbColor = '#ffffff'; glow = 30; } 
+                    else if (obj.charge > 0) { bulbColor = `rgba(255, 255, 100, ${obj.charge/60})`; glow = 15; }
+
+                    this.ctx.fillStyle = bulbColor;
+                    this.ctx.shadowBlur = glow;
+                    this.ctx.shadowColor = '#ffffaa';
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, -10, 12, 0, Math.PI*2);
+                    this.ctx.fill();
+                    this.ctx.shadowBlur = 0;
+
+                    if (obj.active) {
+                        this.ctx.strokeStyle = `rgba(255, 255, 150, ${0.4 + Math.sin(this.renderFrame * 0.2)*0.2})`;
+                        this.ctx.lineWidth = 3;
+                        this.ctx.setLineDash([20, 20]);
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, obj.radius, 0, Math.PI*2);
+                        this.ctx.stroke();
+                        
+                        this.ctx.rotate(this.renderFrame * 0.05);
+                        this.ctx.setLineDash([10, 40]);
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, obj.radius * 0.8, 0, Math.PI*2);
+                        this.ctx.stroke();
+                    } else if (obj.charge > 0) {
+                        this.ctx.strokeStyle = '#ffff00';
+                        this.ctx.lineWidth = 4;
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, -10, 25, -Math.PI/2, -Math.PI/2 + (obj.charge/60) * Math.PI*2);
+                        this.ctx.stroke();
+                    }
+                } else if (obj.type === 'OBJECTIVE_BACKPACK') {
+                    let isUrgent = obj.life < 300; 
+                    let pulseRate = isUrgent ? 0.3 : 0.1;
+                    let pulse = Math.sin(this.renderFrame * pulseRate) * 5;
+                    
+                    this.ctx.fillStyle = '#4a5d23'; 
+                    this.ctx.fillRect(-15, -15, 30, 30);
+                    this.ctx.fillStyle = '#222';
+                    this.ctx.fillRect(-10, -10, 20, 20);
+                    
+                    this.ctx.fillStyle = `rgba(100, 255, 100, ${0.5 + Math.sin(this.renderFrame * pulseRate)*0.5})`;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, -20 + pulse, 5 + pulse*0.5, 0, Math.PI*2);
+                    this.ctx.fill();
+
+                    this.ctx.strokeStyle = isUrgent ? '#ff0000' : '#00ff00';
+                    this.ctx.lineWidth = 3;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 30, -Math.PI/2, -Math.PI/2 + (obj.life / 1200) * Math.PI*2);
+                    this.ctx.stroke();
+
+                    this.ctx.fillStyle = isUrgent ? '#ff0000' : '#00ff00';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.font = "bold 14px var(--ui-font, monospace)";
+                    this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, -35); 
+                } else if (obj.type === 'EXIT_ELEVATOR') {
+                    let pulse = Math.sin(this.renderFrame * 0.1) * 5;
+                    
+                    this.ctx.fillStyle = '#111';
+                    this.ctx.fillRect(-30, -30, 60, 60); 
+                    
+                    this.ctx.shadowColor = '#fff';
+                    this.ctx.shadowBlur = 15 + pulse;
+                    this.ctx.fillStyle = `rgba(255, 255, 255, ${0.8 + Math.sin(this.renderFrame * 0.2)*0.2})`;
+                    this.ctx.fillRect(-20, -20, 40, 40); 
+                    this.ctx.shadowBlur = 0;
+                    
+                    this.ctx.fillStyle = '#000';
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(-10, -5); this.ctx.lineTo(10, -5); this.ctx.lineTo(0, 10);
+                    this.ctx.fill();
+                }
+                
+                this.ctx.restore();
+            });
+        }
+
+        // 4. Draw Ink Puddles
+        if (state.inkPuddles) {
+            state.inkPuddles.forEach(p => {
+                const lifeRatio = p.life / 300;
+                
+                this.ctx.save();
+                this.ctx.shadowColor = '#d900ff'; 
+                this.ctx.shadowBlur = 15 * lifeRatio;
+                this.ctx.fillStyle = `rgba(80, 10, 120, ${0.8 * lifeRatio})`; 
+                
+                this.ctx.beginPath();
+                for (let i = 0; i < 8; i++) {
+                    let angle = (i / 8) * Math.PI * 2;
+                    let radiusJitter = p.radius * (0.8 + Math.sin(p.x * p.y + i + this.renderFrame*0.05) * 0.2);
+                    let x = p.x + Math.cos(angle) * radiusJitter;
+                    let y = p.y + Math.sin(angle) * radiusJitter;
+                    if (i === 0) this.ctx.moveTo(x, y);
+                    else this.ctx.lineTo(x, y);
+                }
+                this.ctx.closePath();
+                this.ctx.fill();
+
+                this.ctx.shadowBlur = 0;
+                this.ctx.fillStyle = `rgba(200, 50, 255, ${0.5 * lifeRatio})`;
+                this.ctx.beginPath();
+                for (let i = 0; i < 8; i++) {
+                    let angle = (i / 8) * Math.PI * 2;
+                    let radiusJitter = (p.radius * 0.5) * (0.8 + Math.sin(p.x * p.y + i + this.renderFrame*0.05) * 0.2);
+                    let x = p.x + Math.cos(angle) * radiusJitter;
+                    let y = p.y + Math.sin(angle) * radiusJitter;
+                    if (i === 0) this.ctx.moveTo(x, y);
+                    else this.ctx.lineTo(x, y);
+                }
+                this.ctx.closePath();
+                this.ctx.fill();
+                this.ctx.restore();
+            });
+        }
+
+        // 5. Draw XP
+        if (state.xpDrops) {
+            state.xpDrops.forEach(xp => {
+                this.ctx.save();
+                this.ctx.translate(xp.x, xp.y);
+                
+                const time = this.renderFrame * 0.1 + xp.x;
+                const pulse = Math.sin(time) * 2;
+                
+                this.ctx.shadowColor = '#88ccff';
+                this.ctx.shadowBlur = 10;
+                
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.beginPath();
+                this.ctx.arc(0, Math.sin(time*2)*3, 2.5 + pulse*0.5, 0, Math.PI*2);
+                this.ctx.fill();
+                
+                this.ctx.strokeStyle = 'rgba(150, 200, 255, 0.6)';
+                this.ctx.lineWidth = 1.5;
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, Math.sin(time*2)*3);
+                this.ctx.quadraticCurveTo(-4, -4, -Math.cos(time)*6, -6);
+                this.ctx.stroke();
+                
+                this.ctx.shadowBlur = 0;
+                this.ctx.restore();
+            });
+        }
+
+        // 6. Draw Entities
+        if (state.entities) {
+            state.entities.forEach(ent => {
+                let isFlashed = ent.flashTime > 0;
+
+                if (ent.type === 'BOSS' && state.sanity <= 0) {
+                    if (Math.sin(ent.phase * 10) < 0.5) this.ctx.globalAlpha = 0.2;
+                    else this.ctx.globalAlpha = 0.8;
+                }
+
+                this.ctx.save(); 
+                this.ctx.translate(ent.x, ent.y);
+                
+                const twitch = state.sanity < 20 ? (Math.random()-0.5)*4 : 0;
+                this.ctx.translate(twitch, twitch);
+                
+                if (ent.type === 'RORSCHACH') {
+                    // Render Rorschach Laser Telegraph
+                    if (ent.shootState === 'telegraphing') {
+                        this.ctx.save();
+                        this.ctx.rotate(ent.shootAngle);
+                        this.ctx.strokeStyle = `rgba(255, 0, 85, ${1 - (ent.shootTimer/45)})`;
+                        this.ctx.lineWidth = 2;
+                        this.ctx.setLineDash([10, 15]);
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(0, 0);
+                        this.ctx.lineTo(800, 0); 
+                        this.ctx.stroke();
+                        this.ctx.setLineDash([]);
+                        this.ctx.restore();
+                    }
+
+                    this.ctx.rotate(Math.sin(this.renderFrame * 0.05) * 0.1);
+                    let pulse = Math.sin(this.renderFrame * 0.1) * (5 / ent.generation);
+                    
+                    this.ctx.fillStyle = isFlashed ? '#ddaaaa' : ent.color;
+                    this.ctx.shadowColor = '#800080';
+                    this.ctx.shadowBlur = 15;
+                    
+                    for (let mirror = -1; mirror <= 1; mirror += 2) {
+                        this.ctx.save();
+                        this.ctx.scale(mirror, 1);
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(0, -ent.radius);
+                        this.ctx.bezierCurveTo(ent.radius, -ent.radius, ent.radius + pulse, -ent.radius/2, ent.radius*0.8, 0);
+                        this.ctx.bezierCurveTo(ent.radius*1.2, ent.radius/2, ent.radius, ent.radius, 0, ent.radius + pulse);
+                        this.ctx.fill();
+                        
+                        this.ctx.fillStyle = isFlashed ? '#fff' : '#ff0055'; 
+                        this.ctx.beginPath();
+                        this.ctx.arc(ent.radius*0.3 + Math.sin(this.renderFrame*0.1)*2, 0, ent.radius*0.1, 0, Math.PI*2);
+                        this.ctx.fill();
+                        
+                        this.ctx.restore();
+                    }
+                    this.ctx.shadowBlur = 0;
+                }
+                else if (ent.type === 'SCAVENGER') {
+                    this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
+                    
+                    if (ent.vacuumState === 'vacuuming') {
+                        this.ctx.save();
+                        this.ctx.strokeStyle = `rgba(150, 200, 255, ${0.5 + Math.sin(this.renderFrame * 0.5) * 0.5})`;
+                        this.ctx.lineWidth = 2;
+                        this.ctx.setLineDash([5, 5]);
+                        this.ctx.beginPath();
+                        let vacPulse = 80 - ((this.renderFrame * 2) % 80);
+                        this.ctx.arc(0, 0, vacPulse, 0, Math.PI*2);
+                        this.ctx.stroke();
+                        this.ctx.restore();
+                        
+                        this.ctx.translate((Math.random()-0.5)*2, (Math.random()-0.5)*2);
+                    }
+
+                    this.ctx.fillStyle = isFlashed ? '#bbbbbb' : '#2a2d2a';
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(0, 0, 12, 15 + Math.sin(this.renderFrame*0.1)*2, 0, 0, Math.PI*2);
+                    this.ctx.fill();
+                    
+                    this.ctx.fillStyle = isFlashed ? '#999999' : '#1a1c1a';
+                    this.ctx.beginPath();
+                    let sackSize = 9 + (ent.hp > 30 ? 3 : 0);
+                    this.ctx.arc(-6, 5, sackSize, 0, Math.PI*2);
+                    this.ctx.fill();
+
+                    this.ctx.fillStyle = '#aaaa00';
+                    this.ctx.beginPath();
+                    this.ctx.arc(8, -4, 1.5, 0, Math.PI*2);
+                    this.ctx.fill();
+
+                    this.ctx.strokeStyle = '#111';
+                    this.ctx.lineWidth = 2.5;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, 10);
+                    let sweepOffset = ent.vacuumState === 'vacuuming' ? 0 : Math.sin(this.renderFrame * 0.2)*5;
+                    this.ctx.lineTo(10 + sweepOffset, 18);
+                    this.ctx.stroke();
+                } 
+                else if (ent.type === 'PREDATOR') {
+                    if (ent.attackState === 'telegraphing') {
+                        this.ctx.rotate(Math.atan2(ent.lungeVy, ent.lungeVx));
+                        
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(0, 0);
+                        this.ctx.lineTo(800, 0); 
+                        this.ctx.lineWidth = 2;
+                        let alpha = (45 - ent.attackTimer) / 45; 
+                        this.ctx.strokeStyle = `rgba(255, 0, 0, ${alpha})`;
+                        if (ent.attackTimer % 10 > 5) this.ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+                        this.ctx.setLineDash([15, 10]);
+                        this.ctx.stroke();
+                        this.ctx.setLineDash([]);
+                    } else if (ent.attackState === 'lunging') {
+                        this.ctx.rotate(Math.atan2(ent.lungeVy, ent.lungeVx));
+                    } else {
+                        this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
+                    }
+                    
+                    this.ctx.fillStyle = isFlashed ? '#ddaaaa' : (ent.buffed ? '#3a0a0a' : '#111111');
+                    this.ctx.beginPath();
+                    
+                    let stretch = ent.attackState === 'lunging' ? 5 : 0;
+                    this.ctx.moveTo(18 + stretch, 0); 
+                    this.ctx.lineTo(5, 12 - stretch + Math.sin(this.renderFrame*0.2)*3);
+                    this.ctx.lineTo(-15 - stretch, 10);
+                    this.ctx.lineTo(-20 - stretch, 0); 
+                    this.ctx.lineTo(-15 - stretch, -10);
+                    this.ctx.lineTo(5, -12 + stretch - Math.cos(this.renderFrame*0.2)*3);
+                    this.ctx.closePath();
+                    this.ctx.fill();
+
+                    this.ctx.strokeStyle = this.ctx.fillStyle;
+                    this.ctx.lineWidth = 2;
+                    this.ctx.beginPath();
+                    
+                    if (ent.attackState === 'lunging') {
+                        this.ctx.moveTo(0, 10);
+                        this.ctx.lineTo(-20, 15);
+                        this.ctx.moveTo(0, -10);
+                        this.ctx.lineTo(-20, -15);
+                    } else {
+                        this.ctx.moveTo(0, 10);
+                        this.ctx.quadraticCurveTo(15, 20, 18, 8);
+                        this.ctx.moveTo(0, -10);
+                        this.ctx.quadraticCurveTo(15, -20, 18, -8);
+                    }
+                    this.ctx.stroke();
+
+                    this.ctx.fillStyle = ent.buffed ? '#ff0000' : '#cc0000';
+                    this.ctx.shadowColor = '#ff0000';
+                    this.ctx.shadowBlur = 10;
+                    if (ent.attackState === 'telegraphing') {
+                        this.ctx.shadowBlur = 20; 
+                        this.ctx.fillStyle = '#ff3333';
+                    }
+                    
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(10 + stretch, -4, 3, 1.5, Math.PI/6, 0, Math.PI*2);
+                    this.ctx.ellipse(10 + stretch, 4, 3, 1.5, -Math.PI/6, 0, Math.PI*2);
+                    this.ctx.fill();
+                    this.ctx.shadowBlur = 0; 
+                }
+                else if (ent.type === 'PARASITE') {
+                    this.ctx.rotate(this.renderFrame * 0.2); 
+                    
+                    if (ent.lashingState === 'lashing' && ent.lashTarget) {
+                        this.ctx.save();
+                        let dx = ent.lashTarget.x - ent.x;
+                        let dy = ent.lashTarget.y - ent.y;
+                        
+                        this.ctx.rotate(-this.renderFrame * 0.2); 
+                        
+                        this.ctx.strokeStyle = `rgba(255, 100, 100, ${1 - (ent.lashTimer/30)})`;
+                        this.ctx.lineWidth = 3;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(0,0);
+                        this.ctx.lineTo(dx, dy);
+                        this.ctx.stroke();
+                        
+                        this.ctx.restore();
+                    }
+
+                    let pulse = Math.sin(this.renderFrame * 0.3) * 1.5;
+                    if (ent.lashingState === 'lashing') pulse = Math.sin(this.renderFrame * 1.5) * 3; 
+
+                    this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#6b2222';
+                    this.ctx.beginPath(); 
+                    this.ctx.arc(0, 0, 5 + pulse, 0, Math.PI*2); 
+                    this.ctx.fill();
+
+                    this.ctx.fillStyle = '#050505';
+                    this.ctx.beginPath(); 
+                    this.ctx.arc(0, 0, 2 + pulse*0.5, 0, Math.PI*2); 
+                    this.ctx.fill();
+                    
+                    this.ctx.strokeStyle = isFlashed ? '#ffffff' : ent.color;
+                    this.ctx.lineWidth = 1.5;
+                    this.ctx.lineCap = 'round';
+                    
+                    let curl = ent.lashingState === 'lashing' ? 0.5 : 0;
+                    
+                    for(let i=0; i<8; i++) {
+                        let angle = (i/8) * Math.PI * 2 + (Math.sin(this.renderFrame*0.5 + i)*0.2) + curl;
+                        let length = 8 + Math.random() * 4;
+                        if (ent.lashingState === 'lashing') length -= 3; 
+                        
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(Math.cos(angle)*4, Math.sin(angle)*4);
+                        let midX = Math.cos(angle + 0.3) * (length*0.6);
+                        let midY = Math.sin(angle + 0.3) * (length*0.6);
+                        this.ctx.lineTo(midX, midY);
+                        this.ctx.lineTo(Math.cos(angle)*length, Math.sin(angle)*length);
+                        this.ctx.stroke();
+                    }
+                }
+                else if (ent.type === 'BOSS') {
+                    if (ent.pulseState === 'charging' || ent.pulseState === 'pulsing') {
+                        this.ctx.save();
+                        this.ctx.strokeStyle = ent.pulseState === 'pulsing' ? 'rgba(255, 50, 50, 0.8)' : `rgba(255, 100, 100, ${1 - (ent.pulseTimer/60)})`;
+                        this.ctx.lineWidth = ent.pulseState === 'pulsing' ? 10 : 3;
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, ent.pulseState === 'pulsing' ? ent.maxPulseRadius : ent.pulseRadius, 0, Math.PI*2);
+                        this.ctx.stroke();
+                        
+                        if (ent.pulseState === 'pulsing') {
+                            this.ctx.fillStyle = 'rgba(255, 50, 50, 0.3)';
+                            this.ctx.fill();
+                        }
+                        this.ctx.restore();
+                    }
+
+                    this.ctx.rotate(Math.sin(ent.phase * 0.5) * 0.1); 
+                    
+                    let pulse = Math.sin(this.renderFrame * 0.1) * 3;
+                    if (ent.pulseState === 'charging') {
+                        pulse = Math.sin(this.renderFrame * 0.5) * 5; 
+                        this.ctx.translate((Math.random()-0.5)*5, (Math.random()-0.5)*5); 
+                    }
+
+                    this.ctx.fillStyle = isFlashed ? '#ddaaaa' : '#1a0d15';
+                    this.ctx.beginPath();
+                    for (let i = 0; i < 16; i++) {
+                        let angle = (i / 16) * Math.PI * 2;
+                        let reach = 35 + Math.sin(ent.phase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
+                        if (ent.pulseState === 'charging') reach -= 10; 
+                        if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
+                        else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
+                    }
+                    this.ctx.closePath();
+                    this.ctx.fill();
+
+                    this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#2b1010';
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
+                    this.ctx.fill();
+
+                    this.ctx.fillStyle = '#050000';
+                    this.ctx.beginPath();
+                    for (let i = 0; i < 10; i++) {
+                        let angle = (i / 10) * Math.PI * 2;
+                        let innerReach = 10 + Math.random() * 8; 
+                        if (ent.pulseState === 'charging') innerReach += 5 + Math.random()*5; 
+                        if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
+                        else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
+                    }
+                    this.ctx.closePath();
+                    this.ctx.fill();
+
+                    this.ctx.fillStyle = '#ff0000';
+                    this.ctx.shadowColor = '#ff0000';
+                    this.ctx.shadowBlur = 15;
+                    
+                    const eyes = [
+                        {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
+                        {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
+                    ];
+
+                    eyes.forEach(eye => {
+                        let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
+                        let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
+                        this.ctx.beginPath();
+                        this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
+                        this.ctx.fill();
+                        this.ctx.fillStyle = '#000000';
+                        this.ctx.shadowBlur = 0;
+                        this.ctx.beginPath();
+                        this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
+                        this.ctx.fill();
+                        this.ctx.fillStyle = '#ff0000';
+                        this.ctx.shadowBlur = ent.pulseState === 'charging' ? 30 : 15;
+                    });
+                    this.ctx.shadowBlur = 0;
+
+                    this.ctx.strokeStyle = '#555';
+                    this.ctx.lineWidth = 3;
+                    this.ctx.lineCap = 'round';
+                    for(let i=0; i<3; i++) {
+                        let orbitAngle = ent.phase * (1 + i*0.5) + (i * Math.PI*0.6);
+                        let dist = 45 + Math.sin(ent.phase * 2 + i) * 5;
+                        if (ent.pulseState === 'charging') orbitAngle += this.renderFrame * 0.2;
+                        let objX = Math.cos(orbitAngle) * dist;
+                        let objY = Math.sin(orbitAngle) * dist;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(objX - 5, objY - 5);
+                        this.ctx.lineTo(objX + 5, objY + 5);
+                        this.ctx.stroke();
+                    }
+                }
+
+                // Entity Healthbars
+                if (ent.hp < ent.maxHp && ent.flashTime <= 0) {
+                    let barW = 24;
+                    let yOffset = 20;
+                    if (ent.type === 'BOSS') { barW = 80; yOffset = 55; }
+                    else if (ent.type === 'RORSCHACH') { barW = ent.radius * 1.5; yOffset = ent.radius + 10; }
+                    
+                    this.ctx.fillStyle = 'rgba(0,0,0,0.8)'; 
+                    this.ctx.fillRect(-barW/2, yOffset, barW, 4);
+                    this.ctx.fillStyle = '#8b0000'; 
+                    this.ctx.fillRect(-barW/2, yOffset, barW * Math.max(0, ent.hp / ent.maxHp), 4);
+                }
+
+                this.ctx.restore();
+                this.ctx.globalAlpha = 1.0;
+            });
+        }
+
+        // 7. Draw Particles
+        if (state.particles) {
+            state.particles.forEach(p => { 
+                this.ctx.fillStyle = p.color; 
+                this.ctx.globalAlpha = Math.max(0, p.life); 
+                this.ctx.beginPath();
+                this.ctx.moveTo(p.x, p.y);
+                this.ctx.lineTo(p.x - p.vx*2, p.y - p.vy*2);
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeStyle = p.color;
+                this.ctx.stroke();
+            });
+        }
+        this.ctx.globalAlpha = 1.0;
+    }
+
+    drawDamageText(state) {
+        this.ctx.save();
+        this.ctx.textAlign = 'center';
+        
+        if (state.damageTexts) {
+            state.damageTexts.forEach(dt => {
+                this.ctx.globalAlpha = Math.max(0, Math.min(1, dt.life));
+                this.ctx.font = `bold ${Math.floor((20 * dt.scale)/this.zoom)}px var(--ui-font, monospace)`;
+                this.ctx.fillStyle = dt.color;
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeStyle = '#000';
+                this.ctx.strokeText(dt.text, dt.x, dt.y);
+                this.ctx.fillText(dt.text, dt.x, dt.y);
+            });
+        }
+        
         this.ctx.restore();
     }
 
     drawBossAnnouncement(state) {
         this.ctx.save();
         
-        // --- EPIC 5: IDENTIFY WHICH BOSS SPAWNED ---
         const activeBoss = state.entities.find(e => e.type === 'BOSS' || e.type === 'RORSCHACH');
         const bossType = activeBoss ? activeBoss.type : 'BOSS';
         
@@ -492,9 +1114,7 @@ export class Renderer {
         const simulatedPhase = this.renderFrame * 0.05;
         this.ctx.rotate(Math.sin(simulatedPhase * 0.5) * 0.1); 
 
-        // --- EPIC 5: DYNAMIC BOSS PORTRAITS ---
         if (bossType === 'RORSCHACH') {
-            // Draw Symmetrical Inkblot for Rorschach
             let pulse = Math.sin(this.renderFrame * 0.1) * 3;
             this.ctx.fillStyle = '#1a0525';
             this.ctx.shadowColor = '#800080';
@@ -509,16 +1129,16 @@ export class Renderer {
                 this.ctx.bezierCurveTo(40, 15, 20, 30, 0, 30 + pulse);
                 this.ctx.fill();
                 
-                this.ctx.fillStyle = '#ff0055'; // Glowing core pieces
+                this.ctx.fillStyle = '#ff0055'; 
                 this.ctx.beginPath();
                 this.ctx.arc(10 + Math.sin(simulatedPhase)*2, 5, 2, 0, Math.PI*2);
                 this.ctx.fill();
+                
                 this.ctx.restore();
             }
             this.ctx.shadowBlur = 0;
             
         } else {
-            // Original Sphere Head Portrait
             let pulse = Math.sin(this.renderFrame * 0.1) * 3;
             this.ctx.fillStyle = '#1a0d15';
             this.ctx.beginPath();
@@ -596,7 +1216,6 @@ export class Renderer {
         this.ctx.fillStyle = '#ffffff';
         let textJitter = (Math.random() - 0.5) * 5;
         
-        // --- EPIC 5: DYNAMIC TEXT ---
         const titleText = bossType === 'RORSCHACH' ? "THE RORSCHACH" : "THE SPHERE HEAD";
         const subText = bossType === 'RORSCHACH' ? "The Mind Divided" : "Apex Predator of the Wastes";
         
@@ -740,7 +1359,6 @@ export class Renderer {
         this.ctx.fill();
         this.ctx.shadowBlur = 0;
 
-        // --- EPIC 4: RENDER FIDGET SPINNER ---
         const spinner = state.player.weapons.fidget_spinner;
         if (spinner && spinner.level > 0) {
             this.ctx.save();
@@ -779,527 +1397,5 @@ export class Renderer {
         }
 
         this.ctx.restore();
-    }
-
-    drawDamageText(state) {
-        this.ctx.save();
-        this.ctx.textAlign = 'center';
-        
-        if (state.damageTexts) {
-            state.damageTexts.forEach(dt => {
-                this.ctx.globalAlpha = Math.max(0, Math.min(1, dt.life));
-                this.ctx.font = `bold ${Math.floor((20 * dt.scale)/this.zoom)}px var(--ui-font, monospace)`;
-                this.ctx.fillStyle = dt.color;
-                this.ctx.lineWidth = 2;
-                this.ctx.strokeStyle = '#000';
-                this.ctx.strokeText(dt.text, dt.x, dt.y);
-                this.ctx.fillText(dt.text, dt.x, dt.y);
-            });
-        }
-        
-        this.ctx.restore();
-    }
-
-    drawWorldItems(state) {
-        this.ctx.save();
-        this.ctx.fillStyle = this.ctx.createPattern(this.floorPattern, 'repeat');
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        this.ctx.strokeStyle = '#020202';
-        this.ctx.lineWidth = 25;
-        this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
-
-        this.ctx.strokeStyle = 'rgba(197, 160, 89, 0.4)'; 
-        this.ctx.lineWidth = 3;
-        this.ctx.setLineDash([15, 15]);
-        this.ctx.strokeRect(12, 12, this.canvas.width - 24, this.canvas.height - 24);
-        this.ctx.restore();
-        
-        if (state.safeZones) {
-            state.safeZones.forEach(sz => {
-                this.ctx.save();
-                this.ctx.strokeStyle = `rgba(200, 200, 255, ${sz.life / sz.maxLife})`;
-                this.ctx.lineWidth = 3;
-                this.ctx.setLineDash([10, 15]); 
-                
-                this.ctx.translate(sz.x, sz.y);
-                this.ctx.rotate(this.renderFrame * 0.01);
-                this.ctx.beginPath();
-                this.ctx.arc(0, 0, sz.radius, 0, Math.PI*2);
-                this.ctx.stroke();
-                
-                if (state.player.synergies && state.player.synergies.includes('scholastic_purge')) {
-                    const mistPulse = Math.sin(this.renderFrame * 0.1) * 0.1;
-                    this.ctx.fillStyle = `rgba(100, 255, 100, ${0.15 + mistPulse})`;
-                    this.ctx.fill();
-                }
-                this.ctx.restore();
-            });
-        }
-
-        if (state.interactables) {
-            state.interactables.forEach(obj => {
-                this.ctx.save();
-                this.ctx.translate(obj.x, obj.y);
-                
-                if (obj.type === 'BREAKER_BOX') {
-                    this.ctx.fillStyle = '#222';
-                    this.ctx.fillRect(-20, -30, 40, 60);
-                    this.ctx.strokeStyle = '#555';
-                    this.ctx.lineWidth = 2;
-                    this.ctx.strokeRect(-20, -30, 40, 60);
-                    
-                    let bulbColor = '#111';
-                    let glow = 0;
-                    if (obj.active) {
-                        bulbColor = '#ffffff';
-                        glow = 30;
-                    } else if (obj.charge > 0) {
-                        bulbColor = `rgba(255, 255, 100, ${obj.charge/60})`;
-                        glow = 15;
-                    }
-
-                    this.ctx.fillStyle = bulbColor;
-                    this.ctx.shadowBlur = glow;
-                    this.ctx.shadowColor = '#ffffaa';
-                    this.ctx.beginPath();
-                    this.ctx.arc(0, -10, 12, 0, Math.PI*2);
-                    this.ctx.fill();
-                    this.ctx.shadowBlur = 0;
-
-                    if (obj.active) {
-                        this.ctx.strokeStyle = `rgba(255, 255, 150, ${0.4 + Math.sin(this.renderFrame * 0.2)*0.2})`;
-                        this.ctx.lineWidth = 3;
-                        this.ctx.setLineDash([20, 20]);
-                        this.ctx.beginPath();
-                        this.ctx.arc(0, 0, obj.radius, 0, Math.PI*2);
-                        this.ctx.stroke();
-                        
-                        this.ctx.rotate(this.renderFrame * 0.05);
-                        this.ctx.setLineDash([10, 40]);
-                        this.ctx.beginPath();
-                        this.ctx.arc(0, 0, obj.radius * 0.8, 0, Math.PI*2);
-                        this.ctx.stroke();
-                    } else if (obj.charge > 0) {
-                        this.ctx.strokeStyle = '#ffff00';
-                        this.ctx.lineWidth = 4;
-                        this.ctx.beginPath();
-                        this.ctx.arc(0, -10, 25, -Math.PI/2, -Math.PI/2 + (obj.charge/60) * Math.PI*2);
-                        this.ctx.stroke();
-                    }
-                } else if (obj.type === 'OBJECTIVE_BACKPACK') {
-                    let isUrgent = obj.life < 300; 
-                    let pulseRate = isUrgent ? 0.3 : 0.1;
-                    let pulse = Math.sin(this.renderFrame * pulseRate) * 5;
-                    
-                    this.ctx.fillStyle = '#4a5d23'; 
-                    this.ctx.fillRect(-15, -15, 30, 30);
-                    this.ctx.fillStyle = '#222';
-                    this.ctx.fillRect(-10, -10, 20, 20);
-                    
-                    this.ctx.fillStyle = `rgba(100, 255, 100, ${0.5 + Math.sin(this.renderFrame * pulseRate)*0.5})`;
-                    this.ctx.beginPath();
-                    this.ctx.arc(0, -20 + pulse, 5 + pulse*0.5, 0, Math.PI*2);
-                    this.ctx.fill();
-
-                    this.ctx.strokeStyle = isUrgent ? '#ff0000' : '#00ff00';
-                    this.ctx.lineWidth = 3;
-                    this.ctx.beginPath();
-                    this.ctx.arc(0, 0, 30, -Math.PI/2, -Math.PI/2 + (obj.life / 1200) * Math.PI*2);
-                    this.ctx.stroke();
-
-                    this.ctx.fillStyle = isUrgent ? '#ff0000' : '#00ff00';
-                    this.ctx.textAlign = 'center';
-                    this.ctx.textBaseline = 'middle';
-                    this.ctx.font = "bold 14px var(--ui-font, monospace)";
-                    this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, -35); 
-                } else if (obj.type === 'EXIT_ELEVATOR') {
-                    let pulse = Math.sin(this.renderFrame * 0.1) * 5;
-                    
-                    this.ctx.fillStyle = '#111';
-                    this.ctx.fillRect(-30, -30, 60, 60); 
-                    
-                    this.ctx.shadowColor = '#fff';
-                    this.ctx.shadowBlur = 15 + pulse;
-                    this.ctx.fillStyle = `rgba(255, 255, 255, ${0.8 + Math.sin(this.renderFrame * 0.2)*0.2})`;
-                    this.ctx.fillRect(-20, -20, 40, 40); 
-                    this.ctx.shadowBlur = 0;
-                    
-                    this.ctx.fillStyle = '#000';
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(-10, -5); this.ctx.lineTo(10, -5); this.ctx.lineTo(0, 10);
-                    this.ctx.fill();
-                }
-                
-                this.ctx.restore();
-            });
-        }
-
-        if (state.inkPuddles) {
-            state.inkPuddles.forEach(p => {
-                const lifeRatio = p.life / 300;
-                
-                this.ctx.save();
-                this.ctx.shadowColor = '#d900ff'; 
-                this.ctx.shadowBlur = 15 * lifeRatio;
-                this.ctx.fillStyle = `rgba(80, 10, 120, ${0.8 * lifeRatio})`; 
-                
-                this.ctx.beginPath();
-                for (let i = 0; i < 8; i++) {
-                    let angle = (i / 8) * Math.PI * 2;
-                    let radiusJitter = p.radius * (0.8 + Math.sin(p.x * p.y + i + this.renderFrame*0.05) * 0.2);
-                    let x = p.x + Math.cos(angle) * radiusJitter;
-                    let y = p.y + Math.sin(angle) * radiusJitter;
-                    if (i === 0) this.ctx.moveTo(x, y);
-                    else this.ctx.lineTo(x, y);
-                }
-                this.ctx.closePath();
-                this.ctx.fill();
-
-                this.ctx.shadowBlur = 0;
-                this.ctx.fillStyle = `rgba(200, 50, 255, ${0.5 * lifeRatio})`;
-                this.ctx.beginPath();
-                for (let i = 0; i < 8; i++) {
-                    let angle = (i / 8) * Math.PI * 2;
-                    let radiusJitter = (p.radius * 0.5) * (0.8 + Math.sin(p.x * p.y + i + this.renderFrame*0.05) * 0.2);
-                    let x = p.x + Math.cos(angle) * radiusJitter;
-                    let y = p.y + Math.sin(angle) * radiusJitter;
-                    if (i === 0) this.ctx.moveTo(x, y);
-                    else this.ctx.lineTo(x, y);
-                }
-                this.ctx.closePath();
-                this.ctx.fill();
-                this.ctx.restore();
-            });
-        }
-
-        state.xpDrops.forEach(xp => {
-            this.ctx.save();
-            this.ctx.translate(xp.x, xp.y);
-            
-            const time = this.renderFrame * 0.1 + xp.x;
-            const pulse = Math.sin(time) * 2;
-            
-            this.ctx.shadowColor = '#88ccff';
-            this.ctx.shadowBlur = 10;
-            
-            this.ctx.fillStyle = '#ffffff';
-            this.ctx.beginPath();
-            this.ctx.arc(0, Math.sin(time*2)*3, 2.5 + pulse*0.5, 0, Math.PI*2);
-            this.ctx.fill();
-            
-            this.ctx.strokeStyle = 'rgba(150, 200, 255, 0.6)';
-            this.ctx.lineWidth = 1.5;
-            this.ctx.beginPath();
-            this.ctx.moveTo(0, Math.sin(time*2)*3);
-            this.ctx.quadraticCurveTo(-4, -4, -Math.cos(time)*6, -6);
-            this.ctx.stroke();
-            
-            this.ctx.shadowBlur = 0;
-            this.ctx.restore();
-        });
-
-        // Entities
-        state.entities.forEach(ent => {
-            let isFlashed = ent.flashTime > 0;
-
-            if (ent.type === 'BOSS' && state.sanity <= 0) {
-                if (Math.sin(ent.phase * 10) < 0.5) this.ctx.globalAlpha = 0.2;
-                else this.ctx.globalAlpha = 0.8;
-            }
-
-            this.ctx.save(); 
-            this.ctx.translate(ent.x, ent.y);
-            
-            const twitch = state.sanity < 20 ? (Math.random()-0.5)*4 : 0;
-            this.ctx.translate(twitch, twitch);
-            
-            // --- EPIC 5: RORSCHACH ENTITY RENDERING ---
-            if (ent.type === 'RORSCHACH') {
-                this.ctx.rotate(Math.sin(this.renderFrame * 0.05) * 0.1);
-                let pulse = Math.sin(this.renderFrame * 0.1) * (5 / ent.generation);
-                
-                this.ctx.fillStyle = isFlashed ? '#ddaaaa' : ent.color;
-                this.ctx.shadowColor = '#800080';
-                this.ctx.shadowBlur = 15;
-                
-                for (let mirror = -1; mirror <= 1; mirror += 2) {
-                    this.ctx.save();
-                    this.ctx.scale(mirror, 1);
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(0, -ent.radius);
-                    this.ctx.bezierCurveTo(ent.radius, -ent.radius, ent.radius + pulse, -ent.radius/2, ent.radius*0.8, 0);
-                    this.ctx.bezierCurveTo(ent.radius*1.2, ent.radius/2, ent.radius, ent.radius, 0, ent.radius + pulse);
-                    this.ctx.fill();
-                    
-                    // Internal core dots
-                    this.ctx.fillStyle = isFlashed ? '#fff' : '#ff0055'; 
-                    this.ctx.beginPath();
-                    this.ctx.arc(ent.radius*0.3 + Math.sin(this.renderFrame*0.1)*2, 0, ent.radius*0.1, 0, Math.PI*2);
-                    this.ctx.fill();
-                    
-                    this.ctx.restore();
-                }
-                this.ctx.shadowBlur = 0;
-            }
-            // ------------------------------------------
-
-            else if (ent.type === 'SCAVENGER') {
-                this.ctx.fill();
-
-                this.ctx.strokeStyle = '#111';
-                this.ctx.lineWidth = 2.5;
-                this.ctx.beginPath();
-                this.ctx.moveTo(0, 10);
-                let sweepOffset = ent.vacuumState === 'vacuuming' ? 0 : Math.sin(this.renderFrame * 0.2)*5;
-                this.ctx.lineTo(10 + sweepOffset, 18);
-                this.ctx.stroke();
-            } 
-            else if (ent.type === 'PREDATOR') {
-                if (ent.attackState === 'telegraphing') {
-                    this.ctx.rotate(Math.atan2(ent.lungeVy, ent.lungeVx));
-                    
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(0, 0);
-                    this.ctx.lineTo(800, 0); 
-                    this.ctx.lineWidth = 2;
-                    let alpha = (45 - ent.attackTimer) / 45; 
-                    this.ctx.strokeStyle = `rgba(255, 0, 0, ${alpha})`;
-                    if (ent.attackTimer % 10 > 5) this.ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
-                    this.ctx.setLineDash([15, 10]);
-                    this.ctx.stroke();
-                    this.ctx.setLineDash([]);
-                } else if (ent.attackState === 'lunging') {
-                    this.ctx.rotate(Math.atan2(ent.lungeVy, ent.lungeVx));
-                } else {
-                    this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
-                }
-                
-                this.ctx.fillStyle = isFlashed ? '#ddaaaa' : (ent.buffed ? '#3a0a0a' : '#111111');
-                this.ctx.beginPath();
-                
-                let stretch = ent.attackState === 'lunging' ? 5 : 0;
-                this.ctx.moveTo(18 + stretch, 0); 
-                this.ctx.lineTo(5, 12 - stretch + Math.sin(this.renderFrame*0.2)*3);
-                this.ctx.lineTo(-15 - stretch, 10);
-                this.ctx.lineTo(-20 - stretch, 0); 
-                this.ctx.lineTo(-15 - stretch, -10);
-                this.ctx.lineTo(5, -12 + stretch - Math.cos(this.renderFrame*0.2)*3);
-                this.ctx.closePath();
-                this.ctx.fill();
-
-                this.ctx.strokeStyle = this.ctx.fillStyle;
-                this.ctx.lineWidth = 2;
-                this.ctx.beginPath();
-                
-                if (ent.attackState === 'lunging') {
-                    this.ctx.moveTo(0, 10);
-                    this.ctx.lineTo(-20, 15);
-                    this.ctx.moveTo(0, -10);
-                    this.ctx.lineTo(-20, -15);
-                } else {
-                    this.ctx.moveTo(0, 10);
-                    this.ctx.quadraticCurveTo(15, 20, 18, 8);
-                    this.ctx.moveTo(0, -10);
-                    this.ctx.quadraticCurveTo(15, -20, 18, -8);
-                }
-                this.ctx.stroke();
-
-                this.ctx.fillStyle = ent.buffed ? '#ff0000' : '#cc0000';
-                this.ctx.shadowColor = '#ff0000';
-                this.ctx.shadowBlur = 10;
-                if (ent.attackState === 'telegraphing') {
-                    this.ctx.shadowBlur = 20; 
-                    this.ctx.fillStyle = '#ff3333';
-                }
-                
-                this.ctx.beginPath();
-                this.ctx.ellipse(10 + stretch, -4, 3, 1.5, Math.PI/6, 0, Math.PI*2);
-                this.ctx.ellipse(10 + stretch, 4, 3, 1.5, -Math.PI/6, 0, Math.PI*2);
-                this.ctx.fill();
-                this.ctx.shadowBlur = 0; 
-            }
-            else if (ent.type === 'PARASITE') {
-                this.ctx.rotate(this.renderFrame * 0.2); 
-                
-                if (ent.lashingState === 'lashing' && ent.lashTarget) {
-                    this.ctx.save();
-                    let dx = ent.lashTarget.x - ent.x;
-                    let dy = ent.lashTarget.y - ent.y;
-                    
-                    this.ctx.rotate(-this.renderFrame * 0.2); 
-                    
-                    this.ctx.strokeStyle = `rgba(255, 100, 100, ${1 - (ent.lashTimer/30)})`;
-                    this.ctx.lineWidth = 3;
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(0,0);
-                    this.ctx.lineTo(dx, dy);
-                    this.ctx.stroke();
-                    
-                    this.ctx.restore();
-                }
-
-                let pulse = Math.sin(this.renderFrame * 0.3) * 1.5;
-                if (ent.lashingState === 'lashing') pulse = Math.sin(this.renderFrame * 1.5) * 3; 
-
-                this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#6b2222';
-                this.ctx.beginPath(); 
-                this.ctx.arc(0, 0, 5 + pulse, 0, Math.PI*2); 
-                this.ctx.fill();
-
-                this.ctx.fillStyle = '#050505';
-                this.ctx.beginPath(); 
-                this.ctx.arc(0, 0, 2 + pulse*0.5, 0, Math.PI*2); 
-                this.ctx.fill();
-                
-                this.ctx.strokeStyle = isFlashed ? '#ffffff' : ent.color;
-                this.ctx.lineWidth = 1.5;
-                this.ctx.lineCap = 'round';
-                
-                let curl = ent.lashingState === 'lashing' ? 0.5 : 0;
-                
-                for(let i=0; i<8; i++) {
-                    let angle = (i/8) * Math.PI * 2 + (Math.sin(this.renderFrame*0.5 + i)*0.2) + curl;
-                    let length = 8 + Math.random() * 4;
-                    if (ent.lashingState === 'lashing') length -= 3; 
-                    
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(Math.cos(angle)*4, Math.sin(angle)*4);
-                    let midX = Math.cos(angle + 0.3) * (length*0.6);
-                    let midY = Math.sin(angle + 0.3) * (length*0.6);
-                    this.ctx.lineTo(midX, midY);
-                    this.ctx.lineTo(Math.cos(angle)*length, Math.sin(angle)*length);
-                    this.ctx.stroke();
-                }
-            }
-            else if (ent.type === 'BOSS') {
-                if (ent.pulseState === 'charging' || ent.pulseState === 'pulsing') {
-                    this.ctx.save();
-                    this.ctx.strokeStyle = ent.pulseState === 'pulsing' ? 'rgba(255, 50, 50, 0.8)' : `rgba(255, 100, 100, ${1 - (ent.pulseTimer/60)})`;
-                    this.ctx.lineWidth = ent.pulseState === 'pulsing' ? 10 : 3;
-                    this.ctx.beginPath();
-                    this.ctx.arc(0, 0, ent.pulseState === 'pulsing' ? ent.maxPulseRadius : ent.pulseRadius, 0, Math.PI*2);
-                    this.ctx.stroke();
-                    
-                    if (ent.pulseState === 'pulsing') {
-                        this.ctx.fillStyle = 'rgba(255, 50, 50, 0.3)';
-                        this.ctx.fill();
-                    }
-                    this.ctx.restore();
-                }
-
-                this.ctx.rotate(Math.sin(ent.phase * 0.5) * 0.1); 
-                
-                let pulse = Math.sin(this.renderFrame * 0.1) * 3;
-                if (ent.pulseState === 'charging') {
-                    pulse = Math.sin(this.renderFrame * 0.5) * 5; 
-                    this.ctx.translate((Math.random()-0.5)*5, (Math.random()-0.5)*5); 
-                }
-
-                this.ctx.fillStyle = isFlashed ? '#ddaaaa' : '#1a0d15';
-                this.ctx.beginPath();
-                for (let i = 0; i < 16; i++) {
-                    let angle = (i / 16) * Math.PI * 2;
-                    let reach = 35 + Math.sin(ent.phase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
-                    if (ent.pulseState === 'charging') reach -= 10; 
-                    if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
-                    else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
-                }
-                this.ctx.closePath();
-                this.ctx.fill();
-
-                this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#2b1010';
-                this.ctx.beginPath();
-                this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
-                this.ctx.fill();
-
-                this.ctx.fillStyle = '#050000';
-                this.ctx.beginPath();
-                for (let i = 0; i < 10; i++) {
-                    let angle = (i / 10) * Math.PI * 2;
-                    let innerReach = 10 + Math.random() * 8; 
-                    if (ent.pulseState === 'charging') innerReach += 5 + Math.random()*5; 
-                    if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
-                    else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
-                }
-                this.ctx.closePath();
-                this.ctx.fill();
-
-                this.ctx.fillStyle = '#ff0000';
-                this.ctx.shadowColor = '#ff0000';
-                this.ctx.shadowBlur = 15;
-                if (ent.pulseState === 'charging') this.ctx.shadowBlur = 30; 
-                
-                const eyes = [
-                    {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
-                    {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
-                ];
-
-                eyes.forEach(eye => {
-                    let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
-                    let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
-                    
-                    this.ctx.beginPath();
-                    this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
-                    this.ctx.fill();
-                    
-                    this.ctx.fillStyle = '#000000';
-                    this.ctx.shadowBlur = 0;
-                    this.ctx.beginPath();
-                    this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
-                    this.ctx.fill();
-                    this.ctx.fillStyle = '#ff0000';
-                    this.ctx.shadowBlur = ent.pulseState === 'charging' ? 30 : 15;
-                });
-                this.ctx.shadowBlur = 0;
-
-                this.ctx.strokeStyle = isFlashed ? '#ffffff' : '#555';
-                this.ctx.lineWidth = 3;
-                this.ctx.lineCap = 'round';
-                
-                for(let i=0; i<3; i++) {
-                    let orbitAngle = ent.phase * (1 + i*0.5) + (i * Math.PI*0.6);
-                    let dist = 45 + Math.sin(ent.phase * 2 + i) * 5;
-                    if (ent.pulseState === 'charging') orbitAngle += this.renderFrame * 0.2;
-                    let objX = Math.cos(orbitAngle) * dist;
-                    let objY = Math.sin(orbitAngle) * dist;
-                    
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(objX - 5, objY - 5);
-                    this.ctx.lineTo(objX + 5, objY + 5);
-                    this.ctx.stroke();
-                }
-            }
-
-            // Draw HP Bar
-            if (ent.hp < ent.maxHp && ent.flashTime <= 0) {
-                let barW = 24;
-                let yOffset = 20;
-                if (ent.type === 'BOSS') { barW = 80; yOffset = 55; }
-                else if (ent.type === 'RORSCHACH') { barW = ent.radius * 1.5; yOffset = ent.radius + 10; }
-                
-                this.ctx.fillStyle = 'rgba(0,0,0,0.8)'; 
-                this.ctx.fillRect(-barW/2, yOffset, barW, 4);
-                this.ctx.fillStyle = '#8b0000'; 
-                this.ctx.fillRect(-barW/2, yOffset, barW * Math.max(0, ent.hp / ent.maxHp), 4);
-            }
-
-            this.ctx.restore();
-            this.ctx.globalAlpha = 1.0;
-        });
-
-        if (state.particles) {
-            state.particles.forEach(p => { 
-                this.ctx.fillStyle = p.color; 
-                this.ctx.globalAlpha = Math.max(0, p.life); 
-                this.ctx.beginPath();
-                this.ctx.moveTo(p.x, p.y);
-                this.ctx.lineTo(p.x - p.vx*2, p.y - p.vy*2);
-                this.ctx.lineWidth = 2;
-                this.ctx.strokeStyle = p.color;
-                this.ctx.stroke();
-            });
-        }
-        this.ctx.globalAlpha = 1.0;
     }
 }

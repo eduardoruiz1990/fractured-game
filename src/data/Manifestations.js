@@ -42,8 +42,6 @@ export const INTRUSIVE_THOUGHTS = {
     tunnel_vision: { id: 'tunnel_vision', name: 'Tunnel Vision', desc: 'Flashlight damage x3, but the ambient 360-degree safe-glow is removed.' }
 };
 
-// --- EPIC 2: PERSONAL TOKENS (EQUIPMENT) ---
-
 export const TOKEN_RARITIES = {
     COMMON: { color: '#aaaaaa', costToUpgrade: 100, multiplier: 1.0 },
     RARE: { color: '#5555ff', costToUpgrade: 300, multiplier: 1.5 },
