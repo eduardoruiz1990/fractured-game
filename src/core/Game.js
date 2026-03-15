@@ -1,7 +1,7 @@
 import { GAME_CONFIG } from '../data/Config.js';
 import { Combat } from '../systems/Combat.js';
 import { Director } from '../systems/Director.js';
-import { TOKENS } from '../data/Manifestations.js'; // NEW: Need token data
+import { TOKENS } from '../data/Manifestations.js'; 
 
 export class Game {
     constructor() {
@@ -34,7 +34,6 @@ export class Game {
         let startTokens = { head: null, body: null, hands: null, legs: null };
         let startRunInventory = [];
 
-        // FIXED: Only declare these once to prevent SyntaxErrors!
         let startWeapons = {
             flashlight: { level: 1, damage: 15, radius: 250 * lightMult, angle: 0.4 },
             static: { level: 0, damage: 0, radius: 60, active: false, pulsePhase: 0 },
@@ -45,7 +44,7 @@ export class Game {
             broken_chalk: { level: 0, radius: 70, duration: 180, cooldown: 120, timer: 0 },
             
             // --- EPIC 4: NEW WEAPONS ---
-            polaroid_camera: { level: 0, damage: 60, radius: 350, angle: 0.8, cooldown: 240, timer: 0 }, // Fires every 4s
+            polaroid_camera: { level: 0, damage: 60, radius: 350, angle: 0.8, cooldown: 240, timer: 0 }, 
             fidget_spinner: { level: 0, damage: 10, baseRadius: 55, speed: 0.05 }
         };
         let startSynergies = [];
@@ -67,7 +66,6 @@ export class Game {
             }
         }
 
-        // --- EPIC 2: CALCULATE SET BONUSES & TOKEN STATS ---
         let setCounts = { insomniac: 0, institutionalized: 0 };
         let activeTokens = { hasParanoia: false, hasDenial: false, hasTwitch: false, hasPanic: false };
 
@@ -84,20 +82,17 @@ export class Game {
             }
         });
 
-        // Apply Base Modifiers from Synapse Tree AND Sets
         let effectiveMaxSanity = maxSanity;
-        if (setCounts.institutionalized >= 2) effectiveMaxSanity += 50; // Set Bonus!
+        if (setCounts.institutionalized >= 2) effectiveMaxSanity += 50; 
 
         let effectiveSpeedMult = speedMult;
-        if (setCounts.insomniac >= 2) effectiveSpeedMult += 0.10; // Set Bonus!
+        if (setCounts.insomniac >= 2) effectiveSpeedMult += 0.10; 
         
-        // Token Modifiers
         if (activeTokens.hasParanoia) {
-            startWeapons.flashlight.radius *= 1.5; // +50% range
-            startWeapons.flashlight.angle *= 0.8;  // -20% angle
+            startWeapons.flashlight.radius *= 1.5; 
+            startWeapons.flashlight.angle *= 0.8;  
         }
 
-        // Keep current sanity if descending, otherwise heal to max
         let startSanity = carriedState ? carriedState.sanity : effectiveMaxSanity;
 
         this.state = {
@@ -113,9 +108,9 @@ export class Game {
                 synergies: startSynergies, 
                 curses: startCurses,
                 tokens: startTokens, 
-                activeTokens: activeTokens, // Extracted boolean flags for logic
-                sets: setCounts,            // 2-piece / 4-piece tracking
-                denialShieldActive: activeTokens.hasDenial // Resets shield every floor
+                activeTokens: activeTokens, 
+                sets: setCounts,            
+                denialShieldActive: activeTokens.hasDenial 
             },
             runInventory: startRunInventory, 
             inputBuffer: [],
@@ -127,7 +122,7 @@ export class Game {
             playerAfterimages: [], 
             hitStop: 0, 
             frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false,
-            cameraFlash: 0, // NEW: Tracks the visual whiteout for the Polaroid Camera
+            cameraFlash: 0, 
             isDead: false
         };
     }
@@ -184,7 +179,7 @@ export class Game {
 
         this.director.spawnWave(canvasWidth, canvasHeight);
 
-        const isBossDefeated = this.state.bossSpawned && !this.state.entities.some(e => e.type === 'BOSS');
+        const isBossDefeated = this.state.bossSpawned && !this.state.entities.some(e => e.type === 'BOSS' || e.type === 'RORSCHACH');
 
         if (!isBossDefeated) {
             if (this.state.frame > 0 && this.state.frame % 1800 === 0) {
@@ -248,7 +243,6 @@ export class Game {
 
     processGameLogic(moveInput, canvasWidth, canvasHeight) {
         
-        // --- EPIC 2: DASH MODIFICATIONS ---
         let canDash = true;
         if (this.state.player.sets.institutionalized >= 4) canDash = false;
 
@@ -312,7 +306,6 @@ export class Game {
             }
         }
 
-        // Handle visual flash decay
         if (this.state.cameraFlash > 0) this.state.cameraFlash--;
 
         const staticWep = this.state.player.weapons.static;
@@ -345,7 +338,6 @@ export class Game {
     takeDamage(amount) {
         if (this.state.player.dash.active || this.state.isDead) return;
 
-        // --- EPIC 2: DAMAGE OVERRIDES ---
         if (this.state.player.denialShieldActive) {
             this.state.player.denialShieldActive = false; 
             this.spawnDamageText(this.state.player.x, this.state.player.y - 20, "DENIED!", '#ffffff', 1.5, 2.0);

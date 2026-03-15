@@ -3,7 +3,6 @@ export class Combat {
         const state = game.state;
         let deathCount = 0;
 
-        // --- RESOLVE INTERACTABLES (TENSION BREAKERS & EXITS) ---
         if (state.interactables) {
             for (let obj of state.interactables) {
                 if (obj.type === 'BREAKER_BOX') {
@@ -89,15 +88,12 @@ export class Combat {
             cooldownTick = 1 + (1 - sanityRatio) * 2.0; 
         }
 
-        // --- EPIC 4: NEW WEAPONS ---
-        
-        // 1. Polaroid Camera (Burst Cone Stun)
         const camera = state.player.weapons.polaroid_camera;
         if (camera && camera.level > 0) {
             camera.timer -= cooldownTick;
             if (camera.timer <= 0) {
                 camera.timer = camera.cooldown;
-                state.cameraFlash = 15; // Visual whiteout frames
+                state.cameraFlash = 15; 
                 state.cameraShake = 10;
                 if (game.audioEngine) game.audioEngine.playSFX('damage', 2); 
                 
@@ -116,15 +112,14 @@ export class Combat {
                         
                         if (Math.abs(diff) < camera.angle) {
                             ent.takeDamage(camera.damage, game);
-                            ent.confused = 120; // Stun duration
-                            ent.x += (dx / dist) * 30; // Knockback
+                            ent.confused = 120; 
+                            ent.x += (dx / dist) * 30; 
                         }
                     }
                 }
             }
         }
 
-        // 2. Weighted Spinner (Orbital Defense)
         const spinner = state.player.weapons.fidget_spinner;
         if (spinner && spinner.level > 0) {
             let spinnerDmg = spinner.damage;
@@ -287,7 +282,6 @@ export class Combat {
                         let hitAngle = state.player.weapons.flashlight.angle;
                         if (state.player.synergies && state.player.synergies.includes('blinding_signal')) hitAngle *= 1.5; 
 
-                        // --- EPIC 4: TUNNEL VISION CURSE MULTIPLIER ---
                         let flDamage = state.player.weapons.flashlight.damage;
                         if (state.player.curses && state.player.curses.includes('tunnel_vision')) flDamage *= 3.0;
 
@@ -313,23 +307,45 @@ export class Combat {
 
             if (ent.hp <= 0) {
                 deathCount++;
-                if (ent.type === 'BOSS') {
-                    game.spawnXP(ent.x, ent.y, 25, true); 
-                    state.cameraShake = 50;
-                    if (game.audioEngine) game.audioEngine.playSFX('death', 10);
+                
+                if (ent.type === 'RORSCHACH' && ent.generation < 3) {
+                    game.director.spawnEntity('RORSCHACH', null, null, ent.x - 20, ent.y, ent.generation + 1);
+                    game.director.spawnEntity('RORSCHACH', null, null, ent.x + 20, ent.y, ent.generation + 1);
                     
-                    state.interactables.push({
-                         id: Math.random(),
-                         type: 'EXIT_ELEVATOR',
-                         x: ent.x,
-                         y: ent.y,
-                         active: true, charge: 0, life: 99999, radius: 40, dead: false 
-                    });
+                    game.spawnParticles(ent.x, ent.y, '#8b008b', 50); 
+                    if (game.audioEngine) game.audioEngine.playSFX('damage', 5);
+                    game.spawnXP(ent.x, ent.y, 5, true); 
+                    
+                    ent.active = false;
+                    if (game.director && game.director.pools && game.director.pools.rorschach) {
+                        game.director.pools.rorschach.release(ent);
+                    }
+                    state.entities.splice(i, 1);
+                    continue; 
+                }
+
+                if (ent.type === 'BOSS' || (ent.type === 'RORSCHACH' && ent.generation === 3)) {
+                    game.spawnXP(ent.x, ent.y, ent.type === 'BOSS' ? 25 : 10, true); 
+                    game.spawnParticles(ent.x, ent.y, ent.color || '#000', 100);
+                    
+                    const otherBosses = state.entities.filter(e => (e.type === 'BOSS' || e.type === 'RORSCHACH') && e.id !== ent.id);
+                    
+                    if (otherBosses.length === 0) {
+                        state.cameraShake = 50;
+                        if (game.audioEngine) game.audioEngine.playSFX('death', 10);
+                        
+                        state.interactables.push({
+                             id: Math.random(),
+                             type: 'EXIT_ELEVATOR',
+                             x: ent.x,
+                             y: ent.y,
+                             active: true, charge: 0, life: 99999, radius: 40, dead: false 
+                        });
+                    }
                     
                 } else {
                     let dropAmount = ent.type === 'SCAVENGER' ? 2 : (ent.type === 'PREDATOR' ? 5 : 1);
                     if (ent.maxHp > 30) dropAmount += 5; 
-                    
                     if (ent.type === 'SCAVENGER' && state.player.curses && state.player.curses.includes('compulsive_cleaner')) {
                         dropAmount += 3; 
                     }
@@ -339,8 +355,8 @@ export class Combat {
                     if (!state.bossSpawned) {
                         state.convergence += (ent.type === 'PREDATOR' ? 3 : 1);
                     }
+                    game.spawnParticles(ent.x, ent.y, ent.color, 15);
                 }
-                game.spawnParticles(ent.x, ent.y, ent.color, ent.type === 'BOSS' ? 100 : 15);
                 
                 ent.active = false;
                 let poolKey = ent.type.toLowerCase();

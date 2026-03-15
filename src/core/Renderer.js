@@ -447,6 +447,10 @@ export class Renderer {
     drawBossAnnouncement(state) {
         this.ctx.save();
         
+        // --- EPIC 5: IDENTIFY WHICH BOSS SPAWNED ---
+        const activeBoss = state.entities.find(e => e.type === 'BOSS' || e.type === 'RORSCHACH');
+        const bossType = activeBoss ? activeBoss.type : 'BOSS';
+        
         const cx = this.canvas.width / 2;
         const cy = this.canvas.height / 2;
         
@@ -487,77 +491,102 @@ export class Renderer {
         
         const simulatedPhase = this.renderFrame * 0.05;
         this.ctx.rotate(Math.sin(simulatedPhase * 0.5) * 0.1); 
-        let pulse = Math.sin(this.renderFrame * 0.1) * 3;
 
-        this.ctx.fillStyle = '#1a0d15';
-        this.ctx.beginPath();
-        for (let i = 0; i < 16; i++) {
-            let angle = (i / 16) * Math.PI * 2;
-            let reach = 35 + Math.sin(simulatedPhase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
-            if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
-            else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
-        }
-        this.ctx.closePath();
-        this.ctx.fill();
-
-        this.ctx.fillStyle = '#2b1010';
-        this.ctx.beginPath();
-        this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
-        this.ctx.fill();
-
-        this.ctx.fillStyle = '#050000';
-        this.ctx.beginPath();
-        for (let i = 0; i < 10; i++) {
-            let angle = (i / 10) * Math.PI * 2;
-            let innerReach = 10 + Math.random() * 8; 
-            if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
-            else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
-        }
-        this.ctx.closePath();
-        this.ctx.fill();
-
-        this.ctx.fillStyle = '#ff0000';
-        this.ctx.shadowColor = '#ff0000';
-        this.ctx.shadowBlur = 15;
-        
-        const eyes = [
-            {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
-            {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
-        ];
-
-        eyes.forEach(eye => {
-            let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
-            let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
+        // --- EPIC 5: DYNAMIC BOSS PORTRAITS ---
+        if (bossType === 'RORSCHACH') {
+            // Draw Symmetrical Inkblot for Rorschach
+            let pulse = Math.sin(this.renderFrame * 0.1) * 3;
+            this.ctx.fillStyle = '#1a0525';
+            this.ctx.shadowColor = '#800080';
+            this.ctx.shadowBlur = 10;
             
-            this.ctx.beginPath();
-            this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
-            this.ctx.fill();
-            
-            this.ctx.fillStyle = '#000000';
+            for (let mirror = -1; mirror <= 1; mirror += 2) {
+                this.ctx.save();
+                this.ctx.scale(mirror, 1);
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, -30);
+                this.ctx.bezierCurveTo(20, -30, 30 + pulse, -15, 25, 0);
+                this.ctx.bezierCurveTo(40, 15, 20, 30, 0, 30 + pulse);
+                this.ctx.fill();
+                
+                this.ctx.fillStyle = '#ff0055'; // Glowing core pieces
+                this.ctx.beginPath();
+                this.ctx.arc(10 + Math.sin(simulatedPhase)*2, 5, 2, 0, Math.PI*2);
+                this.ctx.fill();
+                this.ctx.restore();
+            }
             this.ctx.shadowBlur = 0;
-            this.ctx.beginPath();
-            this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
-            this.ctx.fill();
-            this.ctx.fillStyle = '#ff0000';
-            this.ctx.shadowBlur = 15;
-        });
-        this.ctx.shadowBlur = 0;
-
-        this.ctx.strokeStyle = '#555';
-        this.ctx.lineWidth = 3;
-        this.ctx.lineCap = 'round';
-        
-        for(let i=0; i<3; i++) {
-            let orbitAngle = simulatedPhase * (1 + i*0.5) + (i * Math.PI*0.6);
-            let dist = 45 + Math.sin(simulatedPhase * 2 + i) * 5;
-            let objX = Math.cos(orbitAngle) * dist;
-            let objY = Math.sin(orbitAngle) * dist;
             
+        } else {
+            // Original Sphere Head Portrait
+            let pulse = Math.sin(this.renderFrame * 0.1) * 3;
+            this.ctx.fillStyle = '#1a0d15';
             this.ctx.beginPath();
-            this.ctx.moveTo(objX - 5, objY - 5);
-            this.ctx.lineTo(objX + 5, objY + 5);
-            this.ctx.stroke();
+            for (let i = 0; i < 16; i++) {
+                let angle = (i / 16) * Math.PI * 2;
+                let reach = 35 + Math.sin(simulatedPhase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
+                if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
+                else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
+            }
+            this.ctx.closePath();
+            this.ctx.fill();
+
+            this.ctx.fillStyle = '#2b1010';
+            this.ctx.beginPath();
+            this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
+            this.ctx.fill();
+
+            this.ctx.fillStyle = '#050000';
+            this.ctx.beginPath();
+            for (let i = 0; i < 10; i++) {
+                let angle = (i / 10) * Math.PI * 2;
+                let innerReach = 10 + Math.random() * 8; 
+                if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
+                else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
+            }
+            this.ctx.closePath();
+            this.ctx.fill();
+
+            this.ctx.fillStyle = '#ff0000';
+            this.ctx.shadowColor = '#ff0000';
+            this.ctx.shadowBlur = 15;
+            
+            const eyes = [
+                {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
+                {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
+            ];
+
+            eyes.forEach(eye => {
+                let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
+                let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
+                this.ctx.beginPath();
+                this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
+                this.ctx.fill();
+                this.ctx.fillStyle = '#000000';
+                this.ctx.shadowBlur = 0;
+                this.ctx.beginPath();
+                this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
+                this.ctx.fill();
+                this.ctx.fillStyle = '#ff0000';
+                this.ctx.shadowBlur = 15;
+            });
+            this.ctx.shadowBlur = 0;
+
+            this.ctx.strokeStyle = '#555';
+            this.ctx.lineWidth = 3;
+            this.ctx.lineCap = 'round';
+            for(let i=0; i<3; i++) {
+                let orbitAngle = simulatedPhase * (1 + i*0.5) + (i * Math.PI*0.6);
+                let dist = 45 + Math.sin(simulatedPhase * 2 + i) * 5;
+                let objX = Math.cos(orbitAngle) * dist;
+                let objY = Math.sin(orbitAngle) * dist;
+                this.ctx.beginPath();
+                this.ctx.moveTo(objX - 5, objY - 5);
+                this.ctx.lineTo(objX + 5, objY + 5);
+                this.ctx.stroke();
+            }
         }
+        
         this.ctx.restore();
 
         this.ctx.textAlign = 'left';
@@ -566,11 +595,15 @@ export class Renderer {
         this.ctx.font = "900 65px var(--ui-font, monospace)";
         this.ctx.fillStyle = '#ffffff';
         let textJitter = (Math.random() - 0.5) * 5;
-        this.ctx.fillText("THE SPHERE HEAD", -80 + textJitter, -25);
         
+        // --- EPIC 5: DYNAMIC TEXT ---
+        const titleText = bossType === 'RORSCHACH' ? "THE RORSCHACH" : "THE SPHERE HEAD";
+        const subText = bossType === 'RORSCHACH' ? "The Mind Divided" : "Apex Predator of the Wastes";
+        
+        this.ctx.fillText(titleText, -80 + textJitter, -25);
         this.ctx.font = "italic 30px var(--ui-font, monospace)";
         this.ctx.fillStyle = '#c5a059';
-        this.ctx.fillText("Apex Predator of the Wastes", -75 + textJitter, 35);
+        this.ctx.fillText(subText, -75 + textJitter, 35);
 
         this.ctx.restore();
     }
@@ -980,38 +1013,38 @@ export class Renderer {
             
             const twitch = state.sanity < 20 ? (Math.random()-0.5)*4 : 0;
             this.ctx.translate(twitch, twitch);
-
-            if (ent.type === 'SCAVENGER') {
-                this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
+            
+            // --- EPIC 5: RORSCHACH ENTITY RENDERING ---
+            if (ent.type === 'RORSCHACH') {
+                this.ctx.rotate(Math.sin(this.renderFrame * 0.05) * 0.1);
+                let pulse = Math.sin(this.renderFrame * 0.1) * (5 / ent.generation);
                 
-                if (ent.vacuumState === 'vacuuming') {
+                this.ctx.fillStyle = isFlashed ? '#ddaaaa' : ent.color;
+                this.ctx.shadowColor = '#800080';
+                this.ctx.shadowBlur = 15;
+                
+                for (let mirror = -1; mirror <= 1; mirror += 2) {
                     this.ctx.save();
-                    this.ctx.strokeStyle = `rgba(150, 200, 255, ${0.5 + Math.sin(this.renderFrame * 0.5) * 0.5})`;
-                    this.ctx.lineWidth = 2;
-                    this.ctx.setLineDash([5, 5]);
+                    this.ctx.scale(mirror, 1);
                     this.ctx.beginPath();
-                    let vacPulse = 80 - ((this.renderFrame * 2) % 80);
-                    this.ctx.arc(0, 0, vacPulse, 0, Math.PI*2);
-                    this.ctx.stroke();
-                    this.ctx.restore();
+                    this.ctx.moveTo(0, -ent.radius);
+                    this.ctx.bezierCurveTo(ent.radius, -ent.radius, ent.radius + pulse, -ent.radius/2, ent.radius*0.8, 0);
+                    this.ctx.bezierCurveTo(ent.radius*1.2, ent.radius/2, ent.radius, ent.radius, 0, ent.radius + pulse);
+                    this.ctx.fill();
                     
-                    this.ctx.translate((Math.random()-0.5)*2, (Math.random()-0.5)*2);
+                    // Internal core dots
+                    this.ctx.fillStyle = isFlashed ? '#fff' : '#ff0055'; 
+                    this.ctx.beginPath();
+                    this.ctx.arc(ent.radius*0.3 + Math.sin(this.renderFrame*0.1)*2, 0, ent.radius*0.1, 0, Math.PI*2);
+                    this.ctx.fill();
+                    
+                    this.ctx.restore();
                 }
+                this.ctx.shadowBlur = 0;
+            }
+            // ------------------------------------------
 
-                this.ctx.fillStyle = isFlashed ? '#bbbbbb' : '#2a2d2a';
-                this.ctx.beginPath();
-                this.ctx.ellipse(0, 0, 12, 15 + Math.sin(this.renderFrame*0.1)*2, 0, 0, Math.PI*2);
-                this.ctx.fill();
-                
-                this.ctx.fillStyle = isFlashed ? '#999999' : '#1a1c1a';
-                this.ctx.beginPath();
-                let sackSize = 9 + (ent.hp > 30 ? 3 : 0);
-                this.ctx.arc(-6, 5, sackSize, 0, Math.PI*2);
-                this.ctx.fill();
-
-                this.ctx.fillStyle = '#aaaa00';
-                this.ctx.beginPath();
-                this.ctx.arc(8, -4, 1.5, 0, Math.PI*2);
+            else if (ent.type === 'SCAVENGER') {
                 this.ctx.fill();
 
                 this.ctx.strokeStyle = '#111';
@@ -1238,9 +1271,13 @@ export class Renderer {
                 }
             }
 
+            // Draw HP Bar
             if (ent.hp < ent.maxHp && ent.flashTime <= 0) {
-                const barW = ent.type === 'BOSS' ? 80 : 24;
-                const yOffset = ent.type === 'BOSS' ? 55 : 20;
+                let barW = 24;
+                let yOffset = 20;
+                if (ent.type === 'BOSS') { barW = 80; yOffset = 55; }
+                else if (ent.type === 'RORSCHACH') { barW = ent.radius * 1.5; yOffset = ent.radius + 10; }
+                
                 this.ctx.fillStyle = 'rgba(0,0,0,0.8)'; 
                 this.ctx.fillRect(-barW/2, yOffset, barW, 4);
                 this.ctx.fillStyle = '#8b0000'; 

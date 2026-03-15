@@ -3,6 +3,7 @@ import { Scavenger } from '../entities/Scavenger.js';
 import { Predator } from '../entities/Predator.js';
 import { Parasite } from '../entities/Parasite.js';
 import { Boss } from '../entities/Boss.js';
+import { Rorschach } from '../entities/Rorschach.js'; // NEW: Import Split-Boss
 
 export class Director {
     constructor(game) {
@@ -13,6 +14,7 @@ export class Director {
             predator: new ObjectPool(() => new Predator(), 50),
             parasite: new ObjectPool(() => new Parasite(), 30),
             boss: new ObjectPool(() => new Boss(), 2),
+            rorschach: new ObjectPool(() => new Rorschach(), 15), // Need pool for splitting
             particle: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '', active: false }), 300),
             xpDrop: new ObjectPool(() => ({ x: 0, y: 0, value: 0, collected: false, active: false }), 300),
             damageText: new ObjectPool(() => ({ x: 0, y: 0, text: '', life: 0, color: '', scale: 1, active: false }), 200),
@@ -24,15 +26,12 @@ export class Director {
 
     spawnWave(canvasWidth, canvasHeight) {
         const state = this.game.state;
+        state.stress = 1.0 + (state.frame / 3600); 
         
-        // --- NEW: CEASE SPAWNS AFTER BOSS DEFEAT ---
-        // If the boss was spawned but is no longer in the entity list, it's dead.
-        // Halt all new enemy spawns to prevent infinite farming and force the player to leave!
-        if (state.bossSpawned && !state.entities.some(e => e.type === 'BOSS')) {
+        // --- EPIC 5: CEASE SPAWNS AFTER BOSS DEFEAT ---
+        if (state.bossSpawned && !state.entities.some(e => e.type === 'BOSS' || e.type === 'RORSCHACH')) {
             return; 
         }
-
-        state.stress = 1.0 + (state.frame / 3600); 
         
         if (state.frame % Math.max(30, Math.floor(120 / state.stress)) === 0) this.spawnEntity('SCAVENGER', canvasWidth, canvasHeight);
         if (state.frame % Math.max(90, Math.floor(300 / state.stress)) === 0) this.spawnEntity('PREDATOR', canvasWidth, canvasHeight);
@@ -40,38 +39,46 @@ export class Director {
 
         // --- CONVERGENCE BOSS SPAWN ---
         if (state.convergence >= state.maxConvergence && !state.bossSpawned) {
-            this.spawnEntity('BOSS', canvasWidth, canvasHeight);
+            // Alternate Bosses! Even floors get Rorschach, Odd floors get Sphere Head
+            if (state.floor % 2 === 0) {
+                this.spawnEntity('RORSCHACH', canvasWidth, canvasHeight);
+            } else {
+                this.spawnEntity('BOSS', canvasWidth, canvasHeight);
+            }
             state.bossSpawned = true;
-            // The Boss Announcement visual handled in Renderer now
         }
     }
 
-    spawnEntity(type, canvasWidth, canvasHeight) {
+    spawnEntity(type, canvasWidth, canvasHeight, forceX = null, forceY = null, generation = 1) {
         const state = this.game.state;
         const side = Math.floor(Math.random() * 4);
-        let x, y;
-        const pad = type === 'BOSS' ? 150 : 50;
+        let x = forceX;
+        let y = forceY;
+        const pad = (type === 'BOSS' || type === 'RORSCHACH') ? 150 : 50;
         
-        if (side === 0) { x = Math.random() * canvasWidth; y = -pad; } 
-        else if (side === 1) { x = canvasWidth + pad; y = Math.random() * canvasHeight; } 
-        else if (side === 2) { x = Math.random() * canvasWidth; y = canvasHeight + pad; } 
-        else { x = -pad; y = Math.random() * canvasHeight; }
+        if (x === null || y === null) {
+            if (side === 0) { x = Math.random() * canvasWidth; y = -pad; } 
+            else if (side === 1) { x = canvasWidth + pad; y = Math.random() * canvasHeight; } 
+            else if (side === 2) { x = Math.random() * canvasWidth; y = canvasHeight + pad; } 
+            else { x = -pad; y = Math.random() * canvasHeight; }
+        }
 
         let ent;
         if (type === 'SCAVENGER') ent = this.pools.scavenger.get().init(Math.random(), x, y, state.stress);
         else if (type === 'PREDATOR') {
             ent = this.pools.predator.get().init(Math.random(), x, y, state.stress);
             if (state.player.curses && state.player.curses.includes('compulsive_cleaner')) {
-                ent.speed *= 2.0;
-                ent.baseSpeed *= 2.0;
+                ent.speed *= 2.0; ent.baseSpeed *= 2.0;
             }
         }
         else if (type === 'PARASITE') ent = this.pools.parasite.get().init(Math.random(), x, y);
         else if (type === 'BOSS') ent = this.pools.boss.get().init(Math.random(), x, y);
+        else if (type === 'RORSCHACH') ent = this.pools.rorschach.get().init(Math.random(), x, y, generation); // Spawn Split-Boss
         
         if (ent) state.entities.push(ent);
     }
 
+    // ... XP, Particles, and other systems remain exactly the same below ...
     spawnXP(x, y, amount, isMassive = false) {
         const state = this.game.state;
         for(let i=0; i<amount; i++) {
@@ -136,32 +143,27 @@ export class Director {
 
     updateParticles() {
         const state = this.game.state;
-        
         for (let i = state.particles.length - 1; i >= 0; i--) {
             let p = state.particles[i];
             p.x += p.vx; p.y += p.vy; p.life -= 0.05;
             if (p.life <= 0) { p.active = false; this.pools.particle.release(p); state.particles.splice(i, 1); }
         }
-
         for (let i = state.damageTexts.length - 1; i >= 0; i--) {
             let dt = state.damageTexts[i];
             dt.y -= 0.5; dt.life -= 0.02; 
             if (dt.life <= 0) { dt.active = false; this.pools.damageText.release(dt); state.damageTexts.splice(i, 1); }
         }
-
         for (let i = state.inkPuddles.length - 1; i >= 0; i--) {
             let p = state.inkPuddles[i];
             p.life--;
             if (p.life <= 0) { p.active = false; this.pools.inkPuddle.release(p); state.inkPuddles.splice(i, 1); }
         }
-
         for (let i = state.meleeSwings.length - 1; i >= 0; i--) {
             let m = state.meleeSwings[i];
             m.life--;
             m.radius += (m.maxRadius - m.radius) * 0.3; 
             if (m.life <= 0) { m.active = false; this.pools.meleeSwing.release(m); state.meleeSwings.splice(i, 1); }
         }
-        
         for (let i = state.safeZones.length - 1; i >= 0; i--) {
             let sz = state.safeZones[i];
             sz.life--;
