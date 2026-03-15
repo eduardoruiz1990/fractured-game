@@ -1,11 +1,10 @@
 import { MANIFESTATIONS, SYNERGIES, INTRUSIVE_THOUGHTS } from '../data/Manifestations.js';
 
 export class LevelUpUI {
-    // Inject SaveManager to read Patient Level dynamically
     constructor(audioEngine, saveManager) {
         this.modal = document.getElementById('level-up-modal');
         this.container = document.getElementById('cards-container');
-        this.btnReroll = document.getElementById('btn-reroll'); // Reference the new button
+        this.btnReroll = document.getElementById('btn-reroll'); 
         this.audioEngine = audioEngine;
         this.saveManager = saveManager;
 
@@ -28,11 +27,10 @@ export class LevelUpUI {
         if (this.btnReroll) {
             this.btnReroll.addEventListener('click', () => {
                 if (this.currentGame && this.currentGame.state.sanity > 20) {
-                    this.currentGame.state.sanity -= 20; // Exact a toll for a second opinion
+                    this.currentGame.state.sanity -= 20; 
                     this.currentGame.state.cameraShake = 15;
                     if (this.audioEngine) this.audioEngine.playSFX('damage', 2);
                     
-                    // Rerender the screen with new cards!
                     this.show(this.currentGame, this.currentCallback);
                 }
             });
@@ -48,13 +46,11 @@ export class LevelUpUI {
         
         if (!game.state.player.synergies) game.state.player.synergies = [];
         if (!game.state.player.curses) game.state.player.curses = [];
-        if (!game.state.banished) game.state.banished = []; // Initialize banish array for this run
+        if (!game.state.banished) game.state.banished = []; 
 
-        // Fetch patient level safely using the new Info object
         const patLvlInfo = this.saveManager ? this.saveManager.getPatientLevelInfo() : { level: 1 };
         const patLvl = patLvlInfo.level;
 
-        // EPIC 3: Render Reroll Button (Unlocks at Patient Level 3)
         if (this.btnReroll) {
             if (patLvl >= 3) {
                 this.btnReroll.style.display = 'block';
@@ -66,7 +62,6 @@ export class LevelUpUI {
             }
         }
 
-        // Filter out items that the player permanently banished this run
         let availableManifestations = Object.keys(MANIFESTATIONS).filter(key => {
             if (game.state.banished.includes(key)) return false;
             const currentLvl = game.state.player.weapons[key]?.level || 0;
@@ -109,7 +104,14 @@ export class LevelUpUI {
         let selected = shuffled.slice(0, 3);
         
         const getIcon = (key) => {
-            const icons = { flashlight: '🔦', static: '📻', adrenaline: '💉', lead_pipe: '🔧', spilled_ink: '🦑', corrosive_battery: '🔋', broken_chalk: '🖍️', blinding_signal: '👁️‍🗨️', industrial_bleed: '🩸', scholastic_purge: '☣️', everything_is_target: '🎯', manic_episode: '🌀', compulsive_cleaner: '🧹' };
+            const icons = { 
+                flashlight: '🔦', static: '📻', adrenaline: '💉', lead_pipe: '🔧', 
+                spilled_ink: '🦑', corrosive_battery: '🔋', broken_chalk: '🖍️', 
+                polaroid_camera: '📸', fidget_spinner: '⚙️', 
+                blinding_signal: '👁️‍🗨️', industrial_bleed: '🩸', scholastic_purge: '☣️', 
+                everything_is_target: '🎯', manic_episode: '🌀', compulsive_cleaner: '🧹',
+                tunnel_vision: '🕳️' 
+            };
             return icons[key] || '❓';
         };
         
@@ -147,18 +149,17 @@ export class LevelUpUI {
             
             card.onclick = () => this.selectCard(key, game, onCompleteCallback, isCurse ? 'curse' : (isSynergy ? 'synergy' : 'normal'));
             
-            // EPIC 3: Render Banish Button (Unlocks at Patient Level 7)
             if (patLvl >= 7) {
                 const banishBtn = document.createElement('button');
                 banishBtn.className = 'banish-btn';
                 banishBtn.innerText = 'X';
                 banishBtn.title = 'Suppress Memory (Banish)';
                 banishBtn.onclick = (e) => {
-                    e.stopPropagation(); // Stop card from being selected!
+                    e.stopPropagation(); 
                     game.state.banished.push(key);
                     if (this.audioEngine) this.audioEngine.playSFX('damage', 4);
                     game.state.cameraShake = 10;
-                    this.show(game, onCompleteCallback); // Instantly reroll the card away
+                    this.show(game, onCompleteCallback); 
                 };
                 card.appendChild(banishBtn);
             }
@@ -236,7 +237,12 @@ export class LevelUpUI {
                 wep.damage += 5; wep.duration += 30;
             } else if (key === 'broken_chalk') {
                 wep.radius += 15; wep.duration += 30; wep.cooldown = Math.max(60, wep.cooldown - 15);
+            } else if (key === 'polaroid_camera') {
+                wep.damage += 20; wep.radius += 40; wep.cooldown = Math.max(90, wep.cooldown - 30);
+            } else if (key === 'fidget_spinner') {
+                wep.damage += 5; wep.baseRadius += 10; wep.speed += 0.02;
             }
+            
             if (this.audioEngine) this.audioEngine.playSFX('levelup');
         }
         

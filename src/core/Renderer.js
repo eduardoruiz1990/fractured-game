@@ -200,8 +200,7 @@ export class Renderer {
         }
 
         const fl = state.player.weapons.flashlight;
-        const ambientRad = fl.radius * 0.45; 
-        
+        let ambientRad = fl.radius * 0.45; 
         let currentAngle = fl.angle;
         let jitter = state.sanity < 30 ? (Math.random() - 0.5) * 0.1 : 0;
         let isStrobing = false;
@@ -211,14 +210,21 @@ export class Renderer {
             else { currentAngle *= 0.8; }
         }
 
-        const ambHole = this.lightCtx.createRadialGradient(state.player.x, state.player.y, 0, state.player.x, state.player.y, ambientRad);
-        ambHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        ambHole.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
-        ambHole.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        this.lightCtx.fillStyle = ambHole;
-        this.lightCtx.beginPath();
-        this.lightCtx.arc(state.player.x, state.player.y, ambientRad, 0, Math.PI * 2);
-        this.lightCtx.fill();
+        // --- EPIC 4: TUNNEL VISION CURSE ---
+        if (state.player.curses && state.player.curses.includes('tunnel_vision')) {
+            ambientRad = 0; // Disable safe glow
+        }
+
+        if (ambientRad > 0) {
+            const ambHole = this.lightCtx.createRadialGradient(state.player.x, state.player.y, 0, state.player.x, state.player.y, ambientRad);
+            ambHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            ambHole.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
+            ambHole.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            this.lightCtx.fillStyle = ambHole;
+            this.lightCtx.beginPath();
+            this.lightCtx.arc(state.player.x, state.player.y, ambientRad, 0, Math.PI * 2);
+            this.lightCtx.fill();
+        }
 
         const flHole = this.lightCtx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, fl.radius);
         flHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
@@ -239,14 +245,12 @@ export class Renderer {
         this.ctx.drawImage(this.lightCanvas, 0, 0);
         this.ctx.restore(); 
 
-        // --- EPIC 2: RENDER INSOMNIAC 4-PIECE VISUAL ---
         if (state.player.sets && state.player.sets.insomniac >= 4) {
             const inner = fl.radius;
             const outer = inner + 200;
             
             this.ctx.globalCompositeOperation = 'screen';
             const auraGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, inner, state.player.x, state.player.y, outer);
-            // Fiery orange rim
             auraGrad.addColorStop(0, `rgba(255, 150, 0, ${0.15 + Math.sin(this.renderFrame * 0.1) * 0.05})`);
             auraGrad.addColorStop(0.5, 'rgba(255, 50, 0, 0.05)');
             auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
@@ -303,15 +307,33 @@ export class Renderer {
         this.ctx.closePath();
         this.ctx.fill();
 
-        const ambColorGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, 0, state.player.x, state.player.y, ambientRad);
-        ambColorGrad.addColorStop(0, 'rgba(200, 220, 255, 0.15)');
-        ambColorGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        this.ctx.fillStyle = ambColorGrad;
-        this.ctx.beginPath();
-        this.ctx.arc(state.player.x, state.player.y, ambientRad, 0, Math.PI * 2);
-        this.ctx.fill();
+        if (ambientRad > 0) {
+            const ambColorGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, 0, state.player.x, state.player.y, ambientRad);
+            ambColorGrad.addColorStop(0, 'rgba(200, 220, 255, 0.15)');
+            ambColorGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            this.ctx.fillStyle = ambColorGrad;
+            this.ctx.beginPath();
+            this.ctx.arc(state.player.x, state.player.y, ambientRad, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
 
         this.ctx.globalCompositeOperation = 'source-over'; 
+
+        // --- EPIC 4: RENDER POLAROID FLASH ---
+        if (state.cameraFlash > 0) {
+            this.ctx.save();
+            this.ctx.globalCompositeOperation = 'screen';
+            this.ctx.fillStyle = `rgba(255, 255, 255, ${state.cameraFlash / 15})`;
+            
+            const cam = state.player.weapons.polaroid_camera;
+            this.ctx.beginPath();
+            this.ctx.moveTo(state.player.x, state.player.y);
+            this.ctx.arc(state.player.x, state.player.y, cam.radius, 
+                state.player.angle - cam.angle, 
+                state.player.angle + cam.angle);
+            this.ctx.fill();
+            this.ctx.restore();
+        }
 
         const staticWep = state.player.weapons.static;
         if (staticWep.active) {
@@ -556,7 +578,6 @@ export class Renderer {
     drawPlayer(state, audioEngine) {
         this.ctx.save();
         
-        // --- EPIC 2: RENDER DENIAL SHIELD VISUAL ---
         if (state.player.denialShieldActive) {
             let shieldPulse = Math.sin(this.renderFrame * 0.1) * 2;
             this.ctx.strokeStyle = `rgba(200, 200, 255, ${0.4 + Math.sin(this.renderFrame * 0.3) * 0.2})`;
@@ -685,6 +706,37 @@ export class Renderer {
         this.ctx.arc(12 + headJitterX*0.5, 10 + headJitterY*0.5, 2.5, 0, Math.PI*2);
         this.ctx.fill();
         this.ctx.shadowBlur = 0;
+
+        // --- EPIC 4: RENDER FIDGET SPINNER ---
+        const spinner = state.player.weapons.fidget_spinner;
+        if (spinner && spinner.level > 0) {
+            this.ctx.save();
+            let currentSpin = this.renderFrame * spinner.speed;
+            if (state.player.dash && state.player.dash.active) currentSpin *= 3;
+            
+            this.ctx.rotate(currentSpin); 
+            
+            for(let i=0; i<3; i++) {
+                this.ctx.save();
+                this.ctx.rotate((i * Math.PI * 2) / 3);
+                this.ctx.translate(spinner.baseRadius, 0);
+                
+                this.ctx.fillStyle = '#888';
+                this.ctx.beginPath();
+                this.ctx.moveTo(10, 0);
+                this.ctx.lineTo(-5, 5);
+                this.ctx.lineTo(-5, -5);
+                this.ctx.fill();
+                
+                this.ctx.fillStyle = '#aaffff';
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, 3, 0, Math.PI*2);
+                this.ctx.fill();
+                
+                this.ctx.restore();
+            }
+            this.ctx.restore();
+        }
 
         this.ctx.fillStyle = '#ffffff';
         for(let i=0; i<3; i++) {

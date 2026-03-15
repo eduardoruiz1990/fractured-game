@@ -23,7 +23,10 @@ export class Game {
 
     init(saveManager, carriedState = null) {
         const meta = saveManager.metaState;
-        
+        const maxSanity = 100 + (meta.upgrades.hp * 20);
+        const speedMult = 1.0 + (meta.upgrades.speed * 0.05);
+        const lightMult = 1.0 + (meta.upgrades.light * 0.1);
+
         let startFloor = 1;
         let startLucidity = 0;
         let startLevel = 1;
@@ -31,14 +34,19 @@ export class Game {
         let startTokens = { head: null, body: null, hands: null, legs: null };
         let startRunInventory = [];
 
+        // FIXED: Only declare these once to prevent SyntaxErrors!
         let startWeapons = {
-            flashlight: { level: 1, damage: 15, radius: 250, angle: 0.4 },
+            flashlight: { level: 1, damage: 15, radius: 250 * lightMult, angle: 0.4 },
             static: { level: 0, damage: 0, radius: 60, active: false, pulsePhase: 0 },
             adrenaline: { level: 0 },
             lead_pipe: { level: 0, damage: 50, radius: 80, cooldown: 90, timer: 0 },
             spilled_ink: { level: 0, damage: 5, radius: 30, dropRate: 30, timer: 0 },
             corrosive_battery: { level: 0, damage: 2, duration: 60 },
-            broken_chalk: { level: 0, radius: 70, duration: 180, cooldown: 120, timer: 0 }
+            broken_chalk: { level: 0, radius: 70, duration: 180, cooldown: 120, timer: 0 },
+            
+            // --- EPIC 4: NEW WEAPONS ---
+            polaroid_camera: { level: 0, damage: 60, radius: 350, angle: 0.8, cooldown: 240, timer: 0 }, // Fires every 4s
+            fidget_spinner: { level: 0, damage: 10, baseRadius: 55, speed: 0.05 }
         };
         let startSynergies = [];
         let startCurses = [];
@@ -77,15 +85,11 @@ export class Game {
         });
 
         // Apply Base Modifiers from Synapse Tree AND Sets
-        let maxSanity = 100 + (meta.upgrades.hp * 20);
-        if (setCounts.institutionalized >= 2) maxSanity += 50; // Set Bonus!
+        let effectiveMaxSanity = maxSanity;
+        if (setCounts.institutionalized >= 2) effectiveMaxSanity += 50; // Set Bonus!
 
-        let speedMult = 1.0 + (meta.upgrades.speed * 0.05);
-        if (setCounts.insomniac >= 2) speedMult += 0.10; // Set Bonus!
-
-        let lightMult = 1.0 + (meta.upgrades.light * 0.1);
-        startWeapons.flashlight.radius = 250 * lightMult;
-        startWeapons.flashlight.angle = 0.4;
+        let effectiveSpeedMult = speedMult;
+        if (setCounts.insomniac >= 2) effectiveSpeedMult += 0.10; // Set Bonus!
         
         // Token Modifiers
         if (activeTokens.hasParanoia) {
@@ -94,7 +98,7 @@ export class Game {
         }
 
         // Keep current sanity if descending, otherwise heal to max
-        let startSanity = carriedState ? carriedState.sanity : maxSanity;
+        let startSanity = carriedState ? carriedState.sanity : effectiveMaxSanity;
 
         this.state = {
             floor: startFloor,
@@ -103,7 +107,7 @@ export class Game {
             
             player: { 
                 x: 0, y: 0, 
-                radius: 12, angle: 0, targetAngle: 0, hp: maxSanity, maxHp: maxSanity, speedMultiplier: speedMult,
+                radius: 12, angle: 0, targetAngle: 0, hp: effectiveMaxSanity, maxHp: effectiveMaxSanity, speedMultiplier: effectiveSpeedMult,
                 dash: { active: false, timer: 0, cooldown: 0, dx: 0, dy: 0 },
                 weapons: startWeapons,
                 synergies: startSynergies, 
@@ -123,6 +127,7 @@ export class Game {
             playerAfterimages: [], 
             hitStop: 0, 
             frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false,
+            cameraFlash: 0, // NEW: Tracks the visual whiteout for the Polaroid Camera
             isDead: false
         };
     }
@@ -245,11 +250,9 @@ export class Game {
         
         // --- EPIC 2: DASH MODIFICATIONS ---
         let canDash = true;
-        // Institutionalized 4-piece removes Dash!
         if (this.state.player.sets.institutionalized >= 4) canDash = false;
 
         if (moveInput.dash && canDash && this.state.player.dash.cooldown <= 0 && this.state.player.dash.timer <= 0) {
-            // Panic Sprint Token: Dash Cooldown is halved
             let dashCooldown = this.state.player.activeTokens.hasPanic ? 45 : 90;
             
             this.state.player.dash.active = true;
@@ -275,7 +278,6 @@ export class Game {
         let currentSpeed = GAME_CONFIG.BASE_PLAYER_SPEED * this.state.player.speedMultiplier;
 
         if (this.state.player.dash.active) {
-            // Panic Sprint Token: Dash distance is reduced (speed multiplier lower)
             currentSpeed *= this.state.player.activeTokens.hasPanic ? 2.5 : 3.5; 
             this.state.player.dash.timer--;
             
@@ -310,6 +312,9 @@ export class Game {
             }
         }
 
+        // Handle visual flash decay
+        if (this.state.cameraFlash > 0) this.state.cameraFlash--;
+
         const staticWep = this.state.player.weapons.static;
         if (staticWep.active) staticWep.pulsePhase += 0.05;
 
@@ -341,37 +346,32 @@ export class Game {
         if (this.state.player.dash.active || this.state.isDead) return;
 
         // --- EPIC 2: DAMAGE OVERRIDES ---
-        
-        // 1. Straitjacket of Denial (Body Token) - Block first hit
         if (this.state.player.denialShieldActive) {
-            this.state.player.denialShieldActive = false; // Shatter the shield
+            this.state.player.denialShieldActive = false; 
             this.spawnDamageText(this.state.player.x, this.state.player.y - 20, "DENIED!", '#ffffff', 1.5, 2.0);
             this.spawnParticles(this.state.player.x, this.state.player.y, '#aaaaff', 30);
-            if (this.audioEngine) this.audioEngine.playSFX('pickup', 5); // Tink sound
-            return; // Ignore the damage!
+            if (this.audioEngine) this.audioEngine.playSFX('pickup', 5); 
+            return; 
         }
 
         this.state.sanity -= amount;
         this.state.cameraShake = 15; 
         this.state.hitStop = 8; 
 
-        // 2. Institutionalized (4-Piece Set) - Damage causes explosive AoE
         if (this.state.player.sets.institutionalized >= 4) {
             this.spawnDamageText(this.state.player.x, this.state.player.y, "SHOCKWAVE", '#aa55ff', 2.0, 1.5);
             this.spawnParticles(this.state.player.x, this.state.player.y, '#aa55ff', 50);
             this.state.cameraShake = 40;
             
-            // Blast enemies away and damage them
             this.state.entities.forEach(ent => {
                 let d = Math.hypot(ent.x - this.state.player.x, ent.y - this.state.player.y);
                 if (d < 300) {
                     ent.takeDamage(40, this);
-                    ent.x += (ent.x - this.state.player.x) / d * 150; // Massive knockback
+                    ent.x += (ent.x - this.state.player.x) / d * 150; 
                     ent.y += (ent.y - this.state.player.y) / d * 150;
                 }
             });
 
-            // Heal 10% of missing sanity as a reward for being hit
             this.state.sanity = Math.min(this.state.player.maxHp, this.state.sanity + (this.state.player.maxHp * 0.10));
         }
         

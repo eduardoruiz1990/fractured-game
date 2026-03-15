@@ -83,17 +83,70 @@ export class Combat {
             state.interactables = state.interactables.filter(i => !i.dead);
         }
 
-        // --- EPIC 2: WEAPON COOLDOWN MODIFIERS ---
-        // Twitching Fingers Token: Cooldowns get faster as Sanity drops (up to 3x faster!)
         let cooldownTick = 1;
         if (state.player.activeTokens.hasTwitch) {
             let sanityRatio = Math.max(0, state.sanity / state.player.maxHp);
             cooldownTick = 1 + (1 - sanityRatio) * 2.0; 
         }
 
+        // --- EPIC 4: NEW WEAPONS ---
+        
+        // 1. Polaroid Camera (Burst Cone Stun)
+        const camera = state.player.weapons.polaroid_camera;
+        if (camera && camera.level > 0) {
+            camera.timer -= cooldownTick;
+            if (camera.timer <= 0) {
+                camera.timer = camera.cooldown;
+                state.cameraFlash = 15; // Visual whiteout frames
+                state.cameraShake = 10;
+                if (game.audioEngine) game.audioEngine.playSFX('damage', 2); 
+                
+                for (let i = state.entities.length - 1; i >= 0; i--) {
+                    let ent = state.entities[i];
+                    let dx = ent.x - state.player.x;
+                    let dy = ent.y - state.player.y;
+                    let dist = Math.hypot(dx, dy);
+                    let canTakeDamage = !(ent.type === 'BOSS' && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
+
+                    if (canTakeDamage && dist < camera.radius) {
+                        let angle = Math.atan2(dy, dx);
+                        let diff = angle - state.player.angle;
+                        while (diff < -Math.PI) diff += Math.PI * 2;
+                        while (diff > Math.PI) diff -= Math.PI * 2;
+                        
+                        if (Math.abs(diff) < camera.angle) {
+                            ent.takeDamage(camera.damage, game);
+                            ent.confused = 120; // Stun duration
+                            ent.x += (dx / dist) * 30; // Knockback
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Weighted Spinner (Orbital Defense)
+        const spinner = state.player.weapons.fidget_spinner;
+        if (spinner && spinner.level > 0) {
+            let spinnerDmg = spinner.damage;
+            if (state.player.dash && state.player.dash.active) spinnerDmg *= 2; 
+
+            for (let i = state.entities.length - 1; i >= 0; i--) {
+                let ent = state.entities[i];
+                let dist = Math.hypot(ent.x - state.player.x, ent.y - state.player.y);
+                let canTakeDamage = !(ent.type === 'BOSS' && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
+
+                if (canTakeDamage && dist > spinner.baseRadius - 15 && dist < spinner.baseRadius + 15) {
+                     if (state.frame % 15 === 0) { 
+                         ent.takeDamage(spinnerDmg, game);
+                         game.spawnParticles(ent.x, ent.y, '#aaaaaa', 2);
+                     }
+                }
+            }
+        }
+
         const pipe = state.player.weapons.lead_pipe;
         if (pipe && pipe.level > 0) {
-            pipe.timer -= cooldownTick; // Apply modified tick
+            pipe.timer -= cooldownTick; 
             if (pipe.timer <= 0) {
                 pipe.timer = pipe.cooldown;
                 game.director.spawnMeleeSwing(state.player.x, state.player.y, pipe.radius);
@@ -126,7 +179,7 @@ export class Combat {
 
         const ink = state.player.weapons.spilled_ink;
         if (ink && ink.level > 0) {
-            ink.timer -= cooldownTick; // Apply modified tick
+            ink.timer -= cooldownTick; 
             if (ink.timer <= 0) {
                 ink.timer = ink.dropRate;
                 game.director.spawnInkPuddle(state.player.x, state.player.y, ink.radius, ink.damage);
@@ -135,7 +188,7 @@ export class Combat {
         
         const chalk = state.player.weapons.broken_chalk;
         if (chalk && chalk.level > 0) {
-            chalk.timer -= cooldownTick; // Apply modified tick
+            chalk.timer -= cooldownTick; 
             if (chalk.timer <= 0) {
                 chalk.timer = chalk.cooldown;
                 game.director.spawnSafeZone(state.player.x, state.player.y, chalk.radius, chalk.duration);
@@ -212,14 +265,12 @@ export class Combat {
 
             if (canTakeDamage) {
                 
-                // --- EPIC 2: THE INSOMNIAC (4-PIECE SET) BURN AURA ---
                 if (state.player.sets.insomniac >= 4) {
-                    // Outer safe zone burns enemies
                     const innerRad = state.player.weapons.flashlight.radius;
                     const outerRad = innerRad + 200;
                     if (distToPlayer > innerRad && distToPlayer < outerRad) {
                         if (state.frame % 30 === 0) {
-                            ent.takeDamage(5, game); // Passive burn damage
+                            ent.takeDamage(5, game); 
                             game.spawnParticles(ent.x, ent.y, '#ffaa00', 3);
                         }
                     }
@@ -236,8 +287,12 @@ export class Combat {
                         let hitAngle = state.player.weapons.flashlight.angle;
                         if (state.player.synergies && state.player.synergies.includes('blinding_signal')) hitAngle *= 1.5; 
 
+                        // --- EPIC 4: TUNNEL VISION CURSE MULTIPLIER ---
+                        let flDamage = state.player.weapons.flashlight.damage;
+                        if (state.player.curses && state.player.curses.includes('tunnel_vision')) flDamage *= 3.0;
+
                         if (Math.abs(angleDiff) < hitAngle) {
-                            ent.takeDamage((state.player.weapons.flashlight.damage / 60) * dmgMult, game);
+                            ent.takeDamage((flDamage / 60) * dmgMult, game);
                             ent.x -= ent.vx * 0.5; ent.y -= ent.vy * 0.5; 
                             if (state.player.synergies && state.player.synergies.includes('blinding_signal')) ent.confused = 180; 
                             
