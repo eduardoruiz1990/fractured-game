@@ -48,7 +48,7 @@ export class Combat {
                                         obj.active = true;
                                         obj.life = 450; 
                                         state.cameraShake = 30;
-                                        if (game.audioEngine) game.audioEngine.playSFX('pickup', 8);
+                                        if (game.audioEngine) game.audioEngine.playSFX('breaker_box', 0.8);
                                     }
                                 }
                             }
@@ -89,7 +89,8 @@ export class Combat {
                             state.sanity = Math.min(state.player.maxHp, state.sanity + 50); 
                             state.cameraShake = 20;
                             
-                            if (game.audioEngine) game.audioEngine.playSFX('pickup', 10);
+                            if (game.audioEngine) game.audioEngine.playSFX('backpack', 0.8);
+                            
                             game.spawnParticles(obj.x, obj.y, '#55ff55', 30);
                             game.spawnDamageText(obj.x, obj.y - 30, "SUPPLIES RECOVERED!", '#55ff55', 1.5, 2.0);
                         }
@@ -118,8 +119,6 @@ export class Combat {
                 camera.timer = camera.cooldown;
                 state.cameraFlash = 15; 
                 state.cameraShake = 10;
-                
-                // --- EPIC 7: BESPOKE POLAROID SOUND ---
                 if (game.audioEngine) game.audioEngine.playSFX('polaroid'); 
                 
                 for (let i = state.entities.length - 1; i >= 0; i--) {
@@ -170,8 +169,6 @@ export class Combat {
             if (pipe.timer <= 0) {
                 pipe.timer = pipe.cooldown;
                 game.director.spawnMeleeSwing(state.player.x, state.player.y, pipe.radius);
-                
-                // --- EPIC 7: BESPOKE PIPE SWING SOUND ---
                 if (game.audioEngine) game.audioEngine.playSFX('pipe_swing');
                 
                 let hitCount = 0;
@@ -192,12 +189,9 @@ export class Combat {
                     }
                 }
                 
-                // --- EPIC 8: MASSIVE IMPACT HIT-STOP FREEZES ---
                 if (hitCount > 0) {
-                    // Game physically freezes for longer based on how many enemies you hit at once!
                     state.hitStop = Math.min(25, state.hitStop + 6 + (hitCount * 3)); 
                     state.cameraShake = Math.max(state.cameraShake, 10 + hitCount * 3);
-                    // Epic 7 Crunch Sound
                     if (game.audioEngine) game.audioEngine.playSFX('pipe_hit', hitCount);
                 }
             }
@@ -344,7 +338,6 @@ export class Combat {
                     game.director.spawnEntity('RORSCHACH', null, null, ent.x + 20, ent.y, ent.generation + 1);
                     
                     game.spawnParticles(ent.x, ent.y, '#8b008b', 50); 
-                    if (game.audioEngine) game.audioEngine.playSFX('damage', 5);
                     game.spawnXP(ent.x, ent.y, 5, true); 
                     
                     ent.active = false;

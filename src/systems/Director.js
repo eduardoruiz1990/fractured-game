@@ -38,7 +38,6 @@ export class Director {
         if (state.frame > 1800 && state.frame % 600 === 0) this.spawnEntity('PARASITE', canvasWidth, canvasHeight); 
 
         if (state.convergence >= state.maxConvergence && !state.bossSpawned) {
-            // BUGFIX: Boss spawn audio trigger
             if (this.game.audioEngine) {
                 this.game.audioEngine.playSFX('boss_intro', 1.0);
             }
@@ -78,7 +77,12 @@ export class Director {
         else if (type === 'BOSS') ent = this.pools.boss.get().init(Math.random(), x, y);
         else if (type === 'RORSCHACH') ent = this.pools.rorschach.get().init(Math.random(), x, y, generation);
         
-        if (ent) state.entities.push(ent);
+        if (ent) {
+            state.entities.push(ent);
+            if (this.game.audioEngine && Math.random() < 0.3) {
+                this.game.audioEngine.playSFX('enemy_spawn', 0.3);
+            }
+        }
     }
 
     spawnProjectile(x, y, vx, vy, radius, damage, color, life) {

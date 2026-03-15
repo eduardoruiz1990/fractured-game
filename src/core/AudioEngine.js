@@ -10,7 +10,6 @@ export class AudioEngine {
         this.lastFootstepTime = 0;
         this.lastHeartbeatTime = 0;
         
-        // Dictionary to hold our downloaded audio buffers
         this.buffers = {};
         
         this.activeLoops = {
@@ -29,7 +28,6 @@ export class AudioEngine {
             heartbeat: null
         };
 
-        // --- LOCAL ASSET PATHS (Place these in public/sounds/) ---
         this.assetUrls = {
             menu_theme: "/sounds/menu_theme.mp3", 
             game_drone: "/sounds/game_drone.mp3", 
@@ -40,11 +38,21 @@ export class AudioEngine {
             boss_intro: "/sounds/boss_intro.mp3", 
             ui_hover: "/sounds/ui_hover.mp3",   
             ui_click: "/sounds/ui_click.mp3",   
-            ui_upgrade: "/sounds/ui_upgrade.mp3", // Dark liquid healing (Amnesia Laudanum style)
-            player_hurt: "/sounds/player_hurt.mp3" // NEW: Player taking damage
+            ui_upgrade: "/sounds/ui_upgrade.mp3", 
+            player_hurt: "/sounds/player_hurt.mp3",
+            
+            // THE LIVING NIGHTMARE SFX
+            dash: "/sounds/dash.mp3",
+            enemy_spawn: "/sounds/enemy_spawn.mp3",
+            scavenger_hurt: "/sounds/scavenger_hurt.mp3",
+            predator_hurt: "/sounds/predator_hurt.mp3",
+            parasite_hurt: "/sounds/parasite_hurt.mp3",
+            boss_hurt: "/sounds/boss_hurt.mp3",
+            enemy_ambient: "/sounds/enemy_ambient.mp3",
+            breaker_box: "/sounds/breaker_box.mp3",
+            backpack: "/sounds/backpack.mp3"
         };
 
-        // Procedural Fallback states
         this.fallbackOscillators = {
             menuTheme: [],
             drone: []
@@ -79,7 +87,6 @@ export class AudioEngine {
 
             this.isInitialized = true;
 
-            // Start downloading local assets
             await this.loadAllAssets();
             this.playMenuTheme();
             
@@ -98,7 +105,7 @@ export class AudioEngine {
                 console.log(`[AudioEngine] Successfully loaded: ${key}`);
             } catch (err) {
                 console.info(`[AudioEngine] Missing local file for '${key}'. Will use procedural fallback.`);
-                this.buffers[key] = null; // Mark as explicitly missing
+                this.buffers[key] = null; 
             }
         }
     }
@@ -190,15 +197,15 @@ export class AudioEngine {
                         source.connect(this.gains.heartbeat);
                         source.start();
                         this.activeLoops.heartbeat = source;
-                        this.safeFade(this.gains.heartbeat, 0.6, 0.5); 
+                        
+                        this.safeFade(this.gains.heartbeat, 1.2, 0.5); 
                     } else {
                         this.activeLoops.heartbeat.playbackRate.setTargetAtTime(1.0 + ((0.3 - sanityRatio) * 2.5), now, 0.2);
                     }
                 } else {
-                    // Procedural Heartbeat Fallback
                     const beatInterval = 0.4 + (sanityRatio * 1.5); 
                     if (now - this.lastHeartbeatTime > beatInterval) {
-                        this.playProceduralSFX('heartbeat', 0.8);
+                        this.playProceduralSFX('heartbeat', 1.5);
                         this.lastHeartbeatTime = now;
                     }
                 }
@@ -218,7 +225,6 @@ export class AudioEngine {
     playSFX(key, volumeMult = 1.0) {
         if (!this.isInitialized || !this.audioCtx || this.audioCtx.state === 'suspended') return;
         
-        // If we have the real file, play it!
         if (this.buffers[key]) {
             try {
                 const source = this.audioCtx.createBufferSource();
@@ -231,13 +237,13 @@ export class AudioEngine {
                 if (key.includes('ui_')) finalVolume *= 0.4;
                 if (key === 'pipe_swing') finalVolume *= 0.6;
                 if (key === 'boss_intro') finalVolume *= 1.2;
+                if (key === 'enemy_ambient') finalVolume *= 0.3;
                 
                 gainNode.gain.value = Math.max(0, Math.min(finalVolume, 1.5));
                 source.connect(gainNode).connect(this.masterGain);
                 source.start();
             } catch (e) { console.warn(`Failed to play buffer ${key}:`, e); }
         } else {
-            // No file? Play the high-quality procedural fallback!
             this.playProceduralSFX(key, volumeMult);
         }
     }
@@ -277,8 +283,7 @@ export class AudioEngine {
     }
 
     // =========================================================================
-    // THE PROCEDURAL FALLBACK SYSTEM
-    // Generates high-quality synthesized sound if local assets aren't downloaded
+    // THE PROCEDURAL FALLBACK SYSTEM (FULLY RESTORED)
     // =========================================================================
     
     startFallbackMenuTheme() {
@@ -286,7 +291,7 @@ export class AudioEngine {
         const osc1 = this.audioCtx.createOscillator();
         const osc2 = this.audioCtx.createOscillator();
         osc1.type = 'sine'; osc2.type = 'triangle';
-        osc1.frequency.value = 110; osc2.frequency.value = 112; // Dissonant beating
+        osc1.frequency.value = 110; osc2.frequency.value = 112;
         
         osc1.connect(this.gains.menuTheme);
         osc2.connect(this.gains.menuTheme);
@@ -330,167 +335,135 @@ export class AudioEngine {
         osc.connect(gain).connect(this.masterGain);
 
         if (key === 'ui_hover') {
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(800, now);
-            gain.gain.setValueAtTime(0.03 * volumeMult, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+            osc.type = 'triangle'; osc.frequency.setValueAtTime(800, now);
+            gain.gain.setValueAtTime(0.03 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
             osc.start(now); osc.stop(now + 0.05);
         }
         else if (key === 'ui_click') {
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(1200, now);
-            osc.frequency.exponentialRampToValueAtTime(1800, now + 0.05);
-            gain.gain.setValueAtTime(0.1 * volumeMult, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+            osc.type = 'sine'; osc.frequency.setValueAtTime(1200, now); osc.frequency.exponentialRampToValueAtTime(1800, now + 0.05);
+            gain.gain.setValueAtTime(0.1 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
             osc.start(now); osc.stop(now + 0.05);
         }
         else if (key === 'ui_upgrade') {
-            // Dark liquid healing (Amnesia Laudanum style)
-            // 1. The glassy/liquid swish
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(600, now);
-            osc.frequency.exponentialRampToValueAtTime(200, now + 0.2);
-            gain.gain.setValueAtTime(0.2 * volumeMult, now);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            osc.type = 'triangle'; osc.frequency.setValueAtTime(600, now); osc.frequency.exponentialRampToValueAtTime(200, now + 0.2);
+            gain.gain.setValueAtTime(0.2 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
             osc.start(now); osc.stop(now + 0.2);
 
-            // 2. The deep visceral gulp
-            let gulpOsc = this.audioCtx.createOscillator();
-            let gulpGain = this.audioCtx.createGain();
-            gulpOsc.type = 'sine';
-            gulpOsc.frequency.setValueAtTime(150, now);
-            gulpOsc.frequency.exponentialRampToValueAtTime(40, now + 0.4);
-            gulpGain.gain.setValueAtTime(0, now);
-            gulpGain.gain.linearRampToValueAtTime(0.5 * volumeMult, now + 0.1);
-            gulpGain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
-            gulpOsc.connect(gulpGain).connect(this.masterGain);
-            gulpOsc.start(now); gulpOsc.stop(now + 0.6);
+            let gulpOsc = this.audioCtx.createOscillator(); let gulpGain = this.audioCtx.createGain();
+            gulpOsc.type = 'sine'; gulpOsc.frequency.setValueAtTime(150, now); gulpOsc.frequency.exponentialRampToValueAtTime(40, now + 0.4);
+            gulpGain.gain.setValueAtTime(0, now); gulpGain.gain.linearRampToValueAtTime(0.5 * volumeMult, now + 0.1); gulpGain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+            gulpOsc.connect(gulpGain).connect(this.masterGain); gulpOsc.start(now); gulpOsc.stop(now + 0.6);
             
-            // 3. Eerie relieving hum
-            let humOsc = this.audioCtx.createOscillator();
-            let humGain = this.audioCtx.createGain();
-            humOsc.type = 'sine';
-            humOsc.frequency.setValueAtTime(80, now + 0.1);
-            humGain.gain.setValueAtTime(0, now);
-            humGain.gain.linearRampToValueAtTime(0.3 * volumeMult, now + 0.3);
-            humGain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
-            humOsc.connect(humGain).connect(this.masterGain);
-            humOsc.start(now); humOsc.stop(now + 1.2);
+            let humOsc = this.audioCtx.createOscillator(); let humGain = this.audioCtx.createGain();
+            humOsc.type = 'sine'; humOsc.frequency.setValueAtTime(80, now + 0.1); humGain.gain.setValueAtTime(0, now); humGain.gain.linearRampToValueAtTime(0.3 * volumeMult, now + 0.3); humGain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
+            humOsc.connect(humGain).connect(this.masterGain); humOsc.start(now); humOsc.stop(now + 1.2);
         }
         else if (key === 'polaroid') {
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(1000, now);
-            osc.frequency.exponentialRampToValueAtTime(100, now + 0.05);
-            gain.gain.setValueAtTime(0.5 * volumeMult, now);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+            osc.type = 'square'; osc.frequency.setValueAtTime(1000, now); osc.frequency.exponentialRampToValueAtTime(100, now + 0.05);
+            gain.gain.setValueAtTime(0.5 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
             osc.start(now); osc.stop(now + 0.05);
 
-            let whineOsc = this.audioCtx.createOscillator();
-            let whineGain = this.audioCtx.createGain();
-            whineOsc.type = 'sine';
-            whineOsc.frequency.setValueAtTime(400, now + 0.05);
-            whineOsc.frequency.exponentialRampToValueAtTime(4000, now + 0.6);
-            whineGain.gain.setValueAtTime(0, now);
-            whineGain.gain.setValueAtTime(0.1 * volumeMult, now + 0.05);
-            whineGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-            whineOsc.connect(whineGain).connect(this.masterGain);
-            whineOsc.start(now + 0.05); whineOsc.stop(now + 0.6);
+            let whineOsc = this.audioCtx.createOscillator(); let whineGain = this.audioCtx.createGain();
+            whineOsc.type = 'sine'; whineOsc.frequency.setValueAtTime(400, now + 0.05); whineOsc.frequency.exponentialRampToValueAtTime(4000, now + 0.6);
+            whineGain.gain.setValueAtTime(0, now); whineGain.gain.setValueAtTime(0.1 * volumeMult, now + 0.05); whineGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+            whineOsc.connect(whineGain).connect(this.masterGain); whineOsc.start(now + 0.05); whineOsc.stop(now + 0.6);
         }
         else if (key === 'pipe_swing') {
             const bufferSize = this.audioCtx.sampleRate * 0.3;
             const noiseBuffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
             const output = noiseBuffer.getChannelData(0);
             for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
-            const noise = this.audioCtx.createBufferSource();
-            noise.buffer = noiseBuffer;
+            const noise = this.audioCtx.createBufferSource(); noise.buffer = noiseBuffer;
 
-            let filter = this.audioCtx.createBiquadFilter();
-            filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(100, now);
-            filter.frequency.exponentialRampToValueAtTime(1500, now + 0.15);
-            filter.frequency.exponentialRampToValueAtTime(100, now + 0.3);
-
-            let noiseGain = this.audioCtx.createGain();
-            noiseGain.gain.setValueAtTime(0.4 * volumeMult, now);
-            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-
-            noise.connect(filter).connect(noiseGain).connect(this.masterGain);
-            noise.start(now);
+            let filter = this.audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(100, now); filter.frequency.exponentialRampToValueAtTime(1500, now + 0.15); filter.frequency.exponentialRampToValueAtTime(100, now + 0.3);
+            let noiseGain = this.audioCtx.createGain(); noiseGain.gain.setValueAtTime(0.4 * volumeMult, now); noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            noise.connect(filter).connect(noiseGain).connect(this.masterGain); noise.start(now);
         }
         else if (key === 'pipe_hit') {
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(120, now);
-            osc.frequency.exponentialRampToValueAtTime(30, now + 0.2);
-            gain.gain.setValueAtTime(0.5 * volumeMult, now);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            osc.type = 'triangle'; osc.frequency.setValueAtTime(120, now); osc.frequency.exponentialRampToValueAtTime(30, now + 0.2);
+            gain.gain.setValueAtTime(0.5 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
             osc.start(now); osc.stop(now + 0.2);
         }
         else if (key === 'boss_intro') {
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(100, now);
-            osc.frequency.exponentialRampToValueAtTime(30, now + 1.0);
-            
-            const filter = this.audioCtx.createBiquadFilter();
-            filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(2000, now);
-            filter.frequency.exponentialRampToValueAtTime(100, now + 1.5);
-            
-            gain.gain.setValueAtTime(0.8 * volumeMult, now);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 2.0);
-            
-            osc.disconnect();
-            osc.connect(filter).connect(gain);
-            osc.start(now); osc.stop(now + 2.0);
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, now); osc.frequency.exponentialRampToValueAtTime(30, now + 1.0);
+            const filter = this.audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(2000, now); filter.frequency.exponentialRampToValueAtTime(100, now + 1.5);
+            gain.gain.setValueAtTime(0.8 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 2.0);
+            osc.disconnect(); osc.connect(filter).connect(gain); osc.start(now); osc.stop(now + 2.0);
         }
         else if (key === 'heartbeat') {
-            osc.type = 'sine';
-            osc.frequency.value = 50;
-            gain.gain.setValueAtTime(0, now);
-            gain.gain.linearRampToValueAtTime(0.5 * volumeMult, now + 0.1);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.type = 'sine'; osc.frequency.value = 50;
+            gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.5 * volumeMult, now + 0.1); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
             osc.start(now); osc.stop(now + 0.3);
-
-            let osc2 = this.audioCtx.createOscillator();
-            let gain2 = this.audioCtx.createGain();
-            osc2.type = 'sine';
-            osc2.frequency.value = 45;
-            osc2.connect(gain2).connect(this.masterGain);
-            gain2.gain.setValueAtTime(0, now + 0.2);
-            gain2.gain.linearRampToValueAtTime(0.4 * volumeMult, now + 0.3);
-            gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+            let osc2 = this.audioCtx.createOscillator(); let gain2 = this.audioCtx.createGain();
+            osc2.type = 'sine'; osc2.frequency.value = 45; osc2.connect(gain2).connect(this.masterGain);
+            gain2.gain.setValueAtTime(0, now + 0.2); gain2.gain.linearRampToValueAtTime(0.4 * volumeMult, now + 0.3); gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
             osc2.start(now + 0.2); osc2.stop(now + 0.6);
         }
         else if (key === 'pickup') {
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(600 + Math.random()*200, now);
-            osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
-            gain.gain.setValueAtTime(0.15 * volumeMult, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            osc.type = 'sine'; osc.frequency.setValueAtTime(600 + Math.random()*200, now); osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+            gain.gain.setValueAtTime(0.15 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
             osc.start(now); osc.stop(now + 0.1);
         }
         else if (key === 'player_hurt' || key === 'damage') {
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(300, now);
-            osc.frequency.exponentialRampToValueAtTime(50, now + 0.4);
-            gain.gain.setValueAtTime(0.3 * volumeMult, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+            osc.type = 'square'; osc.frequency.setValueAtTime(300, now); osc.frequency.exponentialRampToValueAtTime(50, now + 0.4);
+            gain.gain.setValueAtTime(0.3 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
             osc.start(now); osc.stop(now + 0.4);
         }
         else if (key === 'death') {
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(150, now);
-            osc.frequency.exponentialRampToValueAtTime(20, now + 0.3);
-            gain.gain.setValueAtTime(0.4 * volumeMult, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.exponentialRampToValueAtTime(20, now + 0.3);
+            gain.gain.setValueAtTime(0.4 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
             osc.start(now); osc.stop(now + 0.4);
         }
         else if (key === 'levelup') {
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(200, now);
-            osc.frequency.linearRampToValueAtTime(800, now + 0.4);
-            gain.gain.setValueAtTime(0.2 * volumeMult, now);
-            gain.gain.linearRampToValueAtTime(0.001, now + 0.5);
+            osc.type = 'square'; osc.frequency.setValueAtTime(200, now); osc.frequency.linearRampToValueAtTime(800, now + 0.4);
+            gain.gain.setValueAtTime(0.2 * volumeMult, now); gain.gain.linearRampToValueAtTime(0.001, now + 0.5);
             osc.start(now); osc.stop(now + 0.5);
+        }
+        // --- NEW FULL FALLBACKS ---
+        else if (key === 'dash') {
+            osc.type = 'triangle'; osc.frequency.setValueAtTime(150, now); osc.frequency.exponentialRampToValueAtTime(600, now + 0.15);
+            gain.gain.setValueAtTime(0.4 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            osc.start(now); osc.stop(now + 0.15);
+        }
+        else if (key === 'enemy_spawn') {
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, now); osc.frequency.exponentialRampToValueAtTime(50, now + 0.5);
+            gain.gain.setValueAtTime(0.2 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+            osc.start(now); osc.stop(now + 0.5);
+        }
+        else if (key === 'scavenger_hurt') {
+            osc.type = 'square'; osc.frequency.setValueAtTime(800, now); osc.frequency.exponentialRampToValueAtTime(200, now + 0.2);
+            gain.gain.setValueAtTime(0.3 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            osc.start(now); osc.stop(now + 0.2);
+        }
+        else if (key === 'predator_hurt') {
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.exponentialRampToValueAtTime(800, now + 0.3);
+            gain.gain.setValueAtTime(0.4 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
+        }
+        else if (key === 'parasite_hurt') {
+            osc.type = 'sine'; osc.frequency.setValueAtTime(1000, now); osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+            gain.gain.setValueAtTime(0.3 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now); osc.stop(now + 0.1);
+        }
+        else if (key === 'boss_hurt') {
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(80, now); osc.frequency.exponentialRampToValueAtTime(20, now + 0.5);
+            gain.gain.setValueAtTime(0.6 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+            osc.start(now); osc.stop(now + 0.5);
+        }
+        else if (key === 'breaker_box') {
+            osc.type = 'square'; osc.frequency.setValueAtTime(100, now); osc.frequency.exponentialRampToValueAtTime(50, now + 0.3);
+            gain.gain.setValueAtTime(0.5 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
+        }
+        else if (key === 'backpack') {
+            osc.type = 'triangle'; osc.frequency.setValueAtTime(400, now); osc.frequency.exponentialRampToValueAtTime(1000, now + 0.2);
+            gain.gain.setValueAtTime(0.4 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            osc.start(now); osc.stop(now + 0.2);
+        }
+        else if (key === 'enemy_ambient') {
+            osc.type = 'sine'; osc.frequency.setValueAtTime(800, now); osc.frequency.exponentialRampToValueAtTime(400, now + 0.1);
+            gain.gain.setValueAtTime(0.1 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now); osc.stop(now + 0.1);
         }
     }
 }

@@ -1,8 +1,10 @@
+// src/entities/Enemy.js
 export class Enemy {
-    constructor(type, damage, color) {
+    constructor(type, damage, color, painSound = 'damage') {
         this.type = type;
         this.damage = damage;
         this.originalColor = color;
+        this.painSound = painSound;
     }
 
     initBase(id, x, y, hp, speed) {
@@ -20,14 +22,9 @@ export class Enemy {
         this.buffed = false;
         this.confused = 0;
         this.active = true;
-        
-        // Supports the new Ink Puddle slowing effect
         this.speedModifier = 1.0; 
-        
-        // Supports the Corrosive Battery effect
         this.acidTime = 0;
         this.acidDmg = 0;
-        
         this.damageAccumulator = 0;
         this.damageTick = 0;
         
@@ -38,17 +35,18 @@ export class Enemy {
         this.hp -= amount;
         this.flashTime = 5;
         
+        if (this.damageTick === 0 && game && game.audioEngine && this.painSound) {
+            game.audioEngine.playSFX(this.painSound, 0.4);
+        }
+        
         this.damageAccumulator += amount;
         this.damageTick++;
         
         if (this.damageTick >= 15 || this.hp <= 0) {
             if (game && this.damageAccumulator >= 1) {
                 let isFinal = this.hp <= 0;
-                
                 let color = this.damageAccumulator > 15 ? '#c5a059' : '#ffaaaa';
                 if (isFinal) color = '#ff3333'; 
-                
-                // Huge scaling text for death blows!
                 let scale = isFinal ? 1.5 : 1.0;
                 let life = isFinal ? 2.5 : 1.0; 
                 
@@ -59,7 +57,7 @@ export class Enemy {
         }
     }
 
-    applyMovement(state) {
+    applyMovement(state, game) {
         if (this.confused > 0) {
             this.confused--;
             this.color = '#ffffff'; 
@@ -78,7 +76,6 @@ export class Enemy {
                 this.vy = (nearest.y - this.y) / Math.max(minDist, 0.001) * this.speed * 1.5;
             }
         } else {
-            // Tint them sickly green if they are currently melting from acid
             if (this.acidTime > 0 && this.flashTime <= 0) {
                 this.color = '#55ff55';
             } else {
@@ -86,13 +83,16 @@ export class Enemy {
             }
         }
 
-        // Modifier applies Ink slowness
+        if (Math.random() < 0.001 && game && game.audioEngine) {
+            game.audioEngine.playSFX('enemy_ambient', 0.2);
+        }
+
         this.x += (this.vx || 0) * this.speedModifier;
         this.y += (this.vy || 0) * this.speedModifier;
         if (this.flashTime > 0) this.flashTime--;
     }
 
     update(state, game) {
-        this.applyMovement(state);
+        this.applyMovement(state, game);
     }
 }

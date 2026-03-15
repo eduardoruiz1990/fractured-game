@@ -2,8 +2,8 @@ import { Enemy } from './Enemy.js';
 
 export class Boss extends Enemy {
     constructor() {
-        super('BOSS', 30, '#b87333');
-        this.pulseState = 'hunting'; // hunting, charging, pulsing
+        super('BOSS', 30, '#b87333', 'boss_hurt'); 
+        this.pulseState = 'hunting'; 
         this.pulseTimer = 0;
         this.pulseRadius = 0;
         this.maxPulseRadius = 150;
@@ -12,7 +12,7 @@ export class Boss extends Enemy {
     init(id, x, y) {
         this.phase = 0;
         this.pulseState = 'hunting';
-        this.pulseTimer = 180; // Initial delay before first pulse chance
+        this.pulseTimer = 180; 
         return this.initBase(id, x, y, 800, 0.8);
     }
 
@@ -21,22 +21,19 @@ export class Boss extends Enemy {
         let distToTarget = Math.max(Math.hypot(state.player.x - this.x, state.player.y - this.y), 0.001);
         
         if (this.pulseState === 'charging') {
-            // Stop moving, charge the pulse
             this.vx = 0;
             this.vy = 0;
             this.pulseTimer--;
             
-            // Pulse radius telegraph grows
             this.pulseRadius = this.maxPulseRadius * (1 - (this.pulseTimer / 60));
 
             if (this.pulseTimer <= 0) {
                 this.pulseState = 'pulsing';
-                this.pulseTimer = 15; // Brief actual detonation
-                if (game.audioEngine) game.audioEngine.playSFX('death', 0.8); // Boom sound
+                this.pulseTimer = 15; 
+                if (game.audioEngine) game.audioEngine.playSFX('boss_intro', 0.8); 
                 
-                // Apply Damage if in radius
                 if (distToTarget <= this.maxPulseRadius && (!state.player.dash || !state.player.dash.active)) {
-                     game.takeDamage(this.damage * 1.5); // Heavy damage
+                     game.takeDamage(this.damage * 1.5); 
                 }
             }
         } else if (this.pulseState === 'pulsing') {
@@ -45,11 +42,10 @@ export class Boss extends Enemy {
              this.pulseTimer--;
              if (this.pulseTimer <= 0) {
                  this.pulseState = 'hunting';
-                 this.pulseTimer = 180 + Math.random() * 120; // 3-5 seconds between pulses
+                 this.pulseTimer = 180 + Math.random() * 120; 
                  this.pulseRadius = 0;
              }
         } else {
-            // Normal Hunting
             if (state.sanity <= 0) {
                 this.speed = this.baseSpeed * 0.3; 
             } else {
@@ -59,11 +55,10 @@ export class Boss extends Enemy {
             this.vx = (state.player.x - this.x) / distToTarget * this.speed;
             this.vy = (state.player.y - this.y) / distToTarget * this.speed;
 
-            // Try to trigger pulse
             this.pulseTimer--;
             if (this.pulseTimer <= 0 && distToTarget < this.maxPulseRadius * 1.5) {
                 this.pulseState = 'charging';
-                this.pulseTimer = 60; // 1 second charge up
+                this.pulseTimer = 60; 
             }
 
             if (distToTarget < 40) { 
@@ -75,6 +70,6 @@ export class Boss extends Enemy {
             }
         }
 
-        this.applyMovement(state);
+        this.applyMovement(state, game);
     }
 }
