@@ -367,7 +367,7 @@ export class Game {
             this.state.sanity = Math.min(this.state.player.maxHp, this.state.sanity + (this.state.player.maxHp * 0.10));
         }
         
-        if (this.audioEngine) this.audioEngine.playSFX('damage');
+        if (this.audioEngine) this.audioEngine.playSFX('player_hurt');
         try { if (navigator.vibrate) navigator.vibrate(100); } catch(e){}
         
         this.spawnDamageText(this.state.player.x, this.state.player.y, `-${Math.floor(amount)}`, '#ff0000', 1.5, 1.5);

@@ -38,8 +38,10 @@ export class Director {
         if (state.frame > 1800 && state.frame % 600 === 0) this.spawnEntity('PARASITE', canvasWidth, canvasHeight); 
 
         if (state.convergence >= state.maxConvergence && !state.bossSpawned) {
-            // --- EPIC 7: BOSS INTRO AUDIO STINGER TRIGGER ---
-            if (this.game.audioEngine) this.game.audioEngine.playSFX('boss_intro', 1.0);
+            // BUGFIX: Boss spawn audio trigger
+            if (this.game.audioEngine) {
+                this.game.audioEngine.playSFX('boss_intro', 1.0);
+            }
             
             if (state.floor % 2 === 0) {
                 this.spawnEntity('RORSCHACH', canvasWidth, canvasHeight);

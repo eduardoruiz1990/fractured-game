@@ -1341,6 +1341,7 @@ export class Renderer {
         const titleText = bossType === 'RORSCHACH' ? "THE RORSCHACH" : "THE SPHERE HEAD";
         const subText = bossType === 'RORSCHACH' ? "The Mind Divided" : "Apex Predator of the Wastes";
         
+        // BUGFIX: Standard 'Courier New' safely avoids Canvas Parsing Crashes
         this.ctx.font = "900 110px 'Courier New', Courier, monospace";
         this.ctx.fillStyle = '#ffffff';
         this.ctx.shadowColor = 'var(--ui-red)';

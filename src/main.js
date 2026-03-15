@@ -20,7 +20,7 @@ window.addEventListener('resize', resize);
 resize();
 
 let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager;
-let gameState = 'TITLE'; // Boot into the Title screen
+let gameState = 'TITLE'; 
 
 function initEngine() {
     saveManager = new SaveManager();
@@ -37,7 +37,7 @@ function initEngine() {
         game.state.player.x = canvas.width / 2;
         game.state.player.y = canvas.height / 2;
         
-        if (audioEngine) audioEngine.stopMenuTheme(); // Transition from menu theme to game drone
+        if (audioEngine) audioEngine.stopMenuTheme(); 
         
         gameState = 'PLAYING';
         const resumeBtn = document.getElementById('btn-resume-run');
@@ -111,7 +111,8 @@ function initEngine() {
         document.getElementById('ui-layer').style.display = 'none';
         document.getElementById('clinical-folder-menu').style.display = 'flex';
         uiManager.updateMenuUI();
-        if (audioEngine) audioEngine.playMenuTheme(); // Restart menu theme
+        
+        if (audioEngine) audioEngine.playMenuTheme(); 
         gameState = 'MENU';
     });
 
@@ -133,7 +134,7 @@ function initEngine() {
         
         const recovered = Math.floor(game.state.lucidity * 0.5);
         saveManager.addLucidity(recovered);
-        audioEngine.stop(); // Kill all sounds on death
+        audioEngine.stop(); 
 
         document.getElementById('final-stats').innerHTML = `
             Died on <strong>Floor ${game.state.floor}</strong>.<br><br>

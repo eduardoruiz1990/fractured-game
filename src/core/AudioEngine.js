@@ -40,7 +40,8 @@ export class AudioEngine {
             boss_intro: "/sounds/boss_intro.mp3", 
             ui_hover: "/sounds/ui_hover.mp3",   
             ui_click: "/sounds/ui_click.mp3",   
-            ui_upgrade: "/sounds/ui_upgrade.mp3"  
+            ui_upgrade: "/sounds/ui_upgrade.mp3", // Dark liquid healing (Amnesia Laudanum style)
+            player_hurt: "/sounds/player_hurt.mp3" // NEW: Player taking damage
         };
 
         // Procedural Fallback states
@@ -344,16 +345,39 @@ export class AudioEngine {
             osc.start(now); osc.stop(now + 0.05);
         }
         else if (key === 'ui_upgrade') {
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(400, now);
-            osc.frequency.setValueAtTime(600, now + 0.1);
-            osc.frequency.setValueAtTime(1200, now + 0.2);
+            // Dark liquid healing (Amnesia Laudanum style)
+            // 1. The glassy/liquid swish
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(600, now);
+            osc.frequency.exponentialRampToValueAtTime(200, now + 0.2);
             gain.gain.setValueAtTime(0.2 * volumeMult, now);
-            gain.gain.linearRampToValueAtTime(0.001, now + 0.4);
-            osc.start(now); osc.stop(now + 0.4);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            osc.start(now); osc.stop(now + 0.2);
+
+            // 2. The deep visceral gulp
+            let gulpOsc = this.audioCtx.createOscillator();
+            let gulpGain = this.audioCtx.createGain();
+            gulpOsc.type = 'sine';
+            gulpOsc.frequency.setValueAtTime(150, now);
+            gulpOsc.frequency.exponentialRampToValueAtTime(40, now + 0.4);
+            gulpGain.gain.setValueAtTime(0, now);
+            gulpGain.gain.linearRampToValueAtTime(0.5 * volumeMult, now + 0.1);
+            gulpGain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+            gulpOsc.connect(gulpGain).connect(this.masterGain);
+            gulpOsc.start(now); gulpOsc.stop(now + 0.6);
+            
+            // 3. Eerie relieving hum
+            let humOsc = this.audioCtx.createOscillator();
+            let humGain = this.audioCtx.createGain();
+            humOsc.type = 'sine';
+            humOsc.frequency.setValueAtTime(80, now + 0.1);
+            humGain.gain.setValueAtTime(0, now);
+            humGain.gain.linearRampToValueAtTime(0.3 * volumeMult, now + 0.3);
+            humGain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
+            humOsc.connect(humGain).connect(this.masterGain);
+            humOsc.start(now); humOsc.stop(now + 1.2);
         }
         else if (key === 'polaroid') {
-            // Mechanical Shutter Click
             osc.type = 'square';
             osc.frequency.setValueAtTime(1000, now);
             osc.frequency.exponentialRampToValueAtTime(100, now + 0.05);
@@ -361,7 +385,6 @@ export class AudioEngine {
             gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
             osc.start(now); osc.stop(now + 0.05);
 
-            // High-Pitched Capacitor Whine
             let whineOsc = this.audioCtx.createOscillator();
             let whineGain = this.audioCtx.createGain();
             whineOsc.type = 'sine';
@@ -403,7 +426,6 @@ export class AudioEngine {
             osc.start(now); osc.stop(now + 0.2);
         }
         else if (key === 'boss_intro') {
-            // Massive Cinematic Braaam
             osc.type = 'sawtooth';
             osc.frequency.setValueAtTime(100, now);
             osc.frequency.exponentialRampToValueAtTime(30, now + 1.0);
@@ -421,7 +443,6 @@ export class AudioEngine {
             osc.start(now); osc.stop(now + 2.0);
         }
         else if (key === 'heartbeat') {
-            // Fallback heartbeat logic
             osc.type = 'sine';
             osc.frequency.value = 50;
             gain.gain.setValueAtTime(0, now);
@@ -447,7 +468,7 @@ export class AudioEngine {
             gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
             osc.start(now); osc.stop(now + 0.1);
         }
-        else if (key === 'damage') {
+        else if (key === 'player_hurt' || key === 'damage') {
             osc.type = 'square';
             osc.frequency.setValueAtTime(300, now);
             osc.frequency.exponentialRampToValueAtTime(50, now + 0.4);
