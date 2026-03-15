@@ -32,7 +32,7 @@ export class UIManager {
         this.btnUpgHp = document.getElementById('btn-upg-hp');
         this.btnUpgSpeed = document.getElementById('btn-upg-speed');
         this.btnUpgLight = document.getElementById('btn-upg-light');
-        this.btnWipeSave = document.getElementById('btn-wipe-save'); // NEW: Wipe Save button
+        this.btnWipeSave = document.getElementById('btn-wipe-save'); 
 
         this.inventoryGrid = document.getElementById('inventory-grid');
         this.detailName = document.getElementById('detail-name');
@@ -41,6 +41,33 @@ export class UIManager {
         this.btnEquipItem = document.getElementById('btn-equip-item');
         this.btnUnequipItem = document.getElementById('btn-unequip-item');
         this.btnUpgradeItem = document.getElementById('btn-upgrade-item');
+
+        // EPIC 3: XP Toast Elements
+        this.xpToast = document.getElementById('xp-toast');
+        this.toastLevel = document.getElementById('toast-level-display');
+        this.toastBar = document.getElementById('toast-xp-bar');
+        this.toastText = document.getElementById('toast-xp-text');
+        this.toastTimer = null;
+    }
+
+    // --- NEW: Display the sliding XP notification ---
+    showXPToast() {
+        if (!this.xpToast) return;
+        
+        const levelInfo = this.saveManager.getPatientLevelInfo();
+        
+        this.toastLevel.innerText = `PATIENT LEVEL ${levelInfo.level}`;
+        this.toastBar.style.width = `${levelInfo.progressPercent}%`;
+        this.toastText.innerText = `${levelInfo.currentXP} / ${levelInfo.nextXP} L Spent`;
+
+        // Slide the toast down
+        this.xpToast.style.top = '20px'; 
+
+        // Reset the hide timer every time they click
+        if (this.toastTimer) clearTimeout(this.toastTimer);
+        this.toastTimer = setTimeout(() => {
+            this.xpToast.style.top = '-100px'; 
+        }, 2500);
     }
 
     attachEvents() {
@@ -62,7 +89,6 @@ export class UIManager {
             this.updateMenuUI();
         });
 
-        // --- NEW: WIPE SAVE EVENT ---
         if (this.btnWipeSave) {
             this.btnWipeSave.addEventListener('click', () => {
                 const isConfirmed = confirm("WARNING: This will completely erase your clinical file, destroying all tokens, upgrades, and banked lucidity. Do you wish to proceed?");
@@ -108,6 +134,8 @@ export class UIManager {
             if (this.selectedInventoryItem) {
                 if (this.saveManager.upgradeToken(this.selectedInventoryItem)) {
                     this.updateMenuUI(); 
+                    this.showXPToast(); // POP UP THE TOAST
+                    
                     const invItem = this.saveManager.metaState.inventory.find(i => i.uid === this.selectedInventoryItem);
                     const tokenData = TOKENS[invItem.id];
                     this.selectInventoryItem(invItem, tokenData);
@@ -117,22 +145,37 @@ export class UIManager {
         });
 
         this.btnUpgHp.addEventListener('click', () => {
-            if (this.saveManager.buyUpgrade('hp', 50)) this.updateMenuUI();
+            if (this.saveManager.buyUpgrade('hp', 50)) {
+                this.updateMenuUI();
+                this.showXPToast(); // POP UP THE TOAST
+            }
         });
         this.btnUpgSpeed.addEventListener('click', () => {
-            if (this.saveManager.buyUpgrade('speed', 75)) this.updateMenuUI();
+            if (this.saveManager.buyUpgrade('speed', 75)) {
+                this.updateMenuUI();
+                this.showXPToast(); // POP UP THE TOAST
+            }
         });
         this.btnUpgLight.addEventListener('click', () => {
-            if (this.saveManager.buyUpgrade('light', 100)) this.updateMenuUI();
+            if (this.saveManager.buyUpgrade('light', 100)) {
+                this.updateMenuUI();
+                this.showXPToast(); // POP UP THE TOAST
+            }
         });
     }
 
     updateMenuUI() {
         const meta = this.saveManager.metaState;
         
-        const patLvl = this.saveManager.getPatientLevel();
+        // Retrieve exponential level data and update the Main Menu HUD
+        const levelInfo = this.saveManager.getPatientLevelInfo();
         const levelDisplay = document.getElementById('patient-level-display');
-        if (levelDisplay) levelDisplay.innerText = `CLINICAL FILE: PATIENT LEVEL ${patLvl}`;
+        const xpBar = document.getElementById('patient-xp-bar');
+        const xpText = document.getElementById('patient-xp-text');
+
+        if (levelDisplay) levelDisplay.innerText = `CLINICAL FILE: PATIENT LEVEL ${levelInfo.level}`;
+        if (xpBar) xpBar.style.width = `${levelInfo.progressPercent}%`;
+        if (xpText) xpText.innerText = `${levelInfo.currentXP} / ${levelInfo.nextXP} L`;
 
         document.getElementById('menu-banked-lucidity').innerText = meta.lucidityBank;
         document.getElementById('tree-lucidity').innerText = meta.lucidityBank;
@@ -147,12 +190,12 @@ export class UIManager {
             const currentLvl = meta.upgrades[stat.id];
             document.getElementById(`upg-${stat.id}-lvl`).innerText = currentLvl;
             
-            // Exponential cost matching SaveManager
+            // Exponential cost math
             const cost = Math.floor(stat.baseCost * Math.pow(1.1, currentLvl));
             stat.element.innerText = `${cost} L`;
             
             const canAfford = meta.lucidityBank >= cost;
-            const isMaxed = currentLvl >= 100; // Increased cap to 100
+            const isMaxed = currentLvl >= 100;
             
             stat.element.disabled = !canAfford || isMaxed;
             if (isMaxed) stat.element.innerText = "MAX";
@@ -219,7 +262,7 @@ export class UIManager {
         
         const rarityData = TOKEN_RARITIES[invItem.rarity];
         const setData = TOKEN_SETS[tokenData.set];
-        const patLvl = this.saveManager.getPatientLevel();
+        const levelInfo = this.saveManager.getPatientLevelInfo();
 
         this.detailName.innerText = `[${invItem.rarity}] ${tokenData.name} (Lv.${invItem.level})`;
         this.detailName.style.color = rarityData.color;
@@ -232,7 +275,7 @@ export class UIManager {
         
         if (rarityData.costToUpgrade) {
             this.btnUpgradeItem.style.display = 'block';
-            if (patLvl >= 10) {
+            if (levelInfo.level >= 10) {
                 this.btnUpgradeItem.innerText = `Upgrade (${rarityData.costToUpgrade} L)`;
                 this.btnUpgradeItem.disabled = this.saveManager.metaState.lucidityBank < rarityData.costToUpgrade;
             } else {

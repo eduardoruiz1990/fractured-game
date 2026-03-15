@@ -50,7 +50,9 @@ export class LevelUpUI {
         if (!game.state.player.curses) game.state.player.curses = [];
         if (!game.state.banished) game.state.banished = []; // Initialize banish array for this run
 
-        const patLvl = this.saveManager ? this.saveManager.getPatientLevel() : 1;
+        // Fetch patient level safely using the new Info object
+        const patLvlInfo = this.saveManager ? this.saveManager.getPatientLevelInfo() : { level: 1 };
+        const patLvl = patLvlInfo.level;
 
         // EPIC 3: Render Reroll Button (Unlocks at Patient Level 3)
         if (this.btnReroll) {

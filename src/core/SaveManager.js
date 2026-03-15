@@ -7,14 +7,13 @@ export class SaveManager {
         this.saveKey = 'fractured_save_v1';
         this.metaState = { 
             lucidityBank: 0, 
-            spentLucidity: 0, // EPIC 3: Track all-time spending for Patient Level
+            spentLucidity: 0, 
             upgrades: { hp: 0, speed: 0, light: 0 },
-            inventory: [], // Array of token objects
+            inventory: [], 
             equippedTokens: { head: null, body: null, hands: null, legs: null } 
         };
         this.loadSave();
         
-        // Give new players a starting token to play with the UI
         if (this.metaState.inventory.length === 0) {
             this.addTokenToInventory('head_paranoia', 'COMMON');
         }
@@ -28,7 +27,7 @@ export class SaveManager {
                 this.metaState = { ...this.metaState, ...parsed };
                 if (!this.metaState.inventory) this.metaState.inventory = [];
                 if (!this.metaState.equippedTokens) this.metaState.equippedTokens = { head: null, body: null, hands: null, legs: null };
-                if (this.metaState.spentLucidity === undefined) this.metaState.spentLucidity = 0; // Legacy save patch
+                if (this.metaState.spentLucidity === undefined) this.metaState.spentLucidity = 0; 
             }
         } catch(e) { 
             console.warn("Local storage disabled or blocked."); 
@@ -43,30 +42,44 @@ export class SaveManager {
         }
     }
     
-    // --- NEW: HARD RESET ---
     wipeSave() {
         try {
             localStorage.removeItem(this.saveKey);
-            location.reload(); // Force page refresh to instantly reset the engine
+            location.reload(); 
         } catch(e) {
             console.warn("Could not wipe local storage.");
         }
     }
 
     // --- EPIC 3: GLOBAL PROGRESSION ---
-    getPatientLevel() {
-        // Gain 1 Level for every 500 Lucidity spent!
-        return 1 + Math.floor(this.metaState.spentLucidity / 500);
+    getPatientLevelInfo() {
+        let xp = this.metaState.spentLucidity || 0;
+        let level = 1;
+        let xpForNext = 1000; // Base requirement heavily increased
+        let xpForCurrentLevelStart = 0;
+
+        // Stricter exponential scaling: 1.8x each level (80% more per level)
+        while (xp >= xpForCurrentLevelStart + xpForNext) {
+            xpForCurrentLevelStart += xpForNext;
+            level++;
+            xpForNext = Math.floor(xpForNext * 1.8);
+        }
+
+        let currentLevelXP = xp - xpForCurrentLevelStart;
+        return {
+            level: level,
+            currentXP: currentLevelXP,
+            nextXP: xpForNext,
+            progressPercent: (currentLevelXP / xpForNext) * 100
+        };
     }
 
     buyUpgrade(stat, baseCost) {
-        // Exponential cost: baseCost * (1.1 ^ currentLevel)
         const cost = Math.floor(baseCost * Math.pow(1.1, this.metaState.upgrades[stat]));
         
-        // Increased max level cap from 50 to 100
         if (this.metaState.lucidityBank >= cost && this.metaState.upgrades[stat] < 100) {
             this.metaState.lucidityBank -= cost;
-            this.metaState.spentLucidity += cost; // Progress global level!
+            this.metaState.spentLucidity += cost; 
             this.metaState.upgrades[stat]++;
             this.saveGame();
             return true;
@@ -115,9 +128,8 @@ export class SaveManager {
         if (!rarityData || !rarityData.costToUpgrade || this.metaState.lucidityBank < rarityData.costToUpgrade) return false;
 
         this.metaState.lucidityBank -= rarityData.costToUpgrade;
-        this.metaState.spentLucidity += rarityData.costToUpgrade; // Massive bump to Patient Level
+        this.metaState.spentLucidity += rarityData.costToUpgrade; 
 
-        // Promote Rarity
         if (item.rarity === 'COMMON') item.rarity = 'RARE';
         else if (item.rarity === 'RARE') item.rarity = 'EPIC';
         else if (item.rarity === 'EPIC') item.rarity = 'ANOMALOUS';
