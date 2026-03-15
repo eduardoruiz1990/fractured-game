@@ -17,7 +17,7 @@ body, html {
 }
 
 * {
-    box-sizing: border-box; /* Global box-sizing constraint to prevent HUD overflows */
+    box-sizing: border-box; 
 }
 
 #game-container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
@@ -31,17 +31,17 @@ canvas { display: block; image-rendering: pixelated; }
     pointer-events: none; z-index: 100; opacity: 0.8;
 }
 
-/* Full Screen Menus */
+/* Full Screen Menus - Base */
 .fullscreen-menu {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(5, 5, 5, 0.85);
     display: flex; flex-direction: column; justify-content: center; align-items: center;
-    z-index: 200; backdrop-filter: blur(8px);
+    z-index: 200; 
 }
 
-#title-screen { display: flex; } /* Shown by default now */
-#clinical-folder-menu { display: none; } 
-#pause-menu { display: none; z-index: 300; }
+/* --- EPIC 6: DYNAMIC BACKGROUND TRANSPARENCIES --- */
+#title-screen { display: flex; background: rgba(5, 5, 5, 0.3); backdrop-filter: none; } 
+#clinical-folder-menu { display: none; background: rgba(5, 5, 5, 0.7); backdrop-filter: blur(2px); } 
+#pause-menu { display: none; z-index: 300; background: rgba(5, 5, 5, 0.85); backdrop-filter: blur(8px); }
 #death-screen { display: none; z-index: 1000; background: rgba(10, 0, 0, 0.95); }
 
 /* --- EPIC 6: THE MEDICAL FILE AESTHETIC --- */
@@ -93,7 +93,7 @@ canvas { display: block; image-rendering: pixelated; }
 .xp-bar-wrapper { 
     width: 100%; max-width: 500px; height: 15px; 
     border: 2px solid var(--ink-black); background: rgba(0,0,0,0.1); 
-    margin: 0 auto 5px auto; /* FIXED: Enforces centering */
+    margin: 0 auto 5px auto; 
 }
 .xp-bar-fill { height: 100%; width: 0%; background: var(--ink-black); transition: width 0.3s ease-out; }
 .medical-toast { position: absolute; top: -150px; left: 50%; transform: translateX(-50%); transition: top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 9999; background: var(--paper-bg); padding: 15px 30px; border: 3px solid var(--ink-black); text-align: center; border-radius: 2px; box-shadow: 10px 10px 30px rgba(0,0,0,0.8); pointer-events: none; color: var(--ink-black); }
@@ -145,7 +145,6 @@ canvas { display: block; image-rendering: pixelated; }
 }
 
 .hud-top { 
-    /* FIXED: Ensures proper scaling inside the UI layer */
     padding: 10px 20px; display: flex; justify-content: space-between; align-items: flex-start; 
     width: 100%; box-sizing: border-box; flex-wrap: wrap; gap: 15px;
 }
@@ -221,6 +220,25 @@ canvas { display: block; image-rendering: pixelated; }
 }
 
 .title-glitch { animation: glitch 2s infinite alternate; text-align: center; }
+
+/* --- NEW: MASSIVE AGGRESSIVE TITLE TEXT --- */
+#title-screen .title-glitch {
+    font-size: clamp(6rem, 15vw, 15rem) !important;
+    letter-spacing: 15px;
+    text-shadow: 10px 0 var(--ui-red), -10px 0 var(--ui-gold);
+    animation: aggressive-glitch 1.5s infinite alternate;
+    margin-bottom: 2vh !important;
+    line-height: 1;
+}
+
+@keyframes aggressive-glitch {
+    0% { text-shadow: 6px 0 0 #fff, -6px 0 0 #000; transform: skewX(0deg); }
+    20% { text-shadow: -8px 0 0 var(--ui-red), 8px 0 0 var(--ui-gold); transform: skewX(3deg); }
+    40% { text-shadow: 6px 0 0 #fff, -6px 0 0 var(--ui-red); transform: skewX(-3deg); }
+    60% { text-shadow: -12px 3px 0 var(--ui-gold), 12px -3px 0 #000; transform: skewX(5deg); }
+    80% { text-shadow: 4px 0 0 var(--ui-red), -4px 0 0 #fff; transform: skewX(-2deg); }
+    100% { text-shadow: -6px 0 0 var(--ui-gold), 6px 0 0 #000; transform: skewX(0deg); }
+}
 
 #glitch-overlay {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;

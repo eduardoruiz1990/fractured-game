@@ -167,7 +167,8 @@ function initEngine() {
 function gameLoop(time) {
     try {
         if (gameState === 'MENU' || gameState === 'TITLE') {
-            renderer.drawMenuBackground(time);
+            // FIX: Now securely passes the gameState to the renderer!
+            renderer.drawMenuBackground(time, gameState);
         } 
         else if (gameState === 'PLAYING' || gameState === 'LEVEL_UP' || gameState === 'PAUSED' || gameState === 'EXIT_REACHED') {
             

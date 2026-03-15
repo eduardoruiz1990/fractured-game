@@ -1,6 +1,6 @@
 // src/core/Renderer.js
 // Handles HTML5 Canvas Drawing, Procedural Lighting Masks, and VFX
-// COMPLETELY REFACTORED: Safe modular functions to prevent truncation errors!
+// FULLY RESTORED: All rendering layers, boss intros, and player avatars included.
 
 export class Renderer {
     constructor(canvas, ctx) {
@@ -24,6 +24,18 @@ export class Renderer {
         this.hasAnnouncedBoss = false;
         
         this.renderFrame = 0;
+
+        // Storm Particle Arrays
+        this.rain = [];
+        for(let i = 0; i < 150; i++) {
+            this.rain.push({
+                x: Math.random() * 3000,
+                y: Math.random() * 2000,
+                l: Math.random() * 25 + 10,
+                v: Math.random() * 20 + 20
+            });
+        }
+        this.lightningFlash = 0;
     }
 
     generateFloorPattern() {
@@ -85,10 +97,101 @@ export class Renderer {
         return clouds;
     }
 
-    drawMenuBackground(time) {
+    // --- EPIC 6: DYNAMIC MENU BACKGROUNDS ---
+    drawMenuBackground(time, gameState) {
         this.ctx.fillStyle = `rgba(139, 0, 0, ${0.05 + Math.sin(time * 0.001) * 0.02})`;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        if (gameState === 'TITLE') {
+            this.drawTitleSilhouettes(time);
+        } else if (gameState === 'MENU') {
+            this.drawMenuStorm(time);
+        }
+
         this.drawFilmGrain();
+    }
+
+    drawTitleSilhouettes(time) {
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        
+        this.ctx.save();
+        
+        // 1. Massive slow rotating Sphere Head on the right
+        this.ctx.save();
+        this.ctx.translate(cx + this.canvas.width * 0.3, cy);
+        this.ctx.scale(25, 25); 
+        this.ctx.globalAlpha = 0.08 + Math.sin(time * 0.0005) * 0.03;
+        this.ctx.rotate(time * 0.0001);
+        
+        this.ctx.fillStyle = '#000';
+        this.ctx.beginPath();
+        for (let i = 0; i < 16; i++) {
+            let angle = (i / 16) * Math.PI * 2;
+            let reach = 35 + Math.sin(time * 0.001 + i * 2) * 15;
+            if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
+            else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
+        }
+        this.ctx.fill();
+        this.ctx.restore();
+
+        // 2. Pulsing Rorschach on the left
+        this.ctx.save();
+        this.ctx.translate(cx - this.canvas.width * 0.3, cy + 100);
+        this.ctx.scale(30, 30); 
+        this.ctx.globalAlpha = 0.06 + Math.cos(time * 0.0004) * 0.03;
+        
+        let pulse = Math.sin(time * 0.002) * 5;
+        this.ctx.fillStyle = '#000';
+        for (let mirror = -1; mirror <= 1; mirror += 2) {
+            this.ctx.save();
+            this.ctx.scale(mirror, 1);
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, -30);
+            this.ctx.bezierCurveTo(20, -30, 30 + pulse, -15, 25, 0);
+            this.ctx.bezierCurveTo(40, 15, 20, 30, 0, 30 + pulse);
+            this.ctx.fill();
+            this.ctx.restore();
+        }
+        this.ctx.restore();
+
+        this.ctx.restore();
+    }
+
+    drawMenuStorm(time) {
+        this.ctx.save();
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        if (Math.random() < 0.01) { 
+            this.lightningFlash = 1.0;
+        }
+        
+        if (this.lightningFlash > 0) {
+            this.ctx.fillStyle = `rgba(200, 220, 255, ${this.lightningFlash * 0.15})`;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.lightningFlash -= 0.05;
+        }
+
+        this.ctx.strokeStyle = 'rgba(150, 180, 200, 0.1)';
+        this.ctx.lineWidth = 1.5;
+        this.ctx.lineCap = 'round';
+        this.ctx.beginPath();
+        for (let i = 0; i < this.rain.length; i++) {
+            let p = this.rain[i];
+            this.ctx.moveTo(p.x, p.y);
+            this.ctx.lineTo(p.x - p.l * 0.2, p.y + p.l);
+            
+            p.y += p.v;
+            p.x -= p.v * 0.2; 
+            
+            if (p.y > this.canvas.height + 100) {
+                p.y = -50;
+                p.x = Math.random() * (this.canvas.width + 500);
+            }
+        }
+        this.ctx.stroke();
+        this.ctx.restore();
     }
 
     drawFilmGrain() {
@@ -493,7 +596,6 @@ export class Renderer {
         let innerVig = (this.canvas.height / 4) * sanityRatio; 
         let outerVig = (this.canvas.height) * (0.2 + sanityRatio * 0.8); 
         
-        // Base Vignette
         const vig = this.ctx.createRadialGradient(
             this.canvas.width/2, this.canvas.height/2, innerVig,
             this.canvas.width/2, this.canvas.height/2, outerVig
@@ -503,13 +605,11 @@ export class Renderer {
         this.ctx.fillStyle = vig;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // --- EPIC 6: Broken CRT effect when Sanity is dangerously low ---
         if (sanityRatio < 0.4) {
             this.ctx.strokeStyle = `rgba(255,255,255,${0.1 + (0.4 - sanityRatio)})`;
             this.ctx.lineWidth = 1;
             this.ctx.beginPath();
             
-            // Draw a few jagged "cracks" originating from the corners
             for (let i = 0; i < 3; i++) {
                 let startX = i === 0 ? 0 : (i === 1 ? this.canvas.width : Math.random() * this.canvas.width);
                 let startY = i === 2 ? 0 : (Math.random() * this.canvas.height);
@@ -529,7 +629,6 @@ export class Renderer {
     }
 
     drawWorldItems(state) {
-        // 1. Draw Floor
         this.ctx.save();
         this.ctx.fillStyle = this.ctx.createPattern(this.floorPattern, 'repeat');
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -544,7 +643,6 @@ export class Renderer {
         this.ctx.strokeRect(12, 12, this.canvas.width - 24, this.canvas.height - 24);
         this.ctx.restore();
         
-        // 2. Draw Safe Zones
         if (state.safeZones) {
             state.safeZones.forEach(sz => {
                 this.ctx.save();
@@ -567,7 +665,6 @@ export class Renderer {
             });
         }
 
-        // 3. Draw Base Interactables
         if (state.interactables) {
             state.interactables.forEach(obj => {
                 this.ctx.save();
@@ -661,7 +758,6 @@ export class Renderer {
             });
         }
 
-        // 4. Draw Ink Puddles
         if (state.inkPuddles) {
             state.inkPuddles.forEach(p => {
                 const lifeRatio = p.life / 300;
@@ -700,7 +796,6 @@ export class Renderer {
             });
         }
 
-        // 5. Draw XP
         if (state.xpDrops) {
             state.xpDrops.forEach(xp => {
                 this.ctx.save();
@@ -729,7 +824,6 @@ export class Renderer {
             });
         }
 
-        // 6. Draw Entities
         if (state.entities) {
             state.entities.forEach(ent => {
                 let isFlashed = ent.flashTime > 0;
@@ -746,7 +840,6 @@ export class Renderer {
                 this.ctx.translate(twitch, twitch);
                 
                 if (ent.type === 'RORSCHACH') {
-                    // Render Rorschach Laser Telegraph
                     if (ent.shootState === 'telegraphing') {
                         this.ctx.save();
                         this.ctx.rotate(ent.shootAngle);
@@ -1038,7 +1131,6 @@ export class Renderer {
                     }
                 }
 
-                // Entity Healthbars (Hidden for Bosses because it's in the HUD now)
                 if (ent.hp < ent.maxHp && ent.flashTime <= 0 && ent.type !== 'BOSS' && ent.type !== 'RORSCHACH') {
                     let barW = 24;
                     let yOffset = 20;
@@ -1054,7 +1146,6 @@ export class Renderer {
             });
         }
 
-        // 7. Draw Particles
         if (state.particles) {
             state.particles.forEach(p => { 
                 this.ctx.fillStyle = p.color; 
@@ -1089,7 +1180,6 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    // --- EPIC 6: MASSIVE BOSS INTRO OVERHAUL ---
     drawBossAnnouncement(state) {
         this.ctx.save();
         
@@ -1109,11 +1199,9 @@ export class Renderer {
         this.ctx.globalAlpha = alpha;
         this.ctx.translate(cx, cy);
 
-        // Deep red/black cinematic letterbox banner
         this.ctx.fillStyle = 'rgba(10, 0, 0, 0.95)';
-        this.ctx.fillRect(-this.canvas.width/2, -300, this.canvas.width, 600); // Taller
+        this.ctx.fillRect(-this.canvas.width/2, -300, this.canvas.width, 600); 
         
-        // Intense Screen Tearing Glitch effect
         if (this.renderFrame % 3 === 0) {
             this.ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
             for (let i=0; i<15; i++) {
@@ -1129,8 +1217,8 @@ export class Renderer {
         this.ctx.stroke();
 
         this.ctx.save();
-        this.ctx.translate(-400, 0); // Move portrait far to the left
-        this.ctx.scale(5.5, 5.5); // MASSIVE Portrait Scale
+        this.ctx.translate(-400, 0); 
+        this.ctx.scale(5.5, 5.5); 
         
         const simulatedPhase = this.renderFrame * 0.05;
         this.ctx.rotate(Math.sin(simulatedPhase * 0.5) * 0.1); 
@@ -1154,7 +1242,6 @@ export class Renderer {
                 this.ctx.beginPath();
                 this.ctx.arc(10 + Math.sin(simulatedPhase)*2, 5, 2, 0, Math.PI*2);
                 this.ctx.fill();
-                
                 this.ctx.restore();
             }
             this.ctx.shadowBlur = 0;
@@ -1228,9 +1315,8 @@ export class Renderer {
             }
         }
         
-        this.ctx.restore(); // Restore from portrait scaling
+        this.ctx.restore(); 
 
-        // HUGE Text Rendering
         this.ctx.textAlign = 'left';
         this.ctx.textBaseline = 'middle';
         
