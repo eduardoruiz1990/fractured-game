@@ -126,7 +126,7 @@ export class Combat {
                     let dx = ent.x - state.player.x;
                     let dy = ent.y - state.player.y;
                     let dist = Math.hypot(dx, dy);
-                    let canTakeDamage = !(ent.type === 'BOSS' && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
+                    let canTakeDamage = !( (ent.type === 'BOSS' || ent.type === 'PANOPTICON') && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
                     if (canTakeDamage && dist < camera.radius) {
                         let angle = Math.atan2(dy, dx);
@@ -152,7 +152,7 @@ export class Combat {
             for (let i = state.entities.length - 1; i >= 0; i--) {
                 let ent = state.entities[i];
                 let dist = Math.hypot(ent.x - state.player.x, ent.y - state.player.y);
-                let canTakeDamage = !(ent.type === 'BOSS' && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
+                let canTakeDamage = !( (ent.type === 'BOSS' || ent.type === 'PANOPTICON') && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
                 if (canTakeDamage && dist > spinner.baseRadius - 15 && dist < spinner.baseRadius + 15) {
                      if (state.frame % 15 === 0) { 
@@ -175,7 +175,7 @@ export class Combat {
                 for (let i = state.entities.length - 1; i >= 0; i--) {
                     let ent = state.entities[i];
                     let d = Math.max(Math.hypot(ent.x - state.player.x, ent.y - state.player.y), 0.001);
-                    let canTakeDamage = !(ent.type === 'BOSS' && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
+                    let canTakeDamage = !( (ent.type === 'BOSS' || ent.type === 'PANOPTICON') && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
                     if (canTakeDamage && d <= pipe.radius) {
                         ent.takeDamage(pipe.damage, game);
@@ -281,7 +281,7 @@ export class Combat {
                 }
             }
             
-            let canTakeDamage = !(ent.type === 'BOSS' && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
+            let canTakeDamage = !( (ent.type === 'BOSS' || ent.type === 'PANOPTICON') && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
             if (canTakeDamage) {
                 
@@ -348,24 +348,22 @@ export class Combat {
                     continue; 
                 }
 
-                if (ent.type === 'BOSS' || (ent.type === 'RORSCHACH' && ent.generation === 3)) {
+                if (ent.type === 'BOSS' || (ent.type === 'RORSCHACH' && ent.generation === 3) || ent.type === 'PANOPTICON') {
                     game.spawnXP(ent.x, ent.y, ent.type === 'BOSS' ? 25 : 10, true); 
                     game.spawnParticles(ent.x, ent.y, ent.color || '#000', 100);
                     
-                    // FIX: Eject the token drop randomly away from the center so it doesn't overlap the elevator!
                     const dropAngle = Math.random() * Math.PI * 2;
-                    const dropDist = 120 + Math.random() * 30; // Min 120px push to easily clear the 40px elevator radius
+                    const dropDist = 120 + Math.random() * 30; 
                     const tokenX = ent.x + Math.cos(dropAngle) * dropDist;
                     const tokenY = ent.y + Math.sin(dropAngle) * dropDist;
                     game.spawnTokenDrop(tokenX, tokenY);
                     
-                    const otherBosses = state.entities.filter(e => (e.type === 'BOSS' || e.type === 'RORSCHACH') && e.id !== ent.id);
+                    const otherBosses = state.entities.filter(e => (e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON') && e.id !== ent.id);
                     
                     if (otherBosses.length === 0) {
                         state.cameraShake = 50;
                         if (game.audioEngine) game.audioEngine.playSFX('death', 1.5);
                         
-                        // Elevator still spawns dead center
                         state.interactables.push({
                              id: Math.random(),
                              type: 'EXIT_ELEVATOR',

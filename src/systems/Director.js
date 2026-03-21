@@ -4,6 +4,7 @@ import { Predator } from '../entities/Predator.js';
 import { Parasite } from '../entities/Parasite.js';
 import { Boss } from '../entities/Boss.js';
 import { Rorschach } from '../entities/Rorschach.js'; 
+import { Panopticon } from '../entities/Panopticon.js'; 
 
 export class Director {
     constructor(game) {
@@ -15,9 +16,9 @@ export class Director {
             parasite: new ObjectPool(() => new Parasite(), 30),
             boss: new ObjectPool(() => new Boss(), 2),
             rorschach: new ObjectPool(() => new Rorschach(), 15), 
+            panopticon: new ObjectPool(() => new Panopticon(), 2), 
             particle: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '', active: false }), 300),
             xpDrop: new ObjectPool(() => ({ x: 0, y: 0, value: 0, collected: false, active: false }), 300),
-            // NEW: Pool for physical token drops on the ground!
             tokenDrop: new ObjectPool(() => ({ x: 0, y: 0, rarity: '', color: '', collected: false, active: false }), 50),
             damageText: new ObjectPool(() => ({ x: 0, y: 0, text: '', life: 0, color: '', scale: 1, active: false }), 200),
             inkPuddle: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, life: 0, damage: 0, active: false }), 200),
@@ -31,7 +32,7 @@ export class Director {
         const state = this.game.state;
         state.stress = 1.0 + (state.frame / 3600); 
         
-        if (state.bossSpawned && !state.entities.some(e => e.type === 'BOSS' || e.type === 'RORSCHACH')) {
+        if (state.bossSpawned && !state.entities.some(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON')) {
             return; 
         }
         
@@ -45,10 +46,13 @@ export class Director {
                 this.game.audioEngine.playSFX('boss_static', 0.8);
             }
             
-            if (state.floor % 2 === 0) {
+            // --- TIERED BOSS DEPLOYMENT ---
+            if (state.floor === 1) {
+                this.spawnEntity('BOSS', canvasWidth, canvasHeight);
+            } else if (state.floor === 2) {
                 this.spawnEntity('RORSCHACH', canvasWidth, canvasHeight);
             } else {
-                this.spawnEntity('BOSS', canvasWidth, canvasHeight);
+                this.spawnEntity('PANOPTICON', canvasWidth, canvasHeight);
             }
             state.bossSpawned = true;
         }
@@ -56,10 +60,6 @@ export class Director {
 
     spawnEntity(type, canvasWidth, canvasHeight, forceX = null, forceY = null, generation = 1) {
         const state = this.game.state;
-        
-        // --- NEW: RADIAL SPAWNING AROUND PLAYER ---
-        // Instead of spawning at fixed screen coordinates, enemies spawn in the darkness 
-        // just outside the player's view, allowing for infinite void exploration!
         const spawnRadius = Math.max(canvasWidth, canvasHeight) * 0.6 + 100;
         const angle = Math.random() * Math.PI * 2;
         
@@ -77,6 +77,7 @@ export class Director {
         else if (type === 'PARASITE') ent = this.pools.parasite.get().init(Math.random(), x, y);
         else if (type === 'BOSS') ent = this.pools.boss.get().init(Math.random(), x, y);
         else if (type === 'RORSCHACH') ent = this.pools.rorschach.get().init(Math.random(), x, y, generation);
+        else if (type === 'PANOPTICON') ent = this.pools.panopticon.get().init(Math.random(), x, y); 
         
         if (ent) {
             state.entities.push(ent);
@@ -108,7 +109,6 @@ export class Director {
         }
     }
 
-    // NEW: Spawns the physical token into the world
     spawnToken(x, y, rarityData) {
         const state = this.game.state;
         let token = this.pools.tokenDrop.get();
@@ -118,7 +118,6 @@ export class Director {
         token.color = rarityData.color;
         token.collected = false;
         token.active = true;
-        // Make sure tokenDrops array exists on state!
         if (!state.tokenDrops) state.tokenDrops = [];
         state.tokenDrops.push(token);
     }
@@ -201,7 +200,6 @@ export class Director {
             if (sz.life <= 0) { sz.active = false; this.pools.safeZone.release(sz); state.safeZones.splice(i, 1); }
         }
         
-        // NEW: Clean up collected token drops to prevent memory leaks
         if (state.tokenDrops) {
             for (let i = state.tokenDrops.length - 1; i >= 0; i--) {
                 let t = state.tokenDrops[i];
