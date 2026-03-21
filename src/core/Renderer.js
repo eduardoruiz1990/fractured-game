@@ -1,19 +1,13 @@
 // src/core/Renderer.js
 // Handles HTML5 Canvas Drawing, Procedural Lighting Masks, and VFX
-// RESTORED: Stable bounding box logic to ensure high frame rate on your PC.
-
 export class Renderer {
     constructor(canvas, ctx) {
         this.canvas = canvas;
         this.ctx = ctx;
         
         this.noisePattern = this.generateNoisePattern();
-        this.cachedNoisePattern = this.ctx.createPattern(this.noisePattern, 'repeat');
-        
         this.fogClouds = this.generateFogClouds();
-        
         this.floorPattern = this.generateFloorPattern();
-        this.cachedFloorPattern = this.ctx.createPattern(this.floorPattern, 'repeat');
         
         this.lightCanvas = document.createElement('canvas');
         this.lightCtx = this.lightCanvas.getContext('2d');
@@ -198,7 +192,7 @@ export class Renderer {
         this.ctx.save();
         const offsetX = (Math.random() * 128) | 0;
         const offsetY = (Math.random() * 128) | 0;
-        this.ctx.fillStyle = this.cachedNoisePattern; 
+        this.ctx.fillStyle = this.ctx.createPattern(this.noisePattern, 'repeat');
         this.ctx.translate(-offsetX, -offsetY);
         this.ctx.fillRect(0, 0, this.canvas.width + 128, this.canvas.height + 128);
         this.ctx.restore();
@@ -403,8 +397,8 @@ export class Renderer {
         }
 
         this.ctx.globalCompositeOperation = 'screen';
-        
-        // --- NEW: THE PANOPTICON LASER SWEEP RENDERING ---
+
+        // THE PANOPTICON LASER SWEEP
         if (state.entities) {
             state.entities.forEach(ent => {
                 if (ent.type === 'PANOPTICON') {
@@ -424,8 +418,8 @@ export class Renderer {
                         } else if (ent.gazeState === 'sweeping') {
                             let pulse = Math.sin(this.renderFrame * 0.5) * 0.2;
                             let grad = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 2000);
-                            grad.addColorStop(0, `rgba(255, 0, 0, ${0.6 + pulse})`);
-                            grad.addColorStop(0.2, `rgba(255, 50, 0, ${0.4 + pulse})`);
+                            grad.addColorStop(0, `rgba(255, 0, 0, ${0.8 + pulse})`);
+                            grad.addColorStop(0.1, `rgba(255, 50, 0, ${0.5 + pulse})`);
                             grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
                             
                             this.ctx.fillStyle = grad;
@@ -435,10 +429,10 @@ export class Renderer {
                             this.ctx.fill();
                             
                             // Hot white center beam
-                            this.ctx.fillStyle = `rgba(255, 255, 255, ${0.5 + pulse})`;
+                            this.ctx.fillStyle = `rgba(255, 255, 255, ${0.8 + pulse})`;
                             this.ctx.beginPath();
                             this.ctx.moveTo(0, 0);
-                            this.ctx.arc(0, 0, 2000, -ent.gazeWidth*0.1, ent.gazeWidth*0.1);
+                            this.ctx.arc(0, 0, 2000, -ent.gazeWidth*0.05, ent.gazeWidth*0.05);
                             this.ctx.fill();
                         }
                         this.ctx.restore();
@@ -446,24 +440,22 @@ export class Renderer {
                 }
             });
         }
-
-        // --- FIX: VISIBLE PROJECTILES WITH BRIGHT CORE ---
+        
         if (state.projectiles) {
             state.projectiles.forEach(p => {
                 this.ctx.fillStyle = p.color;
                 this.ctx.shadowColor = p.color;
-                this.ctx.shadowBlur = 15;
+                this.ctx.shadowBlur = 10;
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
                 this.ctx.fill();
-                
-                // Solid white core makes them pop even against dark backgrounds
+                this.ctx.shadowBlur = 0;
+
+                // SOLID WHITE CORE SO BULLETS POP
                 this.ctx.fillStyle = '#ffffff';
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, p.radius * 0.4, 0, Math.PI * 2);
                 this.ctx.fill();
-                
-                this.ctx.shadowBlur = 0;
             });
         }
 
@@ -665,26 +657,65 @@ export class Renderer {
             this.ctx.stroke();
         }
 
+        // THE ENCROACHING VOID OVERLAY
+        if (state.inVoid) {
+            this.ctx.fillStyle = `rgba(40, 0, 50, ${0.4 + Math.sin(this.renderFrame * 0.2) * 0.2})`;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+
         this.ctx.restore();
     }
 
     drawWorldItems(state) {
         this.ctx.save();
+        this.ctx.fillStyle = this.ctx.createPattern(this.floorPattern, 'repeat');
         
-        this.ctx.fillStyle = this.cachedFloorPattern; 
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        // REVERTED: Static Arcade Bounds for high performance
-        this.ctx.strokeStyle = '#020202';
-        this.ctx.lineWidth = 25;
-        this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
-
-        this.ctx.strokeStyle = 'rgba(197, 160, 89, 0.4)'; 
-        this.ctx.lineWidth = 3;
-        this.ctx.setLineDash([15, 15]);
-        this.ctx.strokeRect(12, 12, this.canvas.width - 24, this.canvas.height - 24);
-        
+        // INFINITE FLOOR FOR VOID EXPLORATION
+        this.ctx.fillRect(state.player.x - 4000, state.player.y - 4000, 8000, 8000);
         this.ctx.restore();
+
+        // THE REAL-TIME PROCEDURAL ORGANIC VOID BOUNDARY (RESTORED PERFECTLY)
+        if (state.mapOriginX !== null) {
+            this.ctx.save();
+            const mapCenterX = state.mapOriginX;
+            const mapCenterY = state.mapOriginY;
+            const mapRadius = 1600;
+            const phase = state.frame * 0.02;
+
+            this.ctx.fillStyle = '#030105'; 
+            this.ctx.beginPath();
+            
+            // Outer rect (Reverse Winding to create the cutout)
+            this.ctx.rect(mapCenterX - 10000, mapCenterY - 10000, 20000, 20000);
+            
+            // Inner organic cutout (Forward Winding)
+            for (let i = 0; i <= Math.PI * 2 + 0.1; i += 0.05) {
+                let noise = Math.sin(i * 4 + phase) * 80 
+                          + Math.cos(i * 7 - phase * 1.5) * 50
+                          + Math.sin(i * 13 + phase * 0.5) * 30;
+                
+                let r = mapRadius + noise;
+                let vx = mapCenterX + Math.cos(i) * r;
+                let vy = mapCenterY + Math.sin(i) * r;
+                
+                if (i === 0) this.ctx.moveTo(vx, vy);
+                else this.ctx.lineTo(vx, vy);
+            }
+            this.ctx.closePath();
+            
+            // Fill using Even-Odd rule to punch the hole!
+            this.ctx.fill('evenodd');
+            
+            this.ctx.strokeStyle = 'rgba(40, 5, 50, 0.8)';
+            this.ctx.lineWidth = 150;
+            this.ctx.stroke();
+            
+            this.ctx.strokeStyle = 'rgba(80, 10, 80, 0.4)';
+            this.ctx.lineWidth = 50;
+            this.ctx.stroke();
+            
+            this.ctx.restore();
+        }
         
         if (state.safeZones) {
             state.safeZones.forEach(sz => {
@@ -906,8 +937,8 @@ export class Renderer {
                 this.ctx.translate(ent.x, ent.y);
                 
                 const twitch = state.sanity < 20 ? (Math.random()-0.5)*4 : 0;
-                this.ctx.translate(twitch, twitch);
                 
+                // --- THE PANOPTICON RENDERING ---
                 if (ent.type === 'PANOPTICON') {
                     let bob = Math.sin(this.renderFrame * 0.05) * 15;
                     let panicTwitch = (Math.random() - 0.5) * (ent.gazeState === 'charging' ? 8 : 2);
@@ -979,6 +1010,7 @@ export class Renderer {
                     this.ctx.restore();
                 }
                 else if (ent.type === 'RORSCHACH') {
+                    this.ctx.translate(twitch, twitch);
                     if (ent.shootState === 'telegraphing') {
                         this.ctx.save();
                         this.ctx.rotate(ent.shootAngle);

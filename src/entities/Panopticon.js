@@ -6,7 +6,7 @@ export class Panopticon extends Enemy {
         this.gazeState = 'moving';
         this.gazeTimer = 0;
         this.gazeAngle = 0;
-        this.gazeWidth = 0.5; // Narrower, highly lethal beam
+        this.gazeWidth = 0.5; // Lethal beam width
     }
 
     init(id, x, y) {
@@ -59,8 +59,7 @@ export class Panopticon extends Enemy {
             
             if (Math.abs(angleDiff) < this.gazeWidth) {
                 if (!state.player.dash || !state.player.dash.active) {
-                    // FIX: Throttle the damage to tick once every 15 frames!
-                    // This prevents the infinite HitStop stun-lock!
+                    // FIX: Throttle damage to tick once every 15 frames. No Stun-Lock!
                     if (state.frame % 15 === 0) {
                         game.takeDamage(15); 
                         if (game.audioEngine) game.audioEngine.playSFX('player_hurt', 0.4);
@@ -78,7 +77,7 @@ export class Panopticon extends Enemy {
                     let pAngle = (i / 18) * Math.PI * 2;
                     game.director.spawnProjectile(
                         this.x, this.y,
-                        Math.cos(pAngle) * 5, Math.sin(pAngle) * 5, // Slightly slower, dodgeable speeds
+                        Math.cos(pAngle) * 5, Math.sin(pAngle) * 5,
                         12, 30, '#ff0055', 240
                     );
                 }
@@ -95,6 +94,7 @@ export class Panopticon extends Enemy {
             }
         }
 
+        // Contact damage
         if (distToPlayer < 55 && (!state.player.dash || !state.player.dash.active)) {
             if (state.frame % 15 === 0) game.takeDamage(this.damage);
         }

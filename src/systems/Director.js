@@ -46,7 +46,6 @@ export class Director {
                 this.game.audioEngine.playSFX('boss_static', 0.8);
             }
             
-            // --- TIERED BOSS DEPLOYMENT ---
             if (state.floor === 1) {
                 this.spawnEntity('BOSS', canvasWidth, canvasHeight);
             } else if (state.floor === 2) {
@@ -60,6 +59,7 @@ export class Director {
 
     spawnEntity(type, canvasWidth, canvasHeight, forceX = null, forceY = null, generation = 1) {
         const state = this.game.state;
+        // Radial spawning in the void!
         const spawnRadius = Math.max(canvasWidth, canvasHeight) * 0.6 + 100;
         const angle = Math.random() * Math.PI * 2;
         

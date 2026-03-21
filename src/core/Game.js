@@ -98,7 +98,7 @@ export class Game {
             convergence: 0,
             maxConvergence: Math.floor(100 * Math.pow(1.3, startFloor - 1)), 
             
-            // --- NEW: Map Center Tracking for the Organic Void ---
+            // Map Center Tracking for the Organic Void!
             mapOriginX: null,
             mapOriginY: null,
             inVoid: false,
@@ -114,7 +114,7 @@ export class Game {
                 activeTokens: activeTokens, 
                 sets: setCounts,            
                 denialShieldActive: activeTokens.hasDenial,
-                breathPhase: 0 // <--- ADDED BREATH PHASE TRACKING
+                breathPhase: 0 // Dynamic Synchronized Breathing
             },
             runInventory: startRunInventory, 
             inputBuffer: [],
@@ -167,7 +167,6 @@ export class Game {
             }
         }
         
-        // OVERHAUL: Tell Director to spawn the physical entity instead of just logging to console!
         this.director.spawnToken(x, y, selectedRarity);
         if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade', 0.5);
         this.spawnDamageText(x, y - 20, "TOKEN DROPPED!", selectedRarity.color, 1.2, 2.0);
@@ -188,7 +187,7 @@ export class Game {
 
         this.director.spawnWave(canvasWidth, canvasHeight);
 
-        const isBossDefeated = this.state.bossSpawned && !this.state.entities.some(e => e.type === 'BOSS' || e.type === 'RORSCHACH');
+        const isBossDefeated = this.state.bossSpawned && !this.state.entities.some(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON');
 
         if (!isBossDefeated) {
             if (this.state.frame > 0 && this.state.frame % 1800 === 0) {
@@ -310,25 +309,23 @@ export class Game {
             this.state.player.y += moveInput.moveY * currentSpeed;
         }
 
-        // --- THE ENCROACHING VOID LOGIC ---
-        // Removed hard clamps (Math.max/min). The player can walk infinitely, but the void will consume them.
+        // --- THE ENCROACHING VOID LOGIC (No Hard Clamps!) ---
         const mapCenterX = this.state.mapOriginX;
         const mapCenterY = this.state.mapOriginY;
         const mapRadius = 1600; 
         const distFromCenter = Math.hypot(this.state.player.x - mapCenterX, this.state.player.y - mapCenterY);
         
-        // Organic void boundary distance check (matches the visual noise threshold exactly)
         const phase = this.state.frame * 0.02;
         const angleToCenter = Math.atan2(this.state.player.y - mapCenterY, this.state.player.x - mapCenterX);
         const noise = Math.sin(angleToCenter * 4 + phase) * 80 
                     + Math.cos(angleToCenter * 7 - phase * 1.5) * 50
                     + Math.sin(angleToCenter * 13 + phase * 0.5) * 30;
         
-        const dynamicRadius = mapRadius + noise - 20; // -20 buffer so visual edge hits player immediately
+        const dynamicRadius = mapRadius + noise - 20; 
         
         if (distFromCenter > dynamicRadius) {
             this.state.inVoid = true;
-            this.state.sanity -= 0.6 * this.state.sanityDrainMult; // Massive sanity drain
+            this.state.sanity -= 0.6 * this.state.sanityDrainMult; 
             this.state.cameraShake = Math.max(this.state.cameraShake, 3);
             
             if (this.state.frame % 45 === 0 && this.audioEngine) {
@@ -380,17 +377,14 @@ export class Game {
         if (!Number.isFinite(ratio)) ratio = 0;
         let panic = 1 - Math.max(0, ratio);
 
-        // --- DYNAMIC ACCELERATING BREATHING SYSTEM ---
+        // --- DYNAMIC BREATHING SYSTEM ---
         let prevBreathPhase = this.state.player.breathPhase;
-        
-        // Base breath is slow (0.08). Max panic breath is fast and desperate (0.25)
         let breathSpeed = 0.08 + (panic * 0.17); 
         this.state.player.breathPhase += breathSpeed;
         
         let prevMod = prevBreathPhase % (Math.PI * 2);
         let currMod = this.state.player.breathPhase % (Math.PI * 2);
         
-        // Trigger a localized heavy breathing sound exactly on the "Exhale" loop
         if (currMod < prevMod && this.audioEngine && !this.state.isDead) { 
             this.audioEngine.playSFX('player_breath', 0.2 + (panic * 0.4));
         }
