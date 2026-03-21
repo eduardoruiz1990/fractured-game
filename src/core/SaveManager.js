@@ -1,17 +1,16 @@
 // src/core/SaveManager.js
-// Handles reading and writing to the browser's localStorage for meta-progression.
-import { TOKEN_RARITIES } from '../data/Manifestations.js';
-
 export class SaveManager {
     constructor() {
         this.saveKey = 'fractured_save_v1';
         this.metaState = { 
             lucidityBank: 0, 
             spentLucidity: 0, 
-            upgrades: { hp: 0, speed: 0, light: 0 },
+            // --- ADDED: 'magnet' stat ---
+            upgrades: { hp: 0, speed: 0, light: 0, magnet: 0 },
             inventory: [], 
             equippedTokens: { head: null, body: null, hands: null, legs: null },
-            maxFloorReached: 1 // NEW: Track the deepest descent
+            maxFloorReached: 1,
+            maxBossEncountered: 0
         };
         this.loadSave();
         
@@ -29,7 +28,11 @@ export class SaveManager {
                 if (!this.metaState.inventory) this.metaState.inventory = [];
                 if (!this.metaState.equippedTokens) this.metaState.equippedTokens = { head: null, body: null, hands: null, legs: null };
                 if (this.metaState.spentLucidity === undefined) this.metaState.spentLucidity = 0; 
-                if (!this.metaState.maxFloorReached) this.metaState.maxFloorReached = 1; // Backwards compatibility
+                if (!this.metaState.maxFloorReached) this.metaState.maxFloorReached = 1; 
+                if (!this.metaState.maxBossEncountered) this.metaState.maxBossEncountered = 0;
+                
+                // Backwards compatibility for old saves without magnet
+                if (this.metaState.upgrades.magnet === undefined) this.metaState.upgrades.magnet = 0;
             }
         } catch(e) { 
             console.warn("Local storage disabled or blocked."); 
@@ -43,78 +46,40 @@ export class SaveManager {
             console.warn("Local storage disabled or blocked."); 
         }
     }
-    
-    wipeSave() {
-        try {
-            localStorage.removeItem(this.saveKey);
-            location.reload(); 
-        } catch(e) {
-            console.warn("Could not wipe local storage.");
-        }
-    }
 
-    // --- EPIC 3: GLOBAL PROGRESSION ---
-    getPatientLevelInfo() {
-        let xp = this.metaState.spentLucidity || 0;
-        let level = 1;
-        let xpForNext = 1000; // Base requirement heavily increased
-        let xpForCurrentLevelStart = 0;
-
-        // Stricter exponential scaling: 1.8x each level (80% more per level)
-        while (xp >= xpForCurrentLevelStart + xpForNext) {
-            xpForCurrentLevelStart += xpForNext;
-            level++;
-            xpForNext = Math.floor(xpForNext * 1.8);
-        }
-
-        let currentLevelXP = xp - xpForCurrentLevelStart;
-        return {
-            level: level,
-            currentXP: currentLevelXP,
-            nextXP: xpForNext,
-            progressPercent: (currentLevelXP / xpForNext) * 100
-        };
-    }
-
-    buyUpgrade(stat, baseCost) {
-        const cost = Math.floor(baseCost * Math.pow(1.1, this.metaState.upgrades[stat]));
-        
-        if (this.metaState.lucidityBank >= cost && this.metaState.upgrades[stat] < 100) {
-            this.metaState.lucidityBank -= cost;
-            this.metaState.spentLucidity += cost; 
-            this.metaState.upgrades[stat]++;
-            this.saveGame();
-            return true;
-        }
-        return false;
-    }
-    
     addLucidity(amount) {
         this.metaState.lucidityBank += amount;
         this.saveGame();
     }
 
-    // --- EPIC 2 & 3: TOKEN MANAGEMENT & FORGING ---
-
-    generateUID() {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    buyUpgrade(statId, cost) {
+        if (this.metaState.lucidityBank >= cost && this.metaState.upgrades[statId] < 100) {
+            this.metaState.lucidityBank -= cost;
+            this.metaState.spentLucidity += cost;
+            this.metaState.upgrades[statId]++;
+            this.saveGame();
+            return true;
+        }
+        return false;
     }
 
     addTokenToInventory(tokenId, rarity) {
-        const newItem = {
-            uid: this.generateUID(),
+        const uniqueId = tokenId + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        this.metaState.inventory.push({
             id: tokenId,
+            uid: uniqueId,
             rarity: rarity,
             level: 1
-        };
-        this.metaState.inventory.push(newItem);
+        });
         this.saveGame();
     }
 
     equipToken(uid, slotType) {
-        if (this.metaState.equippedTokens[slotType] === uid) return; 
-        this.metaState.equippedTokens[slotType] = uid;
-        this.saveGame();
+        const item = this.metaState.inventory.find(i => i.uid === uid);
+        if (item) {
+            this.metaState.equippedTokens[slotType] = uid;
+            this.saveGame();
+        }
     }
 
     unequipToken(slotType) {
@@ -125,12 +90,19 @@ export class SaveManager {
     upgradeToken(uid) {
         const item = this.metaState.inventory.find(i => i.uid === uid);
         if (!item) return false;
-        
-        const rarityData = TOKEN_RARITIES[item.rarity];
-        if (!rarityData || !rarityData.costToUpgrade || this.metaState.lucidityBank < rarityData.costToUpgrade) return false;
 
-        this.metaState.lucidityBank -= rarityData.costToUpgrade;
-        this.metaState.spentLucidity += rarityData.costToUpgrade; 
+        const rarityData = {
+            'COMMON': { costToUpgrade: 100 },
+            'RARE': { costToUpgrade: 300 },
+            'EPIC': { costToUpgrade: 1000 },
+            'ANOMALOUS': { costToUpgrade: null }
+        };
+
+        const cost = rarityData[item.rarity].costToUpgrade;
+        if (!cost || this.metaState.lucidityBank < cost) return false;
+
+        this.metaState.lucidityBank -= cost;
+        this.metaState.spentLucidity += cost;
 
         if (item.rarity === 'COMMON') item.rarity = 'RARE';
         else if (item.rarity === 'RARE') item.rarity = 'EPIC';
@@ -138,5 +110,34 @@ export class SaveManager {
 
         this.saveGame();
         return true;
+    }
+
+    getPatientLevelInfo() {
+        const spent = this.metaState.spentLucidity || 0;
+        const level = Math.floor(Math.sqrt(spent / 100)) + 1;
+        const currentLevelBaseXP = Math.pow(level - 1, 2) * 100;
+        const nextLevelBaseXP = Math.pow(level, 2) * 100;
+        const xpInCurrentLevel = spent - currentLevelBaseXP;
+        const xpRequiredForNext = nextLevelBaseXP - currentLevelBaseXP;
+        const progressPercent = Math.min(100, Math.max(0, (xpInCurrentLevel / xpRequiredForNext) * 100));
+
+        return {
+            level: level,
+            currentXP: xpInCurrentLevel,
+            nextXP: xpRequiredForNext,
+            progressPercent: progressPercent,
+            totalSpent: spent
+        };
+    }
+
+    wipeSave() {
+        this.metaState = { 
+            lucidityBank: 0, spentLucidity: 0, 
+            upgrades: { hp: 0, speed: 0, light: 0, magnet: 0 },
+            inventory: [], equippedTokens: { head: null, body: null, hands: null, legs: null },
+            maxFloorReached: 1, maxBossEncountered: 0
+        };
+        this.saveGame();
+        window.location.reload();
     }
 }

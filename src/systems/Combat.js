@@ -1,3 +1,4 @@
+// src/systems/Combat.js
 export class Combat {
     static resolveWeapons(game) {
         const state = game.state;
@@ -72,6 +73,7 @@ export class Combat {
                                 if (state.frame % 30 === 0) {
                                     ent.takeDamage(20, game);
                                     game.spawnParticles(ent.x, ent.y, '#ffffaa', 5);
+                                    game.director.spawnDecal(ent.x, ent.y, ent.color, 6);
                                 }
                             }
                         }
@@ -140,6 +142,8 @@ export class Combat {
                             ent.takeDamage(camera.damage, game);
                             ent.confused = 120; 
                             ent.x += (dx / dist) * 30; 
+                            // Add blood/ink decal on heavy camera hit
+                            game.director.spawnDecal(ent.x, ent.y, ent.color, 8);
                         }
                     }
                 }
@@ -161,6 +165,7 @@ export class Combat {
                      if (state.frame % 15 === 0) { 
                          ent.takeDamage(spinnerDmg, game);
                          game.spawnParticles(ent.x, ent.y, '#aaaaaa', 2);
+                         if (Math.random() < 0.3) game.director.spawnDecal(ent.x, ent.y, ent.color, 4);
                      }
                 }
             }
@@ -187,6 +192,9 @@ export class Combat {
                         ent.y += (ent.y - state.player.y) / d * 25;
                         hitCount++;
                         
+                        // Spatter a lot of decals on massive melee pipe hits!
+                        game.director.spawnDecal(ent.x, ent.y, ent.color, 10);
+                        
                         if (state.player.synergies && state.player.synergies.includes('industrial_bleed')) {
                             game.director.spawnInkPuddle(ent.x, ent.y, pipe.radius * 0.8, pipe.damage * 0.2);
                         }
@@ -194,6 +202,8 @@ export class Combat {
                 }
                 
                 if (hitCount > 0) {
+                    // --- THE IMPACT FRAME "JUICE" ---
+                    // Gives a 1-2 frame freeze (hitstop) based on enemies hit
                     state.hitStop = Math.min(25, state.hitStop + 6 + (hitCount * 3)); 
                     state.cameraShake = Math.max(state.cameraShake, 10 + hitCount * 3);
                     if (game.audioEngine) game.audioEngine.playSFX('pipe_hit', hitCount);
@@ -325,6 +335,8 @@ export class Combat {
                                 ent.acidTime = batt.duration;
                                 ent.acidDmg = batt.damage;
                             }
+                            // Small decal spray on constant flashlight damage
+                            if (state.frame % 30 === 0) game.director.spawnDecal(ent.x, ent.y, ent.color, 4);
                         }
                     }
                 }
@@ -337,6 +349,8 @@ export class Combat {
 
             if (ent.hp <= 0) {
                 deathCount++;
+                // Explode in a mass of decals on death
+                game.director.spawnDecal(ent.x, ent.y, ent.color, 15);
                 
                 if (ent.type === 'RORSCHACH' && ent.generation < 3) {
                     game.director.spawnEntity('RORSCHACH', null, null, ent.x - 20, ent.y, ent.generation + 1);
@@ -409,11 +423,17 @@ export class Combat {
         const state = game.state;
         let pickupCount = 0;
         
+        // --- ADDED: THE MAGNET UPGRADE CALCULATION ---
+        let baseVacRadius = 70;
+        if (state.player.upgrades && state.player.upgrades.magnet) {
+            baseVacRadius += (state.player.upgrades.magnet * 30); // Massively boosts collection range!
+        }
+        
         for (let i = state.xpDrops.length - 1; i >= 0; i--) {
             let xp = state.xpDrops[i];
             let distToPlayer = Math.max(Math.hypot(xp.x - state.player.x, xp.y - state.player.y), 0.001);
             
-            if (distToPlayer < 70) {
+            if (distToPlayer < baseVacRadius) {
                 xp.x += (state.player.x - xp.x) * 0.15; 
                 xp.y += (state.player.y - xp.y) * 0.15;
                 
@@ -442,7 +462,7 @@ export class Combat {
                 let t = state.tokenDrops[i];
                 let distToPlayer = Math.max(Math.hypot(t.x - state.player.x, t.y - state.player.y), 0.001);
                 
-                if (distToPlayer < 70) {
+                if (distToPlayer < baseVacRadius) {
                     t.x += (state.player.x - t.x) * 0.15; 
                     t.y += (state.player.y - t.y) * 0.15;
                     

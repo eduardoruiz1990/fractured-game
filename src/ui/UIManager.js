@@ -31,6 +31,8 @@ export class UIManager {
         this.btnUpgHp = document.getElementById('btn-upg-hp');
         this.btnUpgSpeed = document.getElementById('btn-upg-speed');
         this.btnUpgLight = document.getElementById('btn-upg-light');
+        // --- ADDED: MAGNET BUTTON ---
+        this.btnUpgMagnet = document.getElementById('btn-upg-magnet');
 
         this.inventoryGrid = document.getElementById('inventory-grid');
         this.detailName = document.getElementById('detail-name');
@@ -69,7 +71,6 @@ export class UIManager {
     }
 
     attachEvents() {
-        // --- NEW: UI SOUNDSCAPES DEPLOYMENT ---
         document.querySelectorAll('.file-btn, .tab-btn').forEach(btn => {
             btn.addEventListener('mouseenter', () => {
                 if (!btn.disabled && this.audioEngine) this.audioEngine.playSFX('ui_hover');
@@ -83,7 +84,7 @@ export class UIManager {
             this.btnEnterSystem.addEventListener('click', () => {
                 if (this.audioEngine) {
                     this.audioEngine.init(); 
-                    this.audioEngine.playMenuTheme(); // Start ambient music!
+                    this.audioEngine.playMenuTheme(); 
                 }
                 this.titleScreen.style.display = 'none';
                 this.clinicalFolder.style.display = 'flex';
@@ -174,6 +175,13 @@ export class UIManager {
                 this.updateMenuUI(); this.showXPToast(); 
             } 
         });
+        // --- ADDED: MAGNET PURCHASE LOGIC ---
+        this.btnUpgMagnet.addEventListener('click', () => { 
+            if (this.saveManager.buyUpgrade('magnet', 150)) { 
+                if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade');
+                this.updateMenuUI(); this.showXPToast(); 
+            } 
+        });
     }
 
     updateMenuUI() {
@@ -190,10 +198,12 @@ export class UIManager {
 
         document.getElementById('tree-lucidity').innerText = meta.lucidityBank;
         
+        // --- ADDED: MAGNET STAT UPDATE ---
         const upgradeStats = [
             { id: 'hp', baseCost: 50, element: this.btnUpgHp },
             { id: 'speed', baseCost: 75, element: this.btnUpgSpeed },
-            { id: 'light', baseCost: 100, element: this.btnUpgLight }
+            { id: 'light', baseCost: 100, element: this.btnUpgLight },
+            { id: 'magnet', baseCost: 150, element: this.btnUpgMagnet }
         ];
 
         upgradeStats.forEach(stat => {
@@ -208,7 +218,6 @@ export class UIManager {
             if (isMaxed) stat.element.innerText = "MAX";
         });
 
-        // Trigger dynamic roadmap generation every time the menu updates
         this.renderRoadmap();
     }
 
@@ -217,13 +226,13 @@ export class UIManager {
         if (!timeline) return;
 
         const maxFloor = this.saveManager.metaState.maxFloorReached || 1;
-        const maxBoss = this.saveManager.metaState.maxBossEncountered || 0; // Tracks if boss was summoned
+        const maxBoss = this.saveManager.metaState.maxBossEncountered || 0;
 
         const floors = [
             { f: 1, name: "Floor 1: The Wastes (Sphere Head)", unknown: "Floor 1: (UNKNOWN)" },
             { f: 2, name: "Floor 2: The Divide (Rorschach)", unknown: "Floor 2: (UNKNOWN)" },
             { f: 3, name: "Floor 3: The Panopticon (The All-Seeing Eye)", unknown: "Floor 3: (UNKNOWN)" },
-            { f: 4, name: "Floor 4: The Amalgamation (UNKNOWN)", unknown: "Floor 4: (UNKNOWN)" },
+            { f: 4, name: "Floor 4: The Amalgamation (The Collective Nightmare)", unknown: "Floor 4: (UNKNOWN)" },
             { f: 5, name: "Floor 5: The Architect (FINAL)", unknown: "Floor 5: (UNKNOWN)", isBoss: true }
         ];
 
@@ -235,22 +244,13 @@ export class UIManager {
             if (floor.isBoss) node.classList.add('boss');
 
             if (floor.f < maxFloor) {
-                // Player has reached a higher floor, meaning this boss is beaten! Scratched out.
                 node.classList.add('completed');
                 node.innerText = floor.name;
             } else if (floor.f === maxFloor) {
-                // Player is currently on this floor
                 node.classList.add('active');
-                
-                // If they have summoned the boss on this floor, reveal its name but don't scratch it out.
-                if (maxBoss >= floor.f) {
-                    node.innerText = floor.name;
-                } else {
-                    // Reached the floor, but haven't survived long enough to see the boss yet.
-                    node.innerText = floor.unknown;
-                }
+                if (maxBoss >= floor.f) node.innerText = floor.name;
+                else node.innerText = floor.unknown;
             } else {
-                // Future locked floors
                 node.classList.add('locked');
                 node.innerText = floor.unknown;
             }

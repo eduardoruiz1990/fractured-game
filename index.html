@@ -11,29 +11,23 @@
 <div id="game-container">
     <canvas id="gameCanvas"></canvas>
     
-    <!-- EPIC 6: CRT Medical Monitor Overlay -->
     <div id="crt-scanlines"></div>
     <div id="glitch-overlay"></div>
     <div id="debug-console"></div>
     
-    <!-- Virtual Joysticks for Mobile -->
     <div id="joy-left" class="joystick-base"><div id="knob-left" class="joystick-knob"></div></div>
     <div id="joy-right" class="joystick-base"><div id="knob-right" class="joystick-knob"></div></div>
     
-    <!-- Mobile Dash Button -->
     <div id="btn-dash" class="action-btn">DASH</div>
 
-    <!-- NEW: TITLE / BOOT SCREEN -->
     <div id="title-screen" class="fullscreen-menu">
         <div class="title-glitch" style="font-size: 5rem; margin-bottom: 10px;">FRACTURED</div>
         <div style="color: #888; font-size: 1.2rem; margin-bottom: 50px; letter-spacing: 8px; text-align: center;">PSYCHOLOGICAL EVALUATION ENGINE</div>
         <button class="file-btn primary" id="btn-enter-system" style="width: auto; padding: 15px 50px; font-size: 1.5rem; border-color: var(--ui-gold); color: var(--ui-gold); background: transparent; text-shadow: 0 0 10px var(--ui-gold); box-shadow: 0 0 20px rgba(197, 160, 89, 0.1);">INITIALIZE</button>
     </div>
 
-    <!-- EPIC 6: THE CLINICAL FILE (UNIFIED MENU SYSTEM) -->
     <div id="clinical-folder-menu" class="fullscreen-menu" style="display:none;">
         
-        <!-- Global XP Toast -->
         <div id="xp-toast" class="medical-toast">
             <div id="toast-level-display" style="font-weight: 900; margin-bottom: 5px;">PATIENT LEVEL 1</div>
             <div style="width: 100%; height: 8px; background: rgba(0,0,0,0.5); border: 1px solid #111;">
@@ -42,7 +36,6 @@
             <div id="toast-xp-text" style="color: #444; font-size: 0.75rem; margin-top: 5px; font-weight: bold;">0 / 1000 L Spent</div>
         </div>
 
-        <!-- The Physical Folder Wrapper -->
         <div class="medical-folder">
             <div class="folder-header">
                 <div class="title-typewriter">PROJECT: FRACTURED</div>
@@ -58,7 +51,6 @@
 
             <div class="folder-content">
                 
-                <!-- TAB: MAIN EVALUATION -->
                 <div id="tab-main" class="tab-pane active">
                     <div style="text-align: center; margin-bottom: 30px;">
                         <p class="typewriter-text" style="font-size: 1.2rem; color: #555;">Subject exhibits severe dissociative tendencies. <br>Ready for further descent protocol.</p>
@@ -75,7 +67,6 @@
                     </div>
                 </div>
 
-                <!-- TAB: THERAPY REGIMEN (LOADOUT) -->
                 <div id="tab-loadout" class="tab-pane">
                     <div class="loadout-container">
                         <div class="equipped-panel">
@@ -88,9 +79,7 @@
                         
                         <div class="inventory-panel-container">
                             <div class="section-label">CONFISCATED ITEMS</div>
-                            <div class="inventory-panel" id="inventory-grid">
-                                <!-- Items injected via JS -->
-                            </div>
+                            <div class="inventory-panel" id="inventory-grid"></div>
                         </div>
                     </div>
 
@@ -108,7 +97,6 @@
                     </div>
                 </div>
 
-                <!-- TAB: SYNAPSE RECORDS -->
                 <div id="tab-tree" class="tab-pane">
                     <div style="text-align: center; margin-bottom: 20px;">
                         <span class="section-label">LUCIDITY RESERVES: <span id="tree-lucidity" style="color: #8b0000;">0</span> L</span>
@@ -127,12 +115,16 @@
                             <div class="node-info"><strong>Halogen Bulb</strong><br><span class="typewriter-text">Light Range +10% (Lvl <span id="upg-light-lvl">0</span>)</span></div>
                             <button class="file-btn small" id="btn-upg-light">100 L</button>
                         </div>
+                        <!-- --- ADDED: THE MAGNET UPGRADE --- -->
+                        <div class="synapse-node-file">
+                            <div class="node-info"><strong>Neuro-Magnetic Pull</strong><br><span class="typewriter-text">Vacuum Radius +30px (Lvl <span id="upg-magnet-lvl">0</span>)</span></div>
+                            <button class="file-btn small" id="btn-upg-magnet">150 L</button>
+                        </div>
 
                         <button class="file-btn danger" id="btn-wipe-save" style="margin-top: 30px;">WIPE CLINICAL FILE (HARD RESET)</button>
                     </div>
                 </div>
 
-                <!-- TAB: DESCENT ROADMAP -->
                 <div id="tab-roadmap" class="tab-pane">
                     <p class="typewriter-text" style="text-align: center; margin-bottom: 20px;">Projected psychological deterioration path.</p>
                     <div class="roadmap-timeline">

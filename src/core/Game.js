@@ -26,6 +26,7 @@ export class Game {
         const maxSanity = 100 + (meta.upgrades.hp * 20);
         const speedMult = 1.0 + (meta.upgrades.speed * 0.05);
         const lightMult = 1.0 + (meta.upgrades.light * 0.1);
+        const magnetLvl = meta.upgrades.magnet || 0; // --- NEW: Load Magnet Stat ---
 
         let startFloor = 1;
         let startLucidity = 0;
@@ -98,7 +99,6 @@ export class Game {
             convergence: 0,
             maxConvergence: Math.floor(100 * Math.pow(1.3, startFloor - 1)), 
             
-            // Map Center Tracking for the Organic Void!
             mapOriginX: null,
             mapOriginY: null,
             inVoid: false,
@@ -114,7 +114,9 @@ export class Game {
                 activeTokens: activeTokens, 
                 sets: setCounts,            
                 denialShieldActive: activeTokens.hasDenial,
-                breathPhase: 0 // Dynamic Synchronized Breathing
+                breathPhase: 0,
+                flashTime: 0, // --- NEW: Player Hit Flash ---
+                upgrades: { magnet: magnetLvl } // Inject Magnet level
             },
             runInventory: startRunInventory, 
             inputBuffer: [],
@@ -125,6 +127,7 @@ export class Game {
             tokenDrops: [], 
             projectiles: [], 
             playerAfterimages: [], 
+            decals: [], // --- NEW: Permanent Gore & Spills ---
             hitStop: 0, 
             frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false,
             cameraFlash: 0, 
@@ -187,7 +190,7 @@ export class Game {
 
         this.director.spawnWave(canvasWidth, canvasHeight);
 
-        const isBossDefeated = this.state.bossSpawned && !this.state.entities.some(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON');
+        const isBossDefeated = this.state.bossSpawned && !this.state.entities.some(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON' || e.type === 'AMALGAMATION' || e.type === 'ARCHITECT');
 
         if (!isBossDefeated) {
             if (this.state.frame > 0 && this.state.frame % 1800 === 0) {
@@ -309,7 +312,7 @@ export class Game {
             this.state.player.y += moveInput.moveY * currentSpeed;
         }
 
-        // --- THE ENCROACHING VOID LOGIC (No Hard Clamps!) ---
+        // --- THE ENCROACHING VOID LOGIC ---
         const mapCenterX = this.state.mapOriginX;
         const mapCenterY = this.state.mapOriginY;
         const mapRadius = 1600; 
@@ -350,6 +353,8 @@ export class Game {
         }
 
         if (this.state.cameraFlash > 0) this.state.cameraFlash--;
+        // --- NEW: Tick down player hit flash ---
+        if (this.state.player.flashTime > 0) this.state.player.flashTime--;
 
         const staticWep = this.state.player.weapons.static;
         if (staticWep.active) staticWep.pulsePhase += 0.05;
@@ -377,7 +382,6 @@ export class Game {
         if (!Number.isFinite(ratio)) ratio = 0;
         let panic = 1 - Math.max(0, ratio);
 
-        // --- DYNAMIC BREATHING SYSTEM ---
         let prevBreathPhase = this.state.player.breathPhase;
         let breathSpeed = 0.08 + (panic * 0.17); 
         this.state.player.breathPhase += breathSpeed;
@@ -406,6 +410,7 @@ export class Game {
         this.state.sanity -= amount;
         this.state.cameraShake = 15; 
         this.state.hitStop = 8; 
+        this.state.player.flashTime = 15; // --- NEW: Red damage hit flash trigger ---
 
         if (this.state.player.sets.institutionalized >= 4) {
             this.spawnDamageText(this.state.player.x, this.state.player.y, "SHOCKWAVE", '#aa55ff', 2.0, 1.5);

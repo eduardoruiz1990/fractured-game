@@ -1,3 +1,4 @@
+// src/systems/Director.js
 import { ObjectPool } from './ObjectPool.js';
 import { Scavenger } from '../entities/Scavenger.js';
 import { Predator } from '../entities/Predator.js';
@@ -6,7 +7,7 @@ import { Boss } from '../entities/Boss.js';
 import { Rorschach } from '../entities/Rorschach.js'; 
 import { Panopticon } from '../entities/Panopticon.js'; 
 import { Amalgamation } from '../entities/Amalgamation.js';
-import { Architect } from '../entities/Architect.js'; // Added import!
+import { Architect } from '../entities/Architect.js'; 
 
 export class Director {
     constructor(game) {
@@ -20,7 +21,7 @@ export class Director {
             rorschach: new ObjectPool(() => new Rorschach(), 15), 
             panopticon: new ObjectPool(() => new Panopticon(), 2), 
             amalgamation: new ObjectPool(() => new Amalgamation(), 2),
-            architect: new ObjectPool(() => new Architect(), 2), // Added pool!
+            architect: new ObjectPool(() => new Architect(), 2), 
             particle: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '', active: false }), 300),
             xpDrop: new ObjectPool(() => ({ x: 0, y: 0, value: 0, collected: false, active: false }), 300),
             tokenDrop: new ObjectPool(() => ({ x: 0, y: 0, rarity: '', color: '', collected: false, active: false }), 50),
@@ -28,7 +29,9 @@ export class Director {
             inkPuddle: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, life: 0, damage: 0, active: false }), 200),
             meleeSwing: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, maxRadius: 0, life: 0, active: false }), 20),
             safeZone: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, life: 0, maxLife: 0, active: false }), 20),
-            projectile: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, radius: 0, damage: 0, color: '', life: 0, active: false }), 100)
+            projectile: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, radius: 0, damage: 0, color: '', life: 0, active: false }), 100),
+            // --- ADDED: DECAL POOL FOR PERSISTENT GORE ---
+            decal: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, color: '', active: false }), 300)
         };
     }
 
@@ -50,7 +53,6 @@ export class Director {
                 this.game.audioEngine.playSFX('boss_static', 0.8);
             }
             
-            // --- TIERED BOSS DEPLOYMENT ---
             if (state.floor === 1) {
                 this.spawnEntity('BOSS', canvasWidth, canvasHeight);
             } else if (state.floor === 2) {
@@ -60,7 +62,7 @@ export class Director {
             } else if (state.floor === 4) {
                 this.spawnEntity('AMALGAMATION', canvasWidth, canvasHeight);
             } else {
-                this.spawnEntity('ARCHITECT', canvasWidth, canvasHeight); // Floor 5+
+                this.spawnEntity('ARCHITECT', canvasWidth, canvasHeight); 
             }
             state.bossSpawned = true;
             
@@ -118,6 +120,27 @@ export class Director {
         p.radius = radius; p.damage = damage; p.color = color; 
         p.life = life; p.active = true;
         state.projectiles.push(p);
+    }
+
+    // --- ADDED: DECAL SPAWNING ---
+    spawnDecal(x, y, color, size) {
+        const state = this.game.state;
+        // Keep a rolling buffer of exactly 250 blood/ink splatters to prevent lag
+        if (state.decals.length > 250) {
+            let old = state.decals.shift();
+            this.pools.decal.release(old);
+        }
+        
+        // Spawn 3 overlapping shapes for a "splatter" look
+        for(let i=0; i<3; i++) {
+            let d = this.pools.decal.get();
+            d.x = x + (Math.random() - 0.5) * 30;
+            d.y = y + (Math.random() - 0.5) * 30;
+            d.radius = size * (0.5 + Math.random() * 0.8);
+            d.color = color;
+            d.active = true;
+            state.decals.push(d);
+        }
     }
 
     spawnXP(x, y, amount, isMassive = false) {

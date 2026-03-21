@@ -691,6 +691,18 @@ export class Renderer {
         this.ctx.fillRect(state.player.x - 4000, state.player.y - 4000, 8000, 8000);
         this.ctx.restore();
 
+        if (state.decals && state.decals.length > 0) {
+            this.ctx.save();
+            state.decals.forEach(d => {
+                this.ctx.fillStyle = d.color;
+                this.ctx.globalAlpha = 0.5;
+                this.ctx.beginPath();
+                this.ctx.arc(d.x, d.y, d.radius, 0, Math.PI * 2);
+                this.ctx.fill();
+            });
+            this.ctx.restore();
+        }
+
         if (state.mapOriginX !== null) {
             this.ctx.save();
             const mapCenterX = state.mapOriginX;
@@ -1473,269 +1485,273 @@ export class Renderer {
 
     drawBossAnnouncement(state) {
         this.ctx.save();
-        
-        const activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
-        const bossType = activeBoss ? activeBoss.type : 'BOSS';
-        
-        const cx = this.canvas.width / 2;
-        const cy = this.canvas.height / 2;
-        
-        let alpha = 1;
-        if (this.bossAnnouncementTimer > 210) {
-            alpha = (240 - this.bossAnnouncementTimer) / 30; 
-        } else if (this.bossAnnouncementTimer < 30) {
-            alpha = this.bossAnnouncementTimer / 30; 
-        }
-
-        this.ctx.globalAlpha = alpha;
-        this.ctx.translate(cx, cy);
-
-        this.ctx.fillStyle = 'rgba(10, 0, 0, 0.95)';
-        this.ctx.fillRect(-this.canvas.width/2, -300, this.canvas.width, 600); 
-        
-        if (this.renderFrame % 3 === 0) {
-            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-            for (let i=0; i<15; i++) {
-                this.ctx.fillRect(-this.canvas.width/2, -300 + Math.random() * 600, this.canvas.width, 5 + Math.random() * 15);
-            }
-        }
-        
-        this.ctx.strokeStyle = '#c5a059';
-        this.ctx.lineWidth = 6;
-        this.ctx.beginPath();
-        this.ctx.moveTo(-this.canvas.width/2, -300); this.ctx.lineTo(this.canvas.width/2, -300);
-        this.ctx.moveTo(-this.canvas.width/2, 300); this.ctx.lineTo(this.canvas.width/2, 300);
-        this.ctx.stroke();
-
-        this.ctx.save();
-        this.ctx.translate(-400, 0); 
-        this.ctx.scale(5.5, 5.5); 
-        
-        const simulatedPhase = this.renderFrame * 0.05;
-        this.ctx.rotate(Math.sin(simulatedPhase * 0.5) * 0.1); 
-
-        if (bossType === 'RORSCHACH') {
-            let pulse = Math.sin(this.renderFrame * 0.1) * 3;
-            this.ctx.fillStyle = '#1a0525';
-            this.ctx.shadowColor = '#800080';
-            this.ctx.shadowBlur = 10;
+        try {
+            const activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
+            const bossType = activeBoss ? activeBoss.type : 'BOSS';
             
-            for (let mirror = -1; mirror <= 1; mirror += 2) {
-                this.ctx.save();
-                this.ctx.scale(mirror, 1);
+            const cx = this.canvas.width / 2;
+            const cy = this.canvas.height / 2;
+            
+            let alpha = 1;
+            if (this.bossAnnouncementTimer > 210) {
+                alpha = (240 - this.bossAnnouncementTimer) / 30; 
+            } else if (this.bossAnnouncementTimer < 30) {
+                alpha = this.bossAnnouncementTimer / 30; 
+            }
+
+            this.ctx.globalAlpha = alpha;
+            this.ctx.translate(cx, cy);
+
+            this.ctx.fillStyle = 'rgba(10, 0, 0, 0.95)';
+            this.ctx.fillRect(-this.canvas.width/2, -300, this.canvas.width, 600); 
+            
+            if (this.renderFrame % 3 === 0) {
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                for (let i=0; i<15; i++) {
+                    this.ctx.fillRect(-this.canvas.width/2, -300 + Math.random() * 600, this.canvas.width, 5 + Math.random() * 15);
+                }
+            }
+            
+            this.ctx.strokeStyle = '#c5a059';
+            this.ctx.lineWidth = 6;
+            this.ctx.beginPath();
+            this.ctx.moveTo(-this.canvas.width/2, -300); this.ctx.lineTo(this.canvas.width/2, -300);
+            this.ctx.moveTo(-this.canvas.width/2, 300); this.ctx.lineTo(this.canvas.width/2, 300);
+            this.ctx.stroke();
+
+            this.ctx.save();
+            this.ctx.translate(-400, 0); 
+            this.ctx.scale(5.5, 5.5); 
+            
+            const simulatedPhase = this.renderFrame * 0.05;
+            this.ctx.rotate(Math.sin(simulatedPhase * 0.5) * 0.1); 
+
+            if (bossType === 'RORSCHACH') {
+                let pulse = Math.sin(this.renderFrame * 0.1) * 3;
+                this.ctx.fillStyle = '#1a0525';
+                this.ctx.shadowColor = '#800080';
+                this.ctx.shadowBlur = 10;
+                
+                for (let mirror = -1; mirror <= 1; mirror += 2) {
+                    this.ctx.save();
+                    this.ctx.scale(mirror, 1);
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, -30);
+                    this.ctx.bezierCurveTo(20, -30, 30 + pulse, -15, 25, 0);
+                    this.ctx.bezierCurveTo(40, 15, 20, 30, 0, 30 + pulse);
+                    this.ctx.fill();
+                    
+                    this.ctx.fillStyle = '#ff0055'; 
+                    this.ctx.beginPath();
+                    this.ctx.arc(10 + Math.sin(simulatedPhase)*2, 5, 2, 0, Math.PI*2);
+                    this.ctx.fill();
+                    this.ctx.restore();
+                }
+                this.ctx.shadowBlur = 0;
+                
+            } else if (bossType === 'PANOPTICON') {
+                let pulse = Math.sin(this.renderFrame * 0.1) * 3;
+                
+                this.ctx.fillStyle = '#1a0005';
+                this.ctx.shadowColor = '#ff0000';
+                this.ctx.shadowBlur = 30;
                 this.ctx.beginPath();
-                this.ctx.moveTo(0, -30);
-                this.ctx.bezierCurveTo(20, -30, 30 + pulse, -15, 25, 0);
-                this.ctx.bezierCurveTo(40, 15, 20, 30, 0, 30 + pulse);
+                this.ctx.arc(0, 0, 35 + pulse, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.shadowBlur = 0;
+                
+                this.ctx.fillStyle = '#ffcccc';
+                this.ctx.beginPath();
+                this.ctx.ellipse(0, 0, 25 + pulse, 30 + pulse, simulatedPhase*0.5, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                this.ctx.fillStyle = '#ff0000';
+                this.ctx.beginPath();
+                this.ctx.ellipse(0, 0, 12 + pulse*0.5, 18 + pulse*0.5, simulatedPhase*0.5, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                this.ctx.fillStyle = '#000';
+                this.ctx.beginPath();
+                this.ctx.ellipse(0, 0, 4, 14, simulatedPhase*0.5, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                this.ctx.strokeStyle = '#ff0044';
+                this.ctx.lineWidth = 2;
+                for(let r=0; r<3; r++) {
+                    this.ctx.save();
+                    this.ctx.rotate(simulatedPhase * (1 + r*0.5) * (r%2===0?1:-1));
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(0, 0, 50 + r*15, 20 + r*10, 0, 0, Math.PI*2);
+                    this.ctx.stroke();
+                    this.ctx.restore();
+                }
+            } else if (bossType === 'AMALGAMATION') {
+                let pulse = Math.sin(this.renderFrame * 0.1) * 5;
+                this.ctx.fillStyle = '#1a2a0a';
+                this.ctx.shadowColor = '#55ff55';
+                this.ctx.shadowBlur = 30;
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, 45 + pulse, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.shadowBlur = 0;
+                
+                this.ctx.fillStyle = '#5a7a2a';
+                for (let m = 0; m < 6; m++) {
+                    this.ctx.save();
+                    let mAngle = (m / 6) * Math.PI * 2 + (simulatedPhase * 0.5);
+                    let mDist = 25 + Math.sin(simulatedPhase * 2 + m) * 10;
+                    this.ctx.translate(Math.cos(mAngle) * mDist, Math.sin(mAngle) * mDist);
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(0, 0, 15, 10, simulatedPhase, 0, Math.PI*2);
+                    this.ctx.fill();
+                    this.ctx.restore();
+                }
+                
+                this.ctx.fillStyle = '#050505';
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, 20, 0, Math.PI * 2);
+                this.ctx.fill();
+            } else if (bossType === 'ARCHITECT') {
+                let pulse = Math.sin(this.renderFrame * 0.1) * 5;
+                this.ctx.fillStyle = '#111';
+                this.ctx.shadowColor = '#c5a059';
+                this.ctx.shadowBlur = 30 + pulse;
+                
+                this.ctx.save();
+                this.ctx.rotate(this.renderFrame * 0.05);
+                this.ctx.strokeStyle = '#c5a059';
+                this.ctx.lineWidth = 3;
+                this.ctx.strokeRect(-30, -30, 60, 60);
+                this.ctx.rotate(Math.PI / 4);
+                this.ctx.strokeRect(-30, -30, 60, 60);
+                this.ctx.restore();
+
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, -40);
+                this.ctx.lineTo(25, 0);
+                this.ctx.lineTo(0, 40);
+                this.ctx.lineTo(-25, 0);
+                this.ctx.closePath();
                 this.ctx.fill();
                 
-                this.ctx.fillStyle = '#ff0055'; 
+                this.ctx.fillStyle = '#ffffff';
                 this.ctx.beginPath();
-                this.ctx.arc(10 + Math.sin(simulatedPhase)*2, 5, 2, 0, Math.PI*2);
+                this.ctx.moveTo(0, -15);
+                this.ctx.lineTo(8, 0);
+                this.ctx.lineTo(0, 15);
+                this.ctx.lineTo(-8, 0);
+                this.ctx.closePath();
                 this.ctx.fill();
-                this.ctx.restore();
-            }
-            this.ctx.shadowBlur = 0;
-            
-        } else if (bossType === 'PANOPTICON') {
-            let pulse = Math.sin(this.renderFrame * 0.1) * 3;
-            
-            this.ctx.fillStyle = '#1a0005';
-            this.ctx.shadowColor = '#ff0000';
-            this.ctx.shadowBlur = 30;
-            this.ctx.beginPath();
-            this.ctx.arc(0, 0, 35 + pulse, 0, Math.PI * 2);
-            this.ctx.fill();
-            this.ctx.shadowBlur = 0;
-            
-            this.ctx.fillStyle = '#ffcccc';
-            this.ctx.beginPath();
-            this.ctx.ellipse(0, 0, 25 + pulse, 30 + pulse, simulatedPhase*0.5, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            this.ctx.fillStyle = '#ff0000';
-            this.ctx.beginPath();
-            this.ctx.ellipse(0, 0, 12 + pulse*0.5, 18 + pulse*0.5, simulatedPhase*0.5, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            this.ctx.fillStyle = '#000';
-            this.ctx.beginPath();
-            this.ctx.ellipse(0, 0, 4, 14, simulatedPhase*0.5, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            this.ctx.strokeStyle = '#ff0044';
-            this.ctx.lineWidth = 2;
-            for(let r=0; r<3; r++) {
-                this.ctx.save();
-                this.ctx.rotate(simulatedPhase * (1 + r*0.5) * (r%2===0?1:-1));
-                this.ctx.beginPath();
-                this.ctx.ellipse(0, 0, 50 + r*15, 20 + r*10, 0, 0, Math.PI*2);
-                this.ctx.stroke();
-                this.ctx.restore();
-            }
-        } else if (bossType === 'AMALGAMATION') {
-            let pulse = Math.sin(this.renderFrame * 0.1) * 5;
-            this.ctx.fillStyle = '#1a2a0a';
-            this.ctx.shadowColor = '#55ff55';
-            this.ctx.shadowBlur = 30;
-            this.ctx.beginPath();
-            this.ctx.arc(0, 0, 45 + pulse, 0, Math.PI * 2);
-            this.ctx.fill();
-            this.ctx.shadowBlur = 0;
-            
-            this.ctx.fillStyle = '#5a7a2a';
-            for (let m = 0; m < 6; m++) {
-                this.ctx.save();
-                let mAngle = (m / 6) * Math.PI * 2 + (simulatedPhase * 0.5);
-                let mDist = 25 + Math.sin(simulatedPhase * 2 + m) * 10;
-                this.ctx.translate(Math.cos(mAngle) * mDist, Math.sin(mAngle) * mDist);
-                this.ctx.beginPath();
-                this.ctx.ellipse(0, 0, 15, 10, simulatedPhase, 0, Math.PI*2);
-                this.ctx.fill();
-                this.ctx.restore();
-            }
-            
-            this.ctx.fillStyle = '#050505';
-            this.ctx.beginPath();
-            this.ctx.arc(0, 0, 20, 0, Math.PI * 2);
-            this.ctx.fill();
-        } else if (bossType === 'ARCHITECT') {
-            let pulse = Math.sin(this.renderFrame * 0.1) * 5;
-            this.ctx.fillStyle = '#111';
-            this.ctx.shadowColor = '#c5a059';
-            this.ctx.shadowBlur = 30 + pulse;
-            
-            this.ctx.save();
-            this.ctx.rotate(this.renderFrame * 0.05);
-            this.ctx.strokeStyle = '#c5a059';
-            this.ctx.lineWidth = 3;
-            this.ctx.strokeRect(-30, -30, 60, 60);
-            this.ctx.rotate(Math.PI / 4);
-            this.ctx.strokeRect(-30, -30, 60, 60);
-            this.ctx.restore();
-
-            this.ctx.beginPath();
-            this.ctx.moveTo(0, -40);
-            this.ctx.lineTo(25, 0);
-            this.ctx.lineTo(0, 40);
-            this.ctx.lineTo(-25, 0);
-            this.ctx.closePath();
-            this.ctx.fill();
-            
-            this.ctx.fillStyle = '#ffffff';
-            this.ctx.beginPath();
-            this.ctx.moveTo(0, -15);
-            this.ctx.lineTo(8, 0);
-            this.ctx.lineTo(0, 15);
-            this.ctx.lineTo(-8, 0);
-            this.ctx.closePath();
-            this.ctx.fill();
-            this.ctx.shadowBlur = 0;
-        } else {
-            let pulse = Math.sin(this.renderFrame * 0.1) * 3;
-            this.ctx.fillStyle = '#1a0d15';
-            this.ctx.beginPath();
-            for (let i = 0; i < 16; i++) {
-                let angle = (i / 16) * Math.PI * 2;
-                let reach = 35 + Math.sin(simulatedPhase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
-                if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
-                else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
-            }
-            this.ctx.closePath();
-            this.ctx.fill();
-
-            this.ctx.fillStyle = '#2b1010';
-            this.ctx.beginPath();
-            this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
-            this.ctx.fill();
-
-            this.ctx.fillStyle = '#050000';
-            this.ctx.beginPath();
-            for (let i = 0; i < 10; i++) {
-                let angle = (i / 10) * Math.PI * 2;
-                let innerReach = 10 + Math.random() * 8; 
-                if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
-                else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
-            }
-            this.ctx.closePath();
-            this.ctx.fill();
-
-            this.ctx.fillStyle = '#ff0000';
-            this.ctx.shadowColor = '#ff0000';
-            this.ctx.shadowBlur = 15;
-            
-            const eyes = [
-                {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
-                {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
-            ];
-
-            eyes.forEach(eye => {
-                let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
-                let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
-                this.ctx.beginPath();
-                this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
-                this.ctx.fill();
-                this.ctx.fillStyle = '#000000';
                 this.ctx.shadowBlur = 0;
+            } else {
+                let pulse = Math.sin(this.renderFrame * 0.1) * 3;
+                this.ctx.fillStyle = '#1a0d15';
                 this.ctx.beginPath();
-                this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
+                for (let i = 0; i < 16; i++) {
+                    let angle = (i / 16) * Math.PI * 2;
+                    let reach = 35 + Math.sin(simulatedPhase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
+                    if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
+                    else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
+                }
+                this.ctx.closePath();
                 this.ctx.fill();
-                this.ctx.fillStyle = '#ff0000';
-                this.ctx.shadowBlur = ent.pulseState === 'charging' ? 30 : 15;
-            });
-            this.ctx.shadowBlur = 0;
 
-            this.ctx.strokeStyle = '#555';
-            this.ctx.lineWidth = 3;
-            this.ctx.lineCap = 'round';
-            for(let i=0; i<3; i++) {
-                let orbitAngle = simulatedPhase * (1 + i*0.5) + (i * Math.PI*0.6);
-                let dist = 45 + Math.sin(simulatedPhase * 2 + i) * 5;
-                let objX = Math.cos(orbitAngle) * dist;
-                let objY = Math.sin(orbitAngle) * dist;
+                this.ctx.fillStyle = '#2b1010';
                 this.ctx.beginPath();
-                this.ctx.moveTo(objX - 5, objY - 5);
-                this.ctx.lineTo(objX + 5, objY + 5);
-                this.ctx.stroke();
+                this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
+                this.ctx.fill();
+
+                this.ctx.fillStyle = '#050000';
+                this.ctx.beginPath();
+                for (let i = 0; i < 10; i++) {
+                    let angle = (i / 10) * Math.PI * 2;
+                    let innerReach = 10 + Math.random() * 8; 
+                    if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
+                    else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
+                }
+                this.ctx.closePath();
+                this.ctx.fill();
+
+                this.ctx.fillStyle = '#ff0000';
+                this.ctx.shadowColor = '#ff0000';
+                this.ctx.shadowBlur = 15;
+                
+                const eyes = [
+                    {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
+                    {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
+                ];
+
+                eyes.forEach(eye => {
+                    let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
+                    let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
+                    this.ctx.beginPath();
+                    this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
+                    this.ctx.fill();
+                    this.ctx.fillStyle = '#000000';
+                    this.ctx.shadowBlur = 0;
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
+                    this.ctx.fill();
+                    this.ctx.fillStyle = '#ff0000';
+                    // FIXED: Replaced 'ent' with 'activeBoss' to prevent ReferenceError crash!
+                    this.ctx.shadowBlur = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
+                });
+                this.ctx.shadowBlur = 0;
+
+                this.ctx.strokeStyle = '#555';
+                this.ctx.lineWidth = 3;
+                this.ctx.lineCap = 'round';
+                for(let i=0; i<3; i++) {
+                    let orbitAngle = simulatedPhase * (1 + i*0.5) + (i * Math.PI*0.6);
+                    let dist = 45 + Math.sin(simulatedPhase * 2 + i) * 5;
+                    let objX = Math.cos(orbitAngle) * dist;
+                    let objY = Math.sin(orbitAngle) * dist;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(objX - 5, objY - 5);
+                    this.ctx.lineTo(objX + 5, objY + 5);
+                    this.ctx.stroke();
+                }
             }
-        }
-        
-        this.ctx.restore(); 
+            
+            this.ctx.restore(); 
 
-        this.ctx.textAlign = 'left';
-        this.ctx.textBaseline = 'middle';
-        
-        let textJitter = (Math.random() - 0.5) * 10;
-        
-        let titleText = "THE SPHERE HEAD";
-        let subText = "Apex Predator of the Wastes";
-        
-        if (bossType === 'RORSCHACH') {
-            titleText = "THE RORSCHACH";
-            subText = "The Mind Divided";
-        } else if (bossType === 'PANOPTICON') {
-            titleText = "THE PANOPTICON";
-            subText = "The All-Seeing Eye";
-        } else if (bossType === 'AMALGAMATION') {
-            titleText = "THE AMALGAMATION";
-            subText = "The Collective Nightmare";
-        } else if (bossType === 'ARCHITECT') {
-            titleText = "THE ARCHITECT";
-            subText = "Constructor of the Void";
+            this.ctx.textAlign = 'left';
+            this.ctx.textBaseline = 'middle';
+            
+            let textJitter = (Math.random() - 0.5) * 10;
+            
+            let titleText = "THE SPHERE HEAD";
+            let subText = "Apex Predator of the Wastes";
+            
+            if (bossType === 'RORSCHACH') {
+                titleText = "THE RORSCHACH";
+                subText = "The Mind Divided";
+            } else if (bossType === 'PANOPTICON') {
+                titleText = "THE PANOPTICON";
+                subText = "The All-Seeing Eye";
+            } else if (bossType === 'AMALGAMATION') {
+                titleText = "THE AMALGAMATION";
+                subText = "The Collective Nightmare";
+            } else if (bossType === 'ARCHITECT') {
+                titleText = "THE ARCHITECT";
+                subText = "Constructor of the Void";
+            }
+            
+            this.ctx.font = "900 110px 'Courier New', Courier, monospace";
+            this.ctx.fillStyle = '#ffffff';
+            // FIXED: HTML5 Canvas doesn't process CSS variables! Changed from var(--ui-red) to hex code
+            this.ctx.shadowColor = '#8b0000'; 
+            this.ctx.shadowBlur = 20;
+            this.ctx.fillText(titleText, -100 + textJitter, -50);
+            
+            this.ctx.font = "italic 45px 'Courier New', Courier, monospace";
+            this.ctx.fillStyle = '#c5a059';
+            this.ctx.shadowBlur = 0;
+            this.ctx.fillText(subText, -90 + textJitter, 60);
+        } finally {
+            // ALWAYS restore the context! If a graphic error occurs, this prevents permanent visual corruption.
+            this.ctx.restore();
         }
-        
-        this.ctx.font = "900 110px 'Courier New', Courier, monospace";
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.shadowColor = 'var(--ui-red)';
-        this.ctx.shadowBlur = 20;
-        this.ctx.fillText(titleText, -100 + textJitter, -50);
-        
-        this.ctx.font = "italic 45px 'Courier New', Courier, monospace";
-        this.ctx.fillStyle = '#c5a059';
-        this.ctx.shadowBlur = 0;
-        this.ctx.fillText(subText, -90 + textJitter, 60);
-
-        this.ctx.restore();
     }
 
     drawPlayer(state, audioEngine) {
@@ -1859,7 +1875,15 @@ export class Renderer {
         this.ctx.lineTo(-8 + Math.cos(this.legPhase + Math.PI)*6, -8 + Math.sin(this.legPhase + Math.PI)*6);
         this.ctx.stroke();
 
-        this.ctx.fillStyle = '#1a1a24';
+        let baseBodyColor = '#1a1a24';
+        let headColor = '#e0e0e0';
+        if (state.player.flashTime > 0) {
+            let isRed = (this.renderFrame % 6 < 3);
+            baseBodyColor = isRed ? '#ff0000' : '#ffffff';
+            headColor = isRed ? '#ff0000' : '#ffffff';
+        }
+
+        this.ctx.fillStyle = baseBodyColor;
         this.ctx.beginPath();
         
         let breathe = state.player.breathPhase ? Math.sin(state.player.breathPhase) * (1 + panic * 3) : 0;
@@ -1869,7 +1893,7 @@ export class Renderer {
         let headShiftX = Math.max(-5, Math.min(5, moveX * 0.5));
         let headShiftY = Math.max(-5, Math.min(5, moveY * 0.5));
 
-        this.ctx.fillStyle = '#e0e0e0';
+        this.ctx.fillStyle = headColor;
         this.ctx.beginPath();
         let headJitterX = (Math.random() - 0.5) * panic * 4;
         let headJitterY = (Math.random() - 0.5) * panic * 4;
