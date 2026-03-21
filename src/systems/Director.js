@@ -46,6 +46,7 @@ export class Director {
                 this.game.audioEngine.playSFX('boss_static', 0.8);
             }
             
+            // --- TIERED BOSS DEPLOYMENT ---
             if (state.floor === 1) {
                 this.spawnEntity('BOSS', canvasWidth, canvasHeight);
             } else if (state.floor === 2) {
@@ -54,12 +55,28 @@ export class Director {
                 this.spawnEntity('PANOPTICON', canvasWidth, canvasHeight);
             }
             state.bossSpawned = true;
+            
+            // --- ROADMAP UI: MARK BOSS AS ENCOUNTERED ---
+            // We use a safe local storage injection here so you don't get 
+            // "saveManager is not defined" scope errors in the Director class!
+            try {
+                const saveKey = 'fractured_save_v1';
+                const savedStr = localStorage.getItem(saveKey);
+                if (savedStr) {
+                    let metaData = JSON.parse(savedStr);
+                    if (!metaData.maxBossEncountered || metaData.maxBossEncountered < state.floor) {
+                        metaData.maxBossEncountered = state.floor;
+                        localStorage.setItem(saveKey, JSON.stringify(metaData));
+                    }
+                }
+            } catch(e) {
+                console.warn("Could not update boss roadmap encounter:", e);
+            }
         }
     }
 
     spawnEntity(type, canvasWidth, canvasHeight, forceX = null, forceY = null, generation = 1) {
         const state = this.game.state;
-        // Radial spawning in the void!
         const spawnRadius = Math.max(canvasWidth, canvasHeight) * 0.6 + 100;
         const angle = Math.random() * Math.PI * 2;
         

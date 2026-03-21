@@ -10,7 +10,8 @@ export class SaveManager {
             spentLucidity: 0, 
             upgrades: { hp: 0, speed: 0, light: 0 },
             inventory: [], 
-            equippedTokens: { head: null, body: null, hands: null, legs: null } 
+            equippedTokens: { head: null, body: null, hands: null, legs: null },
+            maxFloorReached: 1 // NEW: Track the deepest descent
         };
         this.loadSave();
         
@@ -28,6 +29,7 @@ export class SaveManager {
                 if (!this.metaState.inventory) this.metaState.inventory = [];
                 if (!this.metaState.equippedTokens) this.metaState.equippedTokens = { head: null, body: null, hands: null, legs: null };
                 if (this.metaState.spentLucidity === undefined) this.metaState.spentLucidity = 0; 
+                if (!this.metaState.maxFloorReached) this.metaState.maxFloorReached = 1; // Backwards compatibility
             }
         } catch(e) { 
             console.warn("Local storage disabled or blocked."); 

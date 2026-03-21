@@ -207,10 +207,55 @@ export class UIManager {
             stat.element.disabled = !canAfford || isMaxed;
             if (isMaxed) stat.element.innerText = "MAX";
         });
+
+        // Trigger dynamic roadmap generation every time the menu updates
+        this.renderRoadmap();
     }
 
     renderRoadmap() {
-        // Logic to update active/locked states based on max floor reached
+        const timeline = document.querySelector('.roadmap-timeline');
+        if (!timeline) return;
+
+        const maxFloor = this.saveManager.metaState.maxFloorReached || 1;
+        const maxBoss = this.saveManager.metaState.maxBossEncountered || 0; // Tracks if boss was summoned
+
+        const floors = [
+            { f: 1, name: "Floor 1: The Wastes (Sphere Head)", unknown: "Floor 1: (UNKNOWN)" },
+            { f: 2, name: "Floor 2: The Divide (Rorschach)", unknown: "Floor 2: (UNKNOWN)" },
+            { f: 3, name: "Floor 3: The Panopticon (The All-Seeing Eye)", unknown: "Floor 3: (UNKNOWN)" },
+            { f: 4, name: "Floor 4: The Amalgamation (UNKNOWN)", unknown: "Floor 4: (UNKNOWN)" },
+            { f: 5, name: "Floor 5: The Architect (FINAL)", unknown: "Floor 5: (UNKNOWN)", isBoss: true }
+        ];
+
+        timeline.innerHTML = '';
+        
+        floors.forEach(floor => {
+            const node = document.createElement('div');
+            node.className = 'roadmap-node';
+            if (floor.isBoss) node.classList.add('boss');
+
+            if (floor.f < maxFloor) {
+                // Player has reached a higher floor, meaning this boss is beaten! Scratched out.
+                node.classList.add('completed');
+                node.innerText = floor.name;
+            } else if (floor.f === maxFloor) {
+                // Player is currently on this floor
+                node.classList.add('active');
+                
+                // If they have summoned the boss on this floor, reveal its name but don't scratch it out.
+                if (maxBoss >= floor.f) {
+                    node.innerText = floor.name;
+                } else {
+                    // Reached the floor, but haven't survived long enough to see the boss yet.
+                    node.innerText = floor.unknown;
+                }
+            } else {
+                // Future locked floors
+                node.classList.add('locked');
+                node.innerText = floor.unknown;
+            }
+            timeline.appendChild(node);
+        });
     }
 
     renderLoadoutUI() {

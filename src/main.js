@@ -61,6 +61,12 @@ function initEngine() {
             // Grant free XP for skipping levels so the player isn't completely defenseless!
             game.state.xp += (chosenFloor - 1) * 1500; 
             console.log(`%c DEV OVERRIDE: Starting on Floor ${chosenFloor}. Free XP granted. `, 'background: #c5a059; color: #000;');
+            
+            // --- TRACK MAX FLOOR REACHED FOR ROADMAP ---
+            if (chosenFloor > saveManager.metaState.maxFloorReached) {
+                saveManager.metaState.maxFloorReached = chosenFloor;
+                saveManager.saveGame();
+            }
         }
 
         game.state.player.x = canvas.width / 2;
@@ -182,6 +188,13 @@ function initEngine() {
     document.getElementById('btn-descend').addEventListener('click', () => {
         const carryData = game.getCarriedState();
         carryData.floor += 1; 
+
+        // --- TRACK MAX FLOOR REACHED FOR ROADMAP ---
+        if (carryData.floor > saveManager.metaState.maxFloorReached) {
+            saveManager.metaState.maxFloorReached = carryData.floor;
+            saveManager.saveGame();
+        }
+
         game.init(saveManager, carryData);
         game.state.player.x = canvas.width / 2;
         game.state.player.y = canvas.height / 2;
