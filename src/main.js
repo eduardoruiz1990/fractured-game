@@ -6,6 +6,7 @@ import { Renderer } from './core/Renderer.js';
 import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
+import { TOKENS } from './data/Manifestations.js'; // NEW: Need token data for decryption
 
 console.log("FRACTURED Engine Bootstrapping...");
 
@@ -102,6 +103,17 @@ function initEngine() {
 
     document.getElementById('btn-awaken').addEventListener('click', () => {
         saveManager.addLucidity(game.state.lucidity);
+        
+        // --- NEW: DECRYPT TOKENS ON AWAKEN ---
+        if (game.state.runInventory && game.state.runInventory.length > 0) {
+            const tokenKeys = Object.keys(TOKENS);
+            game.state.runInventory.forEach(rarity => {
+                const randomTokenKey = tokenKeys[Math.floor(Math.random() * tokenKeys.length)];
+                saveManager.addTokenToInventory(randomTokenKey, rarity);
+            });
+            game.state.runInventory = []; // Clear inventory
+        }
+
         if (gameState === 'PAUSED') {
             const stateToSave = game.getCarriedState();
             localStorage.setItem('fractured_suspended_run', JSON.stringify(stateToSave));
@@ -134,13 +146,28 @@ function initEngine() {
         
         const recovered = Math.floor(game.state.lucidity * 0.5);
         saveManager.addLucidity(recovered);
-        audioEngine.stop(); 
+        if (audioEngine) audioEngine.stop(); 
+
+        // --- NEW: DECRYPT TOKENS ON DEATH ---
+        let tokenHtml = "";
+        if (game.state.runInventory && game.state.runInventory.length > 0) {
+            const tokenKeys = Object.keys(TOKENS);
+            const decrypted = game.state.runInventory.map(rarity => {
+                const randomTokenKey = tokenKeys[Math.floor(Math.random() * tokenKeys.length)];
+                saveManager.addTokenToInventory(randomTokenKey, rarity);
+                return { name: TOKENS[randomTokenKey].name, rarity: rarity };
+            });
+            tokenHtml = `<br><br><span style="color:var(--ui-gold);">DECRYPTED TOKENS:</span><br>` + 
+                        decrypted.map(t => `<span class="rarity-${t.rarity}">${t.name} (${t.rarity})</span>`).join('<br>');
+            game.state.runInventory = []; // Clear inventory
+        }
 
         document.getElementById('final-stats').innerHTML = `
             Died on <strong>Floor ${game.state.floor}</strong>.<br><br>
             Earned <strong>${game.state.lucidity}</strong> Lucidity.<br>
             Lost to the Void: <strong>${game.state.lucidity - recovered}</strong>.<br>
             Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
+            ${tokenHtml}
         `;
         inputManager.hideJoysticks();
     };

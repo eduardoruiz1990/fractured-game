@@ -357,6 +357,9 @@ export class Combat {
                     game.spawnXP(ent.x, ent.y, ent.type === 'BOSS' ? 25 : 10, true); 
                     game.spawnParticles(ent.x, ent.y, ent.color || '#000', 100);
                     
+                    // NEW: Spawn physical token on boss death!
+                    game.spawnTokenDrop(ent.x, ent.y);
+                    
                     const otherBosses = state.entities.filter(e => (e.type === 'BOSS' || e.type === 'RORSCHACH') && e.id !== ent.id);
                     
                     if (otherBosses.length === 0) {
@@ -432,5 +435,27 @@ export class Combat {
         }
         // Capped pickup volume
         if (pickupCount > 0 && game.audioEngine) game.audioEngine.playSFX('pickup', Math.min(0.8, 0.3 + pickupCount * 0.05));
+
+        // --- NEW: Token Collection Loop ---
+        if (state.tokenDrops) {
+            for (let i = state.tokenDrops.length - 1; i >= 0; i--) {
+                let t = state.tokenDrops[i];
+                let distToPlayer = Math.max(Math.hypot(t.x - state.player.x, t.y - state.player.y), 0.001);
+                
+                if (distToPlayer < 70) {
+                    // Magnetic vacuum effect
+                    t.x += (state.player.x - t.x) * 0.15; 
+                    t.y += (state.player.y - t.y) * 0.15;
+                    
+                    if (distToPlayer < 15) {
+                        t.collected = true; 
+                        // Add rarity to inventory to be decrypted on death/awaken
+                        state.runInventory.push(t.rarity);
+                        game.spawnDamageText(t.x, t.y - 20, `${t.rarity} TOKEN!`, t.color, 1.5, 2.0);
+                        if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 0.8);
+                    }
+                }
+            }
+        }
     }
 }

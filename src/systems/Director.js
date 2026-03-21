@@ -17,6 +17,8 @@ export class Director {
             rorschach: new ObjectPool(() => new Rorschach(), 15), 
             particle: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '', active: false }), 300),
             xpDrop: new ObjectPool(() => ({ x: 0, y: 0, value: 0, collected: false, active: false }), 300),
+            // NEW: Pool for physical token drops on the ground!
+            tokenDrop: new ObjectPool(() => ({ x: 0, y: 0, rarity: '', color: '', collected: false, active: false }), 50),
             damageText: new ObjectPool(() => ({ x: 0, y: 0, text: '', life: 0, color: '', scale: 1, active: false }), 200),
             inkPuddle: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, life: 0, damage: 0, active: false }), 200),
             meleeSwing: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, maxRadius: 0, life: 0, active: false }), 20),
@@ -106,6 +108,21 @@ export class Director {
         }
     }
 
+    // NEW: Spawns the physical token into the world
+    spawnToken(x, y, rarityData) {
+        const state = this.game.state;
+        let token = this.pools.tokenDrop.get();
+        token.x = x + (Math.random() * 40 - 20);
+        token.y = y + (Math.random() * 40 - 20);
+        token.rarity = rarityData.type;
+        token.color = rarityData.color;
+        token.collected = false;
+        token.active = true;
+        // Make sure tokenDrops array exists on state!
+        if (!state.tokenDrops) state.tokenDrops = [];
+        state.tokenDrops.push(token);
+    }
+
     spawnParticles(x, y, color, count) {
         const state = this.game.state;
         for(let i=0; i<count; i++) {
@@ -182,6 +199,18 @@ export class Director {
             let sz = state.safeZones[i];
             sz.life--;
             if (sz.life <= 0) { sz.active = false; this.pools.safeZone.release(sz); state.safeZones.splice(i, 1); }
+        }
+        
+        // NEW: Clean up collected token drops to prevent memory leaks
+        if (state.tokenDrops) {
+            for (let i = state.tokenDrops.length - 1; i >= 0; i--) {
+                let t = state.tokenDrops[i];
+                if (t.collected) {
+                    t.active = false;
+                    this.pools.tokenDrop.release(t);
+                    state.tokenDrops.splice(i, 1);
+                }
+            }
         }
     }
 }

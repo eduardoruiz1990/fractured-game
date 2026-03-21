@@ -851,6 +851,35 @@ export class Renderer {
             });
         }
 
+        // --- NEW: RENDER PHYSICAL TOKEN DROPS ---
+        if (state.tokenDrops) {
+            state.tokenDrops.forEach(token => {
+                this.ctx.save();
+                this.ctx.translate(token.x, token.y);
+                
+                const time = this.renderFrame * 0.1 + token.x;
+                const pulse = Math.sin(time) * 3;
+                
+                this.ctx.shadowColor = token.color;
+                this.ctx.shadowBlur = 15 + pulse;
+                
+                // Draw pill-shaped manifestation
+                this.ctx.fillStyle = token.color;
+                this.ctx.beginPath();
+                this.ctx.ellipse(0, 0, 6, 10 + pulse * 0.2, 0, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                // Inner bright core
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.beginPath();
+                this.ctx.ellipse(0, -3, 2, 4, 0, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                this.ctx.shadowBlur = 0;
+                this.ctx.restore();
+            });
+        }
+
         if (state.entities) {
             state.entities.forEach(ent => {
                 let isFlashed = ent.flashTime > 0;

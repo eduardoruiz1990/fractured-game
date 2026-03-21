@@ -166,7 +166,11 @@ export class Game {
                 break;
             }
         }
-        console.log(`[SYSTEM] A ${selectedRarity.type} Personal Token dropped!`);
+        
+        // OVERHAUL: Tell Director to spawn the physical entity instead of just logging to console!
+        this.director.spawnToken(x, y, selectedRarity);
+        if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade', 0.5);
+        this.spawnDamageText(x, y - 20, "TOKEN DROPPED!", selectedRarity.color, 1.2, 2.0);
     }
 
     update(inputState, canvasWidth, canvasHeight, currentGameState) {
