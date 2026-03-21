@@ -399,7 +399,6 @@ export class Renderer {
 
         this.ctx.globalCompositeOperation = 'screen';
 
-        // PANOPTICON LASER SWEEP & ARCHITECT VOID COLLAPSE
         if (state.entities) {
             state.entities.forEach(ent => {
                 if (ent.type === 'PANOPTICON') {
@@ -444,23 +443,14 @@ export class Renderer {
                         this.ctx.translate(ent.x, ent.y);
                         
                         let pulse = Math.sin(this.renderFrame * 0.5) * 0.2;
+                        let aColor = ent.actionState === 'charging_collapse' ? `rgba(255, 200, 50, ${0.2 + pulse})` : `rgba(255, 50, 50, ${0.6 + pulse})`;
                         
-                        // Outer death zone
-                        let grad = this.ctx.createRadialGradient(0, 0, ent.safeZoneRadius, 0, 0, 3000);
-                        let aColor = ent.actionState === 'charging_collapse' ? `rgba(255, 200, 50, ${0.3 + pulse})` : `rgba(255, 50, 50, ${0.8 + pulse})`;
-                        
-                        grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-                        grad.addColorStop(0.05, aColor);
-                        grad.addColorStop(1, 'rgba(0, 0, 0, 0.9)');
-                        
-                        this.ctx.fillStyle = grad;
+                        this.ctx.fillStyle = aColor;
                         this.ctx.beginPath();
-                        this.ctx.arc(0, 0, 3000, 0, Math.PI * 2);
-                        // Punch out the safe zone using evenodd
+                        this.ctx.arc(0, 0, 2500, 0, Math.PI * 2);
                         this.ctx.arc(0, 0, ent.safeZoneRadius, 0, Math.PI * 2);
                         this.ctx.fill('evenodd');
                         
-                        // Safe zone border ring
                         this.ctx.strokeStyle = ent.actionState === 'charging_collapse' ? '#ffffff' : '#ff0000';
                         this.ctx.lineWidth = 5 + Math.sin(this.renderFrame * 0.5) * 3;
                         this.ctx.setLineDash([20, 10]);
@@ -477,12 +467,9 @@ export class Renderer {
         if (state.projectiles) {
             state.projectiles.forEach(p => {
                 this.ctx.fillStyle = p.color;
-                this.ctx.shadowColor = p.color;
-                this.ctx.shadowBlur = 10;
                 this.ctx.beginPath();
                 this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
                 this.ctx.fill();
-                this.ctx.shadowBlur = 0;
 
                 this.ctx.fillStyle = '#ffffff';
                 this.ctx.beginPath();
@@ -689,7 +676,6 @@ export class Renderer {
             this.ctx.stroke();
         }
 
-        // THE ENCROACHING VOID OVERLAY
         if (state.inVoid) {
             this.ctx.fillStyle = `rgba(40, 0, 50, ${0.4 + Math.sin(this.renderFrame * 0.2) * 0.2})`;
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -702,11 +688,9 @@ export class Renderer {
         this.ctx.save();
         this.ctx.fillStyle = this.cachedFloorPattern;
         
-        // INFINITE FLOOR FOR VOID EXPLORATION
         this.ctx.fillRect(state.player.x - 4000, state.player.y - 4000, 8000, 8000);
         this.ctx.restore();
 
-        // THE REAL-TIME PROCEDURAL ORGANIC VOID BOUNDARY
         if (state.mapOriginX !== null) {
             this.ctx.save();
             const mapCenterX = state.mapOriginX;
@@ -717,10 +701,8 @@ export class Renderer {
             this.ctx.fillStyle = '#030105'; 
             this.ctx.beginPath();
             
-            // Outer rect (Reverse Winding to create the cutout)
             this.ctx.rect(mapCenterX - 10000, mapCenterY - 10000, 20000, 20000);
             
-            // Inner organic cutout (Forward Winding)
             for (let i = 0; i <= Math.PI * 2 + 0.1; i += 0.05) {
                 let noise = Math.sin(i * 4 + phase) * 80 
                           + Math.cos(i * 7 - phase * 1.5) * 50
@@ -735,7 +717,6 @@ export class Renderer {
             }
             this.ctx.closePath();
             
-            // Fill using Even-Odd rule to punch the hole
             this.ctx.fill('evenodd');
             
             this.ctx.strokeStyle = 'rgba(40, 5, 50, 0.8)';
@@ -972,42 +953,36 @@ export class Renderer {
                 this.ctx.translate(twitch, twitch);
 
                 if (ent.type === 'ARCHITECT') {
-                    // Geometric, cold, menacing
-                    let pulse = Math.sin(this.renderFrame * 0.05) * 10;
-                    
-                    this.ctx.fillStyle = isFlashed ? '#ddaaaa' : '#111';
+                    let pulse = Math.sin(this.renderFrame * 0.1) * 5;
+                    this.ctx.fillStyle = '#111';
                     this.ctx.shadowColor = '#c5a059';
                     this.ctx.shadowBlur = 30 + pulse;
                     
-                    // Rotating outer squares
                     this.ctx.save();
-                    this.ctx.rotate(this.renderFrame * 0.02);
+                    this.ctx.rotate(this.renderFrame * 0.05);
                     this.ctx.strokeStyle = '#c5a059';
                     this.ctx.lineWidth = 3;
-                    this.ctx.strokeRect(-40, -40, 80, 80);
+                    this.ctx.strokeRect(-30, -30, 60, 60);
                     this.ctx.rotate(Math.PI / 4);
-                    this.ctx.strokeRect(-40, -40, 80, 80);
+                    this.ctx.strokeRect(-30, -30, 60, 60);
                     this.ctx.restore();
 
-                    // Central diamond
                     this.ctx.beginPath();
-                    this.ctx.moveTo(0, -50);
-                    this.ctx.lineTo(30, 0);
-                    this.ctx.lineTo(0, 50);
-                    this.ctx.lineTo(-30, 0);
+                    this.ctx.moveTo(0, -40);
+                    this.ctx.lineTo(25, 0);
+                    this.ctx.lineTo(0, 40);
+                    this.ctx.lineTo(-25, 0);
                     this.ctx.closePath();
                     this.ctx.fill();
                     
-                    // Inner glowing core
                     this.ctx.fillStyle = '#ffffff';
                     this.ctx.beginPath();
-                    this.ctx.moveTo(0, -20);
-                    this.ctx.lineTo(10, 0);
-                    this.ctx.lineTo(0, 20);
-                    this.ctx.lineTo(-10, 0);
+                    this.ctx.moveTo(0, -15);
+                    this.ctx.lineTo(8, 0);
+                    this.ctx.lineTo(0, 15);
+                    this.ctx.lineTo(-8, 0);
                     this.ctx.closePath();
                     this.ctx.fill();
-
                     this.ctx.shadowBlur = 0;
                 }
                 else if (ent.type === 'PANOPTICON') {
