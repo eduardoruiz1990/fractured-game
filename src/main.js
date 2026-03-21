@@ -24,7 +24,6 @@ let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager
 let gameState = 'TITLE'; 
 
 function initEngine() {
-    // --- DEV MODE UI INJECTION ---
     if (!document.getElementById('dev-floor-select')) {
         const devUI = document.createElement('div');
         devUI.id = 'dev-mode-container';
@@ -35,7 +34,8 @@ function initEngine() {
                 <option value="1">1 - SPHERE HEAD</option>
                 <option value="2">2 - RORSCHACH</option>
                 <option value="3">3 - PANOPTICON</option>
-                <option value="4" selected>4 - AMALGAMATION</option>
+                <option value="4">4 - AMALGAMATION</option>
+                <option value="5" selected>5 - ARCHITECT</option>
             </select>
         `;
         document.getElementById('game-container').appendChild(devUI);
@@ -53,17 +53,14 @@ function initEngine() {
     uiManager = new UIManager(saveManager, audioEngine, () => {
         game.init(saveManager);
         
-        // --- APPLY DEV MODE OVERRIDES ---
         const devSelect = document.getElementById('dev-floor-select');
         if (devSelect && devSelect.value !== "1") {
             const chosenFloor = parseInt(devSelect.value);
             game.state.floor = chosenFloor;
             game.state.maxConvergence = Math.floor(100 * Math.pow(1.3, chosenFloor - 1));
-            // Grant free XP for skipping levels so the player isn't completely defenseless!
             game.state.xp += (chosenFloor - 1) * 1500; 
             console.log(`%c DEV OVERRIDE: Starting on Floor ${chosenFloor}. Free XP granted. `, 'background: #c5a059; color: #000;');
             
-            // --- TRACK MAX FLOOR REACHED FOR ROADMAP ---
             if (chosenFloor > saveManager.metaState.maxFloorReached) {
                 saveManager.metaState.maxFloorReached = chosenFloor;
                 saveManager.saveGame();
@@ -190,7 +187,6 @@ function initEngine() {
         const carryData = game.getCarriedState();
         carryData.floor += 1; 
 
-        // --- TRACK MAX FLOOR REACHED FOR ROADMAP ---
         if (carryData.floor > saveManager.metaState.maxFloorReached) {
             saveManager.metaState.maxFloorReached = carryData.floor;
             saveManager.saveGame();
@@ -263,10 +259,16 @@ function initEngine() {
         gameState = 'EXIT_REACHED';
         pauseTitle.innerText = "THE DESCENT CALLS";
         pauseTitle.style.color = "var(--ui-red)";
-        document.getElementById('pause-desc').innerText = `You survived Floor ${game.state.floor}. Awaken with your Lucidity, or risk descending deeper into the nightmare?`;
+        
+        if (game.state.floor >= 5) {
+            document.getElementById('pause-desc').innerText = `You have conquered the nightmare. The Architect has fallen.`;
+            btnDescend.style.display = 'none'; // No floor 6 yet!
+        } else {
+            document.getElementById('pause-desc').innerText = `You survived Floor ${game.state.floor}. Awaken with your Lucidity, or risk descending deeper into the nightmare?`;
+            btnDescend.style.display = 'block'; 
+        }
         
         document.getElementById('btn-unpause').style.display = 'none'; 
-        btnDescend.style.display = 'block'; 
         pauseMenu.style.display = 'flex';
         inputManager.hideJoysticks();
     };
@@ -276,7 +278,6 @@ function initEngine() {
 
 function gameLoop(time) {
     try {
-        // Toggle the Dev UI visibility based on the current gamestate
         const devModeContainer = document.getElementById('dev-mode-container');
         if (devModeContainer) {
             devModeContainer.style.display = (gameState === 'TITLE' || gameState === 'MENU') ? 'block' : 'none';
@@ -311,7 +312,7 @@ function gameLoop(time) {
                 const conText = document.getElementById('convergence-text');
                 const conContainer = document.querySelector('.convergence-section');
                 
-                const activeBoss = game.state.entities.find(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON' || e.type === 'AMALGAMATION');
+                const activeBoss = game.state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
 
                 if (activeBoss) {
                     let hpRatio = Math.max(0, activeBoss.hp / activeBoss.maxHp);
@@ -321,6 +322,7 @@ function gameLoop(time) {
                     if (activeBoss.type === 'RORSCHACH') bossName = 'SUBJECT: RORSCHACH';
                     if (activeBoss.type === 'PANOPTICON') bossName = 'SUBJECT: THE PANOPTICON';
                     if (activeBoss.type === 'AMALGAMATION') bossName = 'SUBJECT: THE AMALGAMATION';
+                    if (activeBoss.type === 'ARCHITECT') bossName = 'SUBJECT: THE ARCHITECT';
 
                     conText.innerText = `${bossName} - VITAL SIGNS: ${Math.ceil(hpRatio * 100)}%`;
                     conBar.style.background = 'linear-gradient(90deg, #8b0000, #ff0000)';

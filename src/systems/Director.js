@@ -5,7 +5,8 @@ import { Parasite } from '../entities/Parasite.js';
 import { Boss } from '../entities/Boss.js';
 import { Rorschach } from '../entities/Rorschach.js'; 
 import { Panopticon } from '../entities/Panopticon.js'; 
-import { Amalgamation } from '../entities/Amalgamation.js'; // Added import!
+import { Amalgamation } from '../entities/Amalgamation.js';
+import { Architect } from '../entities/Architect.js'; // Added import!
 
 export class Director {
     constructor(game) {
@@ -18,7 +19,8 @@ export class Director {
             boss: new ObjectPool(() => new Boss(), 2),
             rorschach: new ObjectPool(() => new Rorschach(), 15), 
             panopticon: new ObjectPool(() => new Panopticon(), 2), 
-            amalgamation: new ObjectPool(() => new Amalgamation(), 2), // Added pool!
+            amalgamation: new ObjectPool(() => new Amalgamation(), 2),
+            architect: new ObjectPool(() => new Architect(), 2), // Added pool!
             particle: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '', active: false }), 300),
             xpDrop: new ObjectPool(() => ({ x: 0, y: 0, value: 0, collected: false, active: false }), 300),
             tokenDrop: new ObjectPool(() => ({ x: 0, y: 0, rarity: '', color: '', collected: false, active: false }), 50),
@@ -34,8 +36,7 @@ export class Director {
         const state = this.game.state;
         state.stress = 1.0 + (state.frame / 3600); 
         
-        // Prevent standard spawns if ANY boss is active
-        if (state.bossSpawned && !state.entities.some(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON' || e.type === 'AMALGAMATION')) {
+        if (state.bossSpawned && !state.entities.some(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON' || e.type === 'AMALGAMATION' || e.type === 'ARCHITECT')) {
             return; 
         }
         
@@ -49,19 +50,20 @@ export class Director {
                 this.game.audioEngine.playSFX('boss_static', 0.8);
             }
             
-            // --- FIXED: TIERED BOSS DEPLOYMENT ---
+            // --- TIERED BOSS DEPLOYMENT ---
             if (state.floor === 1) {
                 this.spawnEntity('BOSS', canvasWidth, canvasHeight);
             } else if (state.floor === 2) {
                 this.spawnEntity('RORSCHACH', canvasWidth, canvasHeight);
             } else if (state.floor === 3) {
                 this.spawnEntity('PANOPTICON', canvasWidth, canvasHeight);
-            } else {
+            } else if (state.floor === 4) {
                 this.spawnEntity('AMALGAMATION', canvasWidth, canvasHeight);
+            } else {
+                this.spawnEntity('ARCHITECT', canvasWidth, canvasHeight); // Floor 5+
             }
             state.bossSpawned = true;
             
-            // --- ROADMAP UI: MARK BOSS AS ENCOUNTERED ---
             try {
                 const saveKey = 'fractured_save_v1';
                 const savedStr = localStorage.getItem(saveKey);
@@ -98,7 +100,8 @@ export class Director {
         else if (type === 'BOSS') ent = this.pools.boss.get().init(Math.random(), x, y);
         else if (type === 'RORSCHACH') ent = this.pools.rorschach.get().init(Math.random(), x, y, generation);
         else if (type === 'PANOPTICON') ent = this.pools.panopticon.get().init(Math.random(), x, y); 
-        else if (type === 'AMALGAMATION') ent = this.pools.amalgamation.get().init(Math.random(), x, y); // Deploys Amalgamation
+        else if (type === 'AMALGAMATION') ent = this.pools.amalgamation.get().init(Math.random(), x, y); 
+        else if (type === 'ARCHITECT') ent = this.pools.architect.get().init(Math.random(), x, y); 
         
         if (ent) {
             state.entities.push(ent);
