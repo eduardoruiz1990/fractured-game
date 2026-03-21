@@ -113,7 +113,8 @@ export class Game {
                 tokens: startTokens, 
                 activeTokens: activeTokens, 
                 sets: setCounts,            
-                denialShieldActive: activeTokens.hasDenial 
+                denialShieldActive: activeTokens.hasDenial,
+                breathPhase: 0 // <--- ADDED BREATH PHASE TRACKING
             },
             runInventory: startRunInventory, 
             inputBuffer: [],
@@ -187,7 +188,6 @@ export class Game {
 
         if (!isBossDefeated) {
             if (this.state.frame > 0 && this.state.frame % 1800 === 0) {
-                // Adjust interactable spawning to remain within the soft map bounds
                 let bx = (this.state.mapOriginX || 0) + (Math.random() - 0.5) * 2000;
                 let by = (this.state.mapOriginY || 0) + (Math.random() - 0.5) * 2000;
                 
@@ -250,7 +250,6 @@ export class Game {
     }
 
     processGameLogic(moveInput, canvasWidth, canvasHeight) {
-        // Capture initial map center to prevent resizing glitches
         if (this.state.mapOriginX === null) {
             this.state.mapOriginX = this.state.player.x;
             this.state.mapOriginY = this.state.player.y;
@@ -283,7 +282,7 @@ export class Game {
         }
 
         let currentSpeed = GAME_CONFIG.BASE_PLAYER_SPEED * this.state.player.speedMultiplier;
-        if (this.state.inVoid) currentSpeed *= 0.6; // The void slows you down
+        if (this.state.inVoid) currentSpeed *= 0.6; 
 
         if (this.state.player.dash.active) {
             currentSpeed *= this.state.player.activeTokens.hasPanic ? 2.5 : 3.5; 
@@ -329,7 +328,6 @@ export class Game {
             this.state.cameraShake = Math.max(this.state.cameraShake, 3);
             
             if (this.state.frame % 45 === 0 && this.audioEngine) {
-                // TWEAKED: Player Hurt sound triggers subtly when in the void
                 this.audioEngine.playSFX('player_hurt', 0.2); 
             }
             
@@ -376,7 +374,23 @@ export class Game {
         
         let ratio = this.state.sanity / this.state.player.maxHp;
         if (!Number.isFinite(ratio)) ratio = 0;
+        let panic = 1 - Math.max(0, ratio);
+
+        // --- DYNAMIC ACCELERATING BREATHING SYSTEM ---
+        let prevBreathPhase = this.state.player.breathPhase;
         
+        // Base breath is slow (0.08). Max panic breath is fast and desperate (0.25)
+        let breathSpeed = 0.08 + (panic * 0.17); 
+        this.state.player.breathPhase += breathSpeed;
+        
+        let prevMod = prevBreathPhase % (Math.PI * 2);
+        let currMod = this.state.player.breathPhase % (Math.PI * 2);
+        
+        // Trigger a localized heavy breathing sound exactly on the "Exhale" loop
+        if (currMod < prevMod && this.audioEngine && !this.state.isDead) { 
+            this.audioEngine.playSFX('player_breath', 0.2 + (panic * 0.4));
+        }
+
         if (this.audioEngine) this.audioEngine.updateState(this.state.stress, ratio, this.state);
     }
 

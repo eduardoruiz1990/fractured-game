@@ -610,7 +610,7 @@ export class Renderer {
             this.ctx.stroke();
         }
 
-        // --- NEW: SICKLY VOID OVERLAY EFFECT ---
+        // --- THE ENCROACHING VOID OVERLAY ---
         if (state.inVoid) {
             this.ctx.fillStyle = `rgba(40, 0, 50, ${0.4 + Math.sin(this.renderFrame * 0.2) * 0.2})`;
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -623,28 +623,26 @@ export class Renderer {
         this.ctx.save();
         this.ctx.fillStyle = this.ctx.createPattern(this.floorPattern, 'repeat');
         
-        // --- NEW: INFINITE EXPLORATION FLOOR ---
-        // Fills an absolutely massive area around the camera to support the unbounded void
+        // --- INFINITE FLOOR FOR VOID EXPLORATION ---
         this.ctx.fillRect(state.player.x - 4000, state.player.y - 4000, 8000, 8000);
         this.ctx.restore();
 
-        // --- NEW: THE ENCROACHING VOID DRAWING ---
+        // --- THE PROCEDURAL ORGANIC VOID BOUNDARY ---
         if (state.mapOriginX !== null) {
             this.ctx.save();
             const mapCenterX = state.mapOriginX;
             const mapCenterY = state.mapOriginY;
             const mapRadius = 1600;
-            const phase = state.frame * 0.02;
+            const phase = this.renderFrame * 0.02; // Tie to visual frame for smooth breathing
 
-            this.ctx.fillStyle = '#030105'; // Pitch black void with a hint of sickly purple
+            this.ctx.fillStyle = '#030105'; 
             this.ctx.beginPath();
             
-            // Draw outer gigantic rect bounding box (Reverse Winding to create the cutout)
+            // Outer rect (Reverse Winding to create the cutout)
             this.ctx.rect(mapCenterX - 10000, mapCenterY - 10000, 20000, 20000);
             
-            // Draw the inner organic cutout (Forward Winding)
+            // Inner organic cutout (Forward Winding)
             for (let i = 0; i <= Math.PI * 2 + 0.1; i += 0.05) {
-                // Multi-octave sine noise creates a beautiful, creepy, bleeding ink-blot shape
                 let noise = Math.sin(i * 4 + phase) * 80 
                           + Math.cos(i * 7 - phase * 1.5) * 50
                           + Math.sin(i * 13 + phase * 0.5) * 30;
@@ -658,10 +656,9 @@ export class Renderer {
             }
             this.ctx.closePath();
             
-            // Fill using the Even-Odd rule, leaving the inner organic shape completely clear!
+            // Fill using Even-Odd rule!
             this.ctx.fill('evenodd');
             
-            // Bleeding organic edges of the void
             this.ctx.strokeStyle = 'rgba(40, 5, 50, 0.8)';
             this.ctx.lineWidth = 150;
             this.ctx.stroke();
@@ -1513,7 +1510,9 @@ export class Renderer {
 
         this.ctx.fillStyle = '#1a1a24';
         this.ctx.beginPath();
-        let breathe = Math.sin(this.renderFrame * 0.15) * (1 + panic * 3); 
+        
+        // <--- ADDED: SYNCHRONIZED VISUAL BREATHING --->
+        let breathe = Math.sin(state.player.breathPhase) * (1 + panic * 3); 
         this.ctx.ellipse(0, 0, state.player.radius * 0.6 + breathe, state.player.radius, 0, 0, Math.PI*2);
         this.ctx.fill();
 

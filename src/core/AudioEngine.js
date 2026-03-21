@@ -32,7 +32,6 @@ export class AudioEngine {
             flashlight: null
         };
 
-        // --- LOCAL ASSET PATHS (heartbeat.mp3 removed to rely entirely on procedural synth) ---
         this.assetUrls = {
             menu_theme: "/sounds/menu_theme.mp3", 
             game_drone: "/sounds/game_drone.mp3", 
@@ -52,7 +51,8 @@ export class AudioEngine {
             boss_hurt: "/sounds/boss_hurt.mp3",
             enemy_ambient: "/sounds/enemy_ambient.mp3",
             breaker_box: "/sounds/breaker_box.mp3",
-            backpack: "/sounds/backpack.mp3"
+            backpack: "/sounds/backpack.mp3",
+            player_breath: "/sounds/player_breath.mp3" 
         };
 
         this.fallbackOscillators = {
@@ -72,23 +72,23 @@ export class AudioEngine {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             this.audioCtx = new AudioContext();
             
-            // SMART COMPRESSOR (Tames loud peaks, boosts quiet sounds)
+            // SMART COMPRESSOR 
             this.compressor = this.audioCtx.createDynamicsCompressor();
-            this.compressor.threshold.value = -30; // Lowered to catch and boost more subtle audio
-            this.compressor.knee.value = 40;       // Very soft, natural transition
-            this.compressor.ratio.value = 15;      // High ratio to aggressively duck other sounds when heartbeat plays
+            this.compressor.threshold.value = -30; 
+            this.compressor.knee.value = 40;       
+            this.compressor.ratio.value = 15;      
             this.compressor.attack.value = 0.002;  
             this.compressor.release.value = 0.20;  
             
-            // MUFFLING FILTER (Simulates fading consciousness)
+            // MUFFLING FILTER 
             this.masterFilter = this.audioCtx.createBiquadFilter();
             this.masterFilter.type = 'lowpass';
-            this.masterFilter.frequency.value = 22050; // Wide open by default
+            this.masterFilter.frequency.value = 22050; 
 
             this.masterGain = this.audioCtx.createGain();
-            this.masterGain.gain.value = 1.2; // Slight makeup gain to compensate for heavy compression
+            this.masterGain.gain.value = 1.2; 
             
-            // ROUTING: Everything goes through Filter -> Compressor -> Speakers
+            // ROUTING: Filter -> Compressor -> Speakers
             this.masterGain.connect(this.masterFilter);
             this.masterFilter.connect(this.compressor);
             this.compressor.connect(this.audioCtx.destination);
@@ -105,7 +105,8 @@ export class AudioEngine {
             this.gains.flashlight.gain.value = 0;
             this.gains.flashlight.connect(this.masterGain);
 
-            // HEARTBEAT ROUTING: Now pushed through the master bus so its massive volume triggers the compressor
+            // <--- ADDED: HEARTBEAT ROUTING FIX --->
+            // Pushing the heartbeat into the masterGain now triggers the compressor!
             this.gains.heartbeat = this.audioCtx.createGain();
             this.gains.heartbeat.gain.value = 0;
             this.gains.heartbeat.connect(this.masterGain);
@@ -225,14 +226,13 @@ export class AudioEngine {
                 
                 const beatInterval = 0.4 + (sanityRatio * 1.5); 
                 if (now - this.lastHeartbeatTime > beatInterval) {
-                    // Pushing huge volume so it intentionally triggers the compressor to duck other audio
+                    // Huge volume pushes through masterGain to aggressively duck background noise!
                     this.playProceduralSFX('heartbeat', 3.5); 
                     this.lastHeartbeatTime = now;
                 }
             } else {
-                // Safe Zone
                 this.safeFade(this.gains.drone, 0.15 + (stress * 0.05), 1.0);
-                this.masterFilter.frequency.setTargetAtTime(22050, now, 0.5); // Un-muffle the world
+                this.masterFilter.frequency.setTargetAtTime(22050, now, 0.5); 
             }
         } catch(e) { }
     }
@@ -323,18 +323,12 @@ export class AudioEngine {
         }
     }
 
-    // =========================================================================
-    // THE PROCEDURAL FALLBACK SYSTEM 
-    // =========================================================================
-    
     startFallbackFlashlight() {
         if (this.fallbackOscillators.flashlight.length > 0) return;
         
-        // Permanent 60Hz Electrical Hum
         const osc1 = this.audioCtx.createOscillator();
         osc1.type = 'sine'; osc1.frequency.value = 60;
         
-        // High pitched failing whine
         const osc2 = this.audioCtx.createOscillator();
         osc2.type = 'triangle'; osc2.frequency.value = 10000;
         
@@ -343,7 +337,7 @@ export class AudioEngine {
         osc1.start(); osc2.start();
         
         this.fallbackOscillators.flashlight.push(osc1, osc2);
-        this.safeFade(this.gains.flashlight, 0.03, 2.0); // Keep it very quiet!
+        this.safeFade(this.gains.flashlight, 0.03, 2.0); 
     }
 
     stopFallbackFlashlight() {
@@ -399,7 +393,6 @@ export class AudioEngine {
         const now = this.audioCtx.currentTime;
         const osc = this.audioCtx.createOscillator();
         
-        // Everything now safely routes through masterGain to be analyzed by the compressor
         const targetGainNode = this.masterGain;
         
         const gain = this.audioCtx.createGain();
@@ -539,6 +532,26 @@ export class AudioEngine {
             osc.type = 'sine'; osc.frequency.setValueAtTime(800, now); osc.frequency.exponentialRampToValueAtTime(400, now + 0.1);
             gain.gain.setValueAtTime(0.1 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
             osc.start(now); osc.stop(now + 0.1);
+        }
+        else if (key === 'player_breath') {
+            const bufferSize = this.audioCtx.sampleRate * 0.8; 
+            const noiseBuffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
+            const noise = this.audioCtx.createBufferSource(); noise.buffer = noiseBuffer;
+
+            let filter = this.audioCtx.createBiquadFilter(); 
+            filter.type = 'bandpass'; 
+            filter.frequency.setValueAtTime(800, now);
+            filter.frequency.exponentialRampToValueAtTime(300, now + 0.8);
+            
+            let noiseGain = this.audioCtx.createGain(); 
+            noiseGain.gain.setValueAtTime(0.01, now); 
+            noiseGain.gain.exponentialRampToValueAtTime(0.5 * volumeMult, now + 0.2);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+
+            noise.connect(filter).connect(noiseGain).connect(targetGainNode); 
+            noise.start(now);
         }
     }
 }
