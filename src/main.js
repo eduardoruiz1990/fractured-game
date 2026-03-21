@@ -134,19 +134,33 @@ function initEngine() {
     document.getElementById('btn-unpause').addEventListener('click', togglePause);
 
     document.getElementById('btn-awaken').addEventListener('click', () => {
-        saveManager.addLucidity(game.state.lucidity);
+        // --- NEW: PENALIZE LEAVING MID-FLOOR ---
+        const isMidFloor = (gameState === 'PAUSED'); 
+        const isExitReached = (gameState === 'EXIT_REACHED'); 
         
+        let earnedLucidity = 0;
+        let retainedTokens = [];
+        
+        // Only grant rewards if they actually finished the floor and chose to leave
+        if (isExitReached) {
+            earnedLucidity = game.state.lucidity;
+            retainedTokens = game.state.runInventory || [];
+            saveManager.addLucidity(earnedLucidity);
+            
+            if (retainedTokens.length > 0) {
+                const tokenKeys = Object.keys(TOKENS);
+                retainedTokens = retainedTokens.map(rarity => {
+                    const randomTokenKey = tokenKeys[Math.floor(Math.random() * tokenKeys.length)];
+                    saveManager.addTokenToInventory(randomTokenKey, rarity);
+                    return { name: TOKENS[randomTokenKey].name, rarity: rarity };
+                });
+            }
+        }
+
         let tokenHtml = "";
-        if (game.state.runInventory && game.state.runInventory.length > 0) {
-            const tokenKeys = Object.keys(TOKENS);
-            const decrypted = game.state.runInventory.map(rarity => {
-                const randomTokenKey = tokenKeys[Math.floor(Math.random() * tokenKeys.length)];
-                saveManager.addTokenToInventory(randomTokenKey, rarity);
-                return { name: TOKENS[randomTokenKey].name, rarity: rarity };
-            });
-            tokenHtml = `<br><br><span style="color:var(--ui-gold);">DECRYPTED TOKENS:</span><br>` + 
-                        decrypted.map(t => `<span class="rarity-${t.rarity}">${t.name} (${t.rarity})</span>`).join('<br>');
-            game.state.runInventory = []; 
+        if (retainedTokens.length > 0) {
+             tokenHtml = `<br><br><span style="color:var(--ui-gold);">DECRYPTED TOKENS:</span><br>` + 
+                        retainedTokens.map(t => `<span class="rarity-${t.rarity}">${t.name} (${t.rarity})</span>`).join('<br>');
         }
 
         localStorage.removeItem('fractured_suspended_run');
@@ -162,21 +176,39 @@ function initEngine() {
         const title = deathScreen.querySelector('.title-typewriter');
         const btn = document.getElementById('btn-restart');
 
-        if (folder) folder.style.borderColor = 'var(--ui-gold)';
-        if (header) header.style.borderBottomColor = 'var(--ui-gold)';
-        if (title) {
-            title.style.color = 'var(--ui-gold)';
-            title.innerText = 'CONSCIOUSNESS RETAINED';
-        }
-        if (btn) btn.innerText = 'REVIEW CLINICAL FILE';
+        // Dynamically style the screen based on whether they earned their extraction or aborted
+        if (isExitReached) {
+            if (folder) folder.style.borderColor = 'var(--ui-gold)';
+            if (header) header.style.borderBottomColor = 'var(--ui-gold)';
+            if (title) {
+                title.style.color = 'var(--ui-gold)';
+                title.innerText = 'CONSCIOUSNESS RETAINED';
+            }
+            if (btn) btn.innerText = 'REVIEW CLINICAL FILE';
 
-        document.getElementById('final-stats').innerHTML = `
-            Safely extracted from <strong>Floor ${game.state.floor}</strong>.<br><br>
-            Earned <strong>${game.state.lucidity}</strong> Lucidity.<br>
-            Retained <strong>100%</strong> of gathered resources.<br>
-            Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
-            ${tokenHtml}
-        `;
+            document.getElementById('final-stats').innerHTML = `
+                Safely extracted from <strong>Floor ${game.state.floor}</strong>.<br><br>
+                Earned <strong>${earnedLucidity}</strong> Lucidity.<br>
+                Retained <strong>100%</strong> of gathered resources.<br>
+                Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
+                ${tokenHtml}
+            `;
+        } else {
+            if (folder) folder.style.borderColor = 'var(--ui-red)';
+            if (header) header.style.borderBottomColor = 'var(--ui-red)';
+            if (title) {
+                title.style.color = 'var(--ui-red)';
+                title.innerText = 'PROTOCOL ABORTED';
+            }
+            if (btn) btn.innerText = 'RETURN TO WARD';
+
+            document.getElementById('final-stats').innerHTML = `
+                Cowardice detected on <strong>Floor ${game.state.floor}</strong>.<br><br>
+                Earned <strong>0</strong> Lucidity (Aborted).<br>
+                Retained <strong>0%</strong> of gathered resources.<br>
+                Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
+            `;
+        }
 
         inputManager.hideJoysticks();
         if (audioEngine) audioEngine.stop();

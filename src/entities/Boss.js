@@ -13,7 +13,7 @@ export class Boss extends Enemy {
         this.phase = 0;
         this.pulseState = 'hunting';
         this.pulseTimer = 180; 
-        return this.initBase(id, x, y, 800, 0.8);
+        return this.initBase(id, x, y, 800, 1.2); // Base speed boosted to 1.2
     }
 
     update(state, game) {
@@ -25,7 +25,7 @@ export class Boss extends Enemy {
             this.vy = 0;
             this.pulseTimer--;
             
-            this.pulseRadius = this.maxPulseRadius * (1 - (this.pulseTimer / 60));
+            this.pulseRadius = this.maxPulseRadius * (1 - (this.pulseTimer / 45));
 
             if (this.pulseTimer <= 0) {
                 this.pulseState = 'pulsing';
@@ -42,23 +42,35 @@ export class Boss extends Enemy {
              this.pulseTimer--;
              if (this.pulseTimer <= 0) {
                  this.pulseState = 'hunting';
-                 this.pulseTimer = 180 + Math.random() * 120; 
+                 // Pulse much more frequently after getting close
+                 this.pulseTimer = 60 + Math.random() * 60; 
                  this.pulseRadius = 0;
              }
         } else {
-            if (state.sanity <= 0) {
-                this.speed = this.baseSpeed * 0.3; 
+            // --- NEW: EXPONENTIAL RUBBER-BANDING SPEED ---
+            let targetSpeed = this.baseSpeed;
+            
+            if (distToTarget > this.maxPulseRadius) {
+                // Accelerates relentlessly the further away the player gets
+                targetSpeed = this.baseSpeed * (1 + (distToTarget / 150)); 
             } else {
-                this.speed = this.baseSpeed;
+                // Sticks aggressively close when in range
+                targetSpeed = this.baseSpeed * 1.5;
+            }
+
+            if (state.sanity <= 0) {
+                this.speed = targetSpeed * 0.3; 
+            } else {
+                this.speed = targetSpeed;
             }
 
             this.vx = (state.player.x - this.x) / distToTarget * this.speed;
             this.vy = (state.player.y - this.y) / distToTarget * this.speed;
 
             this.pulseTimer--;
-            if (this.pulseTimer <= 0 && distToTarget < this.maxPulseRadius * 1.5) {
+            if (this.pulseTimer <= 0 && distToTarget < this.maxPulseRadius * 1.2) {
                 this.pulseState = 'charging';
-                this.pulseTimer = 60; 
+                this.pulseTimer = 45; // Charges the attack much faster now
             }
 
             if (distToTarget < 40) { 
