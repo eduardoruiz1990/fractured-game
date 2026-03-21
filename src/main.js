@@ -104,28 +104,54 @@ function initEngine() {
     document.getElementById('btn-awaken').addEventListener('click', () => {
         saveManager.addLucidity(game.state.lucidity);
         
-        // --- NEW: DECRYPT TOKENS ON AWAKEN ---
+        // --- OVERHAUL: SHOW EXTRACTION SUMMARY ON AWAKEN ---
+        let tokenHtml = "";
         if (game.state.runInventory && game.state.runInventory.length > 0) {
             const tokenKeys = Object.keys(TOKENS);
-            game.state.runInventory.forEach(rarity => {
+            const decrypted = game.state.runInventory.map(rarity => {
                 const randomTokenKey = tokenKeys[Math.floor(Math.random() * tokenKeys.length)];
                 saveManager.addTokenToInventory(randomTokenKey, rarity);
+                return { name: TOKENS[randomTokenKey].name, rarity: rarity };
             });
+            tokenHtml = `<br><br><span style="color:var(--ui-gold);">DECRYPTED TOKENS:</span><br>` + 
+                        decrypted.map(t => `<span class="rarity-${t.rarity}">${t.name} (${t.rarity})</span>`).join('<br>');
             game.state.runInventory = []; // Clear inventory
         }
 
-        if (gameState === 'PAUSED') {
-            const stateToSave = game.getCarriedState();
-            localStorage.setItem('fractured_suspended_run', JSON.stringify(stateToSave));
-            if (resumeBtn) resumeBtn.style.display = 'block';
-        }
+        // Abandoning run, clear any suspended state
+        localStorage.removeItem('fractured_suspended_run');
+        if (resumeBtn) resumeBtn.style.display = 'none';
+
         pauseMenu.style.display = 'none';
         document.getElementById('ui-layer').style.display = 'none';
-        document.getElementById('clinical-folder-menu').style.display = 'flex';
-        uiManager.updateMenuUI();
+        document.getElementById('death-screen').style.display = 'flex';
         
-        if (audioEngine) audioEngine.playMenuTheme(); 
-        gameState = 'MENU';
+        // Dynamically restyle the Death Screen into a Triumphant Extraction Screen
+        const deathScreen = document.getElementById('death-screen');
+        const folder = deathScreen.querySelector('.medical-folder');
+        const header = deathScreen.querySelector('.folder-header');
+        const title = deathScreen.querySelector('.title-typewriter');
+        const btn = document.getElementById('btn-restart');
+
+        if (folder) folder.style.borderColor = 'var(--ui-gold)';
+        if (header) header.style.borderBottomColor = 'var(--ui-gold)';
+        if (title) {
+            title.style.color = 'var(--ui-gold)';
+            title.innerText = 'CONSCIOUSNESS RETAINED';
+        }
+        if (btn) btn.innerText = 'REVIEW CLINICAL FILE';
+
+        document.getElementById('final-stats').innerHTML = `
+            Safely extracted from <strong>Floor ${game.state.floor}</strong>.<br><br>
+            Earned <strong>${game.state.lucidity}</strong> Lucidity.<br>
+            Retained <strong>100%</strong> of gathered resources.<br>
+            Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
+            ${tokenHtml}
+        `;
+
+        inputManager.hideJoysticks();
+        if (audioEngine) audioEngine.stop();
+        gameState = 'DEAD'; // Use dead state to halt update loops
     });
 
     document.getElementById('btn-descend').addEventListener('click', () => {
@@ -161,6 +187,21 @@ function initEngine() {
                         decrypted.map(t => `<span class="rarity-${t.rarity}">${t.name} (${t.rarity})</span>`).join('<br>');
             game.state.runInventory = []; // Clear inventory
         }
+
+        // Reset styling back to negative/red if the player actually died
+        const deathScreen = document.getElementById('death-screen');
+        const folder = deathScreen.querySelector('.medical-folder');
+        const header = deathScreen.querySelector('.folder-header');
+        const title = deathScreen.querySelector('.title-typewriter');
+        const btn = document.getElementById('btn-restart');
+
+        if (folder) folder.style.borderColor = 'var(--ui-red)';
+        if (header) header.style.borderBottomColor = 'var(--ui-red)';
+        if (title) {
+            title.style.color = 'var(--ui-red)';
+            title.innerText = 'MIND BROKEN';
+        }
+        if (btn) btn.innerText = 'RECONSTRUCT FILE';
 
         document.getElementById('final-stats').innerHTML = `
             Died on <strong>Floor ${game.state.floor}</strong>.<br><br>

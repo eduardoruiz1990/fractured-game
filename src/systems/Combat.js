@@ -48,8 +48,7 @@ export class Combat {
                                         obj.active = true;
                                         obj.life = 450; 
                                         state.cameraShake = 30;
-                                        // Normalized volume
-                                        if (game.audioEngine) game.audioEngine.playSFX('breaker_box', 0.6);
+                                        if (game.audioEngine) game.audioEngine.playSFX('breaker_box', 0.8);
                                     }
                                 }
                             }
@@ -90,8 +89,7 @@ export class Combat {
                             state.sanity = Math.min(state.player.maxHp, state.sanity + 50); 
                             state.cameraShake = 20;
                             
-                            // Normalized volume
-                            if (game.audioEngine) game.audioEngine.playSFX('backpack', 0.6);
+                            if (game.audioEngine) game.audioEngine.playSFX('backpack', 0.8);
                             
                             game.spawnParticles(obj.x, obj.y, '#55ff55', 30);
                             game.spawnDamageText(obj.x, obj.y - 30, "SUPPLIES RECOVERED!", '#55ff55', 1.5, 2.0);
@@ -121,8 +119,7 @@ export class Combat {
                 camera.timer = camera.cooldown;
                 state.cameraFlash = 15; 
                 state.cameraShake = 10;
-                // Normalized volume
-                if (game.audioEngine) game.audioEngine.playSFX('polaroid', 0.5); 
+                if (game.audioEngine) game.audioEngine.playSFX('polaroid'); 
                 
                 for (let i = state.entities.length - 1; i >= 0; i--) {
                     let ent = state.entities[i];
@@ -172,8 +169,7 @@ export class Combat {
             if (pipe.timer <= 0) {
                 pipe.timer = pipe.cooldown;
                 game.director.spawnMeleeSwing(state.player.x, state.player.y, pipe.radius);
-                // Normalized volume
-                if (game.audioEngine) game.audioEngine.playSFX('pipe_swing', 0.4);
+                if (game.audioEngine) game.audioEngine.playSFX('pipe_swing');
                 
                 let hitCount = 0;
                 for (let i = state.entities.length - 1; i >= 0; i--) {
@@ -196,8 +192,7 @@ export class Combat {
                 if (hitCount > 0) {
                     state.hitStop = Math.min(25, state.hitStop + 6 + (hitCount * 3)); 
                     state.cameraShake = Math.max(state.cameraShake, 10 + hitCount * 3);
-                    // Capped volume: Never exceeds 1.2x, scales slightly per hit
-                    if (game.audioEngine) game.audioEngine.playSFX('pipe_hit', Math.min(1.2, 0.5 + hitCount * 0.05));
+                    if (game.audioEngine) game.audioEngine.playSFX('pipe_hit', hitCount);
                 }
             }
         }
@@ -357,16 +352,20 @@ export class Combat {
                     game.spawnXP(ent.x, ent.y, ent.type === 'BOSS' ? 25 : 10, true); 
                     game.spawnParticles(ent.x, ent.y, ent.color || '#000', 100);
                     
-                    // NEW: Spawn physical token on boss death!
-                    game.spawnTokenDrop(ent.x, ent.y);
+                    // FIX: Eject the token drop randomly away from the center so it doesn't overlap the elevator!
+                    const dropAngle = Math.random() * Math.PI * 2;
+                    const dropDist = 120 + Math.random() * 30; // Min 120px push to easily clear the 40px elevator radius
+                    const tokenX = ent.x + Math.cos(dropAngle) * dropDist;
+                    const tokenY = ent.y + Math.sin(dropAngle) * dropDist;
+                    game.spawnTokenDrop(tokenX, tokenY);
                     
                     const otherBosses = state.entities.filter(e => (e.type === 'BOSS' || e.type === 'RORSCHACH') && e.id !== ent.id);
                     
                     if (otherBosses.length === 0) {
                         state.cameraShake = 50;
-                        // Don't blow out speakers on boss death either
                         if (game.audioEngine) game.audioEngine.playSFX('death', 1.5);
                         
+                        // Elevator still spawns dead center
                         state.interactables.push({
                              id: Math.random(),
                              type: 'EXIT_ELEVATOR',
@@ -400,7 +399,6 @@ export class Combat {
             }
         }
         
-        // Capped death volume
         if (deathCount > 0 && game.audioEngine) game.audioEngine.playSFX('death', Math.min(1.2, 0.6 + deathCount * 0.1));
     }
 
@@ -433,23 +431,20 @@ export class Combat {
                 state.xpDrops.splice(i, 1);
             }
         }
-        // Capped pickup volume
+        
         if (pickupCount > 0 && game.audioEngine) game.audioEngine.playSFX('pickup', Math.min(0.8, 0.3 + pickupCount * 0.05));
 
-        // --- NEW: Token Collection Loop ---
         if (state.tokenDrops) {
             for (let i = state.tokenDrops.length - 1; i >= 0; i--) {
                 let t = state.tokenDrops[i];
                 let distToPlayer = Math.max(Math.hypot(t.x - state.player.x, t.y - state.player.y), 0.001);
                 
                 if (distToPlayer < 70) {
-                    // Magnetic vacuum effect
                     t.x += (state.player.x - t.x) * 0.15; 
                     t.y += (state.player.y - t.y) * 0.15;
                     
                     if (distToPlayer < 15) {
                         t.collected = true; 
-                        // Add rarity to inventory to be decrypted on death/awaken
                         state.runInventory.push(t.rarity);
                         game.spawnDamageText(t.x, t.y - 20, `${t.rarity} TOKEN!`, t.color, 1.5, 2.0);
                         if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 0.8);
