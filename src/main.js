@@ -24,6 +24,22 @@ let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager
 let gameState = 'TITLE'; 
 
 function initEngine() {
+    // --- NEW: DEV MODE UI INJECTION ---
+    if (!document.getElementById('dev-floor-select')) {
+        const devUI = document.createElement('div');
+        devUI.id = 'dev-mode-container';
+        devUI.style.cssText = "position:absolute; bottom:10px; left:10px; z-index:9999; background:rgba(0,0,0,0.8); border:1px solid var(--ui-gold); padding:8px; color:var(--ui-gold); font-family:monospace; font-size:12px;";
+        devUI.innerHTML = `
+            DEV OVERRIDE - STARTING FLOOR: 
+            <select id="dev-floor-select" style="background:#111; color:var(--ui-gold); border:1px solid #333; outline:none; font-family:inherit; margin-left:10px; padding:2px;">
+                <option value="1">1 - SPHERE HEAD</option>
+                <option value="2">2 - RORSCHACH</option>
+                <option value="3" selected>3 - PANOPTICON</option>
+            </select>
+        `;
+        document.getElementById('game-container').appendChild(devUI);
+    }
+
     saveManager = new SaveManager();
     inputManager = new InputManager(canvas);
     renderer = new Renderer(canvas, ctx);
@@ -35,6 +51,18 @@ function initEngine() {
 
     uiManager = new UIManager(saveManager, audioEngine, () => {
         game.init(saveManager);
+        
+        // --- NEW: APPLY DEV MODE OVERRIDES ---
+        const devSelect = document.getElementById('dev-floor-select');
+        if (devSelect && devSelect.value !== "1") {
+            const chosenFloor = parseInt(devSelect.value);
+            game.state.floor = chosenFloor;
+            game.state.maxConvergence = Math.floor(100 * Math.pow(1.3, chosenFloor - 1));
+            // Grant free XP for skipping levels so the player isn't completely defenseless!
+            game.state.xp += (chosenFloor - 1) * 1500; 
+            console.log(`%c DEV OVERRIDE: Starting on Floor ${chosenFloor}. Free XP granted. `, 'background: #c5a059; color: #000;');
+        }
+
         game.state.player.x = canvas.width / 2;
         game.state.player.y = canvas.height / 2;
         
@@ -104,7 +132,6 @@ function initEngine() {
     document.getElementById('btn-awaken').addEventListener('click', () => {
         saveManager.addLucidity(game.state.lucidity);
         
-        // --- OVERHAUL: SHOW EXTRACTION SUMMARY ON AWAKEN ---
         let tokenHtml = "";
         if (game.state.runInventory && game.state.runInventory.length > 0) {
             const tokenKeys = Object.keys(TOKENS);
@@ -115,10 +142,9 @@ function initEngine() {
             });
             tokenHtml = `<br><br><span style="color:var(--ui-gold);">DECRYPTED TOKENS:</span><br>` + 
                         decrypted.map(t => `<span class="rarity-${t.rarity}">${t.name} (${t.rarity})</span>`).join('<br>');
-            game.state.runInventory = []; // Clear inventory
+            game.state.runInventory = []; 
         }
 
-        // Abandoning run, clear any suspended state
         localStorage.removeItem('fractured_suspended_run');
         if (resumeBtn) resumeBtn.style.display = 'none';
 
@@ -126,7 +152,6 @@ function initEngine() {
         document.getElementById('ui-layer').style.display = 'none';
         document.getElementById('death-screen').style.display = 'flex';
         
-        // Dynamically restyle the Death Screen into a Triumphant Extraction Screen
         const deathScreen = document.getElementById('death-screen');
         const folder = deathScreen.querySelector('.medical-folder');
         const header = deathScreen.querySelector('.folder-header');
@@ -151,7 +176,7 @@ function initEngine() {
 
         inputManager.hideJoysticks();
         if (audioEngine) audioEngine.stop();
-        gameState = 'DEAD'; // Use dead state to halt update loops
+        gameState = 'DEAD'; 
     });
 
     document.getElementById('btn-descend').addEventListener('click', () => {
@@ -174,7 +199,6 @@ function initEngine() {
         saveManager.addLucidity(recovered);
         if (audioEngine) audioEngine.stop(); 
 
-        // --- NEW: DECRYPT TOKENS ON DEATH ---
         let tokenHtml = "";
         if (game.state.runInventory && game.state.runInventory.length > 0) {
             const tokenKeys = Object.keys(TOKENS);
@@ -185,10 +209,9 @@ function initEngine() {
             });
             tokenHtml = `<br><br><span style="color:var(--ui-gold);">DECRYPTED TOKENS:</span><br>` + 
                         decrypted.map(t => `<span class="rarity-${t.rarity}">${t.name} (${t.rarity})</span>`).join('<br>');
-            game.state.runInventory = []; // Clear inventory
+            game.state.runInventory = []; 
         }
 
-        // Reset styling back to negative/red if the player actually died
         const deathScreen = document.getElementById('death-screen');
         const folder = deathScreen.querySelector('.medical-folder');
         const header = deathScreen.querySelector('.folder-header');
@@ -239,6 +262,12 @@ function initEngine() {
 
 function gameLoop(time) {
     try {
+        // Toggle the Dev UI visibility based on the current gamestate
+        const devModeContainer = document.getElementById('dev-mode-container');
+        if (devModeContainer) {
+            devModeContainer.style.display = (gameState === 'TITLE' || gameState === 'MENU') ? 'block' : 'none';
+        }
+
         if (gameState === 'MENU' || gameState === 'TITLE') {
             renderer.drawMenuBackground(time, gameState);
         } 
@@ -268,12 +297,17 @@ function gameLoop(time) {
                 const conText = document.getElementById('convergence-text');
                 const conContainer = document.querySelector('.convergence-section');
                 
-                const activeBoss = game.state.entities.find(e => e.type === 'BOSS' || e.type === 'RORSCHACH');
+                const activeBoss = game.state.entities.find(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON');
 
                 if (activeBoss) {
                     let hpRatio = Math.max(0, activeBoss.hp / activeBoss.maxHp);
                     conBar.style.width = (hpRatio * 100) + '%';
-                    conText.innerText = `${activeBoss.type === 'RORSCHACH' ? 'SUBJECT: RORSCHACH' : 'SUBJECT: SPHERE HEAD'} - VITAL SIGNS: ${Math.ceil(hpRatio * 100)}%`;
+                    
+                    let bossName = 'SUBJECT: SPHERE HEAD';
+                    if (activeBoss.type === 'RORSCHACH') bossName = 'SUBJECT: RORSCHACH';
+                    if (activeBoss.type === 'PANOPTICON') bossName = 'SUBJECT: THE PANOPTICON';
+
+                    conText.innerText = `${bossName} - VITAL SIGNS: ${Math.ceil(hpRatio * 100)}%`;
                     conBar.style.background = 'linear-gradient(90deg, #8b0000, #ff0000)';
                     conText.style.color = 'var(--ui-red)';
                     conContainer.style.borderColor = 'var(--ui-red)';

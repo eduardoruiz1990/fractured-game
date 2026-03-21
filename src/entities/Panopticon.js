@@ -6,7 +6,7 @@ export class Panopticon extends Enemy {
         this.gazeState = 'moving';
         this.gazeTimer = 0;
         this.gazeAngle = 0;
-        this.gazeWidth = 0.5; // Lethal beam width
+        this.gazeWidth = 0.5; // Narrower, highly lethal beam
     }
 
     init(id, x, y) {
@@ -25,8 +25,14 @@ export class Panopticon extends Enemy {
         let angleToPlayer = Math.atan2(dy, dx);
 
         if (this.gazeState === 'moving') {
-            this.vx = Math.cos(angleToPlayer) * this.speed;
-            this.vy = Math.sin(angleToPlayer) * this.speed;
+            // --- NEW: THE TETHER MECHANIC ---
+            // Ensure the boss stays right at the edge of the flashlight range without drifting into the void
+            let targetSpeed = this.speed;
+            if (distToPlayer > 350) targetSpeed = this.speed * 2.5; // It aggressively speeds up to catch you!
+            else if (distToPlayer < 200) targetSpeed = this.speed * 0.5; // It slows down to let you attack it safely!
+
+            this.vx = Math.cos(angleToPlayer) * targetSpeed;
+            this.vy = Math.sin(angleToPlayer) * targetSpeed;
             
             this.gazeTimer--;
             if (this.gazeTimer <= 0) {
@@ -55,11 +61,12 @@ export class Panopticon extends Enemy {
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             
-            this.gazeAngle += Math.sign(angleDiff) * 0.015; 
+            // --- NERFED: SLOWER BEAM SWEEP ---
+            // Reduced from 0.015 to 0.010 so it's noticeably slower than your sprint speed!
+            this.gazeAngle += Math.sign(angleDiff) * 0.010; 
             
             if (Math.abs(angleDiff) < this.gazeWidth) {
                 if (!state.player.dash || !state.player.dash.active) {
-                    // FIX: Throttle damage to tick once every 15 frames. No Stun-Lock!
                     if (state.frame % 15 === 0) {
                         game.takeDamage(15); 
                         if (game.audioEngine) game.audioEngine.playSFX('player_hurt', 0.4);
@@ -77,7 +84,7 @@ export class Panopticon extends Enemy {
                     let pAngle = (i / 18) * Math.PI * 2;
                     game.director.spawnProjectile(
                         this.x, this.y,
-                        Math.cos(pAngle) * 5, Math.sin(pAngle) * 5,
+                        Math.cos(pAngle) * 5, Math.sin(pAngle) * 5, 
                         12, 30, '#ff0055', 240
                     );
                 }
