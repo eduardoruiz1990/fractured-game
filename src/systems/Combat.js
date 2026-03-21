@@ -67,6 +67,7 @@ export class Combat {
                                 if (ent.vacuumState) ent.vacuumState = 'hunting';
                                 if (ent.pulseState) ent.pulseState = 'hunting';
                                 if (ent.shootState) ent.shootState = 'hunting';
+                                if (ent.actionState) ent.actionState = 'pulling'; // Amalgamation reset
 
                                 if (state.frame % 30 === 0) {
                                     ent.takeDamage(20, game);
@@ -126,7 +127,7 @@ export class Combat {
                     let dx = ent.x - state.player.x;
                     let dy = ent.y - state.player.y;
                     let dist = Math.hypot(dx, dy);
-                    let canTakeDamage = !( (ent.type === 'BOSS' || ent.type === 'PANOPTICON') && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
+                    let canTakeDamage = !( (ent.type === 'BOSS' || ent.type === 'PANOPTICON' || ent.type === 'AMALGAMATION') && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
                     if (canTakeDamage && dist < camera.radius) {
                         let angle = Math.atan2(dy, dx);
@@ -152,7 +153,7 @@ export class Combat {
             for (let i = state.entities.length - 1; i >= 0; i--) {
                 let ent = state.entities[i];
                 let dist = Math.hypot(ent.x - state.player.x, ent.y - state.player.y);
-                let canTakeDamage = !( (ent.type === 'BOSS' || ent.type === 'PANOPTICON') && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
+                let canTakeDamage = !( (ent.type === 'BOSS' || ent.type === 'PANOPTICON' || ent.type === 'AMALGAMATION') && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
                 if (canTakeDamage && dist > spinner.baseRadius - 15 && dist < spinner.baseRadius + 15) {
                      if (state.frame % 15 === 0) { 
@@ -175,7 +176,7 @@ export class Combat {
                 for (let i = state.entities.length - 1; i >= 0; i--) {
                     let ent = state.entities[i];
                     let d = Math.max(Math.hypot(ent.x - state.player.x, ent.y - state.player.y), 0.001);
-                    let canTakeDamage = !( (ent.type === 'BOSS' || ent.type === 'PANOPTICON') && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
+                    let canTakeDamage = !( (ent.type === 'BOSS' || ent.type === 'PANOPTICON' || ent.type === 'AMALGAMATION') && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
                     if (canTakeDamage && d <= pipe.radius) {
                         ent.takeDamage(pipe.damage, game);
@@ -281,7 +282,7 @@ export class Combat {
                 }
             }
             
-            let canTakeDamage = !( (ent.type === 'BOSS' || ent.type === 'PANOPTICON') && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
+            let canTakeDamage = !( (ent.type === 'BOSS' || ent.type === 'PANOPTICON' || ent.type === 'AMALGAMATION') && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
             if (canTakeDamage) {
                 
@@ -348,7 +349,7 @@ export class Combat {
                     continue; 
                 }
 
-                if (ent.type === 'BOSS' || (ent.type === 'RORSCHACH' && ent.generation === 3) || ent.type === 'PANOPTICON') {
+                if (ent.type === 'BOSS' || (ent.type === 'RORSCHACH' && ent.generation === 3) || ent.type === 'PANOPTICON' || ent.type === 'AMALGAMATION') {
                     game.spawnXP(ent.x, ent.y, ent.type === 'BOSS' ? 25 : 10, true); 
                     game.spawnParticles(ent.x, ent.y, ent.color || '#000', 100);
                     
@@ -358,7 +359,7 @@ export class Combat {
                     const tokenY = ent.y + Math.sin(dropAngle) * dropDist;
                     game.spawnTokenDrop(tokenX, tokenY);
                     
-                    const otherBosses = state.entities.filter(e => (e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON') && e.id !== ent.id);
+                    const otherBosses = state.entities.filter(e => (e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON' || e.type === 'AMALGAMATION') && e.id !== ent.id);
                     
                     if (otherBosses.length === 0) {
                         state.cameraShake = 50;

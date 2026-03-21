@@ -6,7 +6,7 @@ import { Renderer } from './core/Renderer.js';
 import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
-import { TOKENS } from './data/Manifestations.js'; // NEW: Need token data for decryption
+import { TOKENS } from './data/Manifestations.js';
 
 console.log("FRACTURED Engine Bootstrapping...");
 
@@ -24,7 +24,7 @@ let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager
 let gameState = 'TITLE'; 
 
 function initEngine() {
-    // --- NEW: DEV MODE UI INJECTION ---
+    // --- DEV MODE UI INJECTION ---
     if (!document.getElementById('dev-floor-select')) {
         const devUI = document.createElement('div');
         devUI.id = 'dev-mode-container';
@@ -34,7 +34,8 @@ function initEngine() {
             <select id="dev-floor-select" style="background:#111; color:var(--ui-gold); border:1px solid #333; outline:none; font-family:inherit; margin-left:10px; padding:2px;">
                 <option value="1">1 - SPHERE HEAD</option>
                 <option value="2">2 - RORSCHACH</option>
-                <option value="3" selected>3 - PANOPTICON</option>
+                <option value="3">3 - PANOPTICON</option>
+                <option value="4" selected>4 - AMALGAMATION</option>
             </select>
         `;
         document.getElementById('game-container').appendChild(devUI);
@@ -52,7 +53,7 @@ function initEngine() {
     uiManager = new UIManager(saveManager, audioEngine, () => {
         game.init(saveManager);
         
-        // --- NEW: APPLY DEV MODE OVERRIDES ---
+        // --- APPLY DEV MODE OVERRIDES ---
         const devSelect = document.getElementById('dev-floor-select');
         if (devSelect && devSelect.value !== "1") {
             const chosenFloor = parseInt(devSelect.value);
@@ -310,7 +311,7 @@ function gameLoop(time) {
                 const conText = document.getElementById('convergence-text');
                 const conContainer = document.querySelector('.convergence-section');
                 
-                const activeBoss = game.state.entities.find(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON');
+                const activeBoss = game.state.entities.find(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON' || e.type === 'AMALGAMATION');
 
                 if (activeBoss) {
                     let hpRatio = Math.max(0, activeBoss.hp / activeBoss.maxHp);
@@ -319,6 +320,7 @@ function gameLoop(time) {
                     let bossName = 'SUBJECT: SPHERE HEAD';
                     if (activeBoss.type === 'RORSCHACH') bossName = 'SUBJECT: RORSCHACH';
                     if (activeBoss.type === 'PANOPTICON') bossName = 'SUBJECT: THE PANOPTICON';
+                    if (activeBoss.type === 'AMALGAMATION') bossName = 'SUBJECT: THE AMALGAMATION';
 
                     conText.innerText = `${bossName} - VITAL SIGNS: ${Math.ceil(hpRatio * 100)}%`;
                     conBar.style.background = 'linear-gradient(90deg, #8b0000, #ff0000)';

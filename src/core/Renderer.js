@@ -1,13 +1,20 @@
 // src/core/Renderer.js
 // Handles HTML5 Canvas Drawing, Procedural Lighting Masks, and VFX
+// INCLUDES: Infinite Organic Void, Panopticon, and Amalgamation rendering.
+
 export class Renderer {
     constructor(canvas, ctx) {
         this.canvas = canvas;
         this.ctx = ctx;
         
+        // Cached pattern matrices prevent GC Stutter!
         this.noisePattern = this.generateNoisePattern();
+        this.cachedNoisePattern = this.ctx.createPattern(this.noisePattern, 'repeat');
+        
         this.fogClouds = this.generateFogClouds();
+        
         this.floorPattern = this.generateFloorPattern();
+        this.cachedFloorPattern = this.ctx.createPattern(this.floorPattern, 'repeat');
         
         this.lightCanvas = document.createElement('canvas');
         this.lightCtx = this.lightCanvas.getContext('2d');
@@ -192,7 +199,7 @@ export class Renderer {
         this.ctx.save();
         const offsetX = (Math.random() * 128) | 0;
         const offsetY = (Math.random() * 128) | 0;
-        this.ctx.fillStyle = this.ctx.createPattern(this.noisePattern, 'repeat');
+        this.ctx.fillStyle = this.cachedNoisePattern; 
         this.ctx.translate(-offsetX, -offsetY);
         this.ctx.fillRect(0, 0, this.canvas.width + 128, this.canvas.height + 128);
         this.ctx.restore();
@@ -398,7 +405,7 @@ export class Renderer {
 
         this.ctx.globalCompositeOperation = 'screen';
 
-        // THE PANOPTICON LASER SWEEP
+        // PANOPTICON LASER SWEEP
         if (state.entities) {
             state.entities.forEach(ent => {
                 if (ent.type === 'PANOPTICON') {
@@ -668,7 +675,7 @@ export class Renderer {
 
     drawWorldItems(state) {
         this.ctx.save();
-        this.ctx.fillStyle = this.ctx.createPattern(this.floorPattern, 'repeat');
+        this.ctx.fillStyle = this.cachedFloorPattern;
         
         // INFINITE FLOOR FOR VOID EXPLORATION
         this.ctx.fillRect(state.player.x - 4000, state.player.y - 4000, 8000, 8000);
@@ -937,8 +944,8 @@ export class Renderer {
                 this.ctx.translate(ent.x, ent.y);
                 
                 const twitch = state.sanity < 20 ? (Math.random()-0.5)*4 : 0;
+                this.ctx.translate(twitch, twitch);
                 
-                // --- THE PANOPTICON RENDERING ---
                 if (ent.type === 'PANOPTICON') {
                     let bob = Math.sin(this.renderFrame * 0.05) * 15;
                     let panicTwitch = (Math.random() - 0.5) * (ent.gazeState === 'charging' ? 8 : 2);
@@ -947,7 +954,7 @@ export class Renderer {
                     let angleToPlayer = Math.atan2(state.player.y - ent.y, state.player.x - ent.x);
                     if (ent.gazeState === 'sweeping' || ent.gazeState === 'charging') angleToPlayer = ent.gazeAngle;
                     
-                    // Bloody Writhing Tendrils
+                    // Fleshy tendrils
                     this.ctx.strokeStyle = '#4a0010';
                     this.ctx.lineWidth = 4;
                     for(let i=0; i<12; i++) {
@@ -959,7 +966,7 @@ export class Renderer {
                         this.ctx.stroke();
                     }
 
-                    // Spinning Eye-Covered Halos
+                    // Spinning Biblically Accurate Rings
                     this.ctx.strokeStyle = '#ff0044';
                     this.ctx.lineWidth = 2;
                     let spinSpeed = ent.gazeState === 'charging' ? 0.1 : 0.02;
@@ -970,7 +977,6 @@ export class Renderer {
                         this.ctx.ellipse(0, 0, 60 + r*15, 25 + r*10, 0, 0, Math.PI*2);
                         this.ctx.stroke();
                         
-                        // Mini Eyes on Halos
                         this.ctx.fillStyle = '#ff0000';
                         this.ctx.beginPath();
                         this.ctx.arc(60 + r*15, 0, 5, 0, Math.PI*2);
@@ -994,7 +1000,7 @@ export class Renderer {
                     this.ctx.ellipse(0, 0, 35, 40, angleToPlayer, 0, Math.PI * 2);
                     this.ctx.fill();
 
-                    // Inner Iris and Slit Pupil
+                    // Iris and Slit Pupil
                     this.ctx.save();
                     this.ctx.rotate(angleToPlayer);
                     this.ctx.fillStyle = (ent.gazeState === 'sweeping' || ent.gazeState === 'charging') ? '#ffff00' : '#ff0000';
@@ -1009,8 +1015,73 @@ export class Renderer {
                     this.ctx.fill();
                     this.ctx.restore();
                 }
+                else if (ent.type === 'AMALGAMATION') {
+                    // Massive, shifting blob of biomass
+                    let pulse = Math.sin(this.renderFrame * 0.1) * 8;
+                    let jitterX = (Math.random() - 0.5) * 4;
+                    let jitterY = (Math.random() - 0.5) * 4;
+                    this.ctx.translate(jitterX, jitterY);
+
+                    // Gravity Well visual if pulling
+                    if (ent.actionState === 'pulling') {
+                        this.ctx.save();
+                        let gravPulse = (this.renderFrame * 5) % 150;
+                        this.ctx.strokeStyle = `rgba(100, 255, 100, ${1 - (gravPulse / 150)})`;
+                        this.ctx.lineWidth = 2;
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, ent.gravityRadius - (gravPulse * 5), 0, Math.PI * 2);
+                        this.ctx.stroke();
+                        this.ctx.restore();
+                    }
+
+                    // Outer grotesque aura
+                    let grad = this.ctx.createRadialGradient(0, 0, 10, 0, 0, 90 + pulse);
+                    grad.addColorStop(0, '#5a7a2a');
+                    grad.addColorStop(0.6, '#1a2a0a');
+                    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                    this.ctx.fillStyle = grad;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 90 + pulse, 0, Math.PI * 2);
+                    this.ctx.fill();
+
+                    // Writhing internal masses
+                    this.ctx.fillStyle = isFlashed ? '#ddaaaa' : ent.color;
+                    for (let m = 0; m < 8; m++) {
+                        this.ctx.save();
+                        let mAngle = (m / 8) * Math.PI * 2 + (this.renderFrame * 0.01);
+                        let mDist = 25 + Math.sin(this.renderFrame * 0.05 + m) * 15;
+                        this.ctx.translate(Math.cos(mAngle) * mDist, Math.sin(mAngle) * mDist);
+                        this.ctx.rotate(this.renderFrame * 0.05 * (m % 2 === 0 ? 1 : -1));
+                        
+                        this.ctx.beginPath();
+                        this.ctx.ellipse(0, 0, 20 + Math.sin(this.renderFrame*0.1)*5, 15, 0, 0, Math.PI*2);
+                        this.ctx.fill();
+                        
+                        this.ctx.fillStyle = '#ffaa00';
+                        this.ctx.beginPath();
+                        this.ctx.arc(5, 0, 3, 0, Math.PI*2);
+                        this.ctx.fill();
+                        this.ctx.restore();
+                    }
+
+                    // Core
+                    this.ctx.fillStyle = isFlashed ? '#fff' : '#050505';
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 20 + pulse * 0.5, 0, Math.PI * 2);
+                    this.ctx.fill();
+
+                    // "Spawning" animation indicator
+                    if (ent.actionState === 'spawning') {
+                        this.ctx.strokeStyle = '#55ff55';
+                        this.ctx.lineWidth = 4;
+                        this.ctx.setLineDash([10, 10]);
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, 45 + Math.sin(this.renderFrame * 0.2) * 10, 0, Math.PI * 2);
+                        this.ctx.stroke();
+                        this.ctx.setLineDash([]);
+                    }
+                }
                 else if (ent.type === 'RORSCHACH') {
-                    this.ctx.translate(twitch, twitch);
                     if (ent.shootState === 'telegraphing') {
                         this.ctx.save();
                         this.ctx.rotate(ent.shootAngle);
@@ -1051,7 +1122,6 @@ export class Renderer {
                     this.ctx.shadowBlur = 0;
                 }
                 else if (ent.type === 'SCAVENGER') {
-                    this.ctx.translate(twitch, twitch);
                     this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
                     
                     if (ent.vacuumState === 'vacuuming') {
@@ -1093,7 +1163,6 @@ export class Renderer {
                     this.ctx.stroke();
                 } 
                 else if (ent.type === 'PREDATOR') {
-                    this.ctx.translate(twitch, twitch);
                     if (ent.attackState === 'telegraphing') {
                         this.ctx.rotate(Math.atan2(ent.lungeVy, ent.lungeVx));
                         
@@ -1174,7 +1243,6 @@ export class Renderer {
                     this.ctx.shadowBlur = 0; 
                 }
                 else if (ent.type === 'PARASITE') {
-                    this.ctx.translate(twitch, twitch);
                     this.ctx.rotate(this.renderFrame * 0.2); 
                     
                     if (ent.lashingState === 'lashing' && ent.lashTarget) {
@@ -1228,7 +1296,6 @@ export class Renderer {
                     }
                 }
                 else if (ent.type === 'BOSS') {
-                    this.ctx.translate(twitch, twitch);
                     try {
                         if (ent.pulseState === 'charging' || ent.pulseState === 'pulsing') {
                             this.ctx.save();
@@ -1327,7 +1394,7 @@ export class Renderer {
                     }
                 }
 
-                if (ent.hp < ent.maxHp && ent.flashTime <= 0 && ent.type !== 'BOSS' && ent.type !== 'RORSCHACH' && ent.type !== 'PANOPTICON') {
+                if (ent.hp < ent.maxHp && ent.flashTime <= 0 && !['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION'].includes(ent.type)) {
                     let barW = 24;
                     let yOffset = 20;
                     
@@ -1379,7 +1446,7 @@ export class Renderer {
     drawBossAnnouncement(state) {
         this.ctx.save();
         
-        const activeBoss = state.entities.find(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON');
+        const activeBoss = state.entities.find(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON' || e.type === 'AMALGAMATION');
         const bossType = activeBoss ? activeBoss.type : 'BOSS';
         
         const cx = this.canvas.width / 2;
@@ -1478,6 +1545,32 @@ export class Renderer {
                 this.ctx.stroke();
                 this.ctx.restore();
             }
+        } else if (bossType === 'AMALGAMATION') {
+            let pulse = Math.sin(this.renderFrame * 0.1) * 5;
+            this.ctx.fillStyle = '#1a2a0a';
+            this.ctx.shadowColor = '#55ff55';
+            this.ctx.shadowBlur = 30;
+            this.ctx.beginPath();
+            this.ctx.arc(0, 0, 45 + pulse, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.shadowBlur = 0;
+            
+            this.ctx.fillStyle = '#5a7a2a';
+            for (let m = 0; m < 6; m++) {
+                this.ctx.save();
+                let mAngle = (m / 6) * Math.PI * 2 + (simulatedPhase * 0.5);
+                let mDist = 25 + Math.sin(simulatedPhase * 2 + m) * 10;
+                this.ctx.translate(Math.cos(mAngle) * mDist, Math.sin(mAngle) * mDist);
+                this.ctx.beginPath();
+                this.ctx.ellipse(0, 0, 15, 10, simulatedPhase, 0, Math.PI*2);
+                this.ctx.fill();
+                this.ctx.restore();
+            }
+            
+            this.ctx.fillStyle = '#050505';
+            this.ctx.beginPath();
+            this.ctx.arc(0, 0, 20, 0, Math.PI * 2);
+            this.ctx.fill();
         } else {
             let pulse = Math.sin(this.renderFrame * 0.1) * 3;
             this.ctx.fillStyle = '#1a0d15';
@@ -1528,7 +1621,7 @@ export class Renderer {
                 this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
                 this.ctx.fill();
                 this.ctx.fillStyle = '#ff0000';
-                this.ctx.shadowBlur = 15; 
+                this.ctx.shadowBlur = ent.pulseState === 'charging' ? 30 : 15;
             });
             this.ctx.shadowBlur = 0;
 
@@ -1554,8 +1647,19 @@ export class Renderer {
         
         let textJitter = (Math.random() - 0.5) * 10;
         
-        const titleText = bossType === 'RORSCHACH' ? "THE RORSCHACH" : (bossType === 'PANOPTICON' ? "THE PANOPTICON" : "THE SPHERE HEAD");
-        const subText = bossType === 'RORSCHACH' ? "The Mind Divided" : (bossType === 'PANOPTICON' ? "The All-Seeing Eye" : "Apex Predator of the Wastes");
+        let titleText = "THE SPHERE HEAD";
+        let subText = "Apex Predator of the Wastes";
+        
+        if (bossType === 'RORSCHACH') {
+            titleText = "THE RORSCHACH";
+            subText = "The Mind Divided";
+        } else if (bossType === 'PANOPTICON') {
+            titleText = "THE PANOPTICON";
+            subText = "The All-Seeing Eye";
+        } else if (bossType === 'AMALGAMATION') {
+            titleText = "THE AMALGAMATION";
+            subText = "The Collective Nightmare";
+        }
         
         this.ctx.font = "900 110px 'Courier New', Courier, monospace";
         this.ctx.fillStyle = '#ffffff';
