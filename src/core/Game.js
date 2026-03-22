@@ -1,8 +1,8 @@
-import { GAME_CONFIG } from '../data/Config.js';
+// src/core/Game.js
 import { Combat } from '../systems/Combat.js';
 import { Director } from '../systems/Director.js';
 import { TOKENS } from '../data/Manifestations.js'; 
-import { HubWorld } from '../systems/HubWorld.js'; // NEW: Import Hub logic
+import { HubWorld } from '../systems/HubWorld.js';
 
 export class Game {
     constructor() {
@@ -13,257 +13,242 @@ export class Game {
         this.audioEngine = null; 
         
         this.director = new Director(this);
-        this.hubWorld = new HubWorld(this); // NEW: Initialize Hub
+        this.hubWorld = new HubWorld(this);
 
         window.addEventListener('keydown', (e) => {
-            if (e.key === '9' && this.state && this.state.sanity > 0) {
-                this.state.xp += 1000;
-                console.log('%c DEV CHEAT: +1000 XP applied! ', 'background: #44aa44; color: white;');
+            if (this.state && e.key === 'q' && this.state.player.dash.cooldown <= 0) {
+                this.state.player.dash.active = true;
+                this.state.player.dash.timer = this.state.player.dash.duration;
+                this.state.player.dash.cooldown = 90;
+                let dashAngle = this.state.player.angle;
+                if (this.state.input && this.state.input.isMoving) {
+                    dashAngle = Math.atan2(this.state.input.moveY, this.state.input.moveX);
+                }
+                this.state.player.dash.dx = Math.cos(dashAngle);
+                this.state.player.dash.dy = Math.sin(dashAngle);
+                
+                if (this.audioEngine) this.audioEngine.playSFX('dash');
             }
         });
     }
 
     init(saveManager, carriedState = null) {
-        this.saveManager = saveManager; // --- Ensure Combat.js has access to saveManager
+        this.saveManager = saveManager; 
         const meta = saveManager.metaState;
-        const maxSanity = 100 + (meta.upgrades.hp * 20);
-        const speedMult = 1.0 + (meta.upgrades.speed * 0.05);
-        const lightMult = 1.0 + (meta.upgrades.light * 0.1);
-        const magnetLvl = meta.upgrades.magnet || 0; // --- NEW: Load Magnet Stat ---
-
-        let startFloor = 1;
-        let startLucidity = 0;
-        let startLevel = 1;
         
-        let startTokens = { head: null, body: null, hands: null, legs: null };
-        let startRunInventory = [];
+        const maxSanity = 100 + ((meta.upgrades.hp || 0) * 20);
+        const speedBuff = 1.0 + ((meta.upgrades.speed || 0) * 0.05);
+        const lightBuff = 1.0 + ((meta.upgrades.light || 0) * 0.1);
 
-        let startWeapons = {
-            flashlight: { level: 1, damage: 15, radius: 250 * lightMult, angle: 0.4 },
-            static: { level: 0, damage: 0, radius: 60, active: false, pulsePhase: 0 },
-            adrenaline: { level: 0 },
-            lead_pipe: { level: 0, damage: 50, radius: 80, cooldown: 90, timer: 0 },
-            spilled_ink: { level: 0, damage: 5, radius: 30, dropRate: 30, timer: 0 },
-            corrosive_battery: { level: 0, damage: 2, duration: 60 },
-            broken_chalk: { level: 0, radius: 70, duration: 180, cooldown: 120, timer: 0 },
-            polaroid_camera: { level: 0, damage: 60, radius: 350, angle: 0.8, cooldown: 240, timer: 0 }, 
-            fidget_spinner: { level: 0, damage: 10, baseRadius: 55, speed: 0.05 }
-        };
-        let startSynergies = [];
-        let startCurses = [];
-
-        if (carriedState) {
-            startFloor = carriedState.floor;
-            startLucidity = carriedState.lucidity;
-            startWeapons = carriedState.weapons;
-            startSynergies = carriedState.synergies;
-            startCurses = carriedState.curses;
-            startLevel = carriedState.level;
-            
-            if (carriedState.tokens) startTokens = carriedState.tokens;
-            if (carriedState.runInventory) startRunInventory = carriedState.runInventory;
-        } else {
-            if (meta.equippedTokens) {
-                startTokens = JSON.parse(JSON.stringify(meta.equippedTokens));
-            }
-        }
-
-        let setCounts = { insomniac: 0, institutionalized: 0 };
-        let activeTokens = { hasParanoia: false, hasDenial: false, hasTwitch: false, hasPanic: false };
-
-        Object.values(startTokens).forEach(uid => {
-            if (!uid) return;
-            const invItem = meta.inventory.find(i => i.uid === uid);
-            if (invItem && TOKENS[invItem.id]) {
-                const tData = TOKENS[invItem.id];
-                if (setCounts[tData.set] !== undefined) setCounts[tData.set]++;
-                if (tData.id === 'head_paranoia') activeTokens.hasParanoia = true;
-                if (tData.id === 'body_denial') activeTokens.hasDenial = true;
-                if (tData.id === 'hands_twitch') activeTokens.hasTwitch = true;
-                if (tData.id === 'legs_panic') activeTokens.hasPanic = true;
-            }
-        });
-
+        const startFloor = carriedState ? carriedState.floor : 1;
         let effectiveMaxSanity = maxSanity;
-        if (setCounts.institutionalized >= 2) effectiveMaxSanity += 50; 
 
-        let effectiveSpeedMult = speedMult;
-        if (setCounts.insomniac >= 2) effectiveSpeedMult += 0.10; 
-        
-        if (activeTokens.hasParanoia) {
-            startWeapons.flashlight.radius *= 1.5; 
-            startWeapons.flashlight.angle *= 0.8;  
+        const pCurses = [];
+        const pSets = {};
+        const pSynergies = [];
+        const pTokens = { hasTwitch: false, hasPanic: false };
+
+        if (meta.equippedTokens) {
+            Object.values(meta.equippedTokens).forEach(uid => {
+                if (!uid) return;
+                const invItem = meta.inventory.find(i => i.uid === uid);
+                if (invItem) {
+                    const tokenData = TOKENS[invItem.id];
+                    if (tokenData.curses) pCurses.push(...tokenData.curses);
+                    pSets[tokenData.set] = (pSets[tokenData.set] || 0) + 1;
+                    
+                    if (invItem.id === 'adrenaline_gland') pTokens.hasTwitch = true;
+                    if (invItem.id === 'broken_watch') pTokens.hasPanic = true;
+                }
+            });
         }
+
+        if (pCurses.includes('fragile_mind')) effectiveMaxSanity = Math.floor(maxSanity * 0.5);
 
         let startSanity = carriedState ? carriedState.sanity : effectiveMaxSanity;
 
         this.state = {
             killCounts: meta.killCounts || {}, 
-            hubWorld: this.hubWorld, // <--- CRITICAL FIX: Restore this line so the Renderer can see the Hub!
+            hubWorld: this.hubWorld,           
             floor: startFloor,
             convergence: 0,
             maxConvergence: Math.floor(100 * Math.pow(1.3, startFloor - 1)), 
-            
+            frame: 0,
+            xp: carriedState ? carriedState.xp : 0,
+            level: carriedState ? carriedState.level : 1,
+            lucidity: carriedState ? carriedState.lucidity : 0, 
+            sanity: startSanity,
+            inVoid: false,
+            cameraShake: 0,
+            cameraFlash: 0,
+            hitStop: 0,
+            bossSpawned: false,
             mapOriginX: null,
             mapOriginY: null,
-            inVoid: false,
+            runInventory: carriedState ? carriedState.runInventory : [], 
             
-            player: { 
-                x: 0, y: 0, 
-                radius: 12, angle: 0, targetAngle: 0, hp: effectiveMaxSanity, maxHp: effectiveMaxSanity, speedMultiplier: effectiveSpeedMult,
-                dash: { active: false, timer: 0, cooldown: 0, dx: 0, dy: 0 },
-                weapons: startWeapons,
-                synergies: startSynergies, 
-                curses: startCurses,
-                tokens: startTokens, 
-                activeTokens: activeTokens, 
-                sets: setCounts,            
-                denialShieldActive: activeTokens.hasDenial,
+            player: {
+                x: 0, y: 0,
+                radius: 12,
+                angle: 0,
+                speed: 3.5 * speedBuff,
+                maxHp: effectiveMaxSanity,
+                curses: pCurses,
+                sets: pSets,
+                synergies: pSynergies,
+                activeTokens: pTokens,
+                flashTime: 0,
                 breathPhase: 0,
-                flashTime: 0, // --- NEW: Player Hit Flash ---
-                upgrades: { magnet: magnetLvl } // Inject Magnet level
+                denialShieldActive: false,
+                dash: { active: false, timer: 0, duration: 12, cooldown: 0, dx: 0, dy: 0 },
+                weapons: carriedState ? carriedState.weapons : {
+                    flashlight: { 
+                        level: 1, damage: 15, radius: 250 * lightBuff, 
+                        angle: 0.6, type: 'cone', 
+                        tags: ['light', 'focus'] 
+                    },
+                    static: { level: 0, damage: 5, radius: 100, active: false, pulsePhase: 0, tags: ['aura', 'tech'] },
+                    polaroid_camera: { level: 0, damage: 30, radius: 300, angle: Math.PI/3, cooldown: 180, timer: 0, tags: ['burst', 'light'] },
+                    fidget_spinner: { level: 0, damage: 8, baseRadius: 60, speed: 0.1, tags: ['orbit', 'kinetic'] },
+                    lead_pipe: { level: 0, damage: 45, radius: 70, cooldown: 90, timer: 0, tags: ['melee', 'kinetic'] },
+                    spilled_ink: { level: 0, damage: 10, radius: 45, dropRate: 45, timer: 0, tags: ['hazard', 'dark'] },
+                    broken_chalk: { level: 0, radius: 60, duration: 300, cooldown: 600, timer: 0, tags: ['utility', 'focus'] },
+                    corrosive_battery: { level: 0, damage: 2, duration: 180, tags: ['passive', 'tech'] }
+                },
+                upgrades: meta.upgrades 
             },
-            runInventory: startRunInventory, 
-            inputBuffer: [],
-            sanity: startSanity, sanityDrainMult: 1.0 + (startFloor - 1) * 0.2, 
-            xp: 0, level: startLevel, lucidity: startLucidity,
-            entities: [], xpDrops: [], particles: [], damageTexts: [], inkPuddles: [], meleeSwings: [], safeZones: [],
-            interactables: [], 
+            input: { moveX: 0, moveY: 0, aimAngle: 0, isMoving: false },
+            entities: [],
+            projectiles: [],
+            particles: [],
+            xpDrops: [],
             tokenDrops: [], 
-            projectiles: [], 
-            playerAfterimages: [], 
-            decals: [], // --- NEW: Permanent Gore & Spills ---
-            hitStop: 0, 
-            frame: 0, stress: 1.0, cameraShake: 0, bossSpawned: false,
-            cameraFlash: 0, 
-            isDead: false
+            damageTexts: [],
+            safeZones: [],
+            inkPuddles: [],
+            meleeSwings: [],
+            interactables: [],
+            playerAfterimages: [],
+            decals: []
         };
+        
+        if (pSets.insomniac >= 2) this.state.player.weapons.flashlight.radius *= 1.25;
+
+        // FIXED: The engine requires 'startGameDrone()', not 'startDrone()'
+        if (this.audioEngine) this.audioEngine.startGameDrone();
     }
 
     getCarriedState() {
-        if (!this.state) return null;
         return {
             floor: this.state.floor,
-            lucidity: this.state.lucidity,
             sanity: this.state.sanity,
             weapons: this.state.player.weapons,
-            synergies: this.state.player.synergies,
-            curses: this.state.player.curses,
+            xp: this.state.xp,
             level: this.state.level,
-            tokens: this.state.player.tokens,         
-            runInventory: this.state.runInventory     
+            lucidity: this.state.lucidity,
+            runInventory: this.state.runInventory
         };
     }
 
+    takeDamage(amount) {
+        if (this.state.player.denialShieldActive) {
+            this.state.player.denialShieldActive = false;
+            this.state.cameraFlash = 10;
+            this.state.cameraShake = 20;
+            if (this.audioEngine) this.audioEngine.playSFX('glass_shatter');
+            return;
+        }
+
+        if (this.state.player.curses && this.state.player.curses.includes('hemophilia')) {
+            amount *= 1.5;
+        }
+
+        let dmgReduction = 0;
+        if (this.state.player.sets && this.state.player.sets.medicated >= 2) {
+            dmgReduction = 0.2; 
+        }
+
+        const finalDmg = amount * (1 - dmgReduction);
+        this.state.sanity -= finalDmg;
+        this.state.player.flashTime = 10;
+        this.state.cameraShake = Math.max(this.state.cameraShake, finalDmg * 2);
+        
+        if (this.audioEngine && finalDmg > 5) this.audioEngine.playSFX('player_hit');
+        
+        if (this.state.sanity <= 0 && this.onDeath) {
+            this.onDeath();
+        }
+    }
+
+    spawnParticles(x, y, color, count) {
+        if (this.director && typeof this.director.spawnParticles === 'function') {
+            this.director.spawnParticles(x, y, color, count);
+        }
+    }
+
+    spawnDamageText(x, y, amount, color, scale = 1.0, life = 1.0) {
+        if (this.director && typeof this.director.spawnDamageText === 'function') {
+            this.director.spawnDamageText(x, y, Math.ceil(amount).toString(), color, scale, life);
+        }
+    }
+
+    spawnXP(x, y, value, isBoss = false) {
+        if (this.director && typeof this.director.spawnXP === 'function') {
+            this.director.spawnXP(x, y, value, isBoss);
+        }
+        if (isBoss) this.state.cameraShake = 15;
+    }
+
     spawnTokenDrop(x, y) {
-        const rarities = [
-            { type: 'COMMON', chance: 0.60, color: '#aaaaaa' },
-            { type: 'RARE', chance: 0.30, color: '#5555ff' },
-            { type: 'EPIC', chance: 0.09, color: '#aa55ff' },
-            { type: 'ANOMALOUS', chance: 0.01, color: '#ff5555' }
-        ];
+        const rand = Math.random();
+        let rarity = 'common';
+        let color = '#cd7f32';
         
-        let roll = Math.random();
-        let selectedRarity = rarities[0];
-        let accum = 0;
-        
-        for (let r of rarities) {
-            accum += r.chance;
-            if (roll <= accum) {
-                selectedRarity = r;
-                break;
-            }
+        if (rand > 0.95) { rarity = 'legendary'; color = '#ff8c00'; }
+        else if (rand > 0.80) { rarity = 'epic'; color = '#800080'; }
+        else if (rand > 0.50) { rarity = 'rare'; color = '#4169e1'; }
+
+        if (this.director && typeof this.director.spawnToken === 'function') {
+            this.director.spawnToken(x, y, { type: rarity, color: color });
         }
         
-        this.director.spawnToken(x, y, selectedRarity);
-        if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade', 0.5);
-        this.spawnDamageText(x, y - 20, "TOKEN DROPPED!", selectedRarity.color, 1.2, 2.0);
+        this.spawnParticles(x, y, color, 30);
+        this.spawnDamageText(x, y - 20, "TOKEN DROPPED!", color, 1.2, 2.0);
     }
 
     update(inputState, canvasWidth, canvasHeight, currentGameState) {
-        // --- NEW: HUB STATE BYPASS ---
         if (currentGameState === 'HUB') {
             this.state.input = inputState;
             this.processGameLogic(inputState, canvasWidth, canvasHeight, true);
-            this.hubWorld.update(this.state);
-            return false; // No breakdown
+            if (this.hubWorld) this.hubWorld.update(this.state);
+            return false; 
         }
 
         if (currentGameState !== 'PLAYING') return;
 
         if (this.state.hitStop > 0) {
             this.state.hitStop--;
-            this.state.sanity -= (GAME_CONFIG.SANITY_DRAIN_RATE * 0.1); 
-            if (this.state.sanity <= -20 && this.onDeath && !this.state.isDead) {
-                this.state.isDead = true;
-                this.onDeath();
-            }
-            return this.state.sanity <= 0;
+            this.state.frame++; 
+            return false;
         }
 
-        this.director.spawnWave(canvasWidth, canvasHeight);
+        const currentInput = {
+            moveX: inputState.moveX,
+            moveY: inputState.moveY,
+            aimAngle: inputState.aimAngle,
+            isMoving: inputState.isMoving
+        };
 
-        const isBossDefeated = this.state.bossSpawned && !this.state.entities.some(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON' || e.type === 'AMALGAMATION' || e.type === 'ARCHITECT');
-
-        if (!isBossDefeated) {
-            if (this.state.frame > 0 && this.state.frame % 1800 === 0) {
-                let bx = (this.state.mapOriginX || 0) + (Math.random() - 0.5) * 2000;
-                let by = (this.state.mapOriginY || 0) + (Math.random() - 0.5) * 2000;
-                
-                 this.state.interactables.push({
-                     id: Math.random(),
-                     type: 'BREAKER_BOX',
-                     x: bx,
-                     y: by,
-                     active: false, charge: 0, life: 0, radius: 350, dead: false
-                 });
-            }
-
-            if (this.state.frame > 0 && this.state.frame % 2400 === 0) {
-                let targetX, targetY;
-                for (let i=0; i<5; i++) {
-                    targetX = (this.state.mapOriginX || 0) + (Math.random() - 0.5) * 2000;
-                    targetY = (this.state.mapOriginY || 0) + (Math.random() - 0.5) * 2000;
-                    if (Math.hypot(targetX - this.state.player.x, targetY - this.state.player.y) > 400) break;
-                }
-                this.state.interactables.push({
-                     id: Math.random(),
-                     type: 'OBJECTIVE_BACKPACK',
-                     x: targetX,
-                     y: targetY,
-                     active: true, charge: 0, life: 1200, radius: 30, dead: false 
-                });
-                
-                if (this.audioEngine) this.audioEngine.playSFX('levelup', 1); 
-                this.spawnDamageText(this.state.player.x, this.state.player.y - 40, "SUPPLY DROP DETECTED!", '#55ff55', 1.2, 3.0);
+        let isBreakdown = false;
+        if (this.state.sanity <= 0) {
+            isBreakdown = true;
+            if (this.state.frame % 3 !== 0) {
+                currentInput.moveX = 0;
+                currentInput.moveY = 0;
+                currentInput.isMoving = false;
             }
         }
 
-        this.state.sanity -= GAME_CONFIG.SANITY_DRAIN_RATE * this.state.sanityDrainMult;
-        
-        if (this.state.sanity <= -20 && this.onDeath && !this.state.isDead) {
-            this.state.isDead = true;
-            this.onDeath();
-            return true; 
-        }
-        
-        let isBreakdown = this.state.sanity <= 0;
-        if (isBreakdown) {
-            this.state.inputBuffer.push({...inputState});
-            if (this.state.inputBuffer.length < GAME_CONFIG.BREAKDOWN_DELAY_FRAMES) {
-                this.processGameLogic({ moveX: 0, moveY: 0, aimAngle: this.state.player.angle, isMoving: false, isAiming: false, dash: false }, canvasWidth, canvasHeight);
-                return isBreakdown; 
-            }
-        } else {
-            if (this.state.inputBuffer.length > 0) this.state.inputBuffer = [];
-        }
-        
-        let currentInput = inputState;
-        if (isBreakdown && this.state.inputBuffer.length >= GAME_CONFIG.BREAKDOWN_DELAY_FRAMES) {
-            currentInput = this.state.inputBuffer.shift();
-            this.state.inputBuffer.push({...inputState});
-        }
-        
         this.processGameLogic(currentInput, canvasWidth, canvasHeight);
         return isBreakdown; 
     }
@@ -274,35 +259,23 @@ export class Game {
             this.state.mapOriginY = this.state.player.y;
         }
 
-        let canDash = true;
-        if (this.state.player.sets.institutionalized >= 4) canDash = false;
-
-        if (moveInput.dash && canDash && this.state.player.dash.cooldown <= 0 && this.state.player.dash.timer <= 0) {
-            let dashCooldown = this.state.player.activeTokens.hasPanic ? 45 : 90;
-            
-            this.state.player.dash.active = true;
-            this.state.player.dash.timer = 15; 
-            this.state.player.dash.cooldown = dashCooldown; 
-            if (this.audioEngine) this.audioEngine.playSFX('dash');
-            
-            let dx = moveInput.moveX;
-            let dy = moveInput.moveY;
-            if (dx === 0 && dy === 0) {
-                dx = Math.cos(this.state.player.angle);
-                dy = Math.sin(this.state.player.angle);
-            }
-            let dist = Math.max(Math.hypot(dx, dy), 0.001);
-            this.state.player.dash.dx = dx / dist;
-            this.state.player.dash.dy = dy / dist;
-        }
+        this.state.frame++;
+        this.state.input = moveInput;
 
         if (this.state.player.dash.cooldown > 0) {
             this.state.player.dash.cooldown--;
         }
 
-        let currentSpeed = GAME_CONFIG.BASE_PLAYER_SPEED * this.state.player.speedMultiplier;
-        if (this.state.inVoid) currentSpeed *= 0.6; 
+        if (this.state.player.flashTime > 0) this.state.player.flashTime--;
+        if (this.state.cameraShake > 0) this.state.cameraShake *= 0.9;
+        if (this.state.cameraShake < 0.5) this.state.cameraShake = 0;
+        if (this.state.cameraFlash > 0) this.state.cameraFlash--;
 
+        this.state.player.breathPhase += 0.05;
+        this.state.player.angle = moveInput.aimAngle;
+        
+        let currentSpeed = this.state.player.speed;
+        
         if (this.state.player.dash.active) {
             currentSpeed *= this.state.player.activeTokens.hasPanic ? 2.5 : 3.5; 
             this.state.player.dash.timer--;
@@ -310,7 +283,6 @@ export class Game {
             this.state.player.x += this.state.player.dash.dx * currentSpeed;
             this.state.player.y += this.state.player.dash.dy * currentSpeed;
 
-            // Only leave combat afterimages outside of the hub
             if (!isHub && this.state.frame % 2 === 0) {
                 this.state.playerAfterimages.push({
                     x: this.state.player.x, y: this.state.player.y, 
@@ -322,149 +294,68 @@ export class Game {
                 this.state.player.dash.active = false;
             }
         } else if (moveInput.isMoving) {
+            if (moveInput.moveX !== 0 && moveInput.moveY !== 0) {
+                const len = Math.hypot(moveInput.moveX, moveInput.moveY);
+                moveInput.moveX /= len;
+                moveInput.moveY /= len;
+            }
             this.state.player.x += moveInput.moveX * currentSpeed;
             this.state.player.y += moveInput.moveY * currentSpeed;
         }
 
-        if (isHub) return; // EARLY EXIT: Weapons, enemies, and void do not function in the Hub
+        if (this.director && typeof this.director.updateParticles === 'function') {
+            this.director.updateParticles();
+        }
 
-        // --- THE ENCROACHING VOID LOGIC ---
+        if (isHub) return; 
+
         const mapCenterX = this.state.mapOriginX;
         const mapCenterY = this.state.mapOriginY;
-        const mapRadius = 1600; 
         const distFromCenter = Math.hypot(this.state.player.x - mapCenterX, this.state.player.y - mapCenterY);
         
-        const phase = this.state.frame * 0.02;
-        const angleToCenter = Math.atan2(this.state.player.y - mapCenterY, this.state.player.x - mapCenterX);
-        const noise = Math.sin(angleToCenter * 4 + phase) * 80 
-                    + Math.cos(angleToCenter * 7 - phase * 1.5) * 50
-                    + Math.sin(angleToCenter * 13 + phase * 0.5) * 30;
-        
-        const dynamicRadius = mapRadius + noise - 20; 
-        
-        if (distFromCenter > dynamicRadius) {
-            this.state.inVoid = true;
-            this.state.sanity -= 0.6 * this.state.sanityDrainMult; 
-            this.state.cameraShake = Math.max(this.state.cameraShake, 3);
-            
-            if (this.state.frame % 45 === 0 && this.audioEngine) {
-                this.audioEngine.playSFX('player_hurt', 0.2); 
+        let voidRadius = 1600;
+        let isInsideSafeZone = false;
+
+        for (let sz of this.state.safeZones) {
+            if (Math.hypot(this.state.player.x - sz.x, this.state.player.y - sz.y) < sz.radius) {
+                isInsideSafeZone = true;
+                break;
             }
-            
-            if (this.state.frame % 2 === 0) {
-                this.spawnParticles(this.state.player.x + (Math.random()-0.5)*50, this.state.player.y + (Math.random()-0.5)*50, '#1a0024', 3);
+        }
+
+        if (!isInsideSafeZone && distFromCenter > voidRadius) {
+            this.state.inVoid = true;
+            this.state.sanity -= 0.1;
+            if (this.state.frame % 10 === 0) {
+                this.state.cameraShake = Math.max(this.state.cameraShake, 2);
+                this.spawnDamageText(this.state.player.x, this.state.player.y - 20, "VOID", '#800080', 1.0, 0.5);
             }
         } else {
             this.state.inVoid = false;
         }
 
-        if (moveInput.isAiming) {
-            let diff = moveInput.aimAngle - this.state.player.angle;
-            if (Number.isFinite(diff)) {
-                if (diff > 100 || diff < -100) diff = 0; 
-                while (diff < -Math.PI) diff += Math.PI * 2;
-                while (diff > Math.PI) diff -= Math.PI * 2;
-                this.state.player.angle += diff * 0.25;
-            }
+        if (this.state.sanity > 0 && !this.state.inVoid && !isInsideSafeZone) {
+            let drainRate = 0.02;
+            if (this.state.player.curses && this.state.player.curses.includes('nyctophobia')) drainRate = 0.05;
+            this.state.sanity -= drainRate; 
         }
 
-        if (this.state.cameraFlash > 0) this.state.cameraFlash--;
-        // --- NEW: Tick down player hit flash ---
-        if (this.state.player.flashTime > 0) this.state.player.flashTime--;
-
-        const staticWep = this.state.player.weapons.static;
-        if (staticWep.active) staticWep.pulsePhase += 0.05;
-
-        for (let i = this.state.entities.length - 1; i >= 0; i--) {
-            let ent = this.state.entities[i];
-            ent.update(this.state, this);
-        }
-        
         Combat.resolveWeapons(this);
         Combat.collectXP(this);
-        this.director.updateParticles();
-
-        const currentReq = GAME_CONFIG.BASE_XP_REQ * this.state.level;
-        if (this.state.xp >= currentReq) {
-            this.state.xp -= currentReq; 
-            this.state.level++; 
-            if (this.onLevelUp) this.onLevelUp();
+        
+        const requiredXP = Math.floor(10 * Math.pow(1.5, this.state.level - 1));
+        if (this.state.xp >= requiredXP && this.onLevelUp) {
+            this.state.level++;
+            this.state.xp -= requiredXP;
+            this.onLevelUp();
         }
 
-        if (this.state.cameraShake > 0) this.state.cameraShake -= 1;
-        this.state.frame++;
-        
-        let ratio = this.state.sanity / this.state.player.maxHp;
-        if (!Number.isFinite(ratio)) ratio = 0;
-        let panic = 1 - Math.max(0, ratio);
-
-        let prevBreathPhase = this.state.player.breathPhase;
-        let breathSpeed = 0.08 + (panic * 0.17); 
-        this.state.player.breathPhase += breathSpeed;
-        
-        let prevMod = prevBreathPhase % (Math.PI * 2);
-        let currMod = this.state.player.breathPhase % (Math.PI * 2);
-        
-        if (currMod < prevMod && this.audioEngine && !this.state.isDead) { 
-            this.audioEngine.playSFX('player_breath', 0.2 + (panic * 0.4));
+        // --- RESTORED AUDIO HOOK ---
+        // Dynamically modulates audio filters and triggers the procedural heartbeat
+        if (this.audioEngine) {
+            let sanityRatio = this.state.sanity / this.state.player.maxHp;
+            if (!Number.isFinite(sanityRatio)) sanityRatio = 0;
+            this.audioEngine.updateState(this.state.stress, sanityRatio);
         }
-
-        if (this.audioEngine) this.audioEngine.updateState(this.state.stress, ratio, this.state);
-    }
-
-    takeDamage(amount) {
-        if (this.state.player.dash.active || this.state.isDead) return;
-
-        if (this.state.player.denialShieldActive) {
-            this.state.player.denialShieldActive = false; 
-            this.spawnDamageText(this.state.player.x, this.state.player.y - 20, "DENIED!", '#ffffff', 1.5, 2.0);
-            this.spawnParticles(this.state.player.x, this.state.player.y, '#aaaaff', 30);
-            if (this.audioEngine) this.audioEngine.playSFX('pickup', 5); 
-            return; 
-        }
-
-        this.state.sanity -= amount;
-        this.state.cameraShake = 15; 
-        this.state.hitStop = 8; 
-        this.state.player.flashTime = 15; // --- NEW: Red damage hit flash trigger ---
-
-        if (this.state.player.sets.institutionalized >= 4) {
-            this.spawnDamageText(this.state.player.x, this.state.player.y, "SHOCKWAVE", '#aa55ff', 2.0, 1.5);
-            this.spawnParticles(this.state.player.x, this.state.player.y, '#aa55ff', 50);
-            this.state.cameraShake = 40;
-            
-            this.state.entities.forEach(ent => {
-                let d = Math.hypot(ent.x - this.state.player.x, ent.y - this.state.player.y);
-                if (d < 300) {
-                    ent.takeDamage(40, this);
-                    ent.x += (ent.x - this.state.player.x) / d * 150; 
-                    ent.y += (ent.y - this.state.player.y) / d * 150;
-                }
-            });
-
-            this.state.sanity = Math.min(this.state.player.maxHp, this.state.sanity + (this.state.player.maxHp * 0.10));
-        }
-        
-        if (this.audioEngine) this.audioEngine.playSFX('player_hurt');
-        try { if (navigator.vibrate) navigator.vibrate(100); } catch(e){}
-        
-        this.spawnDamageText(this.state.player.x, this.state.player.y, `-${Math.floor(amount)}`, '#ff0000', 1.5, 1.5);
-        
-        if (this.state.sanity <= -20 && this.onDeath && !this.state.isDead) {
-            this.state.isDead = true;
-            this.onDeath();
-        }
-    }
-
-    spawnXP(x, y, amount, isMassive = false) {
-        this.director.spawnXP(x, y, amount, isMassive);
-    }
-
-    spawnParticles(x, y, color, count) {
-        this.director.spawnParticles(x, y, color, count);
-    }
-
-    spawnDamageText(x, y, text, color = '#ffaaaa', scale = 1.0, life = 1.0) {
-        this.director.spawnDamageText(x, y, text, color, scale, life);
     }
 }

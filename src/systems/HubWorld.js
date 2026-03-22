@@ -6,7 +6,6 @@ export class HubWorld {
         this.game = game;
         this.roomRadius = 500; 
         
-        // Define the physical interaction points in the room
         this.zones = [
             { id: 'bed', x: 0, y: -300, radius: 100, prompt: "THE DESCENT MACHINE (Start Run)", action: 'tab-main', color: '#c5a059' },
             { id: 'desk', x: 300, y: 0, radius: 100, prompt: "SYNAPSE RECORDS (Upgrades)", action: 'tab-tree', color: '#0ea5e9' },
@@ -17,6 +16,48 @@ export class HubWorld {
         this.activeZone = null;
         this.flickerTimer = 0;
         this.lightIntensity = 1;
+
+        this.cachedFloor = this.generateFloor();
+    }
+
+    generateFloor() {
+        const c = document.createElement('canvas');
+        const s = 1200; 
+        c.width = s; c.height = s;
+        const cx = c.getContext('2d');
+        cx.translate(s/2, s/2);
+
+        cx.fillStyle = '#0f1115';
+        cx.fillRect(-s/2, -s/2, s, s);
+
+        cx.beginPath();
+        cx.arc(0, 0, this.roomRadius, 0, Math.PI * 2);
+        cx.clip();
+
+        cx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+        cx.lineWidth = 2;
+        for(let i = -this.roomRadius; i <= this.roomRadius; i += 40) {
+            cx.beginPath(); cx.moveTo(i, -this.roomRadius); cx.lineTo(i, this.roomRadius); cx.stroke();
+            cx.beginPath(); cx.moveTo(-this.roomRadius, i); cx.lineTo(this.roomRadius, i); cx.stroke();
+        }
+        
+        cx.fillStyle = 'rgba(255,255,255,0.015)';
+        for(let i = -this.roomRadius; i <= this.roomRadius; i += 80) {
+            for(let j = -this.roomRadius; j <= this.roomRadius; j += 80) {
+                cx.fillRect(i, j, 40, 40);
+                cx.fillRect(i+40, j+40, 40, 40);
+            }
+        }
+
+        cx.strokeStyle = '#1e293b'; 
+        cx.lineWidth = 16;
+        cx.beginPath(); cx.arc(0, 0, this.roomRadius, 0, Math.PI*2); cx.stroke();
+        
+        cx.strokeStyle = '#0f172a'; 
+        cx.lineWidth = 8;
+        cx.beginPath(); cx.arc(0, 0, this.roomRadius - 8, 0, Math.PI*2); cx.stroke();
+
+        return c;
     }
 
     update(state) {
@@ -40,7 +81,11 @@ export class HubWorld {
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             
-            let isAiming = Math.abs(angleDiff) < fl.angle && distToZone < fl.radius + z.radius;
+            // CRITICAL FIX: Safe checks for flashlight radius preventing NaN comparison failures
+            let flRadius = (fl && Number.isFinite(fl.radius)) ? fl.radius : 250;
+            let flAngle = (fl && Number.isFinite(fl.angle)) ? fl.angle : 0.6;
+            
+            let isAiming = Math.abs(angleDiff) < flAngle && distToZone < flRadius + z.radius;
 
             if (isStanding || isAiming) {
                 this.activeZone = z;
@@ -67,56 +112,26 @@ export class HubWorld {
     draw(ctx, state, renderer) {
         ctx.save();
         
-        // --- 1. CRISP CLINICAL FLOOR ---
-        ctx.fillStyle = '#0f1115'; // Moody Slate Base
-        ctx.fillRect(-this.roomRadius - 100, -this.roomRadius - 100, this.roomRadius * 2 + 200, this.roomRadius * 2 + 200);
+        ctx.drawImage(this.cachedFloor, -600, -600);
         
-        ctx.beginPath();
-        ctx.arc(0, 0, this.roomRadius, 0, Math.PI * 2);
-        ctx.clip();
-
-        // High-res surgical tiles
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
-        ctx.lineWidth = 2;
-        for(let i = -this.roomRadius; i <= this.roomRadius; i += 40) {
-            ctx.beginPath(); ctx.moveTo(i, -this.roomRadius); ctx.lineTo(i, this.roomRadius); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(-this.roomRadius, i); ctx.lineTo(this.roomRadius, i); ctx.stroke();
-        }
-        
-        // Specular polished tile highlights
-        ctx.fillStyle = 'rgba(255,255,255,0.015)';
-        for(let i = -this.roomRadius; i <= this.roomRadius; i += 80) {
-            for(let j = -this.roomRadius; j <= this.roomRadius; j += 80) {
-                ctx.fillRect(i, j, 40, 40);
-                ctx.fillRect(i+40, j+40, 40, 40);
-            }
-        }
-
-        // Room Wall Border
-        ctx.strokeStyle = '#1e293b'; // Outer slate border
-        ctx.lineWidth = 16;
-        ctx.beginPath(); ctx.arc(0, 0, this.roomRadius, 0, Math.PI*2); ctx.stroke();
-        ctx.strokeStyle = '#0f172a'; // Inner lip
-        ctx.lineWidth = 8;
-        ctx.beginPath(); ctx.arc(0, 0, this.roomRadius - 8, 0, Math.PI*2); ctx.stroke();
-        
-        // --- 2. PROFESSIONAL FURNITURE & SHADOWS ---
         for (let z of this.zones) {
             let isActive = this.activeZone && this.activeZone.id === z.id;
             
-            // Interaction Halo
-            ctx.strokeStyle = isActive ? '#fff' : z.color;
-            ctx.lineWidth = isActive ? 3 : 1;
-            ctx.setLineDash(isActive ? [15, 5] : [5, 10]);
-            ctx.beginPath();
-            ctx.arc(z.x, z.y, z.radius, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            
-            // PERFORMANCE FIX: Fast Ambient Occlusion / Drop Shadow (No expensive blur filter!)
+            if (isActive) {
+                ctx.save();
+                ctx.translate(z.x, z.y);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.lineWidth = 6;
+                if (z.id === 'bed') { ctx.beginPath(); ctx.roundRect(-45, -75, 90, 150, 8); ctx.stroke(); }
+                else if (z.id === 'desk') { ctx.beginPath(); ctx.roundRect(-60, -30, 120, 60, 6); ctx.stroke(); }
+                else if (z.id === 'locker') ctx.strokeRect(-30, -50, 60, 100);
+                else if (z.id === 'trophies') ctx.strokeRect(-45, -15, 90, 30);
+                ctx.restore();
+            }
+
             ctx.save();
-            ctx.translate(z.x + 10, z.y + 15); // Offset for light from top-left
-            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.translate(z.x + 10, z.y + 15); 
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
             
             if (z.id === 'bed') {
                 if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-45, -75, 90, 150, 8); ctx.fill(); }
@@ -130,7 +145,6 @@ export class HubWorld {
             else if (z.id === 'trophies') ctx.fillRect(-45, -15, 90, 30);
             ctx.restore();
             
-            // Draw Detailed Furniture Textures
             ctx.save();
             ctx.translate(z.x, z.y);
             
@@ -190,13 +204,11 @@ export class HubWorld {
                 }
             } 
             else if (z.id === 'trophies') {
-                // Glass Casing
                 ctx.fillStyle = '#0f172a'; ctx.fillRect(-45, -15, 90, 30); 
                 ctx.fillStyle = 'rgba(150, 200, 255, 0.15)'; ctx.fillRect(-40, -10, 80, 20); 
                 ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1.5; 
                 ctx.beginPath(); ctx.moveTo(-35, -5); ctx.lineTo(-15, -5); ctx.stroke();
 
-                // Dynamic Statues
                 const kills = state.killCounts || {};
 
                 const drawStatue = (tx, ty, count, baseColor) => {
@@ -213,13 +225,11 @@ export class HubWorld {
                     if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-15, -10, 30, 20, 3); ctx.fill(); }
                     else ctx.fillRect(-15, -10, 30, 20);
                     
-                    // PERFORMANCE FIX: Faux Glow (Alpha Circle instead of shadowBlur)
                     ctx.fillStyle = metalColor;
                     ctx.globalAlpha = 0.25;
                     ctx.beginPath(); ctx.arc(0, -25, 20, 0, Math.PI * 2); ctx.fill();
                     ctx.globalAlpha = 1.0;
                     
-                    // Main Statue Body
                     ctx.beginPath(); ctx.arc(0, -25, 12, 0, Math.PI * 2); ctx.fill(); 
                     ctx.fillRect(-6, -18, 12, 18); 
                     
@@ -241,7 +251,6 @@ export class HubWorld {
                     if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-20, -15, 40, 25, 4); ctx.fill(); }
                     else ctx.fillRect(-20, -15, 40, 25);
                     
-                    // PERFORMANCE FIX: Faux Glow
                     ctx.fillStyle = color;
                     ctx.globalAlpha = 0.25;
                     ctx.beginPath(); ctx.arc(0, -25, 25, 0, Math.PI * 2); ctx.fill();
@@ -272,12 +281,5 @@ export class HubWorld {
         }
         
         ctx.restore();
-        
-        // 3. Draw the Player on top of the clinical ward
-        renderer.drawPlayer(state, null);
-        
-        // NOTE: Hub-specific lighting (Multiply/Screen passes) has been completely 
-        // removed from this file. It is now exclusively handled by Renderer.js 
-        // in order to prevent double-darkening the scene into pitch black!
     }
 }

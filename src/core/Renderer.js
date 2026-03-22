@@ -35,7 +35,6 @@ export class Renderer {
         }
         this.lightningFlash = 0;
 
-        // --- NEW: Ambient Dust Motes for the Hub World ---
         this.hubDust = [];
         for(let i = 0; i < 80; i++) {
             this.hubDust.push({
@@ -126,7 +125,6 @@ export class Renderer {
         const cy = this.canvas.height / 2;
         
         this.ctx.save();
-        
         this.ctx.save();
         this.ctx.translate(cx + this.canvas.width * 0.3, cy);
         this.ctx.scale(25, 25); 
@@ -162,7 +160,6 @@ export class Renderer {
             this.ctx.restore();
         }
         this.ctx.restore();
-
         this.ctx.restore();
     }
 
@@ -212,7 +209,6 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    // Helper to draw floating dust motes
     drawHubDust(state) {
         this.ctx.fillStyle = '#ffffff';
         this.hubDust.forEach(dust => {
@@ -220,13 +216,12 @@ export class Renderer {
             dust.y += dust.vy;
             dust.phase += 0.015;
             
-            // Wrap around the player's view
             if (dust.x > state.player.x + 800) dust.x -= 1600;
             if (dust.x < state.player.x - 800) dust.x += 1600;
             if (dust.y > state.player.y + 800) dust.y -= 1600;
             if (dust.y < state.player.y - 800) dust.y += 1600;
 
-            let alpha = (Math.sin(dust.phase) + 1) / 2 * 0.4; 
+            let alpha = (Math.sin(dust.phase) + 1) / 2 * 0.5; 
             this.ctx.globalAlpha = alpha;
             this.ctx.beginPath();
             this.ctx.arc(dust.x, dust.y, dust.size, 0, Math.PI*2);
@@ -264,53 +259,120 @@ export class Renderer {
                 this.ctx.translate(curShakeX, curShakeY);
             }
 
-            // --- PHASE 2: HUB RENDERING ROUTER (THE PRO REVAMP) ---
             if (gameState === 'HUB') {
                 if (state.hubWorld) {
-                    // 1. Draw Base Geometry (Unlit crisp models from HubWorld.js)
+                    
                     state.hubWorld.draw(this.ctx, state, this);
+                    this.drawPlayer(state, audioEngine);
                     
-                    this.ctx.save();
-                    
-                    // 2. Cinematic Ambient Occlusion / Shadow Pass
-                    // Plunges the room into a beautiful, moody dark slate color
-                    this.ctx.globalCompositeOperation = 'multiply';
-                    let ambientGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, 50, state.player.x, state.player.y, 800);
-                    ambientGrad.addColorStop(0, '#5e728a');   // Soft surgical light near player
-                    ambientGrad.addColorStop(0.5, '#1e293b'); // Dark slate mid-ground
-                    ambientGrad.addColorStop(1, '#020408');   // Pitch black edges
-                    
-                    // Incorporate flicker
-                    if (state.hubWorld.lightIntensity < 0.5) {
-                        this.ctx.fillStyle = `rgba(5, 8, 15, ${1 - state.hubWorld.lightIntensity})`; 
+                    if (this.lightCanvas.width !== this.canvas.width || this.lightCanvas.height !== this.canvas.height) {
+                        this.lightCanvas.width = this.canvas.width;
+                        this.lightCanvas.height = this.canvas.height;
                     } else {
-                        this.ctx.fillStyle = ambientGrad;
+                        this.lightCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
                     }
-                    this.ctx.fillRect(state.player.x - 2000, state.player.y - 2000, 4000, 4000);
+
+                    this.lightCtx.save();
+                    this.lightCtx.translate(this.canvas.width / 2, this.canvas.height / 2);
+                    this.lightCtx.scale(this.zoom, this.zoom);
+                    this.lightCtx.translate(-state.player.x, -state.player.y);
+
+                    let darkness = state.hubWorld.lightIntensity < 0.5 ? 0.95 : 0.82;
+                    this.lightCtx.fillStyle = `rgba(5, 8, 12, ${darkness})`;
+                    this.lightCtx.fillRect(state.player.x - 2000, state.player.y - 2000, 4000, 4000);
+
+                    this.lightCtx.globalCompositeOperation = 'destination-out';
                     
-                    // 3. Volumetric Lighting & Spotlights (God Rays)
+                    let fl = state.player.weapons.flashlight;
+                    
+                    // CRITICAL FIX: Safe Fallbacks for non-finite values that crash Canvas API
+                    let flRadius = (fl && Number.isFinite(fl.radius) && fl.radius > 0) ? fl.radius : 250;
+                    let currentAngle = (fl && Number.isFinite(fl.angle)) ? fl.angle : 0.6;
+                    let jitter = (Math.random() - 0.5) * 0.02;
+
+                    let flGrad = this.lightCtx.createRadialGradient(
+                        state.player.x, state.player.y, 0, 
+                        state.player.x, state.player.y, flRadius * 1.5
+                    );
+                    flGrad.addColorStop(0, 'rgba(255, 255, 255, 1)'); 
+                    flGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)'); 
+                    flGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                    
+                    this.lightCtx.fillStyle = flGrad;
+                    this.lightCtx.beginPath();
+                    this.lightCtx.moveTo(state.player.x, state.player.y);
+                    this.lightCtx.arc(
+                        state.player.x, state.player.y, flRadius * 1.5, 
+                        state.player.angle - currentAngle + jitter, 
+                        state.player.angle + currentAngle + jitter
+                    );
+                    this.lightCtx.closePath();
+                    this.lightCtx.fill();
+
+                    let pGlow = this.lightCtx.createRadialGradient(state.player.x, state.player.y, 0, state.player.x, state.player.y, 100);
+                    pGlow.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+                    pGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                    this.lightCtx.fillStyle = pGlow;
+                    this.lightCtx.beginPath(); this.lightCtx.arc(state.player.x, state.player.y, 100, 0, Math.PI*2); this.lightCtx.fill();
+
+                    if (state.hubWorld.zones && state.hubWorld.lightIntensity > 0.5) {
+                        state.hubWorld.zones.forEach(z => {
+                            let pulse = Math.sin(this.renderFrame * 0.05 + z.x) * 5;
+                            const glow = this.lightCtx.createRadialGradient(z.x, z.y, 0, z.x, z.y, 140 + pulse);
+                            glow.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+                            glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                            this.lightCtx.fillStyle = glow;
+                            this.lightCtx.beginPath();
+                            this.lightCtx.arc(z.x, z.y, 140 + pulse, 0, Math.PI * 2);
+                            this.lightCtx.fill();
+                        });
+                    }
+                    this.lightCtx.restore();
+
+                    this.ctx.save();
+                    this.ctx.setTransform(1, 0, 0, 1, 0, 0); 
+                    this.ctx.globalCompositeOperation = 'source-over';
+                    this.ctx.drawImage(this.lightCanvas, 0, 0);
+                    this.ctx.restore();
+
+                    this.ctx.save();
                     this.ctx.globalCompositeOperation = 'screen';
+                    
+                    let flTint = this.ctx.createRadialGradient(
+                        state.player.x, state.player.y, 0, 
+                        state.player.x, state.player.y, flRadius * 1.5
+                    );
+                    flTint.addColorStop(0, 'rgba(255, 240, 200, 0.4)');
+                    flTint.addColorStop(0.5, 'rgba(150, 180, 255, 0.1)');
+                    flTint.addColorStop(1, 'transparent');
+                    this.ctx.fillStyle = flTint;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(state.player.x, state.player.y);
+                    this.ctx.arc(
+                        state.player.x, state.player.y, flRadius * 1.5, 
+                        state.player.angle - currentAngle + jitter, 
+                        state.player.angle + currentAngle + jitter
+                    );
+                    this.ctx.closePath();
+                    this.ctx.fill();
+
                     if (state.hubWorld.zones && state.hubWorld.lightIntensity > 0.5) {
                         state.hubWorld.zones.forEach(z => {
                             let pulse = Math.sin(this.renderFrame * 0.05 + z.x) * 5;
                             
-                            // Pool of light striking the floor
-                            this.ctx.globalAlpha = 0.6;
-                            const glow = this.ctx.createRadialGradient(z.x, z.y, 0, z.x, z.y, 130 + pulse);
-                            glow.addColorStop(0, z.color);
-                            glow.addColorStop(1, 'transparent');
-                            
-                            this.ctx.fillStyle = glow;
+                            const zoneTint = this.ctx.createRadialGradient(z.x, z.y, 0, z.x, z.y, 140 + pulse);
+                            zoneTint.addColorStop(0, z.color);
+                            zoneTint.addColorStop(1, 'transparent');
+                            this.ctx.globalAlpha = 0.4;
+                            this.ctx.fillStyle = zoneTint;
                             this.ctx.beginPath();
-                            this.ctx.arc(z.x, z.y, 130 + pulse, 0, Math.PI * 2);
+                            this.ctx.arc(z.x, z.y, 140 + pulse, 0, Math.PI * 2);
                             this.ctx.fill();
-                            
-                            // Volumetric Shaft from the ceiling
+
                             this.ctx.globalAlpha = 0.15;
                             const beam = this.ctx.createLinearGradient(z.x - 80, z.y - 300, z.x + 40, z.y + 50);
                             beam.addColorStop(0, '#ffffff');
                             beam.addColorStop(1, 'transparent');
-                            
                             this.ctx.fillStyle = beam;
                             this.ctx.beginPath();
                             this.ctx.moveTo(z.x - 80, z.y - 350); 
@@ -320,45 +382,12 @@ export class Renderer {
                             this.ctx.fill();
                         });
                     }
-                    
-                    // 4. Advanced Dynamic Flashlight
-                    this.ctx.globalAlpha = 1.0;
-                    let fl = state.player.weapons.flashlight;
-                    let jitter = (Math.random() - 0.5) * 0.02;
-                    
-                    let flGrad = this.ctx.createRadialGradient(
-                        state.player.x, state.player.y, 0, 
-                        state.player.x, state.player.y, fl.radius * 1.5
-                    );
-                    flGrad.addColorStop(0, 'rgba(255, 250, 235, 0.9)'); // Hot blinding center
-                    flGrad.addColorStop(0.3, 'rgba(180, 210, 255, 0.4)'); // Smooth blue halo spread
-                    flGrad.addColorStop(1, 'transparent');
-                    
-                    this.ctx.fillStyle = flGrad;
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(state.player.x, state.player.y);
-                    this.ctx.arc(
-                        state.player.x, state.player.y, fl.radius * 1.5, 
-                        state.player.angle - fl.angle + jitter, 
-                        state.player.angle + fl.angle + jitter
-                    );
-                    this.ctx.closePath();
-                    this.ctx.fill();
 
-                    // Subtle back-glow so player is always softly visible
-                    let pGlow = this.ctx.createRadialGradient(state.player.x, state.player.y, 0, state.player.x, state.player.y, 50);
-                    pGlow.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
-                    pGlow.addColorStop(1, 'transparent');
-                    this.ctx.fillStyle = pGlow;
-                    this.ctx.beginPath(); this.ctx.arc(state.player.x, state.player.y, 50, 0, Math.PI*2); this.ctx.fill();
-
-                    // 5. Floating Dust Motes in the air
                     this.drawHubDust(state);
 
                     this.ctx.restore();
                     
                 } else {
-                    // Safe Fallback
                     this.ctx.fillStyle = '#0a0c11';
                     this.ctx.fillRect(state.player.x - 2000, state.player.y - 2000, 4000, 4000);
                     this.drawPlayer(state, audioEngine);
@@ -375,7 +404,6 @@ export class Renderer {
 
             this.ctx.restore(); 
 
-            // Post Processing Stack
             if (gameState !== 'HUB') {
                 this.drawVignette(state);
 
@@ -390,7 +418,6 @@ export class Renderer {
                 
                 this.drawFilmGrain();
             } else {
-                // Highly refined, minimal noise for the professional Hub aesthetic
                 this.ctx.globalAlpha = 0.08; 
                 this.drawFilmGrain();
                 this.ctx.globalAlpha = 1.0;
@@ -478,8 +505,10 @@ export class Renderer {
         }
 
         const fl = state.player.weapons.flashlight;
-        let ambientRad = fl.radius * 0.45; 
-        let currentAngle = fl.angle;
+        let flRadius = (fl && Number.isFinite(fl.radius) && fl.radius > 0) ? fl.radius : 250;
+        let currentAngle = (fl && Number.isFinite(fl.angle)) ? fl.angle : 0.6;
+        let ambientRad = flRadius * 0.45; 
+        
         let jitter = state.sanity < 30 ? (Math.random() - 0.5) * 0.1 : 0;
 
         if (state.player.synergies && state.player.synergies.includes('blinding_signal')) {
@@ -502,7 +531,7 @@ export class Renderer {
             this.lightCtx.fill();
         }
 
-        const flHole = this.lightCtx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, fl.radius);
+        const flHole = this.lightCtx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, flRadius);
         flHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
         flHole.addColorStop(0.8, 'rgba(255, 255, 255, 0.9)'); 
         flHole.addColorStop(1, 'rgba(255, 255, 255, 0)');     
@@ -510,7 +539,7 @@ export class Renderer {
         this.lightCtx.fillStyle = flHole;
         this.lightCtx.beginPath();
         this.lightCtx.moveTo(state.player.x, state.player.y);
-        this.lightCtx.arc(state.player.x, state.player.y, fl.radius, state.player.angle - currentAngle + jitter, state.player.angle + currentAngle + jitter);
+        this.lightCtx.arc(state.player.x, state.player.y, flRadius, state.player.angle - currentAngle + jitter, state.player.angle + currentAngle + jitter);
         this.lightCtx.closePath();
         this.lightCtx.fill();
 
@@ -524,9 +553,10 @@ export class Renderer {
 
     drawEffectsAndAuras(state) {
         const fl = state.player.weapons.flashlight;
+        let flRadius = (fl && Number.isFinite(fl.radius) && fl.radius > 0) ? fl.radius : 250;
         
         if (state.player.sets && state.player.sets.insomniac >= 4) {
-            const inner = fl.radius;
+            const inner = flRadius;
             const outer = inner + 200;
             
             this.ctx.globalCompositeOperation = 'screen';
@@ -647,7 +677,7 @@ export class Renderer {
             });
         }
 
-        let currentAngle = fl.angle;
+        let currentAngle = (fl && Number.isFinite(fl.angle)) ? fl.angle : 0.6;
         let jitter = state.sanity < 30 ? (Math.random() - 0.5) * 0.1 : 0;
         let isStrobing = false;
         if (state.player.synergies && state.player.synergies.includes('blinding_signal')) {
@@ -655,7 +685,7 @@ export class Renderer {
             else { currentAngle *= 0.8; }
         }
 
-        const glareGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, fl.radius);
+        const glareGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, flRadius);
         if (isStrobing) {
             glareGrad.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
             glareGrad.addColorStop(1, 'rgba(200, 200, 255, 0)');
@@ -670,11 +700,11 @@ export class Renderer {
         this.ctx.fillStyle = glareGrad;
         this.ctx.beginPath();
         this.ctx.moveTo(state.player.x, state.player.y);
-        this.ctx.arc(state.player.x, state.player.y, fl.radius, state.player.angle - currentAngle + jitter, state.player.angle + currentAngle + jitter);
+        this.ctx.arc(state.player.x, state.player.y, flRadius, state.player.angle - currentAngle + jitter, state.player.angle + currentAngle + jitter);
         this.ctx.closePath();
         this.ctx.fill();
 
-        let ambientRad = state.player.curses && state.player.curses.includes('tunnel_vision') ? 0 : fl.radius * 0.45;
+        let ambientRad = state.player.curses && state.player.curses.includes('tunnel_vision') ? 0 : flRadius * 0.45;
         if (ambientRad > 0) {
             const ambColorGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, 0, state.player.x, state.player.y, ambientRad);
             ambColorGrad.addColorStop(0, 'rgba(200, 220, 255, 0.15)');
@@ -1566,8 +1596,8 @@ export class Renderer {
                         this.ctx.lineWidth = 3;
                         this.ctx.lineCap = 'round';
                         for(let i=0; i<3; i++) {
-                            let orbitAngle = simulatedPhase * (1 + i*0.5) + (i * Math.PI*0.6);
-                            let dist = 45 + Math.sin(simulatedPhase * 2 + i) * 5;
+                            let orbitAngle = phase * (1 + i*0.5) + (i * Math.PI*0.6);
+                            let dist = 45 + Math.sin(phase * 2 + i) * 5;
                             if (activeBoss && activeBoss.pulseState === 'charging') orbitAngle += this.renderFrame * 0.2;
                             let objX = Math.cos(orbitAngle) * dist;
                             let objY = Math.sin(orbitAngle) * dist;

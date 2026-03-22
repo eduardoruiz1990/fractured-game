@@ -78,17 +78,8 @@ export class UIManager {
             });
         });
 
-        if (this.btnEnterSystem) {
-            this.btnEnterSystem.addEventListener('click', () => {
-                if (this.audioEngine) {
-                    this.audioEngine.init(); 
-                    this.audioEngine.playMenuTheme(); 
-                }
-                this.titleScreen.style.display = 'none';
-                this.clinicalFolder.style.display = 'flex';
-                this.updateMenuUI();
-            });
-        }
+        // NOTE: The main.js file handles the INITIALIZE button logic to safely transition to the HUB. 
+        // We have removed the duplicate UI listener that was forcing the clinical folder open.
 
         this.tabBtns.forEach(btn => {
             btn.addEventListener('click', () => {
