@@ -229,13 +229,12 @@ export class Renderer {
             }
 
             // --- PHASE 2: HUB RENDERING ROUTER ---
-            // If the player is in the Hub, ONLY draw the HubWorld layout and bypass the main game rendering entirely!
+            // Fixes the issue where the Void bleeds into the Hub
             if (gameState === 'HUB') {
                 if (state.hubWorld) {
                     state.hubWorld.draw(this.ctx, state, this);
                 } else {
-                    // CRITICAL FAILSAFE: If the HubWorld reference is lost, draw a safe black room 
-                    // instead of letting the nightmare void bleed into the safe zone.
+                    // Safe Fallback in case Hub fails to load
                     this.ctx.fillStyle = '#0a0c11';
                     this.ctx.fillRect(state.player.x - 2000, state.player.y - 2000, 4000, 4000);
                     this.drawPlayer(state, audioEngine);
@@ -865,7 +864,7 @@ export class Renderer {
                     this.ctx.font = "bold 14px 'Courier New', Courier, monospace";
                     this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, -35); 
                 } else if (obj.type === 'EXIT_ELEVATOR') {
-                    let pulse = Math.sin(this.renderFrame * 0.1) * 5;
+                    let pulse = Math.sin(this.renderFrame * 0.1) * 20;
                     
                     this.ctx.fillStyle = '#111';
                     this.ctx.fillRect(-30, -30, 60, 60); 
@@ -1420,6 +1419,7 @@ export class Renderer {
                         this.ctx.fill();
 
                         this.ctx.fillStyle = '#ff0000';
+                        // --- FIX: NO CSS VARIABLES ALLOWED FOR CANVAS SHADOWCOLOR ---
                         this.ctx.shadowColor = '#ff0000';
                         this.ctx.shadowBlur = 15;
                         
@@ -1441,6 +1441,7 @@ export class Renderer {
                             this.ctx.fill();
                             this.ctx.fillStyle = '#ff0000';
                             
+                            // --- FIX: SAFE activeBoss CHECK TO PREVENT REFERENCE ERROR ---
                             const activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
                             this.ctx.shadowBlur = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
                         });
@@ -1704,6 +1705,7 @@ export class Renderer {
                 this.ctx.fill();
 
                 this.ctx.fillStyle = '#ff0000';
+                // --- FIX: NO CSS VARIABLES ALLOWED FOR CANVAS SHADOWCOLOR ---
                 this.ctx.shadowColor = '#ff0000';
                 this.ctx.shadowBlur = 15;
                 
@@ -1725,7 +1727,7 @@ export class Renderer {
                     this.ctx.fill();
                     this.ctx.fillStyle = '#ff0000';
                     
-                    const activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
+                    // --- FIX: SAFE activeBoss CHECK TO PREVENT REFERENCE ERROR ---
                     this.ctx.shadowBlur = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
                 });
                 this.ctx.shadowBlur = 0;
@@ -1736,6 +1738,7 @@ export class Renderer {
                 for(let i=0; i<3; i++) {
                     let orbitAngle = simulatedPhase * (1 + i*0.5) + (i * Math.PI*0.6);
                     let dist = 45 + Math.sin(simulatedPhase * 2 + i) * 5;
+                    if (activeBoss && activeBoss.pulseState === 'charging') orbitAngle += this.renderFrame * 0.2;
                     let objX = Math.cos(orbitAngle) * dist;
                     let objY = Math.sin(orbitAngle) * dist;
                     this.ctx.beginPath();
@@ -1744,8 +1747,45 @@ export class Renderer {
                     this.ctx.stroke();
                 }
             }
-            ctx.restore();
+            
+            this.ctx.restore(); 
+
+            this.ctx.textAlign = 'left';
+            this.ctx.textBaseline = 'middle';
+            
+            let textJitter = (Math.random() - 0.5) * 10;
+            
+            let titleText = "THE SPHERE HEAD";
+            let subText = "Apex Predator of the Wastes";
+            
+            if (bossType === 'RORSCHACH') {
+                titleText = "THE RORSCHACH";
+                subText = "The Mind Divided";
+            } else if (bossType === 'PANOPTICON') {
+                titleText = "THE PANOPTICON";
+                subText = "The All-Seeing Eye";
+            } else if (bossType === 'AMALGAMATION') {
+                titleText = "THE AMALGAMATION";
+                subText = "The Collective Nightmare";
+            } else if (bossType === 'ARCHITECT') {
+                titleText = "THE ARCHITECT";
+                subText = "Constructor of the Void";
+            }
+            
+            this.ctx.font = "900 110px 'Courier New', Courier, monospace";
+            this.ctx.fillStyle = '#ffffff';
+            // --- FIX: HEX COLOR ONLY ---
+            this.ctx.shadowColor = '#8b0000'; 
+            this.ctx.shadowBlur = 20;
+            this.ctx.fillText(titleText, -100 + textJitter, -50);
+            
+            this.ctx.font = "italic 45px 'Courier New', Courier, monospace";
+            this.ctx.fillStyle = '#c5a059';
+            this.ctx.shadowBlur = 0;
+            this.ctx.fillText(subText, -90 + textJitter, 60);
+            
         } finally {
+            // --- FIX: MUST ALWAYS RESTORE TO PREVENT ZOOM GLARE CRASH ---
             this.ctx.restore();
         }
     }
