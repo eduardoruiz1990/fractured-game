@@ -23,6 +23,13 @@ resize();
 let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager;
 let gameState = 'TITLE'; 
 
+// --- NEW: GLOBAL ACCESSIBILITY SETTINGS ---
+let gameSettings = { screenShake: true, photosensitive: false };
+try {
+    const savedSettings = localStorage.getItem('fractured_settings');
+    if (savedSettings) gameSettings = { ...gameSettings, ...JSON.parse(savedSettings) };
+} catch(e) { console.warn("Could not load settings."); }
+
 function initEngine() {
     if (!document.getElementById('dev-floor-select')) {
         const devUI = document.createElement('div');
@@ -39,6 +46,80 @@ function initEngine() {
             </select>
         `;
         document.getElementById('game-container').appendChild(devUI);
+    }
+
+    // --- NEW: SETTINGS MENU INJECTION (THEME ALIGNED) ---
+    if (!document.getElementById('settings-modal')) {
+        // The Settings Modal
+        const settingsUI = document.createElement('div');
+        settingsUI.id = 'settings-modal';
+        settingsUI.className = 'fullscreen-menu';
+        settingsUI.style.display = 'none';
+        settingsUI.style.zIndex = '10000';
+        settingsUI.innerHTML = `
+            <div class="medical-folder" style="height: auto; max-width: 500px; border-color: var(--ink-black);">
+                <div class="folder-header" style="justify-content: center; border-bottom-color: var(--ink-black);">
+                    <div class="title-typewriter" style="font-size: 2rem;">SYSTEM SETTINGS</div>
+                </div>
+                <div class="folder-content" style="display: flex; flex-direction: column; gap: 20px; align-items: flex-start;">
+                    <label style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="toggle-shake" style="width: 20px; height: 20px; cursor: pointer;"> 
+                        Enable Screen Shake
+                    </label>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Toggle visual impact vibrations.</p>
+                    
+                    <label style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="toggle-photo" style="width: 20px; height: 20px; cursor: pointer;"> 
+                        Photosensitivity Mode
+                    </label>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Disables strobing lights, camera flashes, and softens glitch overlays.</p>
+                    
+                    <button class="file-btn primary" id="btn-close-settings" style="margin-top: 20px;">APPLY & CLOSE</button>
+                </div>
+            </div>
+        `;
+        document.getElementById('game-container').appendChild(settingsUI);
+
+        // Inject Settings Button into Pause Menu
+        const pauseBtnContainer = document.getElementById('btn-awaken').parentNode;
+        if (pauseBtnContainer && !document.getElementById('btn-pause-settings')) {
+            const pauseSettingsBtn = document.createElement('button');
+            pauseSettingsBtn.id = 'btn-pause-settings';
+            pauseSettingsBtn.className = 'file-btn';
+            pauseSettingsBtn.innerText = 'SYSTEM SETTINGS';
+            pauseBtnContainer.appendChild(pauseSettingsBtn);
+            
+            pauseSettingsBtn.addEventListener('click', () => {
+                settingsUI.style.display = 'flex';
+            });
+        }
+
+        // Inject Settings Button into Main Menu (Clinical Folder)
+        const clinicalBtnContainer = document.getElementById('btn-start').parentNode;
+        if (clinicalBtnContainer && !document.getElementById('btn-clinical-settings')) {
+            const clinicalSettingsBtn = document.createElement('button');
+            clinicalSettingsBtn.id = 'btn-clinical-settings';
+            clinicalSettingsBtn.className = 'file-btn';
+            clinicalSettingsBtn.innerText = 'SYSTEM SETTINGS';
+            clinicalBtnContainer.appendChild(clinicalSettingsBtn);
+            
+            clinicalSettingsBtn.addEventListener('click', () => {
+                settingsUI.style.display = 'flex';
+            });
+        }
+
+        const toggleShake = document.getElementById('toggle-shake');
+        const togglePhoto = document.getElementById('toggle-photo');
+        
+        toggleShake.checked = gameSettings.screenShake;
+        togglePhoto.checked = gameSettings.photosensitive;
+
+        document.getElementById('btn-close-settings').addEventListener('click', () => {
+            gameSettings.screenShake = toggleShake.checked;
+            gameSettings.photosensitive = togglePhoto.checked;
+            try { localStorage.setItem('fractured_settings', JSON.stringify(gameSettings)); } catch(e) {}
+            settingsUI.style.display = 'none';
+        });
     }
 
     saveManager = new SaveManager();
@@ -134,14 +215,12 @@ function initEngine() {
     document.getElementById('btn-unpause').addEventListener('click', togglePause);
 
     document.getElementById('btn-awaken').addEventListener('click', () => {
-        // --- NEW: PENALIZE LEAVING MID-FLOOR ---
         const isMidFloor = (gameState === 'PAUSED'); 
         const isExitReached = (gameState === 'EXIT_REACHED'); 
         
         let earnedLucidity = 0;
         let retainedTokens = [];
         
-        // Only grant rewards if they actually finished the floor and chose to leave
         if (isExitReached) {
             earnedLucidity = game.state.lucidity;
             retainedTokens = game.state.runInventory || [];
@@ -176,7 +255,6 @@ function initEngine() {
         const title = deathScreen.querySelector('.title-typewriter');
         const btn = document.getElementById('btn-restart');
 
-        // Dynamically style the screen based on whether they earned their extraction or aborted
         if (isExitReached) {
             if (folder) folder.style.borderColor = 'var(--ui-gold)';
             if (header) header.style.borderBottomColor = 'var(--ui-gold)';
@@ -324,6 +402,20 @@ function gameLoop(time) {
                 inputManager.updateAimAngle(game.state.player.x, game.state.player.y);
                 const isBreakdown = game.update(inputManager.state, canvas.width, canvas.height, gameState);
                 
+                // --- APPLY ACCESSIBILITY CLAMPS BEFORE RENDERING ---
+                if (game.state) {
+                    if (!gameSettings.screenShake && game.state.cameraShake > 0) {
+                        game.state.cameraShake = 0; // Hard clamp shake
+                    }
+                    if (gameSettings.photosensitive) {
+                        game.state.cameraFlash = 0; // Disable full screen strobes (e.g. Polaroid)
+                        if (game.state.player) game.state.player.flashTime = 0; // Disable player hit flashing
+                        if (game.state.entities) {
+                            game.state.entities.forEach(e => e.flashTime = 0); // Disable enemy hit flashing
+                        }
+                    }
+                }
+
                 const sanityBar = document.getElementById('sanity-bar');
                 let ratio = game.state.sanity / game.state.player.maxHp;
                 if (!Number.isFinite(ratio)) ratio = 0;
@@ -381,7 +473,11 @@ function gameLoop(time) {
                     }
                 }
 
-                document.getElementById('glitch-overlay').style.opacity = isBreakdown ? '1' : '0';
+                // Smoothly dim glitch overlay if photosensitive mode is active
+                let targetGlitchOpacity = isBreakdown ? '1' : '0';
+                if (isBreakdown && gameSettings.photosensitive) targetGlitchOpacity = '0.3'; 
+                document.getElementById('glitch-overlay').style.opacity = targetGlitchOpacity;
+                
                 document.getElementById('score').innerHTML = `LUCIDITY: ${game.state.lucidity} <br> FLOOR: ${game.state.floor}`;
             }
             
