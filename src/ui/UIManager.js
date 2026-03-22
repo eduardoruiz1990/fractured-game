@@ -13,7 +13,6 @@ export class UIManager {
         this.bindElements();
         this.attachEvents();
         this.updateMenuUI();
-        this.renderRoadmap();
     }
 
     bindElements() {
@@ -31,7 +30,6 @@ export class UIManager {
         this.btnUpgHp = document.getElementById('btn-upg-hp');
         this.btnUpgSpeed = document.getElementById('btn-upg-speed');
         this.btnUpgLight = document.getElementById('btn-upg-light');
-        // --- ADDED: MAGNET BUTTON ---
         this.btnUpgMagnet = document.getElementById('btn-upg-magnet');
 
         this.inventoryGrid = document.getElementById('inventory-grid');
@@ -105,7 +103,7 @@ export class UIManager {
                     this.selectedInventoryItem = null;
                     this.selectedSlotType = null;
                     this.renderLoadoutUI();
-                } else if (targetId === 'tab-tree' || targetId === 'tab-main') {
+                } else if (targetId === 'tab-tree' || targetId === 'tab-main' || targetId === 'tab-trophies') {
                     this.updateMenuUI();
                 }
             });
@@ -175,7 +173,6 @@ export class UIManager {
                 this.updateMenuUI(); this.showXPToast(); 
             } 
         });
-        // --- ADDED: MAGNET PURCHASE LOGIC ---
         this.btnUpgMagnet.addEventListener('click', () => { 
             if (this.saveManager.buyUpgrade('magnet', 150)) { 
                 if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade');
@@ -198,7 +195,6 @@ export class UIManager {
 
         document.getElementById('tree-lucidity').innerText = meta.lucidityBank;
         
-        // --- ADDED: MAGNET STAT UPDATE ---
         const upgradeStats = [
             { id: 'hp', baseCost: 50, element: this.btnUpgHp },
             { id: 'speed', baseCost: 75, element: this.btnUpgSpeed },
@@ -207,7 +203,7 @@ export class UIManager {
         ];
 
         upgradeStats.forEach(stat => {
-            const currentLvl = meta.upgrades[stat.id];
+            const currentLvl = meta.upgrades[stat.id] || 0;
             document.getElementById(`upg-${stat.id}-lvl`).innerText = currentLvl;
             const cost = Math.floor(stat.baseCost * Math.pow(1.1, currentLvl));
             stat.element.innerText = `${cost} L`;
@@ -219,6 +215,7 @@ export class UIManager {
         });
 
         this.renderRoadmap();
+        this.renderTrophies();
     }
 
     renderRoadmap() {
@@ -256,6 +253,58 @@ export class UIManager {
             }
             timeline.appendChild(node);
         });
+    }
+
+    renderTrophies() {
+        const kills = this.saveManager.metaState.killCounts || {};
+        
+        const updateMobTrophy = (id, count) => {
+            const statEl = document.getElementById(`stat-${id}`);
+            const goalEl = document.getElementById(`goal-${id}`);
+            const silEl = document.getElementById(`sil-${id}`);
+            if (!statEl || !silEl || !goalEl) return;
+            
+            let nextGoal = 10;
+            let metalColor = '';
+            let opacity = 0.1;
+            let shadow = 'none';
+
+            if (count >= 10000) { nextGoal = "MAX"; metalColor = '#ffd700'; opacity = 1.0; shadow = '0 0 15px #ffd700'; } // Gold
+            else if (count >= 1000) { nextGoal = 10000; metalColor = '#c0c0c0'; opacity = 1.0; shadow = '0 0 10px #c0c0c0'; } // Silver
+            else if (count >= 10) { nextGoal = 1000; metalColor = '#cd7f32'; opacity = 1.0; shadow = '0 0 10px #cd7f32'; } // Bronze
+            
+            statEl.innerText = count;
+            goalEl.innerText = nextGoal === "MAX" ? "" : ` / ${nextGoal}`;
+            
+            if (opacity > 0.1) {
+                silEl.style.opacity = opacity;
+                silEl.style.color = metalColor;
+                silEl.style.textShadow = shadow;
+            }
+        };
+
+        const updateBossTrophy = (id, count, color) => {
+            const statEl = document.getElementById(`stat-${id}`);
+            const silEl = document.getElementById(`sil-${id}`);
+            if (!statEl || !silEl) return;
+
+            statEl.innerText = count;
+            if (count > 0) {
+                silEl.style.opacity = 1.0;
+                silEl.style.color = color;
+                silEl.style.textShadow = `0 0 15px ${color}`;
+            }
+        };
+
+        updateMobTrophy('scavenger', kills.SCAVENGER || 0);
+        updateMobTrophy('predator', kills.PREDATOR || 0);
+        updateMobTrophy('parasite', kills.PARASITE || 0);
+
+        updateBossTrophy('boss', kills.BOSS || 0, '#b87333');
+        updateBossTrophy('rorschach', kills.RORSCHACH || 0, '#800080');
+        updateBossTrophy('panopticon', kills.PANOPTICON || 0, '#ff0055');
+        updateBossTrophy('amalgamation', kills.AMALGAMATION || 0, '#55ff55');
+        updateBossTrophy('architect', kills.ARCHITECT || 0, '#c5a059');
     }
 
     renderLoadoutUI() {

@@ -20,7 +20,7 @@
     
     <div id="btn-dash" class="action-btn">DASH</div>
     
-    <!-- --- PHASE 2: HUB INTERACTION OVERLAY --- -->
+    <!-- PHASE 2: HUB INTERACTION OVERLAY -->
     <div id="interaction-prompt" style="position: absolute; bottom: 15%; left: 50%; transform: translateX(-50%); background: rgba(10, 10, 10, 0.9); border: 2px solid var(--ui-gold); color: var(--ui-gold); padding: 15px 30px; font-weight: bold; font-size: 1.2rem; display: none; z-index: 150; pointer-events: auto; cursor: pointer; text-shadow: 0 0 10px var(--ui-gold); text-align: center; font-family: var(--ui-font); box-shadow: 0 0 20px rgba(197, 160, 89, 0.2);">
         <span id="prompt-text">INSPECT</span><br>
         <span style="font-size: 0.8rem; color: #aaa;">Press [E] or Tap Here</span>
@@ -56,6 +56,8 @@
                 <button class="tab-btn" data-target="tab-loadout">THERAPY REGIMEN</button>
                 <button class="tab-btn" data-target="tab-tree">SYNAPSE RECORDS</button>
                 <button class="tab-btn" data-target="tab-roadmap">DESCENT ROADMAP</button>
+                <!-- NEW: DEDICATED TROPHY TAB -->
+                <button class="tab-btn" data-target="tab-trophies">MIND PALACE</button>
                 <button class="tab-btn" data-target="tab-guide">CLINICAL GUIDE</button>
             </div>
 
@@ -135,13 +137,84 @@
                 </div>
 
                 <div id="tab-roadmap" class="tab-pane">
-                    <p class="typewriter-text" style="text-align: center; margin-bottom: 20px;">Projected psychological deterioration path.</p>
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <h2 style="color: var(--ink-black); border-bottom: 2px solid var(--ink-black); padding-bottom: 10px; margin-top: 0; letter-spacing: 2px; font-family: var(--ui-font);">DESCENT ROADMAP</h2>
+                        <p class="typewriter-text" style="color: #555; font-size: 0.9rem;">Projected psychological deterioration path.</p>
+                    </div>
                     <div class="roadmap-timeline">
                         <div class="roadmap-node completed">Floor 1: The Wastes (Sphere Head)</div>
                         <div class="roadmap-node active">Floor 2: The Divide (Rorschach)</div>
                         <div class="roadmap-node locked">Floor 3: The Panopticon (UNKNOWN)</div>
                         <div class="roadmap-node locked">Floor 4: The Amalgamation (UNKNOWN)</div>
                         <div class="roadmap-node locked boss">Floor 5: The Architect (FINAL)</div>
+                    </div>
+                </div>
+
+                <!-- --- NEW: DEDICATED TROPHY ROOM (MIND PALACE) --- -->
+                <div id="tab-trophies" class="tab-pane">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <h2 style="color: var(--ink-black); border-bottom: 2px solid var(--ink-black); padding-bottom: 10px; margin-top: 0; letter-spacing: 2px; font-family: var(--ui-font);">THE MIND PALACE</h2>
+                        <p class="typewriter-text" style="color: #555; font-size: 0.9rem;">Physical manifestations of conquered trauma.</p>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; overflow-y: auto; padding-right: 10px; padding-bottom: 20px;">
+                        
+                        <div style="grid-column: 1 / -1; border-bottom: 1px dashed #ccc; padding-bottom: 5px; margin-top: 10px;">
+                            <strong style="color: var(--ink-black);">STANDARD NIGHTMARES (Bronze: 10, Silver: 1k, Gold: 10k)</strong>
+                        </div>
+
+                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
+                            <div id="sil-scavenger" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">♙</div>
+                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">JANITORS</div>
+                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-scavenger">0</span><span id="goal-scavenger"> / 10</span></div>
+                        </div>
+
+                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
+                            <div id="sil-predator" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">♘</div>
+                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">HALL MONITORS</div>
+                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-predator">0</span><span id="goal-predator"> / 10</span></div>
+                        </div>
+
+                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
+                            <div id="sil-parasite" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">♗</div>
+                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">SUBSTITUTES</div>
+                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-parasite">0</span><span id="goal-parasite"> / 10</span></div>
+                        </div>
+
+                        <div style="grid-column: 1 / -1; border-bottom: 1px dashed #ccc; padding-bottom: 5px; margin-top: 10px;">
+                            <strong style="color: var(--ink-black);">APEX PREDATORS (Boss Monuments)</strong>
+                        </div>
+
+                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
+                            <div id="sil-boss" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">🌑</div>
+                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">SPHERE HEAD</div>
+                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-boss">0</span> / 1</div>
+                        </div>
+                        
+                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
+                            <div id="sil-rorschach" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">🦋</div>
+                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">THE RORSCHACH</div>
+                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-rorschach">0</span> / 1</div>
+                        </div>
+
+                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
+                            <div id="sil-panopticon" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">👁️</div>
+                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">PANOPTICON</div>
+                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-panopticon">0</span> / 1</div>
+                        </div>
+
+                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
+                            <div id="sil-amalgamation" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">🦠</div>
+                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">AMALGAMATION</div>
+                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-amalgamation">0</span> / 1</div>
+                        </div>
+
+                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
+                            <div id="sil-architect" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">🕋</div>
+                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">THE ARCHITECT</div>
+                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-architect">0</span> / 1</div>
+                        </div>
+
                     </div>
                 </div>
 

@@ -7,11 +7,12 @@ export class HubWorld {
         this.roomRadius = 500; 
         
         // Define the physical interaction points in the room
+        // NOTE: The 'trophies' node correctly redirects to 'tab-trophies' now!
         this.zones = [
             { id: 'bed', x: 0, y: -300, radius: 100, prompt: "THE DESCENT MACHINE (Start Run)", action: 'tab-main', color: '#c5a059' },
             { id: 'desk', x: 300, y: 0, radius: 100, prompt: "SYNAPSE RECORDS (Upgrades)", action: 'tab-tree', color: '#4466aa' },
             { id: 'locker', x: -300, y: 0, radius: 100, prompt: "THERAPY REGIMEN (Loadout)", action: 'tab-loadout', color: '#cc6600' },
-            { id: 'trophies', x: 0, y: 300, radius: 100, prompt: "CLINICAL GUIDE & MONUMENTS", action: 'tab-roadmap', color: '#8b0000' }
+            { id: 'trophies', x: 0, y: 300, radius: 100, prompt: "THE MIND PALACE (Monuments)", action: 'tab-trophies', color: '#8b0000' }
         ];
         
         this.activeZone = null;
@@ -178,12 +179,12 @@ export class HubWorld {
                 ctx.fillStyle = 'rgba(150, 200, 255, 0.3)'; ctx.fillRect(-35, -5, 70, 10); 
                 ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-30, 0); ctx.lineTo(-10, 0); ctx.stroke();
 
-                // --- PHASE 2: THE MIND PALACE (DYNAMIC TROPHIES) ---
+                // --- THE MIND PALACE (DYNAMIC TROPHIES) ---
                 const kills = state.killCounts || {};
 
                 // 1. Regular Enemy Statues (Bronze > Silver > Gold)
                 const drawStatue = (tx, ty, count, baseColor) => {
-                    if (count < 10) return; // Note: Reduced to 10 for easier testing/visibility
+                    if (count < 10) return; // Unlocked at 10 kills (Bronze tier)
                     
                     let metalColor = '#cd7f32'; // Bronze
                     let glow = 'rgba(205, 127, 50, 0.2)';
