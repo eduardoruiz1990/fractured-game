@@ -2,6 +2,7 @@ import { GAME_CONFIG } from '../data/Config.js';
 import { Combat } from '../systems/Combat.js';
 import { Director } from '../systems/Director.js';
 import { TOKENS } from '../data/Manifestations.js'; 
+import { HubWorld } from '../systems/HubWorld.js'; // NEW: Import Hub logic
 
 export class Game {
     constructor() {
@@ -12,6 +13,7 @@ export class Game {
         this.audioEngine = null; 
         
         this.director = new Director(this);
+        this.hubWorld = new HubWorld(this); // NEW: Initialize Hub
 
         window.addEventListener('keydown', (e) => {
             if (e.key === '9' && this.state && this.state.sanity > 0) {
@@ -95,6 +97,7 @@ export class Game {
         let startSanity = carriedState ? carriedState.sanity : effectiveMaxSanity;
 
         this.state = {
+            hubWorld: this.hubWorld, // NEW: Pass hub reference for rendering
             floor: startFloor,
             convergence: 0,
             maxConvergence: Math.floor(100 * Math.pow(1.3, startFloor - 1)), 
@@ -176,6 +179,14 @@ export class Game {
     }
 
     update(inputState, canvasWidth, canvasHeight, currentGameState) {
+        // --- NEW: HUB STATE BYPASS ---
+        if (currentGameState === 'HUB') {
+            this.state.input = inputState;
+            this.processGameLogic(inputState, canvasWidth, canvasHeight, true);
+            this.hubWorld.update(this.state);
+            return false; // No breakdown
+        }
+
         if (currentGameState !== 'PLAYING') return;
 
         if (this.state.hitStop > 0) {
@@ -255,7 +266,7 @@ export class Game {
         return isBreakdown; 
     }
 
-    processGameLogic(moveInput, canvasWidth, canvasHeight) {
+    processGameLogic(moveInput, canvasWidth, canvasHeight, isHub = false) {
         if (this.state.mapOriginX === null) {
             this.state.mapOriginX = this.state.player.x;
             this.state.mapOriginY = this.state.player.y;
@@ -297,7 +308,8 @@ export class Game {
             this.state.player.x += this.state.player.dash.dx * currentSpeed;
             this.state.player.y += this.state.player.dash.dy * currentSpeed;
 
-            if (this.state.frame % 2 === 0) {
+            // Only leave combat afterimages outside of the hub
+            if (!isHub && this.state.frame % 2 === 0) {
                 this.state.playerAfterimages.push({
                     x: this.state.player.x, y: this.state.player.y, 
                     angle: this.state.player.angle, life: 1.0
@@ -311,6 +323,8 @@ export class Game {
             this.state.player.x += moveInput.moveX * currentSpeed;
             this.state.player.y += moveInput.moveY * currentSpeed;
         }
+
+        if (isHub) return; // EARLY EXIT: Weapons, enemies, and void do not function in the Hub
 
         // --- THE ENCROACHING VOID LOGIC ---
         const mapCenterX = this.state.mapOriginX;

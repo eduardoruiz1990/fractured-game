@@ -120,6 +120,51 @@ function initEngine() {
             try { localStorage.setItem('fractured_settings', JSON.stringify(gameSettings)); } catch(e) {}
             settingsUI.style.display = 'none';
         });
+
+        // --- PHASE 2: HUB INTERACTION EVENT LISTENERS ---
+        const interactionPrompt = document.getElementById('interaction-prompt');
+        const interactionText = document.getElementById('prompt-text');
+        const btnCloseFolder = document.getElementById('btn-close-folder');
+
+        if (interactionPrompt) {
+            const triggerInteraction = () => {
+                if (gameState === 'HUB' && game.hubWorld && game.hubWorld.activeZone) {
+                    const zone = game.hubWorld.activeZone;
+                    
+                    // Switch to the correct HTML tab based on which desk/bed you interacted with!
+                    const tabBtns = document.querySelectorAll('.tab-btn');
+                    const tabPanes = document.querySelectorAll('.tab-pane');
+                    tabBtns.forEach(b => b.classList.remove('active'));
+                    tabPanes.forEach(p => p.classList.remove('active'));
+                    
+                    const targetBtn = document.querySelector(`.tab-btn[data-target="${zone.action}"]`);
+                    const targetPane = document.getElementById(zone.action);
+                    
+                    if (targetBtn) targetBtn.classList.add('active');
+                    if (targetPane) targetPane.classList.add('active');
+
+                    if (zone.action === 'tab-loadout' && uiManager) uiManager.renderLoadoutUI();
+                    
+                    document.getElementById('clinical-folder-menu').style.display = 'flex';
+                    interactionPrompt.style.display = 'none';
+                    if (audioEngine) audioEngine.playSFX('ui_click');
+                    inputManager.hideJoysticks();
+                    gameState = 'MENU';
+                }
+            };
+
+            window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'e') triggerInteraction(); });
+            interactionPrompt.addEventListener('click', triggerInteraction);
+            interactionPrompt.addEventListener('touchstart', (e) => { e.preventDefault(); triggerInteraction(); });
+        }
+
+        if (btnCloseFolder) {
+            btnCloseFolder.addEventListener('click', () => {
+                document.getElementById('clinical-folder-menu').style.display = 'none';
+                if (audioEngine) audioEngine.playSFX('ui_click');
+                gameState = 'HUB';
+            });
+        }
     }
 
     saveManager = new SaveManager();
@@ -132,11 +177,15 @@ function initEngine() {
     game.audioEngine = audioEngine;
 
     uiManager = new UIManager(saveManager, audioEngine, () => {
-        game.init(saveManager);
+        // OVERRIDE: Instead of `game.init()`, we are ALREADY loaded. Just close menu and launch!
+        document.getElementById('clinical-folder-menu').style.display = 'none';
+        document.getElementById('ui-layer').style.display = 'flex';
+        gameState = 'PLAYING';
         
         const devSelect = document.getElementById('dev-floor-select');
         if (devSelect && devSelect.value !== "1") {
             const chosenFloor = parseInt(devSelect.value);
+            game.init(saveManager); // Re-initialize to lock in floor scalings properly
             game.state.floor = chosenFloor;
             game.state.maxConvergence = Math.floor(100 * Math.pow(1.3, chosenFloor - 1));
             game.state.xp += (chosenFloor - 1) * 1500; 
@@ -148,15 +197,18 @@ function initEngine() {
             }
         }
 
+        // Re-center player for the actual run
         game.state.player.x = canvas.width / 2;
         game.state.player.y = canvas.height / 2;
+        game.state.mapOriginX = game.state.player.x;
+        game.state.mapOriginY = game.state.player.y;
         
         if (audioEngine) audioEngine.stopMenuTheme(); 
-        
-        gameState = 'PLAYING';
         const resumeBtn = document.getElementById('btn-resume-run');
         if (resumeBtn) resumeBtn.style.display = 'none'; 
     });
+
+    game.init(saveManager); // Initialize everything silently in the background
 
     const resumeBtn = document.getElementById('btn-resume-run');
     if (resumeBtn) {
@@ -167,6 +219,8 @@ function initEngine() {
                 game.init(saveManager, carriedData);
                 game.state.player.x = canvas.width / 2;
                 game.state.player.y = canvas.height / 2;
+                game.state.mapOriginX = game.state.player.x;
+                game.state.mapOriginY = game.state.player.y;
                 
                 if (audioEngine) audioEngine.stopMenuTheme();
 
@@ -185,11 +239,30 @@ function initEngine() {
 
     document.getElementById('btn-restart').addEventListener('click', () => {
         document.getElementById('death-screen').style.display = 'none';
-        document.getElementById('clinical-folder-menu').style.display = 'flex';
-        uiManager.updateMenuUI();
+        game.init(saveManager); 
+        game.state.player.x = 0; 
+        game.state.player.y = 0;
         if (audioEngine) audioEngine.playMenuTheme(); 
-        gameState = 'MENU'; 
+        gameState = 'HUB'; 
     });
+    
+    // --- PHASE 2: INITIALIZE BUTTON GOES TO HUB ---
+    const btnEnterSystem = document.getElementById('btn-enter-system');
+    if (btnEnterSystem) {
+        const newBtn = btnEnterSystem.cloneNode(true);
+        btnEnterSystem.parentNode.replaceChild(newBtn, btnEnterSystem);
+        newBtn.addEventListener('click', () => {
+            if (audioEngine) {
+                audioEngine.init(); 
+                audioEngine.playMenuTheme(); 
+            }
+            document.getElementById('title-screen').style.display = 'none';
+            game.init(saveManager);
+            game.state.player.x = 0; 
+            game.state.player.y = 0;
+            gameState = 'HUB';
+        });
+    }
 
     const pauseMenu = document.getElementById('pause-menu');
     const pauseTitle = document.getElementById('pause-title');
@@ -390,18 +463,44 @@ function gameLoop(time) {
     try {
         const devModeContainer = document.getElementById('dev-mode-container');
         if (devModeContainer) {
-            devModeContainer.style.display = (gameState === 'TITLE' || gameState === 'MENU') ? 'block' : 'none';
+            devModeContainer.style.display = (gameState === 'TITLE' || gameState === 'MENU' || gameState === 'HUB') ? 'block' : 'none';
         }
 
         if (gameState === 'MENU' || gameState === 'TITLE') {
             renderer.drawMenuBackground(time, gameState);
         } 
-        else if (gameState === 'PLAYING' || gameState === 'LEVEL_UP' || gameState === 'PAUSED' || gameState === 'EXIT_REACHED') {
+        else if (gameState === 'PLAYING' || gameState === 'LEVEL_UP' || gameState === 'PAUSED' || gameState === 'EXIT_REACHED' || gameState === 'HUB') {
             
-            if (gameState === 'PLAYING') {
-                inputManager.updateAimAngle(game.state.player.x, game.state.player.y);
-                const isBreakdown = game.update(inputManager.state, canvas.width, canvas.height, gameState);
+            inputManager.updateAimAngle(game.state.player.x, game.state.player.y);
+            const isBreakdown = game.update(inputManager.state, canvas.width, canvas.height, gameState);
+            
+            // --- PHASE 2: HUB INTERACTION & PLAYER ROTATION ---
+            if (gameState === 'HUB') {
+                if (game.hubWorld) {
+                    const interactionPrompt = document.getElementById('interaction-prompt');
+                    const promptText = document.getElementById('prompt-text');
+                    if (game.hubWorld.activeZone) {
+                        interactionPrompt.style.display = 'block';
+                        promptText.innerText = game.hubWorld.activeZone.prompt;
+                        interactionPrompt.style.borderColor = game.hubWorld.activeZone.color;
+                        interactionPrompt.style.color = game.hubWorld.activeZone.color;
+                    } else {
+                        interactionPrompt.style.display = 'none';
+                    }
+                }
                 
+                // Unify player rotation inside the Hub World based on mouse aim angle
+                if (game.state && game.state.player) {
+                    let diff = inputManager.state.aimAngle - game.state.player.angle;
+                    if (Number.isFinite(diff)) {
+                        while (diff < -Math.PI) diff += Math.PI * 2;
+                        while (diff > Math.PI) diff -= Math.PI * 2;
+                        game.state.player.angle += diff * 0.25;
+                    }
+                }
+            }
+
+            if (gameState === 'PLAYING') {
                 // --- APPLY ACCESSIBILITY CLAMPS BEFORE RENDERING ---
                 if (game.state) {
                     if (!gameSettings.screenShake && game.state.cameraShake > 0) {
@@ -481,7 +580,8 @@ function gameLoop(time) {
                 document.getElementById('score').innerHTML = `LUCIDITY: ${game.state.lucidity} <br> FLOOR: ${game.state.floor}`;
             }
             
-            renderer.drawGame(game.state, audioEngine);
+            // Send the gameState so the renderer knows to bypass the Void code!
+            renderer.drawGame(game.state, audioEngine, gameState);
         }
     } catch (e) {
         console.error("Main Loop Crash: " + e.message);

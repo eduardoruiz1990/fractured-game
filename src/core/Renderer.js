@@ -153,53 +153,7 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    drawMenuStorm(time) {
-        this.ctx.save();
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        if (Math.random() < 0.01) { 
-            this.lightningFlash = 1.0;
-        }
-        
-        if (this.lightningFlash > 0) {
-            this.ctx.fillStyle = `rgba(200, 220, 255, ${this.lightningFlash * 0.15})`;
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-            this.lightningFlash -= 0.05;
-        }
-
-        this.ctx.strokeStyle = 'rgba(150, 180, 200, 0.1)';
-        this.ctx.lineWidth = 1.5;
-        this.ctx.lineCap = 'round';
-        this.ctx.beginPath();
-        for (let i = 0; i < this.rain.length; i++) {
-            let p = this.rain[i];
-            this.ctx.moveTo(p.x, p.y);
-            this.ctx.lineTo(p.x - p.l * 0.2, p.y + p.l);
-            
-            p.y += p.v;
-            p.x -= p.v * 0.2; 
-            
-            if (p.y > this.canvas.height + 100) {
-                p.y = -50;
-                p.x = Math.random() * (this.canvas.width + 500);
-            }
-        }
-        this.ctx.stroke();
-        this.ctx.restore();
-    }
-
-    drawFilmGrain() {
-        this.ctx.save();
-        const offsetX = (Math.random() * 128) | 0;
-        const offsetY = (Math.random() * 128) | 0;
-        this.ctx.fillStyle = this.cachedNoisePattern; 
-        this.ctx.translate(-offsetX, -offsetY);
-        this.ctx.fillRect(0, 0, this.canvas.width + 128, this.canvas.height + 128);
-        this.ctx.restore();
-    }
-
-    drawGame(state, audioEngine) {
+    drawGame(state, audioEngine, gameState = 'PLAYING') {
         try {
             this.renderFrame++; 
             
@@ -228,19 +182,38 @@ export class Renderer {
                 this.ctx.translate(curShakeX, curShakeY);
             }
 
-            this.drawWorldItems(state, audioEngine);
-            this.drawFog(state);
-            this.drawLightingMasks(state, curShakeX, curShakeY);
-            this.drawEffectsAndAuras(state);
-            this.drawPlayer(state, audioEngine);
-            this.drawDamageText(state);
-            this.drawObjectivePointers(state);
+            // --- PHASE 2: HUB RENDERING ROUTER ---
+            if (gameState === 'HUB' && state.hubWorld) {
+                state.hubWorld.draw(this.ctx, state, this);
+            } else {
+                this.drawWorldItems(state, audioEngine);
+                this.drawFog(state);
+                this.drawLightingMasks(state, curShakeX, curShakeY);
+                this.drawEffectsAndAuras(state);
+                this.drawPlayer(state, audioEngine);
+                this.drawDamageText(state);
+                this.drawObjectivePointers(state);
+            }
 
             this.ctx.restore(); 
 
-            this.drawVignette(state);
+            if (gameState !== 'HUB') {
+                this.drawVignette(state);
+            } else {
+                // Soft spotlight vignette exclusively for the Hub
+                this.ctx.save();
+                const vig = this.ctx.createRadialGradient(
+                    this.canvas.width/2, this.canvas.height/2, this.canvas.height / 3,
+                    this.canvas.width/2, this.canvas.height/2, this.canvas.height
+                );
+                vig.addColorStop(0, 'rgba(0,0,0,0)');
+                vig.addColorStop(1, 'rgba(0,0,0,0.9)');
+                this.ctx.fillStyle = vig;
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                this.ctx.restore();
+            }
 
-            if (this.bossAnnouncementTimer > 0) {
+            if (this.bossAnnouncementTimer > 0 && gameState !== 'HUB') {
                 try {
                     this.drawBossAnnouncement(state);
                 } catch(e) {

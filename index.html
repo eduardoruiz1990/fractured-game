@@ -19,6 +19,12 @@
     <div id="joy-right" class="joystick-base"><div id="knob-right" class="joystick-knob"></div></div>
     
     <div id="btn-dash" class="action-btn">DASH</div>
+    
+    <!-- --- PHASE 2: HUB INTERACTION OVERLAY --- -->
+    <div id="interaction-prompt" style="position: absolute; bottom: 15%; left: 50%; transform: translateX(-50%); background: rgba(10, 10, 10, 0.9); border: 2px solid var(--ui-gold); color: var(--ui-gold); padding: 15px 30px; font-weight: bold; font-size: 1.2rem; display: none; z-index: 150; pointer-events: auto; cursor: pointer; text-shadow: 0 0 10px var(--ui-gold); text-align: center; font-family: var(--ui-font); box-shadow: 0 0 20px rgba(197, 160, 89, 0.2);">
+        <span id="prompt-text">INSPECT</span><br>
+        <span style="font-size: 0.8rem; color: #aaa;">Press [E] or Tap Here</span>
+    </div>
 
     <div id="title-screen" class="fullscreen-menu">
         <div class="title-glitch" style="font-size: 5rem; margin-bottom: 10px;">FRACTURED</div>
@@ -37,6 +43,9 @@
         </div>
 
         <div class="medical-folder">
+            <!-- PHASE 2: RETURN TO HUB BUTTON -->
+            <button class="file-btn danger" id="btn-close-folder" style="position: absolute; top: -20px; right: -20px; width: 45px; height: 45px; border-radius: 50%; padding: 0; display: flex; justify-content: center; align-items: center; background: var(--paper-bg); z-index: 100; box-shadow: 0 0 10px rgba(0,0,0,0.5); border: 3px solid var(--ui-red); font-size: 1.5rem;">X</button>
+            
             <div class="folder-header">
                 <div class="title-typewriter">PROJECT: FRACTURED</div>
                 <div id="patient-level-display" class="patient-stamp">PATIENT LVL 1</div>
@@ -136,7 +145,6 @@
                     </div>
                 </div>
 
-                <!-- --- CLINICAL GUIDE TAB CONTENT (VISUAL OVERHAUL) --- -->
                 <div id="tab-guide" class="tab-pane">
                     <div style="text-align: center; margin-bottom: 20px;">
                         <h2 style="color: var(--ink-black); border-bottom: 2px solid var(--ink-black); padding-bottom: 10px; margin-top: 0; letter-spacing: 2px; font-family: var(--ui-font);">INDUCTION FLASHCARDS</h2>
@@ -144,8 +152,6 @@
                     </div>
                     
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; overflow-y: auto; padding-right: 10px; padding-bottom: 20px;">
-                        
-                        <!-- CARD 1: MOVEMENT & DASH -->
                         <div style="background: #fdfaf3; border: 2px solid #4466aa; box-shadow: 4px 4px 0 rgba(68, 102, 170, 0.2); padding: 15px; position: relative;">
                             <div style="font-size: 1.5rem; text-align: center; margin-bottom: 10px; color: #4466aa;">
                                 <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">W</span><br>
@@ -159,7 +165,6 @@
                             </p>
                         </div>
                         
-                        <!-- CARD 2: COMBAT & AIMING -->
                         <div style="background: #fdfaf3; border: 2px solid #cc6600; box-shadow: 4px 4px 0 rgba(204, 102, 0, 0.2); padding: 15px;">
                             <div style="font-size: 2rem; text-align: center; margin-bottom: 10px; color: #cc6600;">
                                 🖱️ / 🎯
@@ -170,7 +175,6 @@
                             </p>
                         </div>
 
-                        <!-- CARD 3: GRIP -->
                         <div style="background: #fdfaf3; border: 2px solid var(--ui-red); box-shadow: 4px 4px 0 rgba(139, 0, 0, 0.2); padding: 15px;">
                             <div style="text-align: center; margin-bottom: 10px;">
                                 <div style="display:inline-block; width: 80%; height: 15px; background: #333; border:2px solid var(--ink-black);">
@@ -183,7 +187,6 @@
                             </p>
                         </div>
                         
-                        <!-- CARD 4: LUCIDITY -->
                         <div style="background: #fdfaf3; border: 2px solid var(--ui-gold); box-shadow: 4px 4px 0 rgba(197, 160, 89, 0.2); padding: 15px;">
                             <div style="font-size: 2rem; text-align: center; margin-bottom: 10px; color: var(--ui-gold); text-shadow: 0 0 10px var(--ui-gold);">
                                 ✧ ✦ ✧
@@ -194,7 +197,6 @@
                             </p>
                         </div>
                         
-                        <!-- CARD 5: THE VOID -->
                         <div style="background: #fdfaf3; border: 2px solid #555; box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2); padding: 15px;">
                             <div style="text-align: center; margin-bottom: 10px;">
                                 <div style="display:inline-block; width:60px; height:60px; background:#fff; border:4px dashed #2a0a3a; border-radius:50%; box-shadow: 0 0 0 10px #1a0525;"></div>
@@ -205,7 +207,6 @@
                             </p>
                         </div>
                         
-                        <!-- CARD 6: SYNERGIES -->
                         <div style="background: #fdfaf3; border: 2px solid var(--ink-black); box-shadow: 4px 4px 0 rgba(26, 26, 26, 0.2); padding: 15px;">
                             <div style="font-size: 1.5rem; text-align: center; margin-bottom: 10px; color: var(--ink-black); font-weight: 900;">
                                 🔦 <span style="font-size: 1rem;">+</span> 📻 <span style="font-size: 1rem;">=</span> 💀
