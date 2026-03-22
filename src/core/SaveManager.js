@@ -31,7 +31,7 @@ export class SaveManager {
                 if (!this.metaState.maxFloorReached) this.metaState.maxFloorReached = 1; 
                 if (!this.metaState.maxBossEncountered) this.metaState.maxBossEncountered = 0;
                 
-                // Backwards compatibility for old saves without magnet or kill tracking
+                // Backwards compatibility for old saves
                 if (this.metaState.upgrades.magnet === undefined) this.metaState.upgrades.magnet = 0;
                 if (!this.metaState.killCounts) this.metaState.killCounts = { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 };
             }
@@ -137,8 +137,6 @@ export class SaveManager {
         }
         if (this.metaState.killCounts[type] !== undefined) {
             this.metaState.killCounts[type]++;
-            // NOTE: We don't call this.saveGame() here to prevent performance drops during bullet-heaven swarms.
-            // The data is flushed to LocalStorage safely during death, floor transitions, and Awaken.
         }
     }
 

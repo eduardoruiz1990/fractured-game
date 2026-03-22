@@ -153,6 +153,52 @@ export class Renderer {
         this.ctx.restore();
     }
 
+    drawMenuStorm(time) {
+        this.ctx.save();
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        if (Math.random() < 0.01) { 
+            this.lightningFlash = 1.0;
+        }
+        
+        if (this.lightningFlash > 0) {
+            this.ctx.fillStyle = `rgba(200, 220, 255, ${this.lightningFlash * 0.15})`;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.lightningFlash -= 0.05;
+        }
+
+        this.ctx.strokeStyle = 'rgba(150, 180, 200, 0.1)';
+        this.ctx.lineWidth = 1.5;
+        this.ctx.lineCap = 'round';
+        this.ctx.beginPath();
+        for (let i = 0; i < this.rain.length; i++) {
+            let p = this.rain[i];
+            this.ctx.moveTo(p.x, p.y);
+            this.ctx.lineTo(p.x - p.l * 0.2, p.y + p.l);
+            
+            p.y += p.v;
+            p.x -= p.v * 0.2; 
+            
+            if (p.y > this.canvas.height + 100) {
+                p.y = -50;
+                p.x = Math.random() * (this.canvas.width + 500);
+            }
+        }
+        this.ctx.stroke();
+        this.ctx.restore();
+    }
+
+    drawFilmGrain() {
+        this.ctx.save();
+        const offsetX = (Math.random() * 128) | 0;
+        const offsetY = (Math.random() * 128) | 0;
+        this.ctx.fillStyle = this.cachedNoisePattern; 
+        this.ctx.translate(-offsetX, -offsetY);
+        this.ctx.fillRect(0, 0, this.canvas.width + 128, this.canvas.height + 128);
+        this.ctx.restore();
+    }
+
     drawGame(state, audioEngine, gameState = 'PLAYING') {
         try {
             this.renderFrame++; 
@@ -183,8 +229,17 @@ export class Renderer {
             }
 
             // --- PHASE 2: HUB RENDERING ROUTER ---
-            if (gameState === 'HUB' && state.hubWorld) {
-                state.hubWorld.draw(this.ctx, state, this);
+            // If the player is in the Hub, ONLY draw the HubWorld layout and bypass the main game rendering entirely!
+            if (gameState === 'HUB') {
+                if (state.hubWorld) {
+                    state.hubWorld.draw(this.ctx, state, this);
+                } else {
+                    // CRITICAL FAILSAFE: If the HubWorld reference is lost, draw a safe black room 
+                    // instead of letting the nightmare void bleed into the safe zone.
+                    this.ctx.fillStyle = '#0a0c11';
+                    this.ctx.fillRect(state.player.x - 2000, state.player.y - 2000, 4000, 4000);
+                    this.drawPlayer(state, audioEngine);
+                }
             } else {
                 this.drawWorldItems(state, audioEngine);
                 this.drawFog(state);
@@ -197,8 +252,18 @@ export class Renderer {
 
             this.ctx.restore(); 
 
+            // Only apply standard vignette and boss intros if we are actively playing
             if (gameState !== 'HUB') {
                 this.drawVignette(state);
+
+                if (this.bossAnnouncementTimer > 0) {
+                    try {
+                        this.drawBossAnnouncement(state);
+                    } catch(e) {
+                        console.warn("Recoverable Boss Intro error:", e);
+                    }
+                    this.bossAnnouncementTimer--; 
+                }
             } else {
                 // Soft spotlight vignette exclusively for the Hub
                 this.ctx.save();
@@ -211,15 +276,6 @@ export class Renderer {
                 this.ctx.fillStyle = vig;
                 this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
                 this.ctx.restore();
-            }
-
-            if (this.bossAnnouncementTimer > 0 && gameState !== 'HUB') {
-                try {
-                    this.drawBossAnnouncement(state);
-                } catch(e) {
-                    console.warn("Recoverable Boss Intro error:", e);
-                }
-                this.bossAnnouncementTimer--; 
             }
 
             this.drawFilmGrain();
@@ -1384,7 +1440,9 @@ export class Renderer {
                             this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
                             this.ctx.fill();
                             this.ctx.fillStyle = '#ff0000';
-                            this.ctx.shadowBlur = ent.pulseState === 'charging' ? 30 : 15;
+                            
+                            const activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
+                            this.ctx.shadowBlur = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
                         });
                         this.ctx.shadowBlur = 0;
 
@@ -1666,7 +1724,8 @@ export class Renderer {
                     this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
                     this.ctx.fill();
                     this.ctx.fillStyle = '#ff0000';
-                    // FIXED: Replaced 'ent' with 'activeBoss' to prevent ReferenceError crash!
+                    
+                    const activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
                     this.ctx.shadowBlur = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
                 });
                 this.ctx.shadowBlur = 0;
@@ -1685,44 +1744,8 @@ export class Renderer {
                     this.ctx.stroke();
                 }
             }
-            
-            this.ctx.restore(); 
-
-            this.ctx.textAlign = 'left';
-            this.ctx.textBaseline = 'middle';
-            
-            let textJitter = (Math.random() - 0.5) * 10;
-            
-            let titleText = "THE SPHERE HEAD";
-            let subText = "Apex Predator of the Wastes";
-            
-            if (bossType === 'RORSCHACH') {
-                titleText = "THE RORSCHACH";
-                subText = "The Mind Divided";
-            } else if (bossType === 'PANOPTICON') {
-                titleText = "THE PANOPTICON";
-                subText = "The All-Seeing Eye";
-            } else if (bossType === 'AMALGAMATION') {
-                titleText = "THE AMALGAMATION";
-                subText = "The Collective Nightmare";
-            } else if (bossType === 'ARCHITECT') {
-                titleText = "THE ARCHITECT";
-                subText = "Constructor of the Void";
-            }
-            
-            this.ctx.font = "900 110px 'Courier New', Courier, monospace";
-            this.ctx.fillStyle = '#ffffff';
-            // FIXED: HTML5 Canvas doesn't process CSS variables! Changed from var(--ui-red) to hex code
-            this.ctx.shadowColor = '#8b0000'; 
-            this.ctx.shadowBlur = 20;
-            this.ctx.fillText(titleText, -100 + textJitter, -50);
-            
-            this.ctx.font = "italic 45px 'Courier New', Courier, monospace";
-            this.ctx.fillStyle = '#c5a059';
-            this.ctx.shadowBlur = 0;
-            this.ctx.fillText(subText, -90 + textJitter, 60);
+            ctx.restore();
         } finally {
-            // ALWAYS restore the context! If a graphic error occurs, this prevents permanent visual corruption.
             this.ctx.restore();
         }
     }

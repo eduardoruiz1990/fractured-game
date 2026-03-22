@@ -24,7 +24,7 @@ export class Game {
     }
 
     init(saveManager, carriedState = null) {
-        this.saveManager = saveManager; // --- PHASE 2: Store reference to track kills
+        this.saveManager = saveManager; // --- Ensure Combat.js has access to saveManager
         const meta = saveManager.metaState;
         const maxSanity = 100 + (meta.upgrades.hp * 20);
         const speedMult = 1.0 + (meta.upgrades.speed * 0.05);
@@ -98,8 +98,8 @@ export class Game {
         let startSanity = carriedState ? carriedState.sanity : effectiveMaxSanity;
 
         this.state = {
-            killCounts: meta.killCounts || {}, // --- PHASE 2: Pass kill counts to state for Hub rendering
-            hubWorld: this.hubWorld, 
+            killCounts: meta.killCounts || {}, 
+            hubWorld: this.hubWorld, // <--- CRITICAL FIX: Restore this line so the Renderer can see the Hub!
             floor: startFloor,
             convergence: 0,
             maxConvergence: Math.floor(100 * Math.pow(1.3, startFloor - 1)), 

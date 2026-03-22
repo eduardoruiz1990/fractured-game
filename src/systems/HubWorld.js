@@ -51,7 +51,7 @@ export class HubWorld {
 
             if (isStanding || isAiming) {
                 this.activeZone = z;
-                if (isStanding) break; // Prioritize physical proximity if overlapping
+                if (isStanding) break; 
             }
         }
 
@@ -135,25 +135,23 @@ export class HubWorld {
             
             if (z.id === 'bed') {
                 // Hospital Bed (The Descent Machine)
-                ctx.fillStyle = '#1a1a1a'; ctx.fillRect(-45, -75, 90, 150); // Frame
-                ctx.fillStyle = '#bbb'; ctx.fillRect(-40, -70, 80, 140); // Mattress
-                ctx.fillStyle = '#eee'; ctx.fillRect(-35, -65, 70, 35); // Pillow
-                
-                // Folded light-blue medical sheets
+                ctx.fillStyle = '#1a1a1a'; ctx.fillRect(-45, -75, 90, 150); 
+                ctx.fillStyle = '#bbb'; ctx.fillRect(-40, -70, 80, 140); 
+                ctx.fillStyle = '#eee'; ctx.fillRect(-35, -65, 70, 35); 
                 ctx.fillStyle = '#88aacc'; ctx.fillRect(-40, 0, 80, 70); 
                 
                 // IV Pole attached to the bed
                 ctx.fillStyle = '#666'; ctx.beginPath(); ctx.arc(-60, -50, 8, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = '#55ff55'; ctx.fillRect(-63, -53, 6, 12); // Glowing IV fluid (Lucidity)
+                ctx.fillStyle = '#55ff55'; ctx.fillRect(-63, -53, 6, 12); 
             } 
             else if (z.id === 'desk') {
                 // Transcription Desk (Synapse Records)
-                ctx.fillStyle = '#222'; ctx.fillRect(-60, -30, 120, 60); // Desk base
-                ctx.fillStyle = '#0a0a0a'; ctx.fillRect(-50, -25, 100, 50); // Dark Desk pad
+                ctx.fillStyle = '#222'; ctx.fillRect(-60, -30, 120, 60); 
+                ctx.fillStyle = '#0a0a0a'; ctx.fillRect(-50, -25, 100, 50); 
                 
                 // Medical Monitor Terminal
                 ctx.fillStyle = '#111'; ctx.fillRect(-20, -40, 40, 15);
-                ctx.fillStyle = '#0f0'; ctx.fillRect(-18, -38, 36, 11); // Green Heartbeat screen
+                ctx.fillStyle = '#0f0'; ctx.fillRect(-18, -38, 36, 11); 
                 
                 // Scattered Clinical Folders / Papers
                 ctx.fillStyle = '#ccc'; 
@@ -162,13 +160,13 @@ export class HubWorld {
             } 
             else if (z.id === 'locker') {
                 // Therapy Regimen Lockers
-                ctx.fillStyle = '#2a3544'; ctx.fillRect(-30, -50, 60, 100); // Bank of 3 lockers
+                ctx.fillStyle = '#2a3544'; ctx.fillRect(-30, -50, 60, 100); 
                 ctx.strokeStyle = '#111a22'; ctx.lineWidth = 2;
                 ctx.strokeRect(-30, -50, 20, 100); 
                 ctx.strokeRect(-10, -50, 20, 100); 
                 ctx.strokeRect(10, -50, 20, 100);
                 
-                // Grated vents on locker doors
+                // Grated vents
                 ctx.fillStyle = '#050505';
                 for(let l = -25; l <= 15; l += 20) {
                     for(let v = -40; v <= -30; v += 4) { ctx.fillRect(l, v, 10, 2); }
@@ -176,16 +174,16 @@ export class HubWorld {
             } 
             else if (z.id === 'trophies') {
                 // Clinical Guide & Roadmap (Glass Presentation Board)
-                ctx.fillStyle = '#0a0a0a'; ctx.fillRect(-40, -10, 80, 20); // Base stand
-                ctx.fillStyle = 'rgba(150, 200, 255, 0.3)'; ctx.fillRect(-35, -5, 70, 10); // Glowing Glass Pane
-                ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-30, 0); ctx.lineTo(-10, 0); ctx.stroke(); // Erased Chalk mark
+                ctx.fillStyle = '#0a0a0a'; ctx.fillRect(-40, -10, 80, 20); 
+                ctx.fillStyle = 'rgba(150, 200, 255, 0.3)'; ctx.fillRect(-35, -5, 70, 10); 
+                ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-30, 0); ctx.lineTo(-10, 0); ctx.stroke();
 
                 // --- PHASE 2: THE MIND PALACE (DYNAMIC TROPHIES) ---
                 const kills = state.killCounts || {};
 
                 // 1. Regular Enemy Statues (Bronze > Silver > Gold)
                 const drawStatue = (tx, ty, count, baseColor) => {
-                    if (count < 100) return; // Minimum 100 kills for Bronze
+                    if (count < 10) return; // Note: Reduced to 10 for easier testing/visibility
                     
                     let metalColor = '#cd7f32'; // Bronze
                     let glow = 'rgba(205, 127, 50, 0.2)';

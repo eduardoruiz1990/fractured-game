@@ -73,7 +73,9 @@ export class Combat {
                                 if (state.frame % 30 === 0) {
                                     ent.takeDamage(20, game);
                                     game.spawnParticles(ent.x, ent.y, '#ffffaa', 5);
-                                    game.director.spawnDecal(ent.x, ent.y, ent.color, 6);
+                                    if (game.director && typeof game.director.spawnDecal === 'function') {
+                                        game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 6);
+                                    }
                                 }
                             }
                         }
@@ -110,7 +112,7 @@ export class Combat {
         }
 
         let cooldownTick = 1;
-        if (state.player.activeTokens.hasTwitch) {
+        if (state.player.activeTokens && state.player.activeTokens.hasTwitch) {
             let sanityRatio = Math.max(0, state.sanity / state.player.maxHp);
             cooldownTick = 1 + (1 - sanityRatio) * 2.0; 
         }
@@ -142,8 +144,10 @@ export class Combat {
                             ent.takeDamage(camera.damage, game);
                             ent.confused = 120; 
                             ent.x += (dx / dist) * 30; 
-                            // Add blood/ink decal on heavy camera hit
-                            game.director.spawnDecal(ent.x, ent.y, ent.color, 8);
+                            // Defensive check for decals
+                            if (game.director && typeof game.director.spawnDecal === 'function') {
+                                game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 8);
+                            }
                         }
                     }
                 }
@@ -165,7 +169,9 @@ export class Combat {
                      if (state.frame % 15 === 0) { 
                          ent.takeDamage(spinnerDmg, game);
                          game.spawnParticles(ent.x, ent.y, '#aaaaaa', 2);
-                         if (Math.random() < 0.3) game.director.spawnDecal(ent.x, ent.y, ent.color, 4);
+                         if (Math.random() < 0.3 && game.director && typeof game.director.spawnDecal === 'function') {
+                             game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 4);
+                         }
                      }
                 }
             }
@@ -192,8 +198,9 @@ export class Combat {
                         ent.y += (ent.y - state.player.y) / d * 25;
                         hitCount++;
                         
-                        // Spatter a lot of decals on massive melee pipe hits!
-                        game.director.spawnDecal(ent.x, ent.y, ent.color, 10);
+                        if (game.director && typeof game.director.spawnDecal === 'function') {
+                            game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 10);
+                        }
                         
                         if (state.player.synergies && state.player.synergies.includes('industrial_bleed')) {
                             game.director.spawnInkPuddle(ent.x, ent.y, pipe.radius * 0.8, pipe.damage * 0.2);
@@ -202,8 +209,6 @@ export class Combat {
                 }
                 
                 if (hitCount > 0) {
-                    // --- THE IMPACT FRAME "JUICE" ---
-                    // Gives a 1-2 frame freeze (hitstop) based on enemies hit
                     state.hitStop = Math.min(25, state.hitStop + 6 + (hitCount * 3)); 
                     state.cameraShake = Math.max(state.cameraShake, 10 + hitCount * 3);
                     if (game.audioEngine) game.audioEngine.playSFX('pipe_hit', hitCount);
@@ -300,7 +305,7 @@ export class Combat {
 
             if (canTakeDamage) {
                 
-                if (state.player.sets.insomniac >= 4) {
+                if (state.player.sets && state.player.sets.insomniac >= 4) {
                     const innerRad = state.player.weapons.flashlight.radius;
                     const outerRad = innerRad + 200;
                     if (distToPlayer > innerRad && distToPlayer < outerRad) {
@@ -335,8 +340,9 @@ export class Combat {
                                 ent.acidTime = batt.duration;
                                 ent.acidDmg = batt.damage;
                             }
-                            // Small decal spray on constant flashlight damage
-                            if (state.frame % 30 === 0) game.director.spawnDecal(ent.x, ent.y, ent.color, 4);
+                            if (state.frame % 30 === 0 && game.director && typeof game.director.spawnDecal === 'function') {
+                                game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 4);
+                            }
                         }
                     }
                 }
@@ -349,11 +355,21 @@ export class Combat {
 
             if (ent.hp <= 0) {
                 deathCount++;
-                // Explode in a mass of decals on death
-                game.director.spawnDecal(ent.x, ent.y, ent.color, 15);
+                ent.active = false;
                 
-                // --- PHASE 2: Record kill for the Hub Trophy Room! ---
-                if (game.saveManager) game.saveManager.recordKill(ent.type);
+                // --- ANTI-ZOMBIE FIX: Immediately extract from array ---
+                state.entities.splice(i, 1);
+                
+                try {
+                    if (game.director && typeof game.director.spawnDecal === 'function') {
+                        game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 15);
+                    }
+                    if (game.saveManager && typeof game.saveManager.recordKill === 'function') {
+                        game.saveManager.recordKill(ent.type);
+                    }
+                } catch(e) {
+                    console.warn("Recovered from logic error on enemy death:", e);
+                }
                 
                 if (ent.type === 'RORSCHACH' && ent.generation < 3) {
                     game.director.spawnEntity('RORSCHACH', null, null, ent.x - 20, ent.y, ent.generation + 1);
@@ -362,11 +378,9 @@ export class Combat {
                     game.spawnParticles(ent.x, ent.y, '#8b008b', 50); 
                     game.spawnXP(ent.x, ent.y, 5, true); 
                     
-                    ent.active = false;
                     if (game.director && game.director.pools && game.director.pools.rorschach) {
                         game.director.pools.rorschach.release(ent);
                     }
-                    state.entities.splice(i, 1);
                     continue; 
                 }
 
@@ -407,15 +421,13 @@ export class Combat {
                     if (!state.bossSpawned) {
                         state.convergence += (ent.type === 'PREDATOR' ? 3 : 1);
                     }
-                    game.spawnParticles(ent.x, ent.y, ent.color, 15);
+                    game.spawnParticles(ent.x, ent.y, ent.color || '#fff', 15);
                 }
                 
-                ent.active = false;
                 let poolKey = ent.type.toLowerCase();
                 if (game.director && game.director.pools && game.director.pools[poolKey]) {
                     game.director.pools[poolKey].release(ent);
                 }
-                state.entities.splice(i, 1);
             }
         }
         
@@ -426,10 +438,9 @@ export class Combat {
         const state = game.state;
         let pickupCount = 0;
         
-        // --- ADDED: THE MAGNET UPGRADE CALCULATION ---
         let baseVacRadius = 70;
         if (state.player.upgrades && state.player.upgrades.magnet) {
-            baseVacRadius += (state.player.upgrades.magnet * 30); // Massively boosts collection range!
+            baseVacRadius += (state.player.upgrades.magnet * 30); 
         }
         
         for (let i = state.xpDrops.length - 1; i >= 0; i--) {
