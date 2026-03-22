@@ -47,6 +47,7 @@
                 <button class="tab-btn" data-target="tab-loadout">THERAPY REGIMEN</button>
                 <button class="tab-btn" data-target="tab-tree">SYNAPSE RECORDS</button>
                 <button class="tab-btn" data-target="tab-roadmap">DESCENT ROADMAP</button>
+                <button class="tab-btn" data-target="tab-guide">CLINICAL GUIDE</button>
             </div>
 
             <div class="folder-content">
@@ -115,7 +116,6 @@
                             <div class="node-info"><strong>Halogen Bulb</strong><br><span class="typewriter-text">Light Range +10% (Lvl <span id="upg-light-lvl">0</span>)</span></div>
                             <button class="file-btn small" id="btn-upg-light">100 L</button>
                         </div>
-                        <!-- --- ADDED: THE MAGNET UPGRADE --- -->
                         <div class="synapse-node-file">
                             <div class="node-info"><strong>Neuro-Magnetic Pull</strong><br><span class="typewriter-text">Vacuum Radius +30px (Lvl <span id="upg-magnet-lvl">0</span>)</span></div>
                             <button class="file-btn small" id="btn-upg-magnet">150 L</button>
@@ -133,6 +133,88 @@
                         <div class="roadmap-node locked">Floor 3: The Panopticon (UNKNOWN)</div>
                         <div class="roadmap-node locked">Floor 4: The Amalgamation (UNKNOWN)</div>
                         <div class="roadmap-node locked boss">Floor 5: The Architect (FINAL)</div>
+                    </div>
+                </div>
+
+                <!-- --- CLINICAL GUIDE TAB CONTENT (VISUAL OVERHAUL) --- -->
+                <div id="tab-guide" class="tab-pane">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <h2 style="color: var(--ink-black); border-bottom: 2px solid var(--ink-black); padding-bottom: 10px; margin-top: 0; letter-spacing: 2px; font-family: var(--ui-font);">INDUCTION FLASHCARDS</h2>
+                        <p class="typewriter-text" style="color: #555; font-size: 0.9rem;">Review survival protocols prior to descent.</p>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; overflow-y: auto; padding-right: 10px; padding-bottom: 20px;">
+                        
+                        <!-- CARD 1: MOVEMENT & DASH -->
+                        <div style="background: #fdfaf3; border: 2px solid #4466aa; box-shadow: 4px 4px 0 rgba(68, 102, 170, 0.2); padding: 15px; position: relative;">
+                            <div style="font-size: 1.5rem; text-align: center; margin-bottom: 10px; color: #4466aa;">
+                                <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">W</span><br>
+                                <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">A</span>
+                                <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">S</span>
+                                <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">D</span>
+                            </div>
+                            <strong style="color: #4466aa; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">I. EVASION</strong>
+                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                                Move to survive. Press <span style="border:1px solid #666; padding:1px 4px; background:#eee;">SPACE</span> to Dash. Dashing grants temporary invulnerability against all nightmares.
+                            </p>
+                        </div>
+                        
+                        <!-- CARD 2: COMBAT & AIMING -->
+                        <div style="background: #fdfaf3; border: 2px solid #cc6600; box-shadow: 4px 4px 0 rgba(204, 102, 0, 0.2); padding: 15px;">
+                            <div style="font-size: 2rem; text-align: center; margin-bottom: 10px; color: #cc6600;">
+                                🖱️ / 🎯
+                            </div>
+                            <strong style="color: #cc6600; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">II. DIRECTED THERAPY</strong>
+                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                                Weapons fire <b>automatically</b>. Use your mouse cursor (or right joystick) to aim directional weapons like the Flashlight.
+                            </p>
+                        </div>
+
+                        <!-- CARD 3: GRIP -->
+                        <div style="background: #fdfaf3; border: 2px solid var(--ui-red); box-shadow: 4px 4px 0 rgba(139, 0, 0, 0.2); padding: 15px;">
+                            <div style="text-align: center; margin-bottom: 10px;">
+                                <div style="display:inline-block; width: 80%; height: 15px; background: #333; border:2px solid var(--ink-black);">
+                                    <div style="width: 40%; height: 100%; background: var(--ui-red);"></div>
+                                </div>
+                            </div>
+                            <strong style="color: var(--ui-red); font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">III. THE GRIP (SANITY)</strong>
+                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                                Your health. It drains constantly. Hitting zero triggers a mental breakdown (severe input lag). Drop past zero, and you die.
+                            </p>
+                        </div>
+                        
+                        <!-- CARD 4: LUCIDITY -->
+                        <div style="background: #fdfaf3; border: 2px solid var(--ui-gold); box-shadow: 4px 4px 0 rgba(197, 160, 89, 0.2); padding: 15px;">
+                            <div style="font-size: 2rem; text-align: center; margin-bottom: 10px; color: var(--ui-gold); text-shadow: 0 0 10px var(--ui-gold);">
+                                ✧ ✦ ✧
+                            </div>
+                            <strong style="color: var(--ui-gold); font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">IV. LUCIDITY (XP)</strong>
+                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                                Gather glowing fragments from defeated enemies to manifest new weapons. Collect enough to extract safely.
+                            </p>
+                        </div>
+                        
+                        <!-- CARD 5: THE VOID -->
+                        <div style="background: #fdfaf3; border: 2px solid #555; box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2); padding: 15px;">
+                            <div style="text-align: center; margin-bottom: 10px;">
+                                <div style="display:inline-block; width:60px; height:60px; background:#fff; border:4px dashed #2a0a3a; border-radius:50%; box-shadow: 0 0 0 10px #1a0525;"></div>
+                            </div>
+                            <strong style="color: #555; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">V. THE VOID</strong>
+                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                                The arena is infinite, but the safe zone is not. Wandering into the dark purple void will rapidly destroy your Grip.
+                            </p>
+                        </div>
+                        
+                        <!-- CARD 6: SYNERGIES -->
+                        <div style="background: #fdfaf3; border: 2px solid var(--ink-black); box-shadow: 4px 4px 0 rgba(26, 26, 26, 0.2); padding: 15px;">
+                            <div style="font-size: 1.5rem; text-align: center; margin-bottom: 10px; color: var(--ink-black); font-weight: 900;">
+                                🔦 <span style="font-size: 1rem;">+</span> 📻 <span style="font-size: 1rem;">=</span> 💀
+                            </div>
+                            <strong style="color: var(--ink-black); font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">VI. SYNERGIES & TOKENS</strong>
+                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                                Max out weapons (Lv 5) to unlock devastating synergies. Kill Bosses to earn equippable Tokens.
+                            </p>
+                        </div>
                     </div>
                 </div>
 
