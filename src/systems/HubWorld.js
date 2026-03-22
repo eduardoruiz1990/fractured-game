@@ -104,7 +104,7 @@ export class HubWorld {
         for (let z of this.zones) {
             let isActive = this.activeZone && this.activeZone.id === z.id;
             
-            // Interaction Halo (Crisp lines instead of blobs)
+            // Interaction Halo
             ctx.strokeStyle = isActive ? '#fff' : z.color;
             ctx.lineWidth = isActive ? 3 : 1;
             ctx.setLineDash(isActive ? [15, 5] : [5, 10]);
@@ -113,14 +113,19 @@ export class HubWorld {
             ctx.stroke();
             ctx.setLineDash([]);
             
-            // Ambient Occlusion / Drop Shadow for the furniture
+            // PERFORMANCE FIX: Fast Ambient Occlusion / Drop Shadow (No expensive blur filter!)
             ctx.save();
             ctx.translate(z.x + 10, z.y + 15); // Offset for light from top-left
             ctx.fillStyle = 'rgba(0,0,0,0.6)';
-            ctx.filter = 'blur(8px)';
             
-            if (z.id === 'bed') ctx.fillRect(-45, -75, 90, 150);
-            else if (z.id === 'desk') ctx.fillRect(-60, -30, 120, 60);
+            if (z.id === 'bed') {
+                if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-45, -75, 90, 150, 8); ctx.fill(); }
+                else ctx.fillRect(-45, -75, 90, 150);
+            }
+            else if (z.id === 'desk') {
+                if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-60, -30, 120, 60, 6); ctx.fill(); }
+                else ctx.fillRect(-60, -30, 120, 60);
+            }
             else if (z.id === 'locker') ctx.fillRect(-30, -50, 60, 100);
             else if (z.id === 'trophies') ctx.fillRect(-45, -15, 90, 30);
             ctx.restore();
@@ -198,9 +203,8 @@ export class HubWorld {
                     if (count < 10) return; 
                     
                     let metalColor = '#cd7f32'; 
-                    let glow = 'rgba(205, 127, 50, 0.4)';
-                    if (count >= 10000) { metalColor = '#ffd700'; glow = 'rgba(255, 215, 0, 0.6)'; }
-                    else if (count >= 1000) { metalColor = '#e2e8f0'; glow = 'rgba(226, 232, 240, 0.5)'; }
+                    if (count >= 10000) { metalColor = '#ffd700'; }
+                    else if (count >= 1000) { metalColor = '#e2e8f0'; }
 
                     ctx.save();
                     ctx.translate(tx, ty);
@@ -209,9 +213,13 @@ export class HubWorld {
                     if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-15, -10, 30, 20, 3); ctx.fill(); }
                     else ctx.fillRect(-15, -10, 30, 20);
                     
-                    ctx.shadowColor = metalColor; ctx.shadowBlur = 20;
+                    // PERFORMANCE FIX: Faux Glow (Alpha Circle instead of shadowBlur)
                     ctx.fillStyle = metalColor;
+                    ctx.globalAlpha = 0.25;
+                    ctx.beginPath(); ctx.arc(0, -25, 20, 0, Math.PI * 2); ctx.fill();
+                    ctx.globalAlpha = 1.0;
                     
+                    // Main Statue Body
                     ctx.beginPath(); ctx.arc(0, -25, 12, 0, Math.PI * 2); ctx.fill(); 
                     ctx.fillRect(-6, -18, 12, 18); 
                     
@@ -233,8 +241,11 @@ export class HubWorld {
                     if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-20, -15, 40, 25, 4); ctx.fill(); }
                     else ctx.fillRect(-20, -15, 40, 25);
                     
+                    // PERFORMANCE FIX: Faux Glow
                     ctx.fillStyle = color;
-                    ctx.shadowColor = color; ctx.shadowBlur = 25;
+                    ctx.globalAlpha = 0.25;
+                    ctx.beginPath(); ctx.arc(0, -25, 25, 0, Math.PI * 2); ctx.fill();
+                    ctx.globalAlpha = 1.0;
                     
                     if (shape === 'sphere') {
                         ctx.beginPath(); ctx.arc(0, -25, 14, 0, Math.PI*2); ctx.fill();
@@ -261,5 +272,12 @@ export class HubWorld {
         }
         
         ctx.restore();
+        
+        // 3. Draw the Player on top of the clinical ward
+        renderer.drawPlayer(state, null);
+        
+        // NOTE: Hub-specific lighting (Multiply/Screen passes) has been completely 
+        // removed from this file. It is now exclusively handled by Renderer.js 
+        // in order to prevent double-darkening the scene into pitch black!
     }
 }
