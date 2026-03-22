@@ -7,11 +7,10 @@ export class HubWorld {
         this.roomRadius = 500; 
         
         // Define the physical interaction points in the room
-        // NOTE: The 'trophies' node correctly redirects to 'tab-trophies' now!
         this.zones = [
             { id: 'bed', x: 0, y: -300, radius: 100, prompt: "THE DESCENT MACHINE (Start Run)", action: 'tab-main', color: '#c5a059' },
-            { id: 'desk', x: 300, y: 0, radius: 100, prompt: "SYNAPSE RECORDS (Upgrades)", action: 'tab-tree', color: '#4466aa' },
-            { id: 'locker', x: -300, y: 0, radius: 100, prompt: "THERAPY REGIMEN (Loadout)", action: 'tab-loadout', color: '#cc6600' },
+            { id: 'desk', x: 300, y: 0, radius: 100, prompt: "SYNAPSE RECORDS (Upgrades)", action: 'tab-tree', color: '#0ea5e9' },
+            { id: 'locker', x: -300, y: 0, radius: 100, prompt: "THERAPY REGIMEN (Loadout)", action: 'tab-loadout', color: '#94a3b8' },
             { id: 'trophies', x: 0, y: 300, radius: 100, prompt: "THE MIND PALACE (Monuments)", action: 'tab-trophies', color: '#8b0000' }
         ];
         
@@ -21,7 +20,6 @@ export class HubWorld {
     }
 
     update(state) {
-        // Enforce physical walls so the player cannot run out of the hospital room into the void
         let dist = Math.hypot(state.player.x, state.player.y);
         if (dist > this.roomRadius - state.player.radius) {
             let angle = Math.atan2(state.player.y, state.player.x);
@@ -29,22 +27,16 @@ export class HubWorld {
             state.player.y = Math.sin(angle) * (this.roomRadius - state.player.radius);
         }
 
-        // Detect if the player is standing near OR aiming the flashlight at a specific station
         this.activeZone = null;
         const fl = state.player.weapons.flashlight;
         const playerAngle = state.player.angle;
 
         for (let z of this.zones) {
             let distToZone = Math.hypot(state.player.x - z.x, state.player.y - z.y);
-            
-            // Check 1: Is the player physically standing inside the zone?
             let isStanding = distToZone < z.radius + state.player.radius + 20;
-            
-            // Check 2: Is the player aiming the flashlight directly at the zone?
             let angleToZone = Math.atan2(z.y - state.player.y, z.x - state.player.x);
             let angleDiff = angleToZone - playerAngle;
             
-            // Normalize angle difference to -PI to PI
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             
@@ -56,20 +48,16 @@ export class HubWorld {
             }
         }
 
-        // Abandoned Ward Fluorescent flickering logic
         this.flickerTimer--;
         if (this.flickerTimer <= 0) {
             let rand = Math.random();
             if (rand < 0.05) {
-                // Pitch black! Total power failure.
                 this.lightIntensity = 0.15;
                 this.flickerTimer = 2 + Math.random() * 5;
             } else if (rand < 0.25) {
-                // Dim, struggling flicker
                 this.lightIntensity = 0.3 + Math.random() * 0.3; 
                 this.flickerTimer = 5 + Math.random() * 10;
             } else {
-                // Restored eerie hum
                 this.lightIntensity = 0.85; 
                 this.flickerTimer = 30 + Math.random() * 100;
             }
@@ -79,148 +67,174 @@ export class HubWorld {
     draw(ctx, state, renderer) {
         ctx.save();
         
-        // 1. Draw Sterile Hospital Tile Floor
-        ctx.fillStyle = '#0a0c11'; // Darker base slate for abandoned feel
+        // --- 1. CRISP CLINICAL FLOOR ---
+        ctx.fillStyle = '#0f1115'; // Moody Slate Base
         ctx.fillRect(-this.roomRadius - 100, -this.roomRadius - 100, this.roomRadius * 2 + 200, this.roomRadius * 2 + 200);
         
-        // Clip to a perfect circle to simulate the locked "Safe Room"
         ctx.beginPath();
         ctx.arc(0, 0, this.roomRadius, 0, Math.PI * 2);
         ctx.clip();
 
-        // Medical Ward Tiles (Checkered clinical pattern)
-        ctx.fillStyle = '#10141a'; // Slightly lighter blue-grey
-        for(let i = -this.roomRadius; i <= this.roomRadius; i += 50) {
-            for(let j = -this.roomRadius; j <= this.roomRadius; j += 50) {
-                if ((Math.abs(i) + Math.abs(j)) % 100 === 0) {
-                    ctx.fillRect(i, j, 50, 50);
-                }
-            }
-        }
-        
-        // Grid Lines (Sterile Grout)
-        ctx.strokeStyle = '#05070a';
+        // High-res surgical tiles
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
         ctx.lineWidth = 2;
-        for(let i = -this.roomRadius; i <= this.roomRadius; i += 50) {
+        for(let i = -this.roomRadius; i <= this.roomRadius; i += 40) {
             ctx.beginPath(); ctx.moveTo(i, -this.roomRadius); ctx.lineTo(i, this.roomRadius); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(-this.roomRadius, i); ctx.lineTo(this.roomRadius, i); ctx.stroke();
         }
-
-        // Room Border / Wall Baseboard
-        ctx.strokeStyle = '#1a2533';
-        ctx.lineWidth = 15;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.roomRadius - 7.5, 0, Math.PI * 2);
-        ctx.stroke();
         
-        // 2. Draw Interactive Zones & Medical Furniture
+        // Specular polished tile highlights
+        ctx.fillStyle = 'rgba(255,255,255,0.015)';
+        for(let i = -this.roomRadius; i <= this.roomRadius; i += 80) {
+            for(let j = -this.roomRadius; j <= this.roomRadius; j += 80) {
+                ctx.fillRect(i, j, 40, 40);
+                ctx.fillRect(i+40, j+40, 40, 40);
+            }
+        }
+
+        // Room Wall Border
+        ctx.strokeStyle = '#1e293b'; // Outer slate border
+        ctx.lineWidth = 16;
+        ctx.beginPath(); ctx.arc(0, 0, this.roomRadius, 0, Math.PI*2); ctx.stroke();
+        ctx.strokeStyle = '#0f172a'; // Inner lip
+        ctx.lineWidth = 8;
+        ctx.beginPath(); ctx.arc(0, 0, this.roomRadius - 8, 0, Math.PI*2); ctx.stroke();
+        
+        // --- 2. PROFESSIONAL FURNITURE & SHADOWS ---
         for (let z of this.zones) {
             let isActive = this.activeZone && this.activeZone.id === z.id;
-            let pulse = isActive ? Math.sin(state.frame * 0.1) * 10 : 0;
             
-            // Interaction Halo (Medical glow)
-            ctx.beginPath();
-            ctx.arc(z.x, z.y, z.radius + pulse, 0, Math.PI * 2);
-            ctx.fillStyle = isActive ? `rgba(255, 255, 255, 0.15)` : 'rgba(0, 0, 0, 0.4)';
-            ctx.fill();
-            
-            ctx.strokeStyle = isActive ? '#ffffff' : z.color;
+            // Interaction Halo (Crisp lines instead of blobs)
+            ctx.strokeStyle = isActive ? '#fff' : z.color;
             ctx.lineWidth = isActive ? 3 : 1;
-            ctx.setLineDash(isActive ? [] : [5, 10]);
+            ctx.setLineDash(isActive ? [15, 5] : [5, 10]);
+            ctx.beginPath();
+            ctx.arc(z.x, z.y, z.radius, 0, Math.PI * 2);
             ctx.stroke();
             ctx.setLineDash([]);
             
-            // Detailed Top-Down Furniture
+            // Ambient Occlusion / Drop Shadow for the furniture
+            ctx.save();
+            ctx.translate(z.x + 10, z.y + 15); // Offset for light from top-left
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.filter = 'blur(8px)';
+            
+            if (z.id === 'bed') ctx.fillRect(-45, -75, 90, 150);
+            else if (z.id === 'desk') ctx.fillRect(-60, -30, 120, 60);
+            else if (z.id === 'locker') ctx.fillRect(-30, -50, 60, 100);
+            else if (z.id === 'trophies') ctx.fillRect(-45, -15, 90, 30);
+            ctx.restore();
+            
+            // Draw Detailed Furniture Textures
             ctx.save();
             ctx.translate(z.x, z.y);
             
             if (z.id === 'bed') {
-                // Hospital Bed (The Descent Machine)
-                ctx.fillStyle = '#1a1a1a'; ctx.fillRect(-45, -75, 90, 150); 
-                ctx.fillStyle = '#bbb'; ctx.fillRect(-40, -70, 80, 140); 
-                ctx.fillStyle = '#eee'; ctx.fillRect(-35, -65, 70, 35); 
-                ctx.fillStyle = '#88aacc'; ctx.fillRect(-40, 0, 80, 70); 
+                ctx.fillStyle = '#2c3e50'; 
+                if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-45, -75, 90, 150, 8); ctx.fill(); }
+                else ctx.fillRect(-45, -75, 90, 150);
                 
-                // IV Pole attached to the bed
-                ctx.fillStyle = '#666'; ctx.beginPath(); ctx.arc(-60, -50, 8, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = '#55ff55'; ctx.fillRect(-63, -53, 6, 12); 
+                ctx.fillStyle = '#ecf0f1'; 
+                if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-40, -70, 80, 140, 5); ctx.fill(); }
+                else ctx.fillRect(-40, -70, 80, 140);
+                
+                ctx.fillStyle = '#bdc3c7'; // Pillow
+                ctx.fillRect(-35, -65, 70, 25);
+                
+                ctx.fillStyle = '#3498db'; // Blanket
+                ctx.fillRect(-40, -10, 80, 80);
+                ctx.fillStyle = '#2980b9'; // Blanket Fold
+                ctx.fillRect(-40, -10, 80, 15);
+                
+                // IV Pole
+                ctx.fillStyle = '#7f8c8d'; ctx.beginPath(); ctx.arc(-55, -60, 6, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#2ecc71'; ctx.fillRect(-57, -62, 4, 10);
             } 
             else if (z.id === 'desk') {
-                // Transcription Desk (Synapse Records)
-                ctx.fillStyle = '#222'; ctx.fillRect(-60, -30, 120, 60); 
-                ctx.fillStyle = '#0a0a0a'; ctx.fillRect(-50, -25, 100, 50); 
+                ctx.fillStyle = '#1e272e'; 
+                if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-60, -30, 120, 60, 6); ctx.fill(); }
+                else ctx.fillRect(-60, -30, 120, 60);
                 
-                // Medical Monitor Terminal
-                ctx.fillStyle = '#111'; ctx.fillRect(-20, -40, 40, 15);
-                ctx.fillStyle = '#0f0'; ctx.fillRect(-18, -38, 36, 11); 
+                ctx.fillStyle = '#0b0e14'; // Mat
+                ctx.fillRect(-50, -25, 100, 50);
                 
-                // Scattered Clinical Folders / Papers
-                ctx.fillStyle = '#ccc'; 
-                ctx.save(); ctx.translate(-30, 10); ctx.rotate(0.2); ctx.fillRect(0,0, 15, 20); ctx.restore();
-                ctx.save(); ctx.translate(20, 5); ctx.rotate(-0.4); ctx.fillRect(0,0, 15, 20); ctx.restore();
+                // Cyan Monitors
+                ctx.fillStyle = '#000'; ctx.fillRect(-35, -35, 30, 10); ctx.fillRect(5, -35, 30, 10);
+                ctx.fillStyle = '#0ea5e9'; 
+                ctx.fillRect(-34, -34, 28, 8); ctx.fillRect(6, -34, 28, 8);
+                
+                // Keyboard
+                ctx.fillStyle = '#222'; ctx.fillRect(-20, -10, 40, 12);
+                ctx.fillStyle = 'rgba(14, 165, 233, 0.3)'; ctx.fillRect(-18, -8, 36, 8); 
             } 
             else if (z.id === 'locker') {
-                // Therapy Regimen Lockers
-                ctx.fillStyle = '#2a3544'; ctx.fillRect(-30, -50, 60, 100); 
-                ctx.strokeStyle = '#111a22'; ctx.lineWidth = 2;
+                let lockerGrad = ctx.createLinearGradient(-30, -50, 30, 50);
+                lockerGrad.addColorStop(0, '#34495e');
+                lockerGrad.addColorStop(1, '#1a252f');
+                ctx.fillStyle = lockerGrad; 
+                ctx.fillRect(-30, -50, 60, 100); 
+                
+                ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2;
                 ctx.strokeRect(-30, -50, 20, 100); 
                 ctx.strokeRect(-10, -50, 20, 100); 
                 ctx.strokeRect(10, -50, 20, 100);
                 
-                // Grated vents
                 ctx.fillStyle = '#050505';
                 for(let l = -25; l <= 15; l += 20) {
                     for(let v = -40; v <= -30; v += 4) { ctx.fillRect(l, v, 10, 2); }
                 }
             } 
             else if (z.id === 'trophies') {
-                // Clinical Guide & Roadmap (Glass Presentation Board)
-                ctx.fillStyle = '#0a0a0a'; ctx.fillRect(-40, -10, 80, 20); 
-                ctx.fillStyle = 'rgba(150, 200, 255, 0.3)'; ctx.fillRect(-35, -5, 70, 10); 
-                ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-30, 0); ctx.lineTo(-10, 0); ctx.stroke();
+                // Glass Casing
+                ctx.fillStyle = '#0f172a'; ctx.fillRect(-45, -15, 90, 30); 
+                ctx.fillStyle = 'rgba(150, 200, 255, 0.15)'; ctx.fillRect(-40, -10, 80, 20); 
+                ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1.5; 
+                ctx.beginPath(); ctx.moveTo(-35, -5); ctx.lineTo(-15, -5); ctx.stroke();
 
-                // --- THE MIND PALACE (DYNAMIC TROPHIES) ---
+                // Dynamic Statues
                 const kills = state.killCounts || {};
 
-                // 1. Regular Enemy Statues (Bronze > Silver > Gold)
                 const drawStatue = (tx, ty, count, baseColor) => {
-                    if (count < 10) return; // Unlocked at 10 kills (Bronze tier)
+                    if (count < 10) return; 
                     
-                    let metalColor = '#cd7f32'; // Bronze
-                    let glow = 'rgba(205, 127, 50, 0.2)';
-                    if (count >= 10000) { metalColor = '#ffd700'; glow = 'rgba(255, 215, 0, 0.4)'; } // Gold
-                    else if (count >= 1000) { metalColor = '#c0c0c0'; glow = 'rgba(192, 192, 192, 0.3)'; } // Silver
+                    let metalColor = '#cd7f32'; 
+                    let glow = 'rgba(205, 127, 50, 0.4)';
+                    if (count >= 10000) { metalColor = '#ffd700'; glow = 'rgba(255, 215, 0, 0.6)'; }
+                    else if (count >= 1000) { metalColor = '#e2e8f0'; glow = 'rgba(226, 232, 240, 0.5)'; }
 
                     ctx.save();
                     ctx.translate(tx, ty);
-                    ctx.fillStyle = '#111'; ctx.fillRect(-15, -10, 30, 20); // Pedestal
                     
-                    ctx.shadowColor = metalColor; ctx.shadowBlur = 15;
+                    ctx.fillStyle = '#1e293b'; 
+                    if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-15, -10, 30, 20, 3); ctx.fill(); }
+                    else ctx.fillRect(-15, -10, 30, 20);
+                    
+                    ctx.shadowColor = metalColor; ctx.shadowBlur = 20;
                     ctx.fillStyle = metalColor;
                     
-                    // Abstract shape representing the Nightmare
-                    ctx.beginPath(); ctx.arc(0, -20, 12, 0, Math.PI * 2); ctx.fill(); 
-                    ctx.fillRect(-6, -15, 12, 15); 
+                    ctx.beginPath(); ctx.arc(0, -25, 12, 0, Math.PI * 2); ctx.fill(); 
+                    ctx.fillRect(-6, -18, 12, 18); 
                     
-                    ctx.fillStyle = baseColor; // Faction tint
-                    ctx.beginPath(); ctx.arc(0, -20, 4, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = baseColor; 
+                    ctx.beginPath(); ctx.arc(0, -25, 4, 0, Math.PI * 2); ctx.fill();
                     ctx.restore();
                 };
 
-                // Render Mob Statues
                 drawStatue(-80, -30, kills.SCAVENGER || 0, '#555');
                 drawStatue(80, -30, kills.PREDATOR || 0, '#8b0000');
                 drawStatue(-120, -5, kills.PARASITE || 0, '#a0522d');
 
-                // 2. Boss Monuments (Unique Shapes for Defeated Apex Predators)
                 const drawBossMonument = (tx, ty, isDefeated, color, shape) => {
                     if (!isDefeated) return;
                     ctx.save();
                     ctx.translate(tx, ty);
                     
-                    ctx.fillStyle = '#1a1a1a'; ctx.fillRect(-20, -15, 40, 25); // Heavy Pedestal
+                    ctx.fillStyle = '#1e293b'; 
+                    if(ctx.roundRect) { ctx.beginPath(); ctx.roundRect(-20, -15, 40, 25, 4); ctx.fill(); }
+                    else ctx.fillRect(-20, -15, 40, 25);
+                    
                     ctx.fillStyle = color;
-                    ctx.shadowColor = color; ctx.shadowBlur = 20;
+                    ctx.shadowColor = color; ctx.shadowBlur = 25;
                     
                     if (shape === 'sphere') {
                         ctx.beginPath(); ctx.arc(0, -25, 14, 0, Math.PI*2); ctx.fill();
@@ -237,7 +251,6 @@ export class HubWorld {
                     ctx.restore();
                 };
 
-                // Render Boss Monuments
                 drawBossMonument(-55, 30, (kills.BOSS || 0) > 0, '#b87333', 'sphere');
                 drawBossMonument(55, 30, (kills.RORSCHACH || 0) > 0, '#800080', 'rorschach');
                 drawBossMonument(-100, 40, (kills.PANOPTICON || 0) > 0, '#ff0055', 'panopticon');
@@ -247,52 +260,6 @@ export class HubWorld {
             ctx.restore();
         }
         
-        ctx.restore();
-        
-        // 3. Draw the Player on top of the clinical ward
-        renderer.drawPlayer(state, null);
-        
-        // 4. Clinical Lighting for the Hub (Fluorescent & Deep Vignette)
-        // We use multiply to plunge the room into shadows
-        ctx.save();
-        ctx.globalCompositeOperation = 'multiply';
-        
-        // Cool surgical/fluorescent light tint that flickers aggressively
-        let lightColor = `rgba(180, 200, 220, ${this.lightIntensity})`; 
-        
-        let grad = ctx.createRadialGradient(0, 0, 50, 0, 0, this.roomRadius);
-        grad.addColorStop(0, lightColor);
-        grad.addColorStop(1, '#050508'); // Extremely dark edges
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.roomRadius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-
-        // 5. The Flashlight Beam
-        // We use screen compositing to let the flashlight cut through the darkness!
-        ctx.save();
-        ctx.globalCompositeOperation = 'screen';
-        
-        let fl = state.player.weapons.flashlight;
-        let jitter = (Math.random() - 0.5) * 0.05; // Slight battery jitter
-        
-        let flGrad = ctx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, fl.radius);
-        flGrad.addColorStop(0, 'rgba(255, 255, 230, 0.35)'); // Bright core
-        flGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');          // Fades to nothing
-        
-        ctx.fillStyle = flGrad;
-        ctx.beginPath();
-        ctx.moveTo(state.player.x, state.player.y);
-        ctx.arc(
-            state.player.x, 
-            state.player.y, 
-            fl.radius, 
-            state.player.angle - fl.angle + jitter, 
-            state.player.angle + fl.angle + jitter
-        );
-        ctx.closePath();
-        ctx.fill();
         ctx.restore();
     }
 }

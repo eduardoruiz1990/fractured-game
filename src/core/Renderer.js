@@ -34,6 +34,19 @@ export class Renderer {
             });
         }
         this.lightningFlash = 0;
+
+        // --- NEW: Ambient Dust Motes for the Hub World ---
+        this.hubDust = [];
+        for(let i = 0; i < 80; i++) {
+            this.hubDust.push({
+                x: (Math.random() - 0.5) * 2000,
+                y: (Math.random() - 0.5) * 2000,
+                vx: (Math.random() - 0.5) * 0.3,
+                vy: (Math.random() - 0.5) * 0.3,
+                size: Math.random() * 2 + 0.5,
+                phase: Math.random() * Math.PI * 2
+            });
+        }
     }
 
     generateFloorPattern() {
@@ -199,6 +212,29 @@ export class Renderer {
         this.ctx.restore();
     }
 
+    // Helper to draw floating dust motes
+    drawHubDust(state) {
+        this.ctx.fillStyle = '#ffffff';
+        this.hubDust.forEach(dust => {
+            dust.x += dust.vx;
+            dust.y += dust.vy;
+            dust.phase += 0.015;
+            
+            // Wrap around the player's view
+            if (dust.x > state.player.x + 800) dust.x -= 1600;
+            if (dust.x < state.player.x - 800) dust.x += 1600;
+            if (dust.y > state.player.y + 800) dust.y -= 1600;
+            if (dust.y < state.player.y - 800) dust.y += 1600;
+
+            let alpha = (Math.sin(dust.phase) + 1) / 2 * 0.4; 
+            this.ctx.globalAlpha = alpha;
+            this.ctx.beginPath();
+            this.ctx.arc(dust.x, dust.y, dust.size, 0, Math.PI*2);
+            this.ctx.fill();
+        });
+        this.ctx.globalAlpha = 1.0;
+    }
+
     drawGame(state, audioEngine, gameState = 'PLAYING') {
         try {
             this.renderFrame++; 
@@ -228,13 +264,101 @@ export class Renderer {
                 this.ctx.translate(curShakeX, curShakeY);
             }
 
-            // --- PHASE 2: HUB RENDERING ROUTER ---
-            // Fixes the issue where the Void bleeds into the Hub
+            // --- PHASE 2: HUB RENDERING ROUTER (THE PRO REVAMP) ---
             if (gameState === 'HUB') {
                 if (state.hubWorld) {
+                    // 1. Draw Base Geometry (Unlit crisp models from HubWorld.js)
                     state.hubWorld.draw(this.ctx, state, this);
+                    
+                    this.ctx.save();
+                    
+                    // 2. Cinematic Ambient Occlusion / Shadow Pass
+                    // Plunges the room into a beautiful, moody dark slate color
+                    this.ctx.globalCompositeOperation = 'multiply';
+                    let ambientGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, 50, state.player.x, state.player.y, 800);
+                    ambientGrad.addColorStop(0, '#5e728a');   // Soft surgical light near player
+                    ambientGrad.addColorStop(0.5, '#1e293b'); // Dark slate mid-ground
+                    ambientGrad.addColorStop(1, '#020408');   // Pitch black edges
+                    
+                    // Incorporate flicker
+                    if (state.hubWorld.lightIntensity < 0.5) {
+                        this.ctx.fillStyle = `rgba(5, 8, 15, ${1 - state.hubWorld.lightIntensity})`; 
+                    } else {
+                        this.ctx.fillStyle = ambientGrad;
+                    }
+                    this.ctx.fillRect(state.player.x - 2000, state.player.y - 2000, 4000, 4000);
+                    
+                    // 3. Volumetric Lighting & Spotlights (God Rays)
+                    this.ctx.globalCompositeOperation = 'screen';
+                    if (state.hubWorld.zones && state.hubWorld.lightIntensity > 0.5) {
+                        state.hubWorld.zones.forEach(z => {
+                            let pulse = Math.sin(this.renderFrame * 0.05 + z.x) * 5;
+                            
+                            // Pool of light striking the floor
+                            this.ctx.globalAlpha = 0.6;
+                            const glow = this.ctx.createRadialGradient(z.x, z.y, 0, z.x, z.y, 130 + pulse);
+                            glow.addColorStop(0, z.color);
+                            glow.addColorStop(1, 'transparent');
+                            
+                            this.ctx.fillStyle = glow;
+                            this.ctx.beginPath();
+                            this.ctx.arc(z.x, z.y, 130 + pulse, 0, Math.PI * 2);
+                            this.ctx.fill();
+                            
+                            // Volumetric Shaft from the ceiling
+                            this.ctx.globalAlpha = 0.15;
+                            const beam = this.ctx.createLinearGradient(z.x - 80, z.y - 300, z.x + 40, z.y + 50);
+                            beam.addColorStop(0, '#ffffff');
+                            beam.addColorStop(1, 'transparent');
+                            
+                            this.ctx.fillStyle = beam;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(z.x - 80, z.y - 350); 
+                            this.ctx.lineTo(z.x + 40, z.y - 350); 
+                            this.ctx.lineTo(z.x + 120, z.y + 60); 
+                            this.ctx.lineTo(z.x - 120, z.y + 60); 
+                            this.ctx.fill();
+                        });
+                    }
+                    
+                    // 4. Advanced Dynamic Flashlight
+                    this.ctx.globalAlpha = 1.0;
+                    let fl = state.player.weapons.flashlight;
+                    let jitter = (Math.random() - 0.5) * 0.02;
+                    
+                    let flGrad = this.ctx.createRadialGradient(
+                        state.player.x, state.player.y, 0, 
+                        state.player.x, state.player.y, fl.radius * 1.5
+                    );
+                    flGrad.addColorStop(0, 'rgba(255, 250, 235, 0.9)'); // Hot blinding center
+                    flGrad.addColorStop(0.3, 'rgba(180, 210, 255, 0.4)'); // Smooth blue halo spread
+                    flGrad.addColorStop(1, 'transparent');
+                    
+                    this.ctx.fillStyle = flGrad;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(state.player.x, state.player.y);
+                    this.ctx.arc(
+                        state.player.x, state.player.y, fl.radius * 1.5, 
+                        state.player.angle - fl.angle + jitter, 
+                        state.player.angle + fl.angle + jitter
+                    );
+                    this.ctx.closePath();
+                    this.ctx.fill();
+
+                    // Subtle back-glow so player is always softly visible
+                    let pGlow = this.ctx.createRadialGradient(state.player.x, state.player.y, 0, state.player.x, state.player.y, 50);
+                    pGlow.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
+                    pGlow.addColorStop(1, 'transparent');
+                    this.ctx.fillStyle = pGlow;
+                    this.ctx.beginPath(); this.ctx.arc(state.player.x, state.player.y, 50, 0, Math.PI*2); this.ctx.fill();
+
+                    // 5. Floating Dust Motes in the air
+                    this.drawHubDust(state);
+
+                    this.ctx.restore();
+                    
                 } else {
-                    // Safe Fallback in case Hub fails to load
+                    // Safe Fallback
                     this.ctx.fillStyle = '#0a0c11';
                     this.ctx.fillRect(state.player.x - 2000, state.player.y - 2000, 4000, 4000);
                     this.drawPlayer(state, audioEngine);
@@ -251,7 +375,7 @@ export class Renderer {
 
             this.ctx.restore(); 
 
-            // Only apply standard vignette and boss intros if we are actively playing
+            // Post Processing Stack
             if (gameState !== 'HUB') {
                 this.drawVignette(state);
 
@@ -263,21 +387,14 @@ export class Renderer {
                     }
                     this.bossAnnouncementTimer--; 
                 }
+                
+                this.drawFilmGrain();
             } else {
-                // Soft spotlight vignette exclusively for the Hub
-                this.ctx.save();
-                const vig = this.ctx.createRadialGradient(
-                    this.canvas.width/2, this.canvas.height/2, this.canvas.height / 3,
-                    this.canvas.width/2, this.canvas.height/2, this.canvas.height
-                );
-                vig.addColorStop(0, 'rgba(0,0,0,0)');
-                vig.addColorStop(1, 'rgba(0,0,0,0.9)');
-                this.ctx.fillStyle = vig;
-                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-                this.ctx.restore();
+                // Highly refined, minimal noise for the professional Hub aesthetic
+                this.ctx.globalAlpha = 0.08; 
+                this.drawFilmGrain();
+                this.ctx.globalAlpha = 1.0;
             }
-
-            this.drawFilmGrain();
 
         } catch (e) {
             console.error("CRITICAL RENDERER CRASH PREVENTED:", e);
@@ -1419,7 +1536,6 @@ export class Renderer {
                         this.ctx.fill();
 
                         this.ctx.fillStyle = '#ff0000';
-                        // --- FIX: NO CSS VARIABLES ALLOWED FOR CANVAS SHADOWCOLOR ---
                         this.ctx.shadowColor = '#ff0000';
                         this.ctx.shadowBlur = 15;
                         
@@ -1441,7 +1557,6 @@ export class Renderer {
                             this.ctx.fill();
                             this.ctx.fillStyle = '#ff0000';
                             
-                            // --- FIX: SAFE activeBoss CHECK TO PREVENT REFERENCE ERROR ---
                             const activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
                             this.ctx.shadowBlur = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
                         });
@@ -1451,9 +1566,9 @@ export class Renderer {
                         this.ctx.lineWidth = 3;
                         this.ctx.lineCap = 'round';
                         for(let i=0; i<3; i++) {
-                            let orbitAngle = phase * (1 + i*0.5) + (i * Math.PI*0.6);
-                            let dist = 45 + Math.sin(phase * 2 + i) * 5;
-                            if (ent.pulseState === 'charging') orbitAngle += this.renderFrame * 0.2;
+                            let orbitAngle = simulatedPhase * (1 + i*0.5) + (i * Math.PI*0.6);
+                            let dist = 45 + Math.sin(simulatedPhase * 2 + i) * 5;
+                            if (activeBoss && activeBoss.pulseState === 'charging') orbitAngle += this.renderFrame * 0.2;
                             let objX = Math.cos(orbitAngle) * dist;
                             let objY = Math.sin(orbitAngle) * dist;
                             this.ctx.beginPath();
@@ -1705,7 +1820,6 @@ export class Renderer {
                 this.ctx.fill();
 
                 this.ctx.fillStyle = '#ff0000';
-                // --- FIX: NO CSS VARIABLES ALLOWED FOR CANVAS SHADOWCOLOR ---
                 this.ctx.shadowColor = '#ff0000';
                 this.ctx.shadowBlur = 15;
                 
@@ -1727,7 +1841,7 @@ export class Renderer {
                     this.ctx.fill();
                     this.ctx.fillStyle = '#ff0000';
                     
-                    // --- FIX: SAFE activeBoss CHECK TO PREVENT REFERENCE ERROR ---
+                    const activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
                     this.ctx.shadowBlur = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
                 });
                 this.ctx.shadowBlur = 0;
@@ -1774,7 +1888,6 @@ export class Renderer {
             
             this.ctx.font = "900 110px 'Courier New', Courier, monospace";
             this.ctx.fillStyle = '#ffffff';
-            // --- FIX: HEX COLOR ONLY ---
             this.ctx.shadowColor = '#8b0000'; 
             this.ctx.shadowBlur = 20;
             this.ctx.fillText(titleText, -100 + textJitter, -50);
@@ -1785,7 +1898,6 @@ export class Renderer {
             this.ctx.fillText(subText, -90 + textJitter, 60);
             
         } finally {
-            // --- FIX: MUST ALWAYS RESTORE TO PREVENT ZOOM GLARE CRASH ---
             this.ctx.restore();
         }
     }
