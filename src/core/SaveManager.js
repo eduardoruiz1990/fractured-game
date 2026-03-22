@@ -31,8 +31,9 @@ export class SaveManager {
                 if (!this.metaState.maxFloorReached) this.metaState.maxFloorReached = 1; 
                 if (!this.metaState.maxBossEncountered) this.metaState.maxBossEncountered = 0;
                 
-                // Backwards compatibility for old saves without magnet
+                // Backwards compatibility for old saves without magnet or kill tracking
                 if (this.metaState.upgrades.magnet === undefined) this.metaState.upgrades.magnet = 0;
+                if (!this.metaState.killCounts) this.metaState.killCounts = { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 };
             }
         } catch(e) { 
             console.warn("Local storage disabled or blocked."); 
@@ -130,12 +131,24 @@ export class SaveManager {
         };
     }
 
+    recordKill(type) {
+        if (!this.metaState.killCounts) {
+            this.metaState.killCounts = { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 };
+        }
+        if (this.metaState.killCounts[type] !== undefined) {
+            this.metaState.killCounts[type]++;
+            // NOTE: We don't call this.saveGame() here to prevent performance drops during bullet-heaven swarms.
+            // The data is flushed to LocalStorage safely during death, floor transitions, and Awaken.
+        }
+    }
+
     wipeSave() {
         this.metaState = { 
             lucidityBank: 0, spentLucidity: 0, 
             upgrades: { hp: 0, speed: 0, light: 0, magnet: 0 },
             inventory: [], equippedTokens: { head: null, body: null, hands: null, legs: null },
-            maxFloorReached: 1, maxBossEncountered: 0
+            maxFloorReached: 1, maxBossEncountered: 0,
+            killCounts: { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 }
         };
         this.saveGame();
         window.location.reload();

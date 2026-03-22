@@ -11,7 +11,7 @@ export class HubWorld {
             { id: 'bed', x: 0, y: -300, radius: 100, prompt: "THE DESCENT MACHINE (Start Run)", action: 'tab-main', color: '#c5a059' },
             { id: 'desk', x: 300, y: 0, radius: 100, prompt: "SYNAPSE RECORDS (Upgrades)", action: 'tab-tree', color: '#4466aa' },
             { id: 'locker', x: -300, y: 0, radius: 100, prompt: "THERAPY REGIMEN (Loadout)", action: 'tab-loadout', color: '#cc6600' },
-            { id: 'trophies', x: 0, y: 300, radius: 100, prompt: "CLINICAL GUIDE & ROADMAP", action: 'tab-roadmap', color: '#8b0000' }
+            { id: 'trophies', x: 0, y: 300, radius: 100, prompt: "CLINICAL GUIDE & MONUMENTS", action: 'tab-roadmap', color: '#8b0000' }
         ];
         
         this.activeZone = null;
@@ -179,6 +179,71 @@ export class HubWorld {
                 ctx.fillStyle = '#0a0a0a'; ctx.fillRect(-40, -10, 80, 20); // Base stand
                 ctx.fillStyle = 'rgba(150, 200, 255, 0.3)'; ctx.fillRect(-35, -5, 70, 10); // Glowing Glass Pane
                 ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-30, 0); ctx.lineTo(-10, 0); ctx.stroke(); // Erased Chalk mark
+
+                // --- PHASE 2: THE MIND PALACE (DYNAMIC TROPHIES) ---
+                const kills = state.killCounts || {};
+
+                // 1. Regular Enemy Statues (Bronze > Silver > Gold)
+                const drawStatue = (tx, ty, count, baseColor) => {
+                    if (count < 100) return; // Minimum 100 kills for Bronze
+                    
+                    let metalColor = '#cd7f32'; // Bronze
+                    let glow = 'rgba(205, 127, 50, 0.2)';
+                    if (count >= 10000) { metalColor = '#ffd700'; glow = 'rgba(255, 215, 0, 0.4)'; } // Gold
+                    else if (count >= 1000) { metalColor = '#c0c0c0'; glow = 'rgba(192, 192, 192, 0.3)'; } // Silver
+
+                    ctx.save();
+                    ctx.translate(tx, ty);
+                    ctx.fillStyle = '#111'; ctx.fillRect(-15, -10, 30, 20); // Pedestal
+                    
+                    ctx.shadowColor = metalColor; ctx.shadowBlur = 15;
+                    ctx.fillStyle = metalColor;
+                    
+                    // Abstract shape representing the Nightmare
+                    ctx.beginPath(); ctx.arc(0, -20, 12, 0, Math.PI * 2); ctx.fill(); 
+                    ctx.fillRect(-6, -15, 12, 15); 
+                    
+                    ctx.fillStyle = baseColor; // Faction tint
+                    ctx.beginPath(); ctx.arc(0, -20, 4, 0, Math.PI * 2); ctx.fill();
+                    ctx.restore();
+                };
+
+                // Render Mob Statues
+                drawStatue(-80, -30, kills.SCAVENGER || 0, '#555');
+                drawStatue(80, -30, kills.PREDATOR || 0, '#8b0000');
+                drawStatue(-120, -5, kills.PARASITE || 0, '#a0522d');
+
+                // 2. Boss Monuments (Unique Shapes for Defeated Apex Predators)
+                const drawBossMonument = (tx, ty, isDefeated, color, shape) => {
+                    if (!isDefeated) return;
+                    ctx.save();
+                    ctx.translate(tx, ty);
+                    
+                    ctx.fillStyle = '#1a1a1a'; ctx.fillRect(-20, -15, 40, 25); // Heavy Pedestal
+                    ctx.fillStyle = color;
+                    ctx.shadowColor = color; ctx.shadowBlur = 20;
+                    
+                    if (shape === 'sphere') {
+                        ctx.beginPath(); ctx.arc(0, -25, 14, 0, Math.PI*2); ctx.fill();
+                    } else if (shape === 'rorschach') {
+                        ctx.beginPath(); ctx.moveTo(0, -35); ctx.lineTo(15, -15); ctx.lineTo(-15, -15); ctx.fill();
+                    } else if (shape === 'panopticon') {
+                        ctx.fillRect(-10, -35, 20, 20);
+                        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, -25, 4, 0, Math.PI*2); ctx.fill();
+                    } else if (shape === 'amalgamation') {
+                        ctx.beginPath(); ctx.arc(-5, -20, 9, 0, Math.PI*2); ctx.arc(5, -25, 11, 0, Math.PI*2); ctx.fill();
+                    } else if (shape === 'architect') {
+                        ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.strokeRect(-12, -35, 24, 24);
+                    }
+                    ctx.restore();
+                };
+
+                // Render Boss Monuments
+                drawBossMonument(-55, 30, (kills.BOSS || 0) > 0, '#b87333', 'sphere');
+                drawBossMonument(55, 30, (kills.RORSCHACH || 0) > 0, '#800080', 'rorschach');
+                drawBossMonument(-100, 40, (kills.PANOPTICON || 0) > 0, '#ff0055', 'panopticon');
+                drawBossMonument(100, 40, (kills.AMALGAMATION || 0) > 0, '#55ff55', 'amalgamation');
+                drawBossMonument(0, 50, (kills.ARCHITECT || 0) > 0, '#c5a059', 'architect');
             }
             ctx.restore();
         }

@@ -352,6 +352,9 @@ export class Combat {
                 // Explode in a mass of decals on death
                 game.director.spawnDecal(ent.x, ent.y, ent.color, 15);
                 
+                // --- PHASE 2: Record kill for the Hub Trophy Room! ---
+                if (game.saveManager) game.saveManager.recordKill(ent.type);
+                
                 if (ent.type === 'RORSCHACH' && ent.generation < 3) {
                     game.director.spawnEntity('RORSCHACH', null, null, ent.x - 20, ent.y, ent.generation + 1);
                     game.director.spawnEntity('RORSCHACH', null, null, ent.x + 20, ent.y, ent.generation + 1);
