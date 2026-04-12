@@ -7,8 +7,7 @@ export class Renderer {
         this.noisePattern = this.generateNoisePattern();
         this.cachedNoisePattern = this.ctx.createPattern(this.noisePattern, 'repeat');
         this.fogClouds = this.generateFogClouds();
-        this.floorPattern = this.generateFloorPattern();
-        this.cachedFloorPattern = this.ctx.createPattern(this.floorPattern, 'repeat');
+        this.cachedFloorPatterns = this.generateFloorPatterns();
         
         this.lightCanvas = document.createElement('canvas');
         this.lightCtx = this.lightCanvas.getContext('2d');
@@ -48,32 +47,46 @@ export class Renderer {
         }
     }
 
-    generateFloorPattern() {
-        const c = document.createElement('canvas');
-        c.width = 512;
-        c.height = 512;
-        const cx = c.getContext('2d');
+    generateFloorPatterns() {
+        const patterns = [];
         
-        cx.fillStyle = '#0a0a0d';
-        cx.fillRect(0, 0, 512, 512);
-        
-        cx.strokeStyle = '#050505';
-        cx.lineWidth = 4;
-        for(let i = 0; i <= 512; i += 128) {
-            cx.beginPath(); cx.moveTo(i, 0); cx.lineTo(i, 512); cx.stroke();
-            cx.beginPath(); cx.moveTo(0, i); cx.lineTo(512, i); cx.stroke();
-        }
+        const biomes = [
+            { bg: '#1a1410', line: '#0f0a05', accent1: 'rgba(50, 30, 20, 0.4)', accent2: 'rgba(0, 0, 0, 0.5)' }, // Floor 1: Wastes (Rusty Browns)
+            { bg: '#0d0d0d', line: '#222222', accent1: 'rgba(80, 80, 80, 0.2)', accent2: 'rgba(0, 0, 0, 0.6)' }, // Floor 2: Divide (Stark Grayscale)
+            { bg: '#250808', line: '#110202', accent1: 'rgba(100, 10, 10, 0.3)', accent2: 'rgba(0, 0, 0, 0.7)' }, // Floor 3: Panopticon (Oppressive Reds)
+            { bg: '#081a0c', line: '#030a04', accent1: 'rgba(20, 80, 20, 0.3)', accent2: 'rgba(5, 15, 5, 0.6)' }, // Floor 4: Amalgamation (Toxic Greens)
+            { bg: '#000000', line: '#b8860b', accent1: 'rgba(218, 165, 32, 0.1)', accent2: 'rgba(0, 0, 0, 0.8)' }  // Floor 5: Architect (Pitch Black & Gold)
+        ];
 
-        for(let i = 0; i < 40; i++) {
-            cx.fillStyle = Math.random() > 0.7 ? 'rgba(70, 10, 10, 0.3)' : 'rgba(0, 0, 0, 0.5)';
-            cx.beginPath();
-            let x = Math.random() * 512;
-            let y = Math.random() * 512;
-            let r = Math.random() * 20 + 5;
-            cx.ellipse(x, y, r, r/2, Math.random() * Math.PI, 0, Math.PI*2);
-            cx.fill();
+        for (let b = 0; b < 5; b++) {
+            const c = document.createElement('canvas');
+            c.width = 512;
+            c.height = 512;
+            const cx = c.getContext('2d');
+            
+            const p = biomes[b];
+            cx.fillStyle = p.bg;
+            cx.fillRect(0, 0, 512, 512);
+            
+            cx.strokeStyle = p.line;
+            cx.lineWidth = b === 4 ? 2 : 4; // Finer lines for Architect floor
+            for(let i = 0; i <= 512; i += 128) {
+                cx.beginPath(); cx.moveTo(i, 0); cx.lineTo(i, 512); cx.stroke();
+                cx.beginPath(); cx.moveTo(0, i); cx.lineTo(512, i); cx.stroke();
+            }
+
+            for(let i = 0; i < 40; i++) {
+                cx.fillStyle = Math.random() > 0.5 ? p.accent1 : p.accent2;
+                cx.beginPath();
+                let x = Math.random() * 512;
+                let y = Math.random() * 512;
+                let r = Math.random() * 20 + 5;
+                cx.ellipse(x, y, r, r/2, Math.random() * Math.PI, 0, Math.PI*2);
+                cx.fill();
+            }
+            patterns.push(this.ctx.createPattern(c, 'repeat'));
         }
-        return c;
+        return patterns;
     }
 
     generateNoisePattern() {
@@ -844,8 +857,16 @@ export class Renderer {
             this.canvas.width/2, this.canvas.height/2, innerVig,
             this.canvas.width/2, this.canvas.height/2, outerVig
         );
+        
+        let voidColor = 'rgba(0,0,0,0.98)';
+        if (state.floor === 1) voidColor = 'rgba(30,20,10,0.98)';
+        else if (state.floor === 2) voidColor = 'rgba(10,10,10,0.98)';
+        else if (state.floor === 3) voidColor = 'rgba(40,5,5,0.98)';
+        else if (state.floor === 4) voidColor = 'rgba(5,20,5,0.98)';
+        else if (state.floor >= 5) voidColor = 'rgba(20,15,0,0.98)';
+        
         vig.addColorStop(0, 'rgba(0,0,0,0)');
-        vig.addColorStop(1, 'rgba(0,0,0,0.98)');
+        vig.addColorStop(1, voidColor);
         this.ctx.fillStyle = vig;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
@@ -879,7 +900,8 @@ export class Renderer {
 
     drawWorldItems(state) {
         this.ctx.save();
-        this.ctx.fillStyle = this.cachedFloorPattern;
+        const patternIndex = Math.max(0, Math.min((state.floor || 1) - 1, 4));
+        this.ctx.fillStyle = this.cachedFloorPatterns[patternIndex];
         
         this.ctx.fillRect(state.player.x - 4000, state.player.y - 4000, 8000, 8000);
         this.ctx.restore();

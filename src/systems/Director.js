@@ -111,19 +111,34 @@ export class Director {
         if (state.enemyBudget > 0) {
             state.budgetTimer++;
             state.stress = 1.0 + (state.roomNumber * 0.1); 
-            
-            const spawnRate = Math.max(30, 120 - (state.roomNumber * 5));
+
+            const spawnRate = Math.max(15, 60 - (state.roomNumber * 2));
+
             if (state.budgetTimer % spawnRate === 0) {
-                this.spawnEntity('SCAVENGER', canvasWidth, canvasHeight);
-                state.enemyBudget--;
-            }
-            if (state.budgetTimer % (spawnRate * 3) === 0) {
-                this.spawnEntity('PREDATOR', canvasWidth, canvasHeight);
-                state.enemyBudget -= 2;
-            }
-            if (state.roomNumber > 3 && state.budgetTimer % (spawnRate * 5) === 0) {
-                this.spawnEntity('PARASITE', canvasWidth, canvasHeight);
-                state.enemyBudget -= 3;
+                // Determine spawn pools by biome (Floor)
+                let spawnType = 'SCAVENGER';
+                let roll = Math.random();
+
+                if (state.floor === 1) {
+                    if (roll < 0.1 && state.enemyBudget >= 2) spawnType = 'PREDATOR'; 
+                } 
+                else if (state.floor === 2) {
+                    if (roll < 0.4 && state.enemyBudget >= 2) spawnType = 'PREDATOR'; 
+                }
+                else if (state.floor === 3) {
+                    if (roll < 0.3 && state.enemyBudget >= 2) spawnType = 'PREDATOR'; 
+                    else if (roll < 0.6 && state.enemyBudget >= 3) spawnType = 'PARASITE'; 
+                }
+                else if (state.floor >= 4) {
+                    if (roll < 0.3 && state.enemyBudget >= 2) spawnType = 'PREDATOR'; 
+                    else if (roll < 0.8 && state.enemyBudget >= 3) spawnType = 'PARASITE'; 
+                }
+
+                this.spawnEntity(spawnType, canvasWidth, canvasHeight);
+
+                if (spawnType === 'SCAVENGER') state.enemyBudget -= 1;
+                else if (spawnType === 'PREDATOR') state.enemyBudget -= 2;
+                else if (spawnType === 'PARASITE') state.enemyBudget -= 3;
             }
         } else if (state.entities.length === 0 && !state.roomCleared && !state.bossSpawned) {
             state.combatActive = false;
@@ -162,13 +177,21 @@ export class Director {
         else if (type === 'BOSS') ent = this.pools.boss.get().init(Math.random(), x, y);
         else if (type === 'RORSCHACH') ent = this.pools.rorschach.get().init(Math.random(), x, y, generation);
         else if (type === 'PANOPTICON') ent = this.pools.panopticon.get().init(Math.random(), x, y); 
-        else if (type === 'AMALGAMATION') ent = this.pools.amalgamation.get().init(Math.random(), x, y); 
-        else if (type === 'ARCHITECT') ent = this.pools.architect.get().init(Math.random(), x, y); 
-        
+        else if (type === 'AMALGAMATION') ent = this.pools.amalgamation.get().init(Math.random(), x, y);
+        else if (type === 'ARCHITECT') ent = this.pools.architect.get().init(Math.random(), x, y);
+
         if (ent) {
+            if (!['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(ent.type)) {
+                if (state.floor === 1) ent.originalColor = ent.type === 'SCAVENGER' ? '#8b5a2b' : '#a0522d';
+                else if (state.floor === 2) ent.originalColor = ent.type === 'SCAVENGER' ? '#888888' : '#333333';
+                else if (state.floor === 3) ent.originalColor = ent.type === 'SCAVENGER' ? '#800020' : '#4b0000';
+                else if (state.floor === 4) ent.originalColor = ent.type === 'SCAVENGER' ? '#2e8b57' : '#004d00';
+                else if (state.floor >= 5) ent.originalColor = ent.type === 'SCAVENGER' ? '#daa520' : '#b8860b';
+                ent.color = ent.originalColor;
+            }
+
             state.entities.push(ent);
-            if (this.game.audioEngine && Math.random() < 0.3) {
-                this.game.audioEngine.playSFX('enemy_spawn', 0.3);
+            if (this.game.audioEngine && Math.random() < 0.3) {                this.game.audioEngine.playSFX('enemy_spawn', 0.3);
             }
         }
     }

@@ -333,7 +333,14 @@ export class Game {
             }
             if (this.state.frame % 10 === 0) {
                 this.state.cameraShake = Math.max(this.state.cameraShake, 2);
-                this.spawnDamageText(this.state.player.x, this.state.player.y - 20, "VOID", '#800080', 1.0, 0.5);
+                let voidColor = '#800080';
+                if (this.state.floor === 1) voidColor = '#a05a2c';
+                else if (this.state.floor === 2) voidColor = '#555555';
+                else if (this.state.floor === 3) voidColor = '#8b0000';
+                else if (this.state.floor === 4) voidColor = '#2e8b57';
+                else if (this.state.floor >= 5) voidColor = '#daa520';
+                
+                this.spawnDamageText(this.state.player.x, this.state.player.y - 20, "VOID", voidColor, 1.0, 0.5);
             }
         } else {
             this.state.inVoid = false;
