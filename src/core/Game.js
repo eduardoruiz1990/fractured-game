@@ -347,9 +347,11 @@ export class Game {
         }
 
         if (this.state.sanity > 0 && !this.state.inVoid && !isInsideSafeZone && this.state.combatActive) {
-            let drainRate = 0.02;
-            if (this.state.player.curses && this.state.player.curses.includes('nyctophobia')) drainRate = 0.05;
-            this.state.sanity -= drainRate; 
+            if (!this.state.isTutorial) {
+                let drainRate = 0.02;
+                if (this.state.player.curses && this.state.player.curses.includes('nyctophobia')) drainRate = 0.05;
+                this.state.sanity -= drainRate; 
+            }
         }
 
         if (this.state.sanity <= 0 && this.onDeath) {

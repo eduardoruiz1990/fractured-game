@@ -39,6 +39,16 @@ export class Director {
         const state = this.game.state;
         state.combatActive = true;
         state.roomCleared = false;
+        
+        if (floor === 1 && roomNumber === 1 && this.game.saveManager && !this.game.saveManager.metaState.tutorialCompleted) {
+            state.isTutorial = true;
+            state.enemyBudget = 1;
+            state.stress = 0;
+            state.budgetTimer = 0;
+            return;
+        }
+        
+        state.isTutorial = false;
         state.enemyBudget = Math.floor(10 + (floor * 5) + (roomNumber * 2));
         state.budgetTimer = 0;
         

@@ -173,6 +173,7 @@ export class SaveManager {
             upgrades: { hp: 0, speed: 0, light: 0, magnet: 0 },
             inventory: [], equippedTokens: { head: null, body: null, hands: null, legs: null },
             maxFloorReached: 1, maxBossEncountered: 0,
+            tutorialCompleted: false,
             killCounts: { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 }
         };
         this.saveGame();

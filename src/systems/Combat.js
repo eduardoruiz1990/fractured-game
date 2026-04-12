@@ -110,9 +110,16 @@ export class Combat {
                     const distToPlayer = Math.hypot(obj.x - state.player.x, obj.y - state.player.y);
                     if (distToPlayer < obj.radius + state.player.radius) {
                         obj.dead = true;
-                        
-                        if (obj.rewardType === 'LUCIDITY') {
-                            state.lucidity += 50;
+
+                        if (state.isTutorial) {
+                            state.isTutorial = false;
+                            if (game.saveManager) {
+                                game.saveManager.metaState.tutorialCompleted = true;
+                                game.saveManager.saveGame();
+                            }
+                        }
+
+                        if (obj.rewardType === 'LUCIDITY') {                            state.lucidity += 50;
                             state.xp += 50;
                             game.spawnDamageText(state.player.x, state.player.y - 20, "+50 LUCIDITY", '#ffddaa', 1.5, 2.0);
                         } else if (obj.rewardType === 'HEAL') {

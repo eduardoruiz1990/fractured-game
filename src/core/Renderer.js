@@ -906,6 +906,31 @@ export class Renderer {
         this.ctx.fillRect(state.player.x - 4000, state.player.y - 4000, 8000, 8000);
         this.ctx.restore();
 
+        if (state.isTutorial && state.mapOriginX !== null) {
+            this.ctx.save();
+            const px = state.mapOriginX;
+            const py = state.mapOriginY;
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.font = "bold 24px 'Courier New', Courier, monospace";
+            this.ctx.fillStyle = '#aaffaa';
+            
+            const glowText = (text, x, y) => {
+                this.ctx.globalAlpha = 0.3;
+                this.ctx.fillText(text, x - 2, y);
+                this.ctx.fillText(text, x + 2, y);
+                this.ctx.fillText(text, x, y - 2);
+                this.ctx.fillText(text, x, y + 2);
+                this.ctx.globalAlpha = 1.0;
+                this.ctx.fillText(text, x, y);
+            };
+
+            glowText("WASD to Move | Mouse to Aim", px, py - 100);
+            glowText("SPACE to Dash", px, py + 100);
+            glowText("The Void drains your Grip on reality. Eliminate the manifestation to proceed.", px + 600, py);
+            this.ctx.restore();
+        }
+
         if (state.decals && state.decals.length > 0) {
             this.ctx.save();
             state.decals.forEach(d => {
