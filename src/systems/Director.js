@@ -80,14 +80,17 @@ export class Director {
 
     spawnRewardDoors() {
         const state = this.game.state;
+        const px = state.player.x;
+        const py = state.player.y;
+        
         state.interactables.push({
             type: 'ROOM_DOOR',
-            x: -200, y: -200, radius: 40, active: true, dead: false,
+            x: px - 200, y: py - 200, radius: 40, active: true, dead: false,
             rewardType: 'LUCIDITY'
         });
         state.interactables.push({
             type: 'ROOM_DOOR',
-            x: 200, y: -200, radius: 40, active: true, dead: false,
+            x: px + 200, y: py - 200, radius: 40, active: true, dead: false,
             rewardType: 'HEAL'
         });
     }
@@ -131,7 +134,7 @@ export class Director {
 
     spawnEntity(type, canvasWidth, canvasHeight, forceX = null, forceY = null, generation = 1) {
         const state = this.game.state;
-        const spawnRadius = Math.max(canvasWidth, canvasHeight) * 0.6 + 100;
+        const spawnRadius = Math.max(canvasWidth, canvasHeight) * 0.5 + 50;
         const angle = Math.random() * Math.PI * 2;
         
         let x = forceX !== null ? forceX : state.player.x + Math.cos(angle) * spawnRadius;

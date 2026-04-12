@@ -552,12 +552,12 @@ function gameLoop(time) {
                     conText.style.color = 'var(--ui-red)';
                     conContainer.style.borderColor = 'var(--ui-red)';
                     conContainer.style.boxShadow = '0 0 20px rgba(139, 0, 0, 0.8)';
-                } else if (conBar && game.state.maxConvergence) {
-                    let conRatio = Math.min(1, game.state.convergence / game.state.maxConvergence);
-                    conBar.style.width = (conRatio * 100) + '%';
-                    conText.innerText = conRatio >= 1 ? "ANOMALY DETECTED" : `CONVERGENCE: ${Math.floor(conRatio * 100)}%`;
+                } else if (conBar && game.state.maxRoomsPerFloor) {
+                    let bossRatio = Math.min(1, game.state.roomNumber / game.state.maxRoomsPerFloor);
+                    conBar.style.width = (bossRatio * 100) + '%';
+                    conText.innerText = bossRatio >= 1 ? "ANOMALY DETECTED" : `NIGHTMARE PROGRESS: ${Math.floor(bossRatio * 100)}%`;
                     
-                    if (conRatio >= 1) {
+                    if (bossRatio >= 1) {
                         conBar.style.background = 'var(--ui-gold)';
                         conText.style.color = 'var(--ui-gold)';
                         conText.style.textShadow = '0 0 10px var(--ui-gold)';
@@ -572,12 +572,23 @@ function gameLoop(time) {
                     }
                 }
 
+                const enemyCounter = document.getElementById('enemy-counter');
+                if (enemyCounter) {
+                    if (game.state.combatActive && !activeBoss) {
+                        let totalRemaining = game.state.enemyBudget + game.state.entities.length;
+                        enemyCounter.innerText = `NIGHTMARES LEFT: ${totalRemaining}`;
+                        enemyCounter.style.display = 'block';
+                    } else {
+                        enemyCounter.style.display = 'none';
+                    }
+                }
+
                 // Smoothly dim glitch overlay if photosensitive mode is active
                 let targetGlitchOpacity = isBreakdown ? '1' : '0';
                 if (isBreakdown && gameSettings.photosensitive) targetGlitchOpacity = '0.3'; 
                 document.getElementById('glitch-overlay').style.opacity = targetGlitchOpacity;
                 
-                document.getElementById('score').innerHTML = `LUCIDITY: ${game.state.lucidity} <br> FLOOR: ${game.state.floor}`;
+                document.getElementById('score').innerHTML = `LUCIDITY: ${game.state.lucidity} <br> FLOOR: ${game.state.floor} - ROOM: ${game.state.roomNumber}`;
             }
             
             // Send the gameState so the renderer knows to bypass the Void code!

@@ -770,7 +770,7 @@ export class Renderer {
     drawObjectivePointers(state) {
         if (state.interactables) {
             state.interactables.forEach(obj => {
-                if (obj.type === 'OBJECTIVE_BACKPACK' || obj.type === 'EXIT_ELEVATOR') {
+                if (obj.type === 'OBJECTIVE_BACKPACK' || obj.type === 'EXIT_ELEVATOR' || obj.type === 'ROOM_DOOR') {
                     let dx = obj.x - state.player.x;
                     let dy = obj.y - state.player.y;
                     let dist = Math.hypot(dx, dy);
@@ -807,6 +807,14 @@ export class Renderer {
                             this.ctx.moveTo(20, 0); this.ctx.lineTo(-15, 15); this.ctx.lineTo(-10, 0); this.ctx.lineTo(-15, -15);
                             this.ctx.closePath();
                             this.ctx.fill();
+                        } else if (obj.type === 'ROOM_DOOR') {
+                            let pulse = Math.sin(this.renderFrame * 0.2) * 0.5 + 0.5;
+                            let doorColor = obj.rewardType === 'LUCIDITY' ? `rgba(255, 200, 100, ${0.4 + pulse * 0.6})` : `rgba(100, 255, 100, ${0.4 + pulse * 0.6})`;
+                            this.ctx.fillStyle = doorColor;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(20, 0); this.ctx.lineTo(-15, 15); this.ctx.lineTo(-10, 0); this.ctx.lineTo(-15, -15);
+                            this.ctx.closePath();
+                            this.ctx.fill();
                         }
                         
                         this.ctx.restore();
@@ -817,6 +825,7 @@ export class Renderer {
     }
 
     drawVignette(state) {
+        if (state.roomCleared) return;
         this.ctx.save();
         let sanityRatio = Math.max(0.01, state.sanity / state.player.maxHp);
         let innerVig = (this.canvas.height / 4) * sanityRatio; 

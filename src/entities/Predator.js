@@ -54,7 +54,7 @@ export class Predator extends Enemy {
                 state.entities.forEach(other => {
                     if (other.type === 'SCAVENGER') {
                         let d = Math.max(Math.hypot(other.x - this.x, other.y - this.y), 0.001);
-                        if (d < distToTarget - 50) {
+                        if (d < 200 && d < distToTarget - 50) {
                             targetX = other.x; 
                             targetY = other.y; 
                             distToTarget = d;

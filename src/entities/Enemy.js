@@ -64,6 +64,17 @@ export class Enemy {
         // Tick down the audio pain cooldown
         if (this.painCooldown > 0) this.painCooldown--;
 
+        let distToPlayer = Math.hypot(state.player.x - this.x, state.player.y - this.y);
+        
+        // If the player outruns the enemies and leaves them far behind, teleport them ahead
+        if (distToPlayer > 1500 && !['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(this.type)) {
+            let spawnRadius = 900;
+            // Teleport generally in the direction the player is aiming/moving
+            let aimAngle = state.player.angle + (Math.random() - 0.5) * Math.PI; 
+            this.x = state.player.x + Math.cos(aimAngle) * spawnRadius;
+            this.y = state.player.y + Math.sin(aimAngle) * spawnRadius;
+        }
+
         if (this.confused > 0) {
             this.confused--;
             this.color = '#ffffff'; 

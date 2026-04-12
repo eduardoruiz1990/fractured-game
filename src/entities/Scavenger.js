@@ -85,8 +85,15 @@ export class Scavenger extends Enemy {
                         this.speed += 0.1; 
                     }
                 } else {
-                    this.vx = Math.cos(state.frame * 0.05 + this.id) * (this.speed * 0.5);
-                    this.vy = Math.sin(state.frame * 0.05 + this.id) * (this.speed * 0.5);
+                    let distToPlayer = Math.max(Math.hypot(state.player.x - this.x, state.player.y - this.y), 0.001);
+                    if (distToPlayer > 60) {
+                        this.vx = (state.player.x - this.x) / distToPlayer * (this.speed * 0.8);
+                        this.vy = (state.player.y - this.y) / distToPlayer * (this.speed * 0.8);
+                    } else {
+                        this.vx = Math.cos(state.frame * 0.05 + this.id) * (this.speed * 0.5);
+                        this.vy = Math.sin(state.frame * 0.05 + this.id) * (this.speed * 0.5);
+                        if (state.frame % 15 === 0) game.takeDamage(this.damage);
+                    }
                 }
             }
         }
