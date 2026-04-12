@@ -35,34 +35,30 @@ export class Director {
         };
     }
 
-    spawnWave(canvasWidth, canvasHeight) {
+    spawnRoom(floor, roomNumber) {
         const state = this.game.state;
-        state.stress = 1.0 + (state.frame / 3600); 
+        state.combatActive = true;
+        state.roomCleared = false;
+        state.enemyBudget = Math.floor(10 + (floor * 5) + (roomNumber * 2));
+        state.budgetTimer = 0;
         
-        if (state.bossSpawned && !state.entities.some(e => e.type === 'BOSS' || e.type === 'RORSCHACH' || e.type === 'PANOPTICON' || e.type === 'AMALGAMATION' || e.type === 'ARCHITECT')) {
-            return; 
-        }
-        
-        if (state.frame % Math.max(30, Math.floor(120 / state.stress)) === 0) this.spawnEntity('SCAVENGER', canvasWidth, canvasHeight);
-        if (state.frame % Math.max(90, Math.floor(300 / state.stress)) === 0) this.spawnEntity('PREDATOR', canvasWidth, canvasHeight);
-        if (state.frame > 1800 && state.frame % 600 === 0) this.spawnEntity('PARASITE', canvasWidth, canvasHeight); 
-
-        if (state.convergence >= state.maxConvergence && !state.bossSpawned) {
+        if (roomNumber >= state.maxRoomsPerFloor && !state.bossSpawned) {
+            state.enemyBudget = 0;
             if (this.game.audioEngine) {
                 this.game.audioEngine.playSFX('boss_intro', 1.0);
                 this.game.audioEngine.playSFX('boss_static', 0.8);
             }
             
             if (state.floor === 1) {
-                this.spawnEntity('BOSS', canvasWidth, canvasHeight);
+                this.spawnEntity('BOSS', 2000, 2000);
             } else if (state.floor === 2) {
-                this.spawnEntity('RORSCHACH', canvasWidth, canvasHeight);
+                this.spawnEntity('RORSCHACH', 2000, 2000);
             } else if (state.floor === 3) {
-                this.spawnEntity('PANOPTICON', canvasWidth, canvasHeight);
+                this.spawnEntity('PANOPTICON', 2000, 2000);
             } else if (state.floor === 4) {
-                this.spawnEntity('AMALGAMATION', canvasWidth, canvasHeight);
+                this.spawnEntity('AMALGAMATION', 2000, 2000);
             } else {
-                this.spawnEntity('ARCHITECT', canvasWidth, canvasHeight); 
+                this.spawnEntity('ARCHITECT', 2000, 2000); 
             }
             state.bossSpawned = true;
             
@@ -79,6 +75,57 @@ export class Director {
             } catch(e) {
                 console.warn("Could not update boss roadmap encounter:", e);
             }
+        }
+    }
+
+    spawnRewardDoors() {
+        const state = this.game.state;
+        state.interactables.push({
+            type: 'ROOM_DOOR',
+            x: -200, y: -200, radius: 40, active: true, dead: false,
+            rewardType: 'LUCIDITY'
+        });
+        state.interactables.push({
+            type: 'ROOM_DOOR',
+            x: 200, y: -200, radius: 40, active: true, dead: false,
+            rewardType: 'HEAL'
+        });
+    }
+
+    spawnWave(canvasWidth, canvasHeight) {
+        const state = this.game.state;
+        
+        if (!state.combatActive) return;
+        
+        if (state.bossSpawned && !state.entities.some(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type))) {
+            return; 
+        }
+
+        if (state.enemyBudget === undefined) {
+            this.spawnRoom(state.floor, state.roomNumber);
+        }
+
+        if (state.enemyBudget > 0) {
+            state.budgetTimer++;
+            state.stress = 1.0 + (state.roomNumber * 0.1); 
+            
+            const spawnRate = Math.max(30, 120 - (state.roomNumber * 5));
+            if (state.budgetTimer % spawnRate === 0) {
+                this.spawnEntity('SCAVENGER', canvasWidth, canvasHeight);
+                state.enemyBudget--;
+            }
+            if (state.budgetTimer % (spawnRate * 3) === 0) {
+                this.spawnEntity('PREDATOR', canvasWidth, canvasHeight);
+                state.enemyBudget -= 2;
+            }
+            if (state.roomNumber > 3 && state.budgetTimer % (spawnRate * 5) === 0) {
+                this.spawnEntity('PARASITE', canvasWidth, canvasHeight);
+                state.enemyBudget -= 3;
+            }
+        } else if (state.entities.length === 0 && !state.roomCleared && !state.bossSpawned) {
+            state.combatActive = false;
+            state.roomCleared = true;
+            this.spawnRewardDoors();
         }
     }
 

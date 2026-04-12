@@ -324,7 +324,9 @@ export class Game {
 
         if (!isInsideSafeZone && distFromCenter > voidRadius) {
             this.state.inVoid = true;
-            this.state.sanity -= 0.1;
+            if (this.state.combatActive) {
+                this.state.sanity -= 0.1;
+            }
             if (this.state.frame % 10 === 0) {
                 this.state.cameraShake = Math.max(this.state.cameraShake, 2);
                 this.spawnDamageText(this.state.player.x, this.state.player.y - 20, "VOID", '#800080', 1.0, 0.5);
@@ -333,7 +335,7 @@ export class Game {
             this.state.inVoid = false;
         }
 
-        if (this.state.sanity > 0 && !this.state.inVoid && !isInsideSafeZone) {
+        if (this.state.sanity > 0 && !this.state.inVoid && !isInsideSafeZone && this.state.combatActive) {
             let drainRate = 0.02;
             if (this.state.player.curses && this.state.player.curses.includes('nyctophobia')) drainRate = 0.05;
             this.state.sanity -= drainRate; 

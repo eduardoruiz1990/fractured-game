@@ -106,6 +106,39 @@ export class Combat {
                         if (game.onFloorComplete) game.onFloorComplete();
                         obj.dead = true; 
                     }
+                } else if (obj.type === 'ROOM_DOOR') {
+                    const distToPlayer = Math.hypot(obj.x - state.player.x, obj.y - state.player.y);
+                    if (distToPlayer < obj.radius + state.player.radius) {
+                        obj.dead = true;
+                        
+                        if (obj.rewardType === 'LUCIDITY') {
+                            state.lucidity += 50;
+                            state.xp += 50;
+                            game.spawnDamageText(state.player.x, state.player.y - 20, "+50 LUCIDITY", '#ffddaa', 1.5, 2.0);
+                        } else if (obj.rewardType === 'HEAL') {
+                            state.sanity = Math.min(state.player.maxHp, state.sanity + 50);
+                            game.spawnDamageText(state.player.x, state.player.y - 20, "+50 GRIP", '#aaffaa', 1.5, 2.0);
+                        }
+
+                        if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 0.8);
+                        
+                        state.roomNumber++;
+                        
+                        state.player.x = 0;
+                        state.player.y = 0;
+                        
+                        state.entities = [];
+                        state.projectiles = [];
+                        state.xpDrops = [];
+                        state.tokenDrops = [];
+                        state.inkPuddles = [];
+                        state.safeZones = [];
+                        state.interactables = [];
+                        
+                        if (game.director) {
+                            game.director.spawnRoom(state.floor, state.roomNumber);
+                        }
+                    }
                 }
             }
             state.interactables = state.interactables.filter(i => !i.dead);

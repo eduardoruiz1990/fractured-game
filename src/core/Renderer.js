@@ -1026,6 +1026,28 @@ export class Renderer {
                     this.ctx.beginPath();
                     this.ctx.moveTo(-10, -5); this.ctx.lineTo(10, -5); this.ctx.lineTo(0, 10);
                     this.ctx.fill();
+                } else if (obj.type === 'ROOM_DOOR') {
+                    let pulse = Math.sin(this.renderFrame * 0.1) * 10;
+                    
+                    const doorGlow = this.ctx.createRadialGradient(0, 0, 10, 0, 0, 80 + pulse);
+                    doorGlow.addColorStop(0, obj.rewardType === 'LUCIDITY' ? 'rgba(255, 200, 100, 0.8)' : 'rgba(100, 255, 100, 0.8)');
+                    doorGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                    this.ctx.fillStyle = doorGlow;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 80 + pulse, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    
+                    this.ctx.fillStyle = '#111';
+                    this.ctx.fillRect(-25, -40, 50, 80);
+                    this.ctx.strokeStyle = obj.rewardType === 'LUCIDITY' ? '#ffaa00' : '#00ff00';
+                    this.ctx.lineWidth = 3;
+                    this.ctx.strokeRect(-25, -40, 50, 80);
+                    
+                    this.ctx.fillStyle = obj.rewardType === 'LUCIDITY' ? '#ffcc00' : '#aaffaa';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.font = "bold 16px 'Courier New', Courier, monospace";
+                    this.ctx.fillText(obj.rewardType, 0, -60);
                 }
                 
                 this.ctx.restore();
