@@ -345,6 +345,11 @@ export class Game {
             this.state.sanity -= drainRate; 
         }
 
+        if (this.state.sanity <= 0 && this.onDeath) {
+            this.state.sanity = 0;
+            this.onDeath();
+        }
+
         if (this.director && typeof this.director.spawnWave === 'function') {
             this.director.spawnWave(canvasWidth, canvasHeight);
         }

@@ -288,17 +288,17 @@ function initEngine() {
     document.getElementById('btn-unpause').addEventListener('click', togglePause);
 
     document.getElementById('btn-awaken').addEventListener('click', () => {
-        const isMidFloor = (gameState === 'PAUSED'); 
-        const isExitReached = (gameState === 'EXIT_REACHED'); 
-        
+        const isMidFloor = (gameState === 'PAUSED');
+        const isExitReached = (gameState === 'EXIT_REACHED');
+
         let earnedLucidity = 0;
         let retainedTokens = [];
-        
+
         if (isExitReached) {
             earnedLucidity = game.state.lucidity;
             retainedTokens = game.state.runInventory || [];
             saveManager.addLucidity(earnedLucidity);
-            
+
             if (retainedTokens.length > 0) {
                 const tokenKeys = Object.keys(TOKENS);
                 retainedTokens = retainedTokens.map(rarity => {
@@ -307,16 +307,26 @@ function initEngine() {
                     return { name: TOKENS[randomTokenKey].name, rarity: rarity };
                 });
             }
+        } else if (isMidFloor) {
+            saveManager.addLucidity(game.state.lucidity);
+            const stateToSave = game.getCarriedState();
+            localStorage.setItem('fractured_suspended_run', JSON.stringify(stateToSave));
+
+            const resumeBtn = document.getElementById('btn-resume-run');
+            if (resumeBtn) resumeBtn.style.display = 'block';
         }
 
         let tokenHtml = "";
-        if (retainedTokens.length > 0) {
-             tokenHtml = `<br><br><span style="color:var(--ui-gold);">DECRYPTED TOKENS:</span><br>` + 
+        if (retainedTokens.length > 0) {             
+            tokenHtml = `<br><br><span style="color:var(--ui-gold);">DECRYPTED TOKENS:</span><br>` + 
                         retainedTokens.map(t => `<span class="rarity-${t.rarity}">${t.name} (${t.rarity})</span>`).join('<br>');
         }
 
-        localStorage.removeItem('fractured_suspended_run');
-        if (resumeBtn) resumeBtn.style.display = 'none';
+        if (isExitReached) {
+            localStorage.removeItem('fractured_suspended_run');
+            const resumeBtn = document.getElementById('btn-resume-run');
+            if (resumeBtn) resumeBtn.style.display = 'none';
+        }
 
         pauseMenu.style.display = 'none';
         document.getElementById('ui-layer').style.display = 'none';

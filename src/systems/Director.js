@@ -140,6 +140,16 @@ export class Director {
         let x = forceX !== null ? forceX : state.player.x + Math.cos(angle) * spawnRadius;
         let y = forceY !== null ? forceY : state.player.y + Math.sin(angle) * spawnRadius;
 
+        const mapOriginX = state.mapOriginX || 0;
+        const mapOriginY = state.mapOriginY || 0;
+        const distFromCenter = Math.hypot(x - mapOriginX, y - mapOriginY);
+        
+        if (distFromCenter > 1550) {
+            const angleToCenter = Math.atan2(y - mapOriginY, x - mapOriginX);
+            x = mapOriginX + Math.cos(angleToCenter) * 1550;
+            y = mapOriginY + Math.sin(angleToCenter) * 1550;
+        }
+
         let ent;
         if (type === 'SCAVENGER') ent = this.pools.scavenger.get().init(Math.random(), x, y, state.stress);
         else if (type === 'PREDATOR') {

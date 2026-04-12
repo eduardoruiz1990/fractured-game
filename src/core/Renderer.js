@@ -520,6 +520,10 @@ export class Renderer {
             ambientRad = 0; 
         }
 
+        if (state.roomCleared) {
+            ambientRad = 3000;
+        }
+
         if (ambientRad > 0) {
             const ambHole = this.lightCtx.createRadialGradient(state.player.x, state.player.y, 0, state.player.x, state.player.y, ambientRad);
             ambHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
@@ -705,6 +709,11 @@ export class Renderer {
         this.ctx.fill();
 
         let ambientRad = state.player.curses && state.player.curses.includes('tunnel_vision') ? 0 : flRadius * 0.45;
+        
+        if (state.roomCleared) {
+            ambientRad = 3000;
+        }
+        
         if (ambientRad > 0) {
             const ambColorGrad = this.ctx.createRadialGradient(state.player.x, state.player.y, 0, state.player.x, state.player.y, ambientRad);
             ambColorGrad.addColorStop(0, 'rgba(200, 220, 255, 0.15)');
