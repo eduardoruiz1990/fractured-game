@@ -109,6 +109,34 @@ export class UIManager {
             if (this.onStartGameCallback) this.onStartGameCallback();
         });
 
+        if (this.btnExportSave) {
+            this.btnExportSave.addEventListener('click', () => {
+                const encoded = this.saveManager.exportSave();
+                if (encoded) {
+                    navigator.clipboard.writeText(encoded).then(() => {
+                        alert("Clinical file copied to clipboard! Keep it safe.");
+                    }).catch(err => {
+                        prompt("Copy this text to save your file:", encoded);
+                    });
+                }
+            });
+        }
+
+        if (this.btnImportSave) {
+            this.btnImportSave.addEventListener('click', () => {
+                const encoded = prompt("Paste your exported clinical file string here:");
+                if (encoded) {
+                    const success = this.saveManager.importSave(encoded);
+                    if (success) {
+                        alert("Clinical file successfully reconstructed. Reloading UI.");
+                        window.location.reload();
+                    } else {
+                        alert("ERROR: File corruption detected. Import failed.");
+                    }
+                }
+            });
+        }
+
         if (this.btnWipeSave) {
             this.btnWipeSave.addEventListener('click', () => {
                 const isConfirmed = confirm("WARNING: This will completely erase your clinical file, destroying all tokens, upgrades, and banked lucidity. Do you wish to proceed?");

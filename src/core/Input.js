@@ -57,12 +57,12 @@ export class InputManager {
         if (this.btnDash) {
             this.btnDash.addEventListener('touchstart', (e) => {
                 e.preventDefault(); // Stop canvas from grabbing it
-                this.state.dash = true;
+                this.state.isDashing = true;
             }, { passive: false });
             
             this.btnDash.addEventListener('touchend', (e) => {
                 e.preventDefault();
-                this.state.dash = false;
+                this.state.isDashing = false;
             }, { passive: false });
         }
     }

@@ -14,22 +14,6 @@ export class Game {
         
         this.director = new Director(this);
         this.hubWorld = new HubWorld(this);
-
-        window.addEventListener('keydown', (e) => {
-            if (this.state && e.key === 'q' && this.state.player.dash.cooldown <= 0) {
-                this.state.player.dash.active = true;
-                this.state.player.dash.timer = this.state.player.dash.duration;
-                this.state.player.dash.cooldown = 90;
-                let dashAngle = this.state.player.angle;
-                if (this.state.input && this.state.input.isMoving) {
-                    dashAngle = Math.atan2(this.state.input.moveY, this.state.input.moveX);
-                }
-                this.state.player.dash.dx = Math.cos(dashAngle);
-                this.state.player.dash.dy = Math.sin(dashAngle);
-                
-                if (this.audioEngine) this.audioEngine.playSFX('dash');
-            }
-        });
     }
 
     init(saveManager, carriedState = null) {
@@ -236,7 +220,8 @@ export class Game {
             moveX: inputState.moveX,
             moveY: inputState.moveY,
             aimAngle: inputState.aimAngle,
-            isMoving: inputState.isMoving
+            isMoving: inputState.isMoving,
+            isDashing: inputState.isDashing
         };
 
         let isBreakdown = false;
@@ -352,6 +337,17 @@ export class Game {
             let drainRate = 0.02;
             if (this.state.player.curses && this.state.player.curses.includes('nyctophobia')) drainRate = 0.05;
             this.state.sanity -= drainRate; 
+        }
+
+        if (this.director && typeof this.director.spawnWave === 'function') {
+            this.director.spawnWave(canvasWidth, canvasHeight);
+        }
+        
+        for (let i = this.state.entities.length - 1; i >= 0; i--) {
+            let ent = this.state.entities[i];
+            if (typeof ent.update === 'function') {
+                ent.update(this.state, this);
+            }
         }
 
         Combat.resolveWeapons(this);
