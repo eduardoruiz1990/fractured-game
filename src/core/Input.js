@@ -83,7 +83,7 @@ export class InputManager {
         }
         
         // Map spacebar to dash
-        this.state.dash = this.keys.space;
+        this.state.isDashing = this.keys.space;
     }
 
     handleTouch(e) {

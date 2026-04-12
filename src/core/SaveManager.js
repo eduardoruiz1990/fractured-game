@@ -53,6 +53,30 @@ export class SaveManager {
         }
     }
 
+    exportSave() {
+        try {
+            return btoa(JSON.stringify(this.metaState));
+        } catch(e) {
+            console.warn("Failed to export save data.", e);
+            return null;
+        }
+    }
+
+    importSave(base64String) {
+        try {
+            const parsed = JSON.parse(atob(base64String));
+            if (parsed && typeof parsed === 'object') {
+                this.metaState = { ...this.metaState, ...parsed };
+                this.saveGame();
+                return true;
+            }
+            return false;
+        } catch(e) {
+            console.warn("Failed to import save data.", e);
+            return false;
+        }
+    }
+
     recordKill(type) {
         if (!this.metaState.killCounts) {
             this.metaState.killCounts = { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 };

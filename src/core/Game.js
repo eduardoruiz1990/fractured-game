@@ -262,6 +262,20 @@ export class Game {
         this.state.frame++;
         this.state.input = moveInput;
 
+        if (moveInput.isDashing && !this.state.player.dash.active && this.state.player.dash.cooldown <= 0) {
+            this.state.player.dash.active = true;
+            this.state.player.dash.timer = this.state.player.dash.duration;
+            this.state.player.dash.cooldown = 90;
+            let dashAngle = this.state.player.angle;
+            if (moveInput.isMoving) {
+                dashAngle = Math.atan2(moveInput.moveY, moveInput.moveX);
+            }
+            this.state.player.dash.dx = Math.cos(dashAngle);
+            this.state.player.dash.dy = Math.sin(dashAngle);
+            
+            if (this.audioEngine) this.audioEngine.playSFX('dash');
+        }
+
         if (this.state.player.dash.cooldown > 0) {
             this.state.player.dash.cooldown--;
         }

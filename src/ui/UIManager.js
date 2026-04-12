@@ -27,6 +27,9 @@ export class UIManager {
         this.btnResume = document.getElementById('btn-resume-run');
         this.btnWipeSave = document.getElementById('btn-wipe-save'); 
 
+        this.btnExportSave = document.getElementById('btn-export-save');
+        this.btnImportSave = document.getElementById('btn-import-save');
+
         this.btnUpgHp = document.getElementById('btn-upg-hp');
         this.btnUpgSpeed = document.getElementById('btn-upg-speed');
         this.btnUpgLight = document.getElementById('btn-upg-light');
