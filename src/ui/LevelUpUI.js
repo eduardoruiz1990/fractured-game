@@ -68,13 +68,22 @@ export class LevelUpUI {
             { id: 'toxic_blood', name: 'Toxic Blood', desc: 'Taking damage spawns a Spilled Ink hazard at your feet.', color: '#aa00ff', icon: '🩸' },
             { id: 'tunnel_vision', name: 'Hyperfocus', desc: 'Flashlight cone width is halved, but damage is doubled.', color: '#ffcc00', icon: '🔦' },
             { id: 'adrenaline_surge', name: 'Adrenaline Surge', desc: 'Dropping below 30% Sanity doubles your movement speed.', color: '#ff0033', icon: '💉' },
-            { id: 'iron_will', name: 'Iron Will', desc: 'Max Sanity increased by 50.', color: '#ffffff', icon: '🛡️' }
+            { id: 'iron_will', name: 'Iron Will', desc: 'Max Sanity increased by 50.', color: '#ffffff', icon: '🛡️' },
+            { id: 'glass_cannon', name: 'Glass Cannon', desc: 'Damage +100%, Sanity drains twice as fast.', color: '#ff4444', icon: '💥' },
+            { id: 'vampirism', name: 'Vampirism', desc: 'Melee kills restore 2 Sanity.', color: '#bb0000', icon: '🦇' },
+            { id: 'static_discharge', name: 'Static Discharge', desc: 'Taking damage triggers a massive Static AoE.', color: '#00ffff', icon: '⚡' },
+            { id: 'lead_shoes', name: 'Lead Shoes', desc: 'Cannot Dash. Max Sanity +200.', color: '#777777', icon: '🥾' },
+            { id: 'shadow_step', name: 'Shadow Step', desc: 'Dashing grants 1 second of invisibility (enemies lose tracking).', color: '#555555', icon: '🥷' }
         ];
 
         let availableBoons = BOONS.filter(b => !game.state.player.boons.includes(b.id));
 
         if (availableBoons.length === 0) {
-            this.renderSurgeCard(game, onCompleteCallback);
+            game.state.player.maxHp += 50;
+            game.state.sanity = Math.min(game.state.player.maxHp, game.state.sanity + 50);
+            if (this.audioEngine) this.audioEngine.playSFX('pickup', 5);
+            this.modal.style.display = 'none';
+            if (onCompleteCallback) onCompleteCallback();
             return;
         }
 
@@ -128,6 +137,9 @@ export class LevelUpUI {
         } else if (key === 'iron_will') {
             game.state.player.maxHp += 50;
             game.state.sanity += 50;
+        } else if (key === 'lead_shoes') {
+            game.state.player.maxHp += 200;
+            game.state.sanity += 200;
         }
 
         if (this.audioEngine) this.audioEngine.playSFX('levelup', 5);

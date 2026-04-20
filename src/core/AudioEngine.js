@@ -237,7 +237,7 @@ export class AudioEngine {
         } catch(e) { }
     }
 
-    playSFX(key, volumeMult = 1.0) {
+    playSFX(key, volumeMult = 1.0, randomizePitch = true) {
         if (!this.isInitialized || !this.audioCtx || this.audioCtx.state === 'suspended') return;
         
         const now = this.audioCtx.currentTime;
@@ -248,10 +248,16 @@ export class AudioEngine {
         let finalVolume = volumeMult;
         if (key.includes('ui_')) finalVolume *= 0.4;
         if (key === 'pipe_swing') finalVolume *= 0.6;
-        if (key === 'boss_intro') finalVolume *= 1.2;
+        if (key === 'boss_intro') {
+            finalVolume *= 1.2;
+            this.triggerAudioDucking(2.0);
+        }
         if (key === 'polaroid') finalVolume *= 2.0; 
         if (key === 'enemy_ambient') finalVolume *= 0.1;
         if (key.includes('_hurt') && key !== 'player_hurt') finalVolume *= 0.2; 
+        if (key === 'ui_upgrade' || key === 'levelup') {
+            this.triggerAudioDucking(2.0);
+        }
         
         if (key === 'enemy_dash') {
             if (this.buffers['dash']) {
@@ -261,7 +267,7 @@ export class AudioEngine {
                     const gainNode = this.audioCtx.createGain();
                     
                     // Drop pitch to 50% for monsters
-                    source.playbackRate.value = 0.5 + Math.random() * 0.1; 
+                    source.playbackRate.value = randomizePitch ? 0.5 + Math.random() * 0.1 : 0.5; 
                     gainNode.gain.value = Math.max(0, Math.min(finalVolume * 1.5, 2.0));
                     
                     source.connect(gainNode).connect(this.masterGain);
@@ -278,7 +284,12 @@ export class AudioEngine {
                 const source = this.audioCtx.createBufferSource();
                 source.buffer = this.buffers[key];
                 const gainNode = this.audioCtx.createGain();
-                source.playbackRate.value = 0.95 + Math.random() * 0.1; 
+                
+                if (['dash', 'player_hit', 'enemy_spawn', 'ui_click'].includes(key) && randomizePitch) {
+                    source.playbackRate.value = 0.9 + Math.random() * 0.2; 
+                } else if (randomizePitch) {
+                    source.playbackRate.value = 0.95 + Math.random() * 0.1;
+                }
                 
                 gainNode.gain.value = Math.max(0, Math.min(finalVolume, 2.0));
                 source.connect(gainNode).connect(this.masterGain);
@@ -287,6 +298,16 @@ export class AudioEngine {
         } else {
             this.playProceduralSFX(key, finalVolume);
         }
+    }
+
+    triggerAudioDucking(duration) {
+        if (!this.masterGain || !this.audioCtx) return;
+        const now = this.audioCtx.currentTime;
+        this.masterGain.gain.cancelScheduledValues(now);
+        this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+        this.masterGain.gain.linearRampToValueAtTime(0.3, now + 0.1);
+        this.masterGain.gain.linearRampToValueAtTime(0.3, now + duration);
+        this.masterGain.gain.linearRampToValueAtTime(1.2, now + duration + 1.0);
     }
 
     playFootstep() {

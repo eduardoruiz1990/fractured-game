@@ -3,6 +3,7 @@ import { Combat } from '../systems/Combat.js';
 import { Director } from '../systems/Director.js';
 import { TOKENS } from '../data/Manifestations.js'; 
 import { HubWorld } from '../systems/HubWorld.js';
+import { EventBus } from './EventBus.js';
 
 export class Game {
     constructor() {
@@ -12,6 +13,7 @@ export class Game {
         this.onFloorComplete = null; 
         this.audioEngine = null; 
         
+        this.eventBus = new EventBus();
         this.director = new Director(this);
         this.hubWorld = new HubWorld(this);
     }
@@ -124,6 +126,9 @@ export class Game {
 
         // FIXED: The engine requires 'startGameDrone()', not 'startDrone()'
         if (this.audioEngine) this.audioEngine.startGameDrone();
+
+        // Dispatch initialized event for UI to attach achievement listeners
+        document.dispatchEvent(new CustomEvent('game_initialized', { detail: { game: this } }));
     }
 
     getCarriedState() {
@@ -380,7 +385,7 @@ export class Game {
         Combat.resolveWeapons(this);
         Combat.collectXP(this);
         
-        const requiredXP = Math.floor(10 * Math.pow(1.5, this.state.level - 1));
+        const requiredXP = Math.floor(50 * Math.pow(1.4, this.state.level - 1));
         if (this.state.xp >= requiredXP && this.onLevelUp) {
             this.state.level++;
             this.state.xp -= requiredXP;

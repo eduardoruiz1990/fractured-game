@@ -13,6 +13,42 @@ export class UIManager {
         this.bindElements();
         this.attachEvents();
         this.updateMenuUI();
+
+        // Listen for EventBus achievements
+        document.addEventListener('game_initialized', (e) => {
+            const game = e.detail.game;
+            if (game && game.eventBus) {
+                game.eventBus.on('enemy_killed', () => {
+                    const kills = Object.values(game.state.killCounts).reduce((a, b) => a + b, 0);
+                    if (kills === 100) {
+                        this.showAchievement("ACHIEVEMENT: CULL THE HERD");
+                    }
+                });
+            }
+        });
+    }
+
+    showAchievement(text) {
+        if (!this.xpToast) return;
+        
+        this.xpToast.style.top = '30px'; 
+        this.xpToast.style.backgroundColor = '#ffd700';
+        this.xpToast.style.color = '#000';
+        
+        setTimeout(() => {
+            this.toastLevel.innerText = text;
+            this.toastBar.style.width = `100%`;
+            this.toastText.innerText = "Congratulations!";
+        }, 150);
+
+        if (this.toastTimer) clearTimeout(this.toastTimer);
+        this.toastTimer = setTimeout(() => {
+            this.xpToast.style.top = '-150px'; 
+            setTimeout(() => {
+                this.xpToast.style.backgroundColor = '';
+                this.xpToast.style.color = '';
+            }, 500);
+        }, 4000);
     }
 
     bindElements() {
@@ -90,6 +126,10 @@ export class UIManager {
                 this.tabPanes.forEach(p => p.classList.remove('active'));
                 
                 btn.classList.add('active');
+                
+                if (this.audioEngine) {
+                    this.audioEngine.playSFX('ui_click');
+                }
                 const targetId = btn.getAttribute('data-target');
                 document.getElementById(targetId).classList.add('active');
                 

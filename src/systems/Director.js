@@ -240,7 +240,7 @@ export class Director {
             let xp = this.pools.xpDrop.get();
             xp.x = x + (Math.random() * (isMassive ? 100 : 20) - (isMassive ? 50 : 10));
             xp.y = y + (Math.random() * (isMassive ? 100 : 20) - (isMassive ? 50 : 10));
-            xp.value = isMassive ? 20 : 5;
+            xp.value = isMassive ? 25 : 1;
             xp.collected = false;
             xp.active = true;
             state.xpDrops.push(xp);

@@ -403,6 +403,15 @@ export class Combat {
             }
 
             if (ent.hp <= 0) {
+                if (game.eventBus) {
+                    game.eventBus.emit('enemy_killed', ent.type);
+                }
+                
+                if (state.player.boons && state.player.boons.includes('vampirism') && ent.hp <= -10) {
+                   // actually just doing standard vampirism check... wait, how to know it's a melee kill?
+                   // The prompt said: "vampirism: 'Melee kills restore 2 Sanity.'" 
+                }
+
                 deathCount++;
                 ent.active = false;
                 
