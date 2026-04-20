@@ -73,13 +73,11 @@ export class Director {
             state.bossSpawned = true;
             
             try {
-                const saveKey = 'fractured_save_v1';
-                const savedStr = localStorage.getItem(saveKey);
-                if (savedStr) {
-                    let metaData = JSON.parse(savedStr);
+                if (this.game.saveManager) {
+                    let metaData = this.game.saveManager.metaState;
                     if (!metaData.maxBossEncountered || metaData.maxBossEncountered < state.floor) {
                         metaData.maxBossEncountered = state.floor;
-                        localStorage.setItem(saveKey, JSON.stringify(metaData));
+                        this.game.saveManager.saveGame();
                     }
                 }
             } catch(e) {

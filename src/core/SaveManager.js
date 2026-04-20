@@ -35,6 +35,7 @@ export class SaveManager {
                 if (!this.metaState.equippedTokens) this.metaState.equippedTokens = { head: null, body: null, hands: null, legs: null };
                 if (!this.metaState.maxFloorReached) this.metaState.maxFloorReached = 1; 
                 if (!this.metaState.maxBossEncountered) this.metaState.maxBossEncountered = 0;
+                if (this.metaState.tutorialCompleted === undefined) this.metaState.tutorialCompleted = false;
                 
                 if (!this.metaState.killCounts) {
                     this.metaState.killCounts = { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 };

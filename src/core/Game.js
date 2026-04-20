@@ -328,7 +328,7 @@ export class Game {
 
         if (!isInsideSafeZone && distFromCenter > voidRadius) {
             this.state.inVoid = true;
-            if (this.state.combatActive) {
+            if (this.state.combatActive && !this.state.isTutorial) {
                 this.state.sanity -= 0.1;
             }
             if (this.state.frame % 10 === 0) {
