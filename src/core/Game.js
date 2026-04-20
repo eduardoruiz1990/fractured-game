@@ -134,7 +134,8 @@ export class Game {
             xp: this.state.xp,
             level: this.state.level,
             lucidity: this.state.lucidity,
-            runInventory: this.state.runInventory
+            runInventory: this.state.runInventory,
+            boons: this.state.player.boons
         };
     }
 
@@ -161,6 +162,12 @@ export class Game {
         this.state.player.flashTime = 10;
         this.state.cameraShake = Math.max(this.state.cameraShake, finalDmg * 2);
         
+        if (this.state.player.boons && this.state.player.boons.includes('toxic_blood')) {
+            if (this.director && typeof this.director.spawnInkPuddle === 'function') {
+                this.director.spawnInkPuddle(this.state.player.x, this.state.player.y, 60, 5);
+            }
+        }
+
         if (this.audioEngine && finalDmg > 5) this.audioEngine.playSFX('player_hit');
         
         if (this.state.sanity <= 0 && this.onDeath) {

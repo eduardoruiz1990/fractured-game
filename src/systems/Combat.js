@@ -328,6 +328,15 @@ export class Combat {
             const dy = ent.y - state.player.y;
             const distToPlayer = Math.max(Math.sqrt(dx*dx + dy*dy), 0.001);
             
+            if (state.player.dash && state.player.dash.active && state.player.boons && state.player.boons.includes('kinetic_dash')) {
+                if (distToPlayer < (ent.radius || 15) + state.player.radius) {
+                    if (state.frame % 5 === 0) {
+                        ent.takeDamage(15, game);
+                        game.spawnParticles(ent.x, ent.y, '#00ffcc', 5);
+                    }
+                }
+            }
+
             let dmgMult = 1.0;
             for (let sz of state.safeZones) {
                 if (Math.hypot(ent.x - sz.x, ent.y - sz.y) < sz.radius) {
