@@ -138,41 +138,41 @@ export class Renderer {
         const cy = this.canvas.height / 2;
         
         this.ctx.save();
-        this.ctx.save();
-        this.ctx.translate(cx + this.canvas.width * 0.3, cy);
-        this.ctx.scale(25, 25); 
-        this.ctx.globalAlpha = 0.08 + Math.sin(time * 0.0005) * 0.03;
-        this.ctx.rotate(time * 0.0001);
         
-        this.ctx.fillStyle = '#000';
-        this.ctx.beginPath();
-        for (let i = 0; i < 16; i++) {
-            let angle = (i / 16) * Math.PI * 2;
-            let reach = 35 + Math.sin(time * 0.001 + i * 2) * 15;
-            if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
-            else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
-        }
-        this.ctx.fill();
-        this.ctx.restore();
-
-        this.ctx.save();
-        this.ctx.translate(cx - this.canvas.width * 0.3, cy + 100);
-        this.ctx.scale(30, 30); 
-        this.ctx.globalAlpha = 0.06 + Math.cos(time * 0.0004) * 0.03;
-        
-        let pulse = Math.sin(time * 0.002) * 5;
-        this.ctx.fillStyle = '#000';
-        for (let mirror = -1; mirror <= 1; mirror += 2) {
-            this.ctx.save();
-            this.ctx.scale(mirror, 1);
+        // Creeping Fog
+        for (let i = 0; i < 5; i++) {
+            this.ctx.fillStyle = `rgba(50, 0, 0, ${0.05 + Math.sin(time * 0.0005 + i) * 0.02})`;
             this.ctx.beginPath();
-            this.ctx.moveTo(0, -30);
-            this.ctx.bezierCurveTo(20, -30, 30 + pulse, -15, 25, 0);
-            this.ctx.bezierCurveTo(40, 15, 20, 30, 0, 30 + pulse);
+            let yOffset = Math.sin(time * 0.001 + i) * 100;
+            this.ctx.ellipse(cx + Math.cos(time * 0.0002 + i)*300, cy + 100 + yOffset, 600 + i*100, 300 + i*50, 0, 0, Math.PI * 2);
             this.ctx.fill();
+        }
+        
+        // Glitching Procedural Geometry
+        this.ctx.strokeStyle = `rgba(255, 0, 0, ${0.1 + Math.random() * 0.05})`;
+        this.ctx.lineWidth = 1;
+        for (let i = 0; i < 10; i++) {
+            let size = 100 + (time * 0.1 + i * 50) % 500;
+            this.ctx.save();
+            this.ctx.translate(cx, cy);
+            this.ctx.rotate((time * 0.0001) + (i * 0.5));
+            if (Math.random() > 0.95) this.ctx.translate((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20); // Glitch
+            this.ctx.strokeRect(-size/2, -size/2, size, size);
             this.ctx.restore();
         }
-        this.ctx.restore();
+        
+        // Drifting Embers
+        for (let i = 0; i < 40; i++) {
+            let px = (cx * 2 + Math.sin(i * 99) * cx * 2 + time * 0.05 * (1 + i % 3)) % (cx * 2);
+            let py = (cy * 2 + Math.cos(i * 77) * cy * 2 - time * 0.1 * (1 + i % 2)) % (cy * 2);
+            if (py < 0) py += cy * 2; // wrap
+            
+            this.ctx.fillStyle = `rgba(255, ${100 + (i%50)}, 0, ${0.3 + Math.sin(time*0.005 + i)*0.2})`;
+            this.ctx.beginPath();
+            this.ctx.arc(px, py, 1 + (i % 3), 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+
         this.ctx.restore();
     }
 
@@ -441,6 +441,89 @@ export class Renderer {
         } finally {
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         }
+    }
+
+    drawHUD(state) {
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height;
+        
+        this.ctx.save();
+        
+        // 1. Sleek EXP Bar at Bottom Center
+        const barW = 400;
+        const barH = 14;
+        const barX = cx - barW / 2;
+        const barY = cy - 30;
+
+        // EXP Bar Background
+        this.ctx.fillStyle = 'rgba(10, 10, 20, 0.8)';
+        this.ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+        this.ctx.lineWidth = 1;
+        this.ctx.fillRect(barX, barY, barW, barH);
+        this.ctx.strokeRect(barX, barY, barW, barH);
+
+        // EXP Bar Fill (Faux-Glow)
+        const nextXP = state.nextLevelXP || 1;
+        const fillW = Math.max(0, Math.min(barW, (state.xp / nextXP) * barW));
+        
+        if (fillW > 0) {
+            const grad = this.ctx.createLinearGradient(barX, barY, barX, barY + barH);
+            grad.addColorStop(0, '#00ffff');
+            grad.addColorStop(0.5, '#0088ff');
+            grad.addColorStop(1, '#00ffff');
+            this.ctx.fillStyle = grad;
+            this.ctx.fillRect(barX, barY, fillW, barH);
+        }
+
+        // EXP Text
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = 'bold 12px monospace';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'bottom';
+        this.ctx.fillText(`LUCIDITY: ${Math.floor(state.xp)} / ${nextXP}`, cx, barY - 5);
+
+        // 2. Boss Health Bar at Top Center
+        let boss = null;
+        for (let i = 0; i < state.entities.length; i++) {
+            let e = state.entities[i];
+            if (['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type) && e.hp > 0) {
+                boss = e;
+                break;
+            }
+        }
+
+        if (boss) {
+            const bossW = 600;
+            const bossH = 20;
+            const bossX = cx - bossW / 2;
+            const bossY = 30;
+
+            this.ctx.fillStyle = 'rgba(20, 0, 0, 0.8)';
+            this.ctx.strokeStyle = '#c5a059';
+            this.ctx.lineWidth = 2;
+            this.ctx.fillRect(bossX, bossY, bossW, bossH);
+            this.ctx.strokeRect(bossX, bossY, bossW, bossH);
+
+            const hpPercent = Math.max(0, boss.hp / boss.maxHp);
+            const fillBoss = bossW * hpPercent;
+
+            if (fillBoss > 0) {
+                const bGrad = this.ctx.createLinearGradient(bossX, bossY, bossX, bossY + bossH);
+                bGrad.addColorStop(0, '#ff4444');
+                bGrad.addColorStop(0.5, '#8b0000');
+                bGrad.addColorStop(1, '#ff4444');
+                this.ctx.fillStyle = bGrad;
+                this.ctx.fillRect(bossX, bossY, fillBoss, bossH);
+            }
+
+            this.ctx.fillStyle = '#c5a059';
+            this.ctx.font = 'bold 16px monospace';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'bottom';
+            this.ctx.fillText(boss.type, cx, bossY - 8);
+        }
+        
+        this.ctx.restore();
     }
 
     drawFog(state) {

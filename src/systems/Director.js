@@ -108,7 +108,9 @@ export class Director {
         
         if (!state.combatActive) return;
         
-        if (state.bossSpawned && !state.entities.some(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type))) {
+        const bossAlive = state.entities.some(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
+        
+        if (state.bossSpawned && !bossAlive) {
             return; 
         }
 
@@ -116,11 +118,11 @@ export class Director {
             this.spawnRoom(state.floor, state.roomNumber);
         }
 
-        if (state.enemyBudget > 0) {
+        if (state.enemyBudget > 0 || bossAlive) {
             state.budgetTimer++;
             state.stress = 1.0 + (state.roomNumber * 0.1); 
 
-            const spawnRate = Math.max(15, 60 - (state.roomNumber * 2));
+            const spawnRate = bossAlive ? 120 : Math.max(15, 60 - (state.roomNumber * 2));
 
             if (state.budgetTimer % spawnRate === 0) {
                 // Determine spawn pools by biome (Floor)
@@ -128,25 +130,27 @@ export class Director {
                 let roll = Math.random();
 
                 if (state.floor === 1) {
-                    if (roll < 0.1 && state.enemyBudget >= 2) spawnType = 'PREDATOR'; 
+                    if (roll < 0.1 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR'; 
                 } 
                 else if (state.floor === 2) {
-                    if (roll < 0.4 && state.enemyBudget >= 2) spawnType = 'PREDATOR'; 
+                    if (roll < 0.4 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR'; 
                 }
                 else if (state.floor === 3) {
-                    if (roll < 0.3 && state.enemyBudget >= 2) spawnType = 'PREDATOR'; 
-                    else if (roll < 0.6 && state.enemyBudget >= 3) spawnType = 'PARASITE'; 
+                    if (roll < 0.3 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR'; 
+                    else if (roll < 0.6 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'PARASITE'; 
                 }
                 else if (state.floor >= 4) {
-                    if (roll < 0.3 && state.enemyBudget >= 2) spawnType = 'PREDATOR'; 
-                    else if (roll < 0.8 && state.enemyBudget >= 3) spawnType = 'PARASITE'; 
+                    if (roll < 0.3 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR'; 
+                    else if (roll < 0.8 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'PARASITE'; 
                 }
 
                 this.spawnEntity(spawnType, canvasWidth, canvasHeight);
 
-                if (spawnType === 'SCAVENGER') state.enemyBudget -= 1;
-                else if (spawnType === 'PREDATOR') state.enemyBudget -= 2;
-                else if (spawnType === 'PARASITE') state.enemyBudget -= 3;
+                if (!bossAlive) {
+                    if (spawnType === 'SCAVENGER') state.enemyBudget -= 1;
+                    else if (spawnType === 'PREDATOR') state.enemyBudget -= 2;
+                    else if (spawnType === 'PARASITE') state.enemyBudget -= 3;
+                }
             }
         } else if (state.entities.length === 0 && !state.roomCleared && !state.bossSpawned) {
             state.combatActive = false;

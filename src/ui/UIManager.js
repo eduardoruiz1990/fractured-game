@@ -436,9 +436,10 @@ export class UIManager {
         this.detailName.style.color = rarityData.color;
         
         this.detailDesc.innerText = tokenData.desc;
-        this.detailSet.innerText = `Set: ${setData.name} | (2) ${setData['2']} | (4) ${setData['4']}`;
+        this.detailSet.innerText = `Set: ${setData.name} | (2) ${setData['2']} | (4) ${setData['4']}\n\n[CLICK PRESCRIBE TO EQUIP]`;
 
         this.btnEquipItem.style.display = 'block';
+        this.btnEquipItem.disabled = false;
         this.btnUnequipItem.style.display = 'none';
         
         if (rarityData.costToUpgrade) {

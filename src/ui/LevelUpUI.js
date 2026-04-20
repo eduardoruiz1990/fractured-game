@@ -95,13 +95,14 @@ export class LevelUpUI {
             card.className = 'card';
             const rot = (Math.random() - 0.5) * 6;
             card.style.transform = `rotate(${rot}deg)`;
+            card.style.background = '#1e293b';
             
             card.innerHTML = `
                 <div class="polaroid-photo" style="background: #111">
                     <div style="text-shadow: 0 0 15px rgba(255,255,255,0.5);">${boon.icon}</div>
                 </div>
                 <h3 style="color: ${boon.color}">${boon.name}</h3>
-                <p>${boon.desc}</p>
+                <p style="color: #e2e8f0;">${boon.desc}</p>
                 <div class="lvl" style="color: ${boon.color}">CLINICAL BREAKTHROUGH</div>
             `;
             

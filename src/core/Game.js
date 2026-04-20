@@ -67,6 +67,7 @@ export class Game {
             xp: carriedState ? carriedState.xp : 0,
             level: carriedState ? carriedState.level : 1,
             lucidity: carriedState ? carriedState.lucidity : 0, 
+            nextLevelXP: Math.floor(50 * Math.pow(1.4, (carriedState ? carriedState.level : 1) - 1)),
             sanity: startSanity,
             inVoid: false,
             cameraShake: 0,

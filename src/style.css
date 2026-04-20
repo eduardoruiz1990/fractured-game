@@ -39,7 +39,7 @@ canvas { display: block; image-rendering: pixelated; }
 }
 
 /* --- EPIC 6: DYNAMIC BACKGROUND TRANSPARENCIES --- */
-#title-screen { display: flex; background: rgba(5, 5, 5, 0.3); backdrop-filter: none; } 
+#title-screen { display: flex; background: transparent; backdrop-filter: none; } 
 #clinical-folder-menu { display: none; background: rgba(5, 5, 5, 0.7); backdrop-filter: blur(2px); } 
 #pause-menu { display: none; z-index: 300; background: rgba(5, 5, 5, 0.85); backdrop-filter: blur(8px); }
 #death-screen { display: none; z-index: 1000; background: rgba(10, 0, 0, 0.95); }
