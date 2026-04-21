@@ -260,7 +260,7 @@ canvas { display: block; image-rendering: pixelated; }
     .tab-btn { font-size: 0.8rem; padding: 10px; }
     .item-details-panel { flex-direction: column; }
     .detail-actions { width: 100%; flex-direction: row; }
-} }
+} flex-direction: column; }
     .detail-actions { width: 100%; flex-direction: row; }
 }-panel { flex-direction: column; }
     .detail-actions { width: 100%; flex-direction: row; }
