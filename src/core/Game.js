@@ -174,7 +174,7 @@ export class Game {
             }
         }
 
-        if (this.audioEngine && finalDmg > 5) this.audioEngine.playSFX('player_hit');
+        if (this.audioEngine && finalDmg > 0) this.audioEngine.playSFX('player_hurt');
         
         if (this.state.sanity <= 0 && this.onDeath) {
             this.onDeath();

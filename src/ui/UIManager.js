@@ -439,7 +439,7 @@ export class UIManager {
         this.detailSet.innerText = `Set: ${setData.name} | (2) ${setData['2']} | (4) ${setData['4']}\n\n[CLICK PRESCRIBE TO EQUIP]`;
 
         this.btnEquipItem.innerText = "[ PRESCRIBE TO PATIENT ]";
-        this.btnEquipItem.style.cssText = 'display: block; width: 100%; background-color: #7f1d1d; color: white; padding: 15px; font-weight: bold; font-size: 1.2rem; border: 2px solid #ef4444; margin-bottom: 10px; cursor: pointer; text-shadow: 0 0 5px red;';
+        this.btnEquipItem.style.cssText = 'display: block; width: 100%; background-color: #7f1d1d; color: white; padding: 15px; font-weight: bold; font-size: 1.2rem; border: 2px solid #ef4444; margin-bottom: 15px; cursor: pointer; text-shadow: 0 0 5px red; font-family: Courier New; text-transform: uppercase;';
         this.btnEquipItem.disabled = false;
         this.btnUnequipItem.style.display = 'none';
         
