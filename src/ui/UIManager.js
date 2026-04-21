@@ -438,7 +438,8 @@ export class UIManager {
         this.detailDesc.innerText = tokenData.desc;
         this.detailSet.innerText = `Set: ${setData.name} | (2) ${setData['2']} | (4) ${setData['4']}\n\n[CLICK PRESCRIBE TO EQUIP]`;
 
-        this.btnEquipItem.style.display = 'block';
+        this.btnEquipItem.innerText = "[ PRESCRIBE TO PATIENT ]";
+        this.btnEquipItem.style.cssText = 'display: block; width: 100%; background-color: #7f1d1d; color: white; padding: 15px; font-weight: bold; font-size: 1.2rem; border: 2px solid #ef4444; margin-bottom: 10px; cursor: pointer; text-shadow: 0 0 5px red;';
         this.btnEquipItem.disabled = false;
         this.btnUnequipItem.style.display = 'none';
         

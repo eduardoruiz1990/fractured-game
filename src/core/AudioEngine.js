@@ -285,7 +285,7 @@ export class AudioEngine {
                 source.buffer = this.buffers[key];
                 const gainNode = this.audioCtx.createGain();
                 
-                if (['dash', 'player_hit', 'enemy_spawn', 'ui_click'].includes(key) && randomizePitch) {
+                if (['dash', 'player_hurt', 'enemy_spawn', 'ui_click'].includes(key) && randomizePitch) {
                     source.playbackRate.value = 0.9 + Math.random() * 0.2; 
                 } else if (randomizePitch) {
                     source.playbackRate.value = 0.95 + Math.random() * 0.1;
