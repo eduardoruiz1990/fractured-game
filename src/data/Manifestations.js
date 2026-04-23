@@ -43,10 +43,11 @@ export const INTRUSIVE_THOUGHTS = {
 };
 
 export const TOKEN_RARITIES = {
-    COMMON: { color: '#aaaaaa', costToUpgrade: 100, multiplier: 1.0 },
-    RARE: { color: '#5555ff', costToUpgrade: 300, multiplier: 1.5 },
-    EPIC: { color: '#aa55ff', costToUpgrade: 1000, multiplier: 2.0 },
-    ANOMALOUS: { color: '#ff5555', costToUpgrade: null, multiplier: 3.0 }
+    common: { color: '#aaaaaa', costToUpgrade: 100, multiplier: 1.0 },
+    rare: { color: '#5555ff', costToUpgrade: 250, multiplier: 1.5 },
+    epic: { color: '#aa55ff', costToUpgrade: 500, multiplier: 2.0 },
+    legendary: { color: '#ff8c00', costToUpgrade: 1000, multiplier: 3.0 },
+    mythic: { color: '#ff5555', costToUpgrade: null, multiplier: 4.0 }
 };
 
 export const TOKEN_SETS = {
