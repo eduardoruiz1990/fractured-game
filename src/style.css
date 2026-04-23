@@ -69,7 +69,7 @@ canvas { display: block; image-rendering: pixelated; }
     font-family: var(--ui-font); font-weight: bold; color: #555; cursor: pointer; transition: 0.2s;
 }
 .tab-btn:hover { background: #e0d5be; color: var(--ink-black); }
-.tab-btn.active { background: var(--paper-bg); color: var(--ink-black); border-bottom: 2px solid var(--paper-bg); margin-bottom: -2px; }
+.tab-btn.active { background-color: var(--blood-red); color: #fff; text-shadow: 0 0 5px red; }
 
 .folder-content { padding: 30px; flex: 1; overflow-y: auto; position: relative; }
 .tab-pane { display: none; height: 100%; flex-direction: column; }
@@ -260,4 +260,9 @@ canvas { display: block; image-rendering: pixelated; }
     .tab-btn { font-size: 0.8rem; padding: 10px; }
     .item-details-panel { flex-direction: column; }
     .detail-actions { width: 100%; flex-direction: row; }
+}older-tabs { flex-wrap: wrap; }
+    .tab-btn { font-size: 0.8rem; padding: 10px; }
+    .item-details-panel { flex-direction: column; }
+    .detail-actions { width: 100%; flex-direction: row; }
 }
+@keyframes glitch { 0% { opacity: 1; filter: contrast(1); } 50% { opacity: 0.95; filter: contrast(1.2); } 51% { opacity: 1; filter: contrast(1); } 100% { opacity: 1; } }
