@@ -3,9 +3,10 @@
     --ui-gold: #c5a059;
     --ui-red: #8b0000;
     --ui-font: 'Courier New', Courier, monospace;
-    --paper-bg: #e8dcc4;
-    --ink-black: #1a1a1a;
-    --folder-tab: #d1c0a5;
+    --paper-bg: #e5e0d8;
+    --ink-black: #111111;
+    --blood-red: #8b0000;
+    --folder-tab: #d4cbb8;
     --hud-green: #33ff33;
 }
 
@@ -46,22 +47,7 @@ canvas { display: block; image-rendering: pixelated; }
 
 /* --- EPIC 6: THE MEDICAL FILE AESTHETIC --- */
 .medical-folder {
-    background-color: var(--paper-bg); 
-    color: var(--ink-black); 
-    width: 90%; max-width: 1000px; height: 80vh; max-height: 800px; 
-    border: 2px solid #555; 
-    box-shadow: inset 0 0 80px rgba(0,0,0,0.3), 10px 10px 30px rgba(0,0,0,0.9); 
-    display: flex; flex-direction: column; position: relative; 
-    font-family: var(--ui-font);
-    background-image: 
-        url('data:image/svg+xml;utf8,<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="4" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23noise)" opacity="0.06"/></svg>'),
-        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><path d="M200,100 c30,-20 80,10 60,60 c-10,20 20,40 0,60 c-30,30 -60,10 -80,-10 c-20,-20 -40,10 -30,-30 c10,-30 -20,-50 10,-60 c30,-10 10,-40 40,-20 z" fill="%238a0303" opacity="0.9" filter="blur(0.5px)"/><circle cx="280" cy="80" r="8" fill="%239e0000" opacity="0.95"/><circle cx="120" cy="220" r="12" fill="%238a0303" opacity="0.85"/><circle cx="300" cy="200" r="5" fill="%239e0000" opacity="0.8"/><circle cx="250" cy="260" r="7" fill="%238a0303" opacity="0.9"/><path d="M250,150 q5,120 2,220 q-2,-100 -5,-220" fill="%239e0000" opacity="0.9"/><path d="M160,170 q3,90 1,180 q-2,-90 -3,-180" fill="%238a0303" opacity="0.85"/><path d="M220,160 q4,100 2,190 q-3,-90 -4,-190" fill="%238a0303" opacity="0.8"/></svg>'),
-        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><path d="M150,150 c15,-40 50,-10 40,20 c-5,30 30,10 10,40 c-20,30 -50,10 -60,-10 c-15,-20 -30,5 -20,-20 c10,-20 -20,-30 0,-40 c20,-10 15,-20 30,10 z" fill="%239e0000" opacity="0.85" filter="blur(1px)"/><circle cx="100" cy="90" r="6" fill="%239e0000" opacity="0.9"/><circle cx="220" cy="210" r="10" fill="%238a0303" opacity="0.8"/><path d="M140,160 q10,80 5,140 q-5,-60 -10,-140" fill="%238a0303" opacity="0.85"/></svg>'),
-        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><path d="M100,50 c30,-10 40,20 10,40 c-10,10 20,30 0,40 c-30,10 -40,-10 -50,-20 c-10,-10 -20,10 -10,-20 c10,-30 -10,-40 20,-40 c30,0 0,-10 30,0 z" fill="%237a0000" opacity="0.95" filter="blur(0.5px)"/><circle cx="60" cy="140" r="8" fill="%239e0000" opacity="0.9"/><path d="M90,70 q-10,60 -5,120 q5,-60 10,-120" fill="%237a0000" opacity="0.85"/></svg>'),
-        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500"><path d="M250,250 c50,-30 100,10 80,80 c-10,30 40,40 10,80 c-40,40 -80,20 -100,-10 c-30,-20 -50,10 -40,-40 c20,-40 -30,-60 10,-80 c40,-20 20,-50 40,-30 z" fill="%238a0303" opacity="0.75" filter="blur(2px)"/><circle cx="380" cy="180" r="15" fill="%239e0000" opacity="0.8"/><circle cx="120" cy="380" r="18" fill="%238a0303" opacity="0.6"/><path d="M260,300 q10,150 5,200 q-5,-50 -10,-200" fill="%239e0000" opacity="0.7"/></svg>');
-    background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
-    background-position: top left, right -5% top 5%, left 2% bottom 10%, center top 35%, left 40% bottom -10%;
-    animation: bloodDrip 40s ease-in-out infinite;
+    background-color: var(--paper-bg); color: var(--ink-black); width: 90%; max-width: 1000px; height: 80vh; max-height: 800px; border: 2px solid #555; box-shadow: inset 0 0 80px rgba(0,0,0,0.3), 10px 10px 30px rgba(0,0,0,0.9); display: flex; flex-direction: column; position: relative; font-family: var(--ui-font);
 }
 .folder-header {
     border-bottom: 3px solid var(--ink-black); padding: 20px;
@@ -362,3 +348,28 @@ canvas { display: block; image-rendering: pixelated; }
     .detail-actions { width: 100%; flex-direction: row; }
 }
 @keyframes glitch { 0% { opacity: 1; filter: contrast(1); } 50% { opacity: 0.95; filter: contrast(1.2); } 51% { opacity: 1; filter: contrast(1); } 100% { opacity: 1; } }
+
+
+.medical-folder h1, .medical-folder h2, .medical-folder h3, .medical-folder h4, .medical-folder h5, .medical-folder h6, .medical-folder p {
+    font-family: var(--ui-font);
+    color: var(--ink-black);
+}
+
+#blood-container {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; overflow: hidden; z-index: 9999;
+}
+.blood-drop {
+    position: absolute;
+    background: var(--blood-red);
+    width: 2px;
+    border-radius: 50%;
+    animation: bloodFall linear forwards;
+    opacity: 0.8;
+    box-shadow: 0 0 2px var(--blood-red);
+}
+@keyframes bloodFall {
+    0% { transform: translateY(-10px) scaleY(1); opacity: 0; }
+    10% { opacity: 0.8; }
+    100% { transform: translateY(100vh) scaleY(4); opacity: 0; }
+}

@@ -13,6 +13,8 @@ export class UIManager {
         this.bindElements();
         this.attachEvents();
         this.updateMenuUI();
+        
+        this.initBloodRain();
 
         // Listen for EventBus achievements
         document.addEventListener('game_initialized', (e) => {
@@ -26,6 +28,32 @@ export class UIManager {
                 });
             }
         });
+    }
+
+    initBloodRain() {
+        // Create the container so blood stays over the UI but behind interactions
+        const container = document.createElement('div');
+        container.id = 'blood-container';
+        document.body.appendChild(container);
+
+        // Spawn a blood drop every 80 milliseconds
+        setInterval(() => {
+            const drop = document.createElement('div');
+            drop.classList.add('blood-drop');
+            
+            // Randomize position, size, and speed for a natural look
+            drop.style.left = Math.random() * 100 + 'vw';
+            drop.style.height = (Math.random() * 15 + 5) + 'px';
+            drop.style.width = (Math.random() * 2 + 1) + 'px';
+            drop.style.animationDuration = (Math.random() * 1.5 + 0.8) + 's';
+            
+            container.appendChild(drop);
+
+            // Destroy the drop after it falls off screen to prevent memory leaks
+            setTimeout(() => {
+                drop.remove();
+            }, 2500);
+        }, 80); 
     }
 
     showAchievement(text) {
