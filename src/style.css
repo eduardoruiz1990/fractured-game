@@ -46,10 +46,13 @@ canvas { display: block; image-rendering: pixelated; }
 
 /* --- EPIC 6: THE MEDICAL FILE AESTHETIC --- */
 .medical-folder {
-    background-color: var(--paper-bg);
-    width: 90%; max-width: 1000px; height: 80vh; max-height: 800px;
-    border: 1px solid #c2b59b; box-shadow: 10px 10px 40px rgba(0,0,0,0.9), inset 0 0 80px rgba(139, 0, 0, 0.2);
-    display: flex; flex-direction: column; position: relative;
+    background-color: var(--paper-bg); 
+    color: var(--ink-black); 
+    width: 90%; max-width: 1000px; height: 80vh; max-height: 800px; 
+    border: 2px solid #555; 
+    box-shadow: inset 0 0 80px rgba(0,0,0,0.3), 10px 10px 30px rgba(0,0,0,0.9); 
+    display: flex; flex-direction: column; position: relative; 
+    font-family: var(--ui-font);
     background-image: 
         url('data:image/svg+xml;utf8,<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="4" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23noise)" opacity="0.06"/></svg>'),
         url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><path d="M200,100 c30,-20 80,10 60,60 c-10,20 20,40 0,60 c-30,30 -60,10 -80,-10 c-20,-20 -40,10 -30,-30 c10,-30 -20,-50 10,-60 c30,-10 10,-40 40,-20 z" fill="%238a0303" opacity="0.9" filter="blur(0.5px)"/><circle cx="280" cy="80" r="8" fill="%239e0000" opacity="0.95"/><circle cx="120" cy="220" r="12" fill="%238a0303" opacity="0.85"/><circle cx="300" cy="200" r="5" fill="%239e0000" opacity="0.8"/><circle cx="250" cy="260" r="7" fill="%238a0303" opacity="0.9"/><path d="M250,150 q5,120 2,220 q-2,-100 -5,-220" fill="%239e0000" opacity="0.9"/><path d="M160,170 q3,90 1,180 q-2,-90 -3,-180" fill="%238a0303" opacity="0.85"/><path d="M220,160 q4,100 2,190 q-3,-90 -4,-190" fill="%238a0303" opacity="0.8"/></svg>'),
@@ -58,12 +61,46 @@ canvas { display: block; image-rendering: pixelated; }
         url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500"><path d="M250,250 c50,-30 100,10 80,80 c-10,30 40,40 10,80 c-40,40 -80,20 -100,-10 c-30,-20 -50,10 -40,-40 c20,-40 -30,-60 10,-80 c40,-20 20,-50 40,-30 z" fill="%238a0303" opacity="0.75" filter="blur(2px)"/><circle cx="380" cy="180" r="15" fill="%239e0000" opacity="0.8"/><circle cx="120" cy="380" r="18" fill="%238a0303" opacity="0.6"/><path d="M260,300 q10,150 5,200 q-5,-50 -10,-200" fill="%239e0000" opacity="0.7"/></svg>');
     background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
     background-position: top left, right -5% top 5%, left 2% bottom 10%, center top 35%, left 40% bottom -10%;
+    animation: bloodDrip 40s ease-in-out infinite;
 }
-
 .folder-header {
     border-bottom: 3px solid var(--ink-black); padding: 20px;
     display: flex; justify-content: space-between; align-items: center;
     background: rgba(232, 220, 196, 0.88); backdrop-filter: blur(4px);
+    z-index: 5; position: relative;
+}
+
+.blood-spatter-container {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; overflow: hidden; z-index: 2;
+    border-radius: inherit;
+}
+
+.blood-drop {
+    position: absolute; top: -50px; width: 8px; height: 30px;
+    background: var(--blood-red); border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    opacity: 0;
+    animation: bloodFallSplash 3s ease-in forwards;
+}
+
+.blood-drop::after {
+    content: ''; position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%) scale(0);
+    width: 30px; height: 15px; background: var(--blood-red); border-radius: 50%;
+    animation: bloodPool 3s ease-in forwards; animation-delay: inherit;
+}
+
+@keyframes bloodFallSplash {
+    0% { top: -50px; opacity: 1; height: 30px; width: 8px; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; }
+    50% { top: 60%; opacity: 1; height: 40px; width: 6px; }
+    55% { top: calc(60% + 20px); opacity: 1; height: 10px; width: 20px; border-radius: 50%; }
+    100% { top: calc(60% + 20px); opacity: 0; height: 10px; width: 25px; border-radius: 50%; }
+}
+
+@keyframes bloodPool {
+    0% { transform: translateX(-50%) scale(0); opacity: 1; }
+    54% { transform: translateX(-50%) scale(0); opacity: 1; }
+    60% { transform: translateX(-50%) scale(1); opacity: 0.8; }
+    100% { transform: translateX(-50%) scale(1.5); opacity: 0; }
 }
 
 .title-typewriter { font-size: 2.5rem; font-weight: 900; color: var(--ink-black); letter-spacing: 5px; text-align: center; }
@@ -71,19 +108,9 @@ canvas { display: block; image-rendering: pixelated; }
 .typewriter-text { font-family: var(--ui-font); color: var(--ink-black); font-weight: bold; }
 .section-label { font-weight: bold; color: #222; text-transform: uppercase; margin-bottom: 10px; font-size: 0.95rem; letter-spacing: 1px; }
 
-.folder-tabs { 
-    display: flex; 
-    background-color: #c2b59b; 
-    border-bottom: 2px solid var(--ink-black); 
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="50"><path d="M50,0 c10,20 30,10 20,40 c-10,10 -20,20 -10,30 c10,10 -20,10 -10,20 c30,-10 40,-30 20,-50 c10,-20 -20,-30 -20,-40 z" fill="%238a0303" opacity="0.85"/><circle cx="100" cy="20" r="5" fill="%238a0303" opacity="0.9"/><circle cx="150" cy="40" r="3" fill="%238a0303" opacity="0.9"/><path d="M220,0 c30,20 10,40 30,50 c-10,20 -30,0 -40,20 c-10,-20 -20,-30 -10,-40 c-10,-20 10,-30 20,-30 z" fill="%237a0000" opacity="0.85"/></svg>');
-}
-.tab-btn {
-    flex: 1; padding: 15px; background: transparent; border: none; border-right: 1px solid #a89d85;
-    font-family: var(--ui-font); font-weight: bold; color: #555; cursor: pointer; transition: 0.2s;
-    text-transform: uppercase; letter-spacing: 2px;
-}
-.tab-btn:hover { background: rgba(224, 213, 190, 0.8); color: var(--ink-black); }
-.tab-btn.active { background-color: var(--blood-red); color: #fff; text-shadow: 0 0 5px red; border-bottom: 2px solid var(--blood-red); margin-bottom: -2px; box-shadow: inset 0 0 20px rgba(127,29,29,0.8); }
+.folder-tabs { display: flex; background: var(--folder-tab); border-bottom: 3px solid var(--ink-black); }
+.tab-btn { flex: 1; padding: 15px; background: transparent; border: none; border-right: 1px solid #a89d85; font-family: var(--ui-font); font-weight: bold; color: #555; cursor: pointer; transition: 0.2s; text-transform: uppercase; }
+.tab-btn.active { background-color: var(--paper-bg); color: var(--blood-red); font-weight: 900; border-top: 4px solid var(--blood-red); border-bottom: 3px solid var(--paper-bg); margin-bottom: -3px; text-shadow: none; }
 
 .folder-content { padding: 30px; flex: 1; overflow-y: auto; position: relative; }
 .tab-pane { display: none; height: 100%; flex-direction: column; }
@@ -225,6 +252,65 @@ canvas { display: block; image-rendering: pixelated; }
 .joystick-base {
     position: absolute; width: 120px; height: 120px; border-radius: 50%;
     background: rgba(255, 255, 255, 0.05); border: 2px solid rgba(255, 255, 255, 0.1);
+    display: none; pointer-events: none; z-index: 50;
+}
+.joystick-knob {
+    position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
+    border-radius: 50%; background: rgba(255, 255, 255, 0.3); transform: translate(-50%, -50%);
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
+
+.title-glitch { animation: glitch 2s infinite alternate; text-align: center; }
+
+/* --- NEW: MASSIVE AGGRESSIVE TITLE TEXT --- */
+#title-screen .title-glitch {
+    font-size: clamp(6rem, 15vw, 15rem) !important;
+    letter-spacing: 15px;
+    text-shadow: 10px 0 var(--ui-red), -10px 0 var(--ui-gold);
+    animation: aggressive-glitch 1.5s infinite alternate;
+    margin-bottom: 2vh !important;
+    line-height: 1;
+}
+
+@keyframes aggressive-glitch {
+    0% { text-shadow: 6px 0 0 #fff, -6px 0 0 #000; transform: skewX(0deg); }
+    20% { text-shadow: -8px 0 0 var(--ui-red), 8px 0 0 var(--ui-gold); transform: skewX(3deg); }
+    40% { text-shadow: 6px 0 0 #fff, -6px 0 0 var(--ui-red); transform: skewX(-3deg); }
+    60% { text-shadow: -12px 3px 0 var(--ui-gold), 12px -3px 0 #000; transform: skewX(5deg); }
+    80% { text-shadow: 4px 0 0 var(--ui-red), -4px 0 0 #fff; transform: skewX(-2deg); }
+    100% { text-shadow: -6px 0 0 var(--ui-gold), 6px 0 0 #000; transform: skewX(0deg); }
+}
+
+#glitch-overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 1px, transparent 1px, transparent 2px);
+    opacity: 0; transition: opacity 0.2s; z-index: 10;
+}
+
+#debug-console { display: none; }
+
+@keyframes glitch { 0% { opacity: 1; } 50% { opacity: 0.9; } 100% { opacity: 1; } }
+
+@media (max-width: 768px) {
+    .medical-folder { width: 100%; height: 100vh; border: none; border-radius: 0; }
+    .convergence-bar-container { width: 100%; }
+    .convergence-section { order: 3; width: 100%; margin-top: 10px; max-width: 100%; }
+    .loadout-container { flex-direction: column; min-height: auto; }
+    .equipped-panel { border-right: none; border-bottom: 2px dashed #a89d85; padding-right: 0; padding-bottom: 20px; flex-direction: row; }
+    .folder-tabs { flex-wrap: wrap; }
+    .tab-btn { font-size: 0.8rem; padding: 10px; }
+    .item-details-panel { flex-direction: column; }
+    .detail-actions { width: 100%; flex-direction: row; }
+}
+@keyframes glitch { 0% { opacity: 1; filter: contrast(1); } 50% { opacity: 0.95; filter: contrast(1.2); } 51% { opacity: 1; filter: contrast(1); } 100% { opacity: 1; } }
+
+@keyframes bloodDrip {
+    0% { background-position: 0% 0%, 105% 5%, 2% 90%, 50% 35%, 40% 110%; }
+    50% { background-position: 0% 0%, 105% 15%, 2% 100%, 50% 45%, 40% 125%; }
+    100% { background-position: 0% 0%, 105% 5%, 2% 90%, 50% 35%, 40% 110%; }
+}
+
+.joystick-base {
     display: none; pointer-events: none; z-index: 50;
 }
 .joystick-knob {
