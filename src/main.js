@@ -44,10 +44,28 @@ function initEngine() {
                 <option value="4">4 - AMALGAMATION</option>
                 <option value="5" selected>5 - ARCHITECT</option>
             </select>
+            <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px;">
+                <button id="dev-btn-add-lucidity" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">+1000 LUCIDITY (BANK)</button>
+                <button id="dev-btn-add-patient-xp" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">+5000 SPENT (PATIENT LVL)</button>
+                <button id="dev-btn-force-escape" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE UNLOCK: FIRST ESCAPE</button>
+            </div>
         `;
         document.getElementById('game-container').appendChild(devUI);
-    }
 
+        document.getElementById('dev-btn-add-lucidity').addEventListener('click', () => {
+            saveManager.addLucidity(1000);
+            console.log(`%c DEV: +1000 Lucidity banked. Total: ${saveManager.metaState.lucidityBank} `, 'background: #c5a059; color: #000; font-weight: bold;');
+        });
+        document.getElementById('dev-btn-add-patient-xp').addEventListener('click', () => {
+            saveManager.metaState.spentLucidity = (saveManager.metaState.spentLucidity || 0) + 5000;
+            saveManager.saveGame();
+            console.log(`%c DEV: +5000 spent Lucidity. Patient Level now: ${saveManager.getPatientLevelInfo().level} `, 'background: #c5a059; color: #000; font-weight: bold;');
+        });
+        document.getElementById('dev-btn-force-escape').addEventListener('click', () => {
+            saveManager.markFirstEscape();
+            console.log('%c DEV: hasEscapedFloor1 forced TRUE. ', 'background: #c5a059; color: #000; font-weight: bold;');
+        });
+    }
     // --- NEW: SETTINGS MENU INJECTION (THEME ALIGNED) ---
     if (!document.getElementById('settings-modal')) {
         // The Settings Modal
@@ -298,6 +316,7 @@ function initEngine() {
             earnedLucidity = game.state.lucidity;
             retainedTokens = game.state.runInventory || [];
             saveManager.addLucidity(earnedLucidity);
+            saveManager.markFirstEscape();
 
             if (retainedTokens.length > 0) {
                 const tokenKeys = Object.keys(TOKENS);
@@ -473,7 +492,8 @@ function gameLoop(time) {
     try {
         const devModeContainer = document.getElementById('dev-mode-container');
         if (devModeContainer) {
-            devModeContainer.style.display = (gameState === 'TITLE' || gameState === 'MENU' || gameState === 'HUB') ? 'block' : 'none';
+            const shouldShowDevPanel = window.FRACTURED_DEV_MODE && (gameState === 'TITLE' || gameState === 'MENU' || gameState === 'HUB');
+            devModeContainer.style.display = shouldShowDevPanel ? 'block' : 'none';
         }
 
         if (gameState === 'MENU' || gameState === 'TITLE') {
@@ -546,7 +566,7 @@ function gameLoop(time) {
                 const conContainer = document.querySelector('.convergence-section');
                 
                 const activeBoss = game.state.activeBoss;
-                
+
                 if (activeBoss) {
                     let hpRatio = Math.max(0, activeBoss.hp / activeBoss.maxHp);
                     conBar.style.width = (hpRatio * 100) + '%';

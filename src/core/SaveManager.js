@@ -9,6 +9,7 @@ export class SaveManager {
             equippedTokens: { head: null, body: null, hands: null, legs: null },
             maxFloorReached: 1,
             maxBossEncountered: 0,
+            hasEscapedFloor1: false,
             killCounts: { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 }
         };
         this.loadGame();
@@ -36,7 +37,8 @@ export class SaveManager {
                 if (!this.metaState.maxFloorReached) this.metaState.maxFloorReached = 1; 
                 if (!this.metaState.maxBossEncountered) this.metaState.maxBossEncountered = 0;
                 if (this.metaState.tutorialCompleted === undefined) this.metaState.tutorialCompleted = false;
-                
+                if (this.metaState.hasEscapedFloor1 === undefined) this.metaState.hasEscapedFloor1 = false;
+
                 if (!this.metaState.killCounts) {
                     this.metaState.killCounts = { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 };
                 }
@@ -84,6 +86,13 @@ export class SaveManager {
         }
         if (this.metaState.killCounts[type] !== undefined) {
             this.metaState.killCounts[type]++;
+        }
+    }
+
+    markFirstEscape() {
+        if (!this.metaState.hasEscapedFloor1) {
+            this.metaState.hasEscapedFloor1 = true;
+            this.saveGame();
         }
     }
 
@@ -175,6 +184,7 @@ export class SaveManager {
             inventory: [], equippedTokens: { head: null, body: null, hands: null, legs: null },
             maxFloorReached: 1, maxBossEncountered: 0,
             tutorialCompleted: false,
+            hasEscapedFloor1: false,
             killCounts: { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 }
         };
         this.saveGame();
