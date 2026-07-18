@@ -1805,7 +1805,7 @@ export class Renderer {
                         this.ctx.closePath();
                         this.ctx.fill();
 
-                        const activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
+                        const activeBoss = state.activeBoss;
                         const eyes = [
                             {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
                             {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
@@ -1908,7 +1908,7 @@ export class Renderer {
     drawBossAnnouncement(state) {
         this.ctx.save();
         try {
-            const activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
+            const activeBoss = state.activeBoss;
             const bossType = activeBoss ? activeBoss.type : 'BOSS';
             
             const cx = this.canvas.width / 2;

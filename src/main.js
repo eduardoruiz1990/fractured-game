@@ -545,8 +545,8 @@ function gameLoop(time) {
                 const conText = document.getElementById('convergence-text');
                 const conContainer = document.querySelector('.convergence-section');
                 
-                const activeBoss = game.state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
-
+                const activeBoss = game.state.activeBoss;
+                
                 if (activeBoss) {
                     let hpRatio = Math.max(0, activeBoss.hp / activeBoss.maxHp);
                     conBar.style.width = (hpRatio * 100) + '%';

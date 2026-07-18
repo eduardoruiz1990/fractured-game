@@ -108,7 +108,7 @@ export class Director {
         
         if (!state.combatActive) return;
         
-        const bossAlive = state.entities.some(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
+        const bossAlive = !!state.activeBoss;
         
         if (state.bossSpawned && !bossAlive) {
             return; 

@@ -74,6 +74,7 @@ export class Game {
             cameraFlash: 0,
             hitStop: 0,
             bossSpawned: false,
+            activeBoss: null,
             mapOriginX: null,
             mapOriginY: null,
             runInventory: carriedState ? carriedState.runInventory : [], 
@@ -325,6 +326,8 @@ export class Game {
 
         if (isHub) return; 
 
+        this.state.activeBoss = this.state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type)) || null;
+    
         const mapCenterX = this.state.mapOriginX;
         const mapCenterY = this.state.mapOriginY;
         const distFromCenter = Math.hypot(this.state.player.x - mapCenterX, this.state.player.y - mapCenterY);
