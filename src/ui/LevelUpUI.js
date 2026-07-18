@@ -1,4 +1,4 @@
-import { MANIFESTATIONS, SYNERGIES, INTRUSIVE_THOUGHTS } from '../data/Manifestations.js';
+import { MANIFESTATIONS, SYNERGIES, INTRUSIVE_THOUGHTS, getActiveSynergies } from '../data/Manifestations.js';
 
 export class LevelUpUI {
     constructor(audioEngine, saveManager) {
@@ -186,6 +186,8 @@ export class LevelUpUI {
                 game.state.sanity += 200;
             }
         }
+
+        game.state.player.synergies = getActiveSynergies(game.state.player.weapons);
 
         if (this.audioEngine) this.audioEngine.playSFX('levelup', 5);
         

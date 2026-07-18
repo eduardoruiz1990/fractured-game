@@ -33,6 +33,21 @@ export const SYNERGIES = {
     }
 };
 
+export function getActiveSynergies(weapons) {
+    if (!weapons) return [];
+    const active = [];
+    for (const synergyId in SYNERGIES) {
+        const synergy = SYNERGIES[synergyId];
+        const allReqsMaxed = synergy.reqs.every(reqId => {
+            const wep = weapons[reqId];
+            const maxLvl = MANIFESTATIONS[reqId] ? MANIFESTATIONS[reqId].maxLvl : 5;
+            return wep && wep.level >= maxLvl;
+        });
+        if (allReqsMaxed) active.push(synergyId);
+    }
+    return active;
+}
+
 export const INTRUSIVE_THOUGHTS = {
     everything_is_target: { id: 'everything_is_target', name: 'Everything is a Target', desc: '+100% Damage, but your flashlight destroys your own XP drops.' },
     manic_episode: { id: 'manic_episode', name: 'Manic Episode', desc: '+50% Fire Rate, but Sanity drains 2x faster.' },

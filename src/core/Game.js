@@ -1,7 +1,7 @@
 // src/core/Game.js
 import { Combat } from '../systems/Combat.js';
 import { Director } from '../systems/Director.js';
-import { TOKENS } from '../data/Manifestations.js'; 
+import { TOKENS, getActiveSynergies } from '../data/Manifestations.js';
 import { HubWorld } from '../systems/HubWorld.js';
 import { EventBus } from './EventBus.js';
 
@@ -125,6 +125,8 @@ export class Game {
         };
         
         if (pSets.insomniac >= 2) this.state.player.weapons.flashlight.radius *= 1.25;
+
+        this.state.player.synergies = getActiveSynergies(this.state.player.weapons);
 
         // FIXED: The engine requires 'startGameDrone()', not 'startDrone()'
         if (this.audioEngine) this.audioEngine.startGameDrone();
