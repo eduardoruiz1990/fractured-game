@@ -50,6 +50,8 @@ export class Game {
             });
         }
 
+        if (meta.selectedCurses && meta.selectedCurses.length > 0) pCurses.push(...meta.selectedCurses);
+
         if (pCurses.includes('fragile_mind')) effectiveMaxSanity = Math.floor(maxSanity * 0.5);
 
         let startSanity = carriedState ? carriedState.sanity : effectiveMaxSanity;
@@ -128,6 +130,8 @@ export class Game {
         if (pSets.insomniac >= 2) this.state.player.weapons.flashlight.radius *= 1.25;
 
         this.state.player.synergies = getActiveSynergies(this.state.player.weapons);
+
+        this.state.lucidityBonusMultiplier = 1 + (this.state.player.curses.length * 0.15);
 
         // FIXED: The engine requires 'startGameDrone()', not 'startDrone()'
         if (this.audioEngine) this.audioEngine.startGameDrone();
@@ -369,7 +373,8 @@ export class Game {
             if (!this.state.isTutorial) {
                 let drainRate = 0.02;
                 if (this.state.player.curses && this.state.player.curses.includes('nyctophobia')) drainRate = 0.05;
-                this.state.sanity -= drainRate; 
+                if (this.state.player.curses && this.state.player.curses.includes('manic_episode')) drainRate *= 2;
+                this.state.sanity -= drainRate;
             }
         }
 

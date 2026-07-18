@@ -319,7 +319,7 @@ function initEngine() {
         let retainedTokens = [];
 
         if (isExitReached) {
-            earnedLucidity = game.state.lucidity;
+            earnedLucidity = Math.floor(game.state.lucidity * (game.state.lucidityBonusMultiplier || 1));
             retainedTokens = game.state.runInventory || [];
             saveManager.addLucidity(earnedLucidity);
             saveManager.markFirstEscape();
@@ -333,7 +333,7 @@ function initEngine() {
                 });
             }
         } else if (isMidFloor) {
-            saveManager.addLucidity(game.state.lucidity);
+            saveManager.addLucidity(Math.floor(game.state.lucidity * (game.state.lucidityBonusMultiplier || 1)));
             const stateToSave = game.getCarriedState();
             localStorage.setItem('fractured_suspended_run', JSON.stringify(stateToSave));
 
@@ -423,7 +423,7 @@ function initEngine() {
         document.getElementById('death-screen').style.display = 'flex';
         document.getElementById('glitch-overlay').style.opacity = '0';
         
-        const recovered = Math.floor(game.state.lucidity * 0.5);
+        const recovered = Math.floor(game.state.lucidity * 0.5 * (game.state.lucidityBonusMultiplier || 1));
         saveManager.addLucidity(recovered);
         if (audioEngine) audioEngine.stop(); 
 

@@ -1,5 +1,5 @@
 // src/ui/UIManager.js
-import { TOKENS, TOKEN_RARITIES, TOKEN_SETS } from '../data/Manifestations.js';
+import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, INTRUSIVE_THOUGHTS } from '../data/Manifestations.js';
 
 export class UIManager {
     constructor(saveManager, audioEngine, onStartGameCallback) {
@@ -319,6 +319,47 @@ export class UIManager {
 
         this.renderRoadmap();
         this.renderTrophies();
+        this.renderCurseSelection();
+    }
+
+    renderCurseSelection() {
+        const container = document.getElementById('curse-selection-container');
+        if (!container) return;
+
+        const meta = this.saveManager.metaState;
+        const patientLevel = this.saveManager.getPatientLevelInfo().level;
+        const bossKills = (meta.killCounts && meta.killCounts.BOSS) || 0;
+        const isUnlocked = patientLevel >= 5 && bossKills > 0;
+
+        if (!isUnlocked) {
+            container.innerHTML = `<p class="typewriter-text" style="color:#888; text-align:center; font-size:0.9rem;">🔒 INTRUSIVE THOUGHTS LOCKED — Requires Patient Level 5 and at least one Boss defeated.</p>`;
+            return;
+        }
+
+        const selected = meta.selectedCurses || [];
+        const bonusPct = Math.round(selected.length * 15);
+
+        let html = `<div class="section-label" style="text-align:center;">INTRUSIVE THOUGHTS — Current Bonus: +${bonusPct}% Lucidity</div>`;
+
+        Object.values(INTRUSIVE_THOUGHTS).forEach(curse => {
+            const isActive = selected.includes(curse.id);
+            html += `
+                <div class="synapse-node-file">
+                    <div class="node-info"><strong>${curse.name}</strong><br><span class="typewriter-text">${curse.desc}</span></div>
+                    <button class="file-btn small ${isActive ? 'danger' : ''}" data-curse-id="${curse.id}">${isActive ? 'ACTIVE (REVOKE)' : 'ADOPT'}</button>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+
+        container.querySelectorAll('[data-curse-id]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.saveManager.toggleCurse(btn.getAttribute('data-curse-id'));
+                if (this.audioEngine) this.audioEngine.playSFX('ui_click');
+                this.renderCurseSelection();
+            });
+        });
     }
 
     renderRoadmap() {

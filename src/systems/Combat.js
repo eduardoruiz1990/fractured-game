@@ -156,6 +156,9 @@ export class Combat {
             let sanityRatio = Math.max(0, state.sanity / state.player.maxHp);
             cooldownTick = 1 + (1 - sanityRatio) * 2.0; 
         }
+        if (state.player.curses && state.player.curses.includes('manic_episode')) {
+            cooldownTick *= 1.5;
+        }
 
         const camera = state.player.weapons.polaroid_camera;
         if (camera && camera.level > 0) {
