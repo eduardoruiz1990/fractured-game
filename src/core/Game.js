@@ -1,9 +1,10 @@
 // src/core/Game.js
 import { Combat } from '../systems/Combat.js';
 import { Director } from '../systems/Director.js';
-import { TOKENS, getActiveSynergies } from '../data/Manifestations.js';
+import { TOKENS, getActiveSynergies } from '../data/Manifestations.js'; 
 import { HubWorld } from '../systems/HubWorld.js';
 import { EventBus } from './EventBus.js';
+import { getXPRequiredForLevel } from '../data/Config.js';
 
 export class Game {
     constructor() {
@@ -67,7 +68,7 @@ export class Game {
             xp: carriedState ? carriedState.xp : 0,
             level: carriedState ? carriedState.level : 1,
             lucidity: carriedState ? carriedState.lucidity : 0, 
-            nextLevelXP: Math.floor(50 * Math.pow(1.4, (carriedState ? carriedState.level : 1) - 1)),
+            nextLevelXP: getXPRequiredForLevel(carriedState ? carriedState.level : 1),
             sanity: startSanity,
             inVoid: false,
             cameraShake: 0,
@@ -391,7 +392,7 @@ export class Game {
         Combat.resolveWeapons(this);
         Combat.collectXP(this);
         
-        const requiredXP = Math.floor(50 * Math.pow(1.4, this.state.level - 1));
+        const requiredXP = getXPRequiredForLevel(this.state.level);
         if (this.state.xp >= requiredXP && this.onLevelUp) {
             this.state.level++;
             this.state.xp -= requiredXP;
