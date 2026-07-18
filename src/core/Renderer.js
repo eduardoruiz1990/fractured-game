@@ -1,4 +1,3 @@
-// src/core/Renderer.js
 export class Renderer {
     constructor(canvas, ctx) {
         this.canvas = canvas;
@@ -45,6 +44,21 @@ export class Renderer {
                 phase: Math.random() * Math.PI * 2
             });
         }
+    }
+
+    hexToRgba(hex, alpha) {
+        if (!hex || typeof hex !== 'string') return `rgba(255, 255, 255, ${alpha})`;
+        let cleanHex = hex.replace('#', '');
+        if (cleanHex.length === 3) {
+            cleanHex = cleanHex.split('').map(char => char + char).join('');
+        }
+        if (cleanHex.length === 6) {
+            const r = parseInt(cleanHex.substring(0, 2), 16);
+            const g = parseInt(cleanHex.substring(2, 4), 16);
+            const b = parseInt(cleanHex.substring(4, 6), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+        return `rgba(255, 255, 255, ${alpha})`;
     }
 
     generateFloorPatterns() {
@@ -1104,13 +1118,20 @@ export class Renderer {
                     if (obj.active) { bulbColor = '#ffffff'; glow = 30; } 
                     else if (obj.charge > 0) { bulbColor = `rgba(255, 255, 100, ${obj.charge/60})`; glow = 15; }
 
+                    if (glow > 0) {
+                        const bulbGlow = this.ctx.createRadialGradient(0, -10, 0, 0, -10, 12 + glow);
+                        bulbGlow.addColorStop(0, 'rgba(255, 255, 170, 0.5)');
+                        bulbGlow.addColorStop(1, 'rgba(255, 255, 170, 0)');
+                        this.ctx.fillStyle = bulbGlow;
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, -10, 12 + glow, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
+
                     this.ctx.fillStyle = bulbColor;
-                    this.ctx.shadowBlur = glow;
-                    this.ctx.shadowColor = '#ffffaa';
                     this.ctx.beginPath();
                     this.ctx.arc(0, -10, 12, 0, Math.PI*2);
                     this.ctx.fill();
-                    this.ctx.shadowBlur = 0;
 
                     if (obj.active) {
                         this.ctx.strokeStyle = `rgba(255, 255, 150, ${0.4 + Math.sin(this.renderFrame * 0.2)*0.2})`;
@@ -1164,11 +1185,17 @@ export class Renderer {
                     this.ctx.fillStyle = '#111';
                     this.ctx.fillRect(-30, -30, 60, 60); 
                     
-                    this.ctx.shadowColor = '#fff';
-                    this.ctx.shadowBlur = 15 + pulse;
+                    const elevGlowAmt = 15 + pulse;
+                    const elevGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 20 + elevGlowAmt);
+                    elevGlow.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
+                    elevGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                    this.ctx.fillStyle = elevGlow;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 20 + elevGlowAmt, 0, Math.PI * 2);
+                    this.ctx.fill();
+
                     this.ctx.fillStyle = `rgba(255, 255, 255, ${0.8 + Math.sin(this.renderFrame * 0.2)*0.2})`;
                     this.ctx.fillRect(-20, -20, 40, 40); 
-                    this.ctx.shadowBlur = 0;
                     
                     this.ctx.fillStyle = '#000';
                     this.ctx.beginPath();
@@ -1207,8 +1234,15 @@ export class Renderer {
                 const lifeRatio = p.life / 300;
                 
                 this.ctx.save();
-                this.ctx.shadowColor = '#d900ff'; 
-                this.ctx.shadowBlur = 15 * lifeRatio;
+                const pGlowAmt = 15 * lifeRatio;
+                const pGlow = this.ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius + pGlowAmt);
+                pGlow.addColorStop(0, 'rgba(217, 0, 255, 0.5)');
+                pGlow.addColorStop(1, 'rgba(217, 0, 255, 0)');
+                this.ctx.fillStyle = pGlow;
+                this.ctx.beginPath();
+                this.ctx.arc(p.x, p.y, p.radius + pGlowAmt, 0, Math.PI * 2);
+                this.ctx.fill();
+
                 this.ctx.fillStyle = `rgba(80, 10, 120, ${0.8 * lifeRatio})`; 
                 
                 this.ctx.beginPath();
@@ -1223,7 +1257,6 @@ export class Renderer {
                 this.ctx.closePath();
                 this.ctx.fill();
 
-                this.ctx.shadowBlur = 0;
                 this.ctx.fillStyle = `rgba(200, 50, 255, ${0.5 * lifeRatio})`;
                 this.ctx.beginPath();
                 for (let i = 0; i < 8; i++) {
@@ -1248,22 +1281,28 @@ export class Renderer {
                 const time = this.renderFrame * 0.1 + xp.x;
                 const pulse = Math.sin(time) * 2;
                 
-                this.ctx.shadowColor = '#88ccff';
-                this.ctx.shadowBlur = 10;
+                const dropY = Math.sin(time*2)*3;
+                const dropR = 2.5 + pulse*0.5;
+                const xpGlow = this.ctx.createRadialGradient(0, dropY, 0, 0, dropY, dropR + 10);
+                xpGlow.addColorStop(0, 'rgba(136, 204, 255, 0.5)');
+                xpGlow.addColorStop(1, 'rgba(136, 204, 255, 0)');
+                this.ctx.fillStyle = xpGlow;
+                this.ctx.beginPath();
+                this.ctx.arc(0, dropY, dropR + 10, 0, Math.PI * 2);
+                this.ctx.fill();
                 
                 this.ctx.fillStyle = '#ffffff';
                 this.ctx.beginPath();
-                this.ctx.arc(0, Math.sin(time*2)*3, 2.5 + pulse*0.5, 0, Math.PI*2);
+                this.ctx.arc(0, dropY, dropR, 0, Math.PI*2);
                 this.ctx.fill();
                 
                 this.ctx.strokeStyle = 'rgba(150, 200, 255, 0.6)';
                 this.ctx.lineWidth = 1.5;
                 this.ctx.beginPath();
-                this.ctx.moveTo(0, Math.sin(time*2)*3);
+                this.ctx.moveTo(0, dropY);
                 this.ctx.quadraticCurveTo(-4, -4, -Math.cos(time)*6, -6);
                 this.ctx.stroke();
                 
-                this.ctx.shadowBlur = 0;
                 this.ctx.restore();
             });
         }
@@ -1276,8 +1315,14 @@ export class Renderer {
                 const time = this.renderFrame * 0.1 + token.x;
                 const pulse = Math.sin(time) * 3;
                 
-                this.ctx.shadowColor = token.color;
-                this.ctx.shadowBlur = 15 + pulse;
+                const tokGlowAmt = 15 + pulse;
+                const tokGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 10 + tokGlowAmt);
+                tokGlow.addColorStop(0, this.hexToRgba(token.color, 0.5));
+                tokGlow.addColorStop(1, this.hexToRgba(token.color, 0));
+                this.ctx.fillStyle = tokGlow;
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, 10 + tokGlowAmt, 0, Math.PI * 2);
+                this.ctx.fill();
                 
                 this.ctx.fillStyle = token.color;
                 this.ctx.beginPath();
@@ -1289,7 +1334,6 @@ export class Renderer {
                 this.ctx.ellipse(0, -3, 2, 4, 0, 0, Math.PI * 2);
                 this.ctx.fill();
                 
-                this.ctx.shadowBlur = 0;
                 this.ctx.restore();
             });
         }
@@ -1311,9 +1355,15 @@ export class Renderer {
 
                 if (ent.type === 'ARCHITECT') {
                     let pulse = Math.sin(this.renderFrame * 0.1) * 5;
+                    const archGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 40 + 30 + pulse);
+                    archGlow.addColorStop(0, 'rgba(197, 160, 89, 0.5)');
+                    archGlow.addColorStop(1, 'rgba(197, 160, 89, 0)');
+                    this.ctx.fillStyle = archGlow;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 70 + pulse, 0, Math.PI * 2);
+                    this.ctx.fill();
+
                     this.ctx.fillStyle = '#111';
-                    this.ctx.shadowColor = '#c5a059';
-                    this.ctx.shadowBlur = 30 + pulse;
                     
                     this.ctx.save();
                     this.ctx.rotate(this.renderFrame * 0.05);
@@ -1340,7 +1390,6 @@ export class Renderer {
                     this.ctx.lineTo(-8, 0);
                     this.ctx.closePath();
                     this.ctx.fill();
-                    this.ctx.shadowBlur = 0;
                 }
                 else if (ent.type === 'PANOPTICON') {
                     let bob = Math.sin(this.renderFrame * 0.05) * 15;
@@ -1379,13 +1428,18 @@ export class Renderer {
                         this.ctx.restore();
                     }
 
+                    const panGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 45 + 40);
+                    panGlow.addColorStop(0, 'rgba(255, 0, 0, 0.5)');
+                    panGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                    this.ctx.fillStyle = panGlow;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 85, 0, Math.PI * 2);
+                    this.ctx.fill();
+
                     this.ctx.fillStyle = isFlashed ? '#ffffff' : '#1a0005';
-                    this.ctx.shadowColor = '#ff0000';
-                    this.ctx.shadowBlur = 40;
                     this.ctx.beginPath();
                     this.ctx.arc(0, 0, 45, 0, Math.PI * 2);
                     this.ctx.fill();
-                    this.ctx.shadowBlur = 0;
 
                     this.ctx.fillStyle = '#ffcccc';
                     this.ctx.beginPath();
@@ -1484,9 +1538,15 @@ export class Renderer {
                     this.ctx.rotate(Math.sin(this.renderFrame * 0.05) * 0.1);
                     let pulse = Math.sin(this.renderFrame * 0.1) * (5 / ent.generation);
                     
+                    const rorGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, ent.radius + 15);
+                    rorGlow.addColorStop(0, 'rgba(128, 0, 128, 0.5)');
+                    rorGlow.addColorStop(1, 'rgba(128, 0, 128, 0)');
+                    this.ctx.fillStyle = rorGlow;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, ent.radius + 15, 0, Math.PI * 2);
+                    this.ctx.fill();
+
                     this.ctx.fillStyle = isFlashed ? '#ddaaaa' : ent.color;
-                    this.ctx.shadowColor = '#800080';
-                    this.ctx.shadowBlur = 15;
                     
                     for (let mirror = -1; mirror <= 1; mirror += 2) {
                         this.ctx.save();
@@ -1504,7 +1564,6 @@ export class Renderer {
                         
                         this.ctx.restore();
                     }
-                    this.ctx.shadowBlur = 0;
                 }
                 else if (ent.type === 'SCAVENGER') {
                     this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
@@ -1566,11 +1625,19 @@ export class Renderer {
                         
                         this.ctx.save();
                         this.ctx.globalAlpha = 0.6;
-                        this.ctx.strokeStyle = ent.buffed ? '#ff0000' : '#ff3333';
+                        const pColor = ent.buffed ? '#ff0000' : '#ff3333';
+                        this.ctx.strokeStyle = pColor;
                         this.ctx.lineWidth = 3;
                         this.ctx.lineCap = 'round';
-                        this.ctx.shadowColor = this.ctx.strokeStyle;
-                        this.ctx.shadowBlur = 10;
+                        
+                        const pGlow = this.ctx.createRadialGradient(15, 0, 0, 15, 0, 30);
+                        pGlow.addColorStop(0, this.hexToRgba(pColor, 0.4));
+                        pGlow.addColorStop(1, this.hexToRgba(pColor, 0));
+                        this.ctx.fillStyle = pGlow;
+                        this.ctx.beginPath();
+                        this.ctx.arc(15, 0, 30, 0, Math.PI * 2);
+                        this.ctx.fill();
+
                         this.ctx.beginPath();
                         this.ctx.moveTo(15, -4);
                         this.ctx.lineTo(15 - (ent.vx * 1.5), -4 - (ent.vy * 1.5));
@@ -1613,19 +1680,22 @@ export class Renderer {
                     }
                     this.ctx.stroke();
 
-                    this.ctx.fillStyle = ent.buffed ? '#ff0000' : '#cc0000';
-                    this.ctx.shadowColor = '#ff0000';
-                    this.ctx.shadowBlur = 10;
-                    if (ent.attackState === 'telegraphing') {
-                        this.ctx.shadowBlur = 20; 
-                        this.ctx.fillStyle = '#ff3333';
-                    }
+                    const predGlowAmt = (ent.attackState === 'telegraphing') ? 20 : 10;
+                    const predEyeColor = (ent.attackState === 'telegraphing') ? '#ff3333' : (ent.buffed ? '#ff0000' : '#cc0000');
                     
+                    const pEyeGlow = this.ctx.createRadialGradient(10 + stretch, 0, 0, 10 + stretch, 0, 10 + predGlowAmt);
+                    pEyeGlow.addColorStop(0, this.hexToRgba(predEyeColor, 0.5));
+                    pEyeGlow.addColorStop(1, this.hexToRgba(predEyeColor, 0));
+                    this.ctx.fillStyle = pEyeGlow;
+                    this.ctx.beginPath();
+                    this.ctx.arc(10 + stretch, 0, 10 + predGlowAmt, 0, Math.PI * 2);
+                    this.ctx.fill();
+
+                    this.ctx.fillStyle = predEyeColor;
                     this.ctx.beginPath();
                     this.ctx.ellipse(10 + stretch, -4, 3, 1.5, Math.PI/6, 0, Math.PI*2);
                     this.ctx.ellipse(10 + stretch, 4, 3, 1.5, -Math.PI/6, 0, Math.PI*2);
                     this.ctx.fill();
-                    this.ctx.shadowBlur = 0; 
                 }
                 else if (ent.type === 'PARASITE') {
                     this.ctx.rotate(this.renderFrame * 0.2); 
@@ -1735,10 +1805,7 @@ export class Renderer {
                         this.ctx.closePath();
                         this.ctx.fill();
 
-                        this.ctx.fillStyle = '#ff0000';
-                        this.ctx.shadowColor = '#ff0000';
-                        this.ctx.shadowBlur = 15;
-                        
+                        const activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
                         const eyes = [
                             {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
                             {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
@@ -1747,20 +1814,28 @@ export class Renderer {
                         eyes.forEach(eye => {
                             let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
                             let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
+                            const eyeX = eye.x + jx;
+                            const eyeY = eye.y + jy;
+                            const glowAmount = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
+
+                            const eGlow = this.ctx.createRadialGradient(eyeX, eyeY, 0, eyeX, eyeY, eye.r + glowAmount);
+                            eGlow.addColorStop(0, 'rgba(255, 0, 0, 0.5)');
+                            eGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                            this.ctx.fillStyle = eGlow;
                             this.ctx.beginPath();
-                            this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
+                            this.ctx.arc(eyeX, eyeY, eye.r + glowAmount, 0, Math.PI * 2);
                             this.ctx.fill();
-                            this.ctx.fillStyle = '#000000';
-                            this.ctx.shadowBlur = 0;
-                            this.ctx.beginPath();
-                            this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
-                            this.ctx.fill();
+
                             this.ctx.fillStyle = '#ff0000';
-                            
-                            const activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
-                            this.ctx.shadowBlur = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
+                            this.ctx.beginPath();
+                            this.ctx.arc(eyeX, eyeY, eye.r, 0, Math.PI*2);
+                            this.ctx.fill();
+
+                            this.ctx.fillStyle = '#000000';
+                            this.ctx.beginPath();
+                            this.ctx.ellipse(eyeX, eyeY, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
+                            this.ctx.fill();
                         });
-                        this.ctx.shadowBlur = 0;
 
                         this.ctx.strokeStyle = '#555';
                         this.ctx.lineWidth = 3;
@@ -1875,9 +1950,15 @@ export class Renderer {
 
             if (bossType === 'RORSCHACH') {
                 let pulse = Math.sin(this.renderFrame * 0.1) * 3;
+                const rorGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 30 + 10);
+                rorGlow.addColorStop(0, 'rgba(128, 0, 128, 0.5)');
+                rorGlow.addColorStop(1, 'rgba(128, 0, 128, 0)');
+                this.ctx.fillStyle = rorGlow;
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, 40, 0, Math.PI * 2);
+                this.ctx.fill();
+
                 this.ctx.fillStyle = '#1a0525';
-                this.ctx.shadowColor = '#800080';
-                this.ctx.shadowBlur = 10;
                 
                 for (let mirror = -1; mirror <= 1; mirror += 2) {
                     this.ctx.save();
@@ -1894,18 +1975,22 @@ export class Renderer {
                     this.ctx.fill();
                     this.ctx.restore();
                 }
-                this.ctx.shadowBlur = 0;
                 
             } else if (bossType === 'PANOPTICON') {
                 let pulse = Math.sin(this.renderFrame * 0.1) * 3;
                 
+                const panGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 35 + pulse + 30);
+                panGlow.addColorStop(0, 'rgba(255, 0, 0, 0.5)');
+                panGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                this.ctx.fillStyle = panGlow;
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, 65 + pulse, 0, Math.PI * 2);
+                this.ctx.fill();
+
                 this.ctx.fillStyle = '#1a0005';
-                this.ctx.shadowColor = '#ff0000';
-                this.ctx.shadowBlur = 30;
                 this.ctx.beginPath();
                 this.ctx.arc(0, 0, 35 + pulse, 0, Math.PI * 2);
                 this.ctx.fill();
-                this.ctx.shadowBlur = 0;
                 
                 this.ctx.fillStyle = '#ffcccc';
                 this.ctx.beginPath();
@@ -1934,13 +2019,18 @@ export class Renderer {
                 }
             } else if (bossType === 'AMALGAMATION') {
                 let pulse = Math.sin(this.renderFrame * 0.1) * 5;
+                const amalGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 45 + pulse + 30);
+                amalGlow.addColorStop(0, 'rgba(85, 255, 85, 0.5)');
+                amalGlow.addColorStop(1, 'rgba(85, 255, 85, 0)');
+                this.ctx.fillStyle = amalGlow;
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, 75 + pulse, 0, Math.PI * 2);
+                this.ctx.fill();
+
                 this.ctx.fillStyle = '#1a2a0a';
-                this.ctx.shadowColor = '#55ff55';
-                this.ctx.shadowBlur = 30;
                 this.ctx.beginPath();
                 this.ctx.arc(0, 0, 45 + pulse, 0, Math.PI * 2);
                 this.ctx.fill();
-                this.ctx.shadowBlur = 0;
                 
                 this.ctx.fillStyle = '#5a7a2a';
                 for (let m = 0; m < 6; m++) {
@@ -1960,9 +2050,15 @@ export class Renderer {
                 this.ctx.fill();
             } else if (bossType === 'ARCHITECT') {
                 let pulse = Math.sin(this.renderFrame * 0.1) * 5;
+                const archGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 40 + 30 + pulse);
+                archGlow.addColorStop(0, 'rgba(197, 160, 89, 0.5)');
+                archGlow.addColorStop(1, 'rgba(197, 160, 89, 0)');
+                this.ctx.fillStyle = archGlow;
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, 70 + pulse, 0, Math.PI * 2);
+                this.ctx.fill();
+
                 this.ctx.fillStyle = '#111';
-                this.ctx.shadowColor = '#c5a059';
-                this.ctx.shadowBlur = 30 + pulse;
                 
                 this.ctx.save();
                 this.ctx.rotate(this.renderFrame * 0.05);
@@ -1989,7 +2085,6 @@ export class Renderer {
                 this.ctx.lineTo(-8, 0);
                 this.ctx.closePath();
                 this.ctx.fill();
-                this.ctx.shadowBlur = 0;
             } else {
                 let pulse = Math.sin(this.renderFrame * 0.1) * 3;
                 this.ctx.fillStyle = '#1a0d15';
@@ -2019,10 +2114,6 @@ export class Renderer {
                 this.ctx.closePath();
                 this.ctx.fill();
 
-                this.ctx.fillStyle = '#ff0000';
-                this.ctx.shadowColor = '#ff0000';
-                this.ctx.shadowBlur = 15;
-                
                 const eyes = [
                     {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
                     {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
@@ -2031,20 +2122,28 @@ export class Renderer {
                 eyes.forEach(eye => {
                     let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
                     let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
+                    const eyeX = eye.x + jx;
+                    const eyeY = eye.y + jy;
+                    const glowAmount = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
+
+                    const eGlow = this.ctx.createRadialGradient(eyeX, eyeY, 0, eyeX, eyeY, eye.r + glowAmount);
+                    eGlow.addColorStop(0, 'rgba(255, 0, 0, 0.5)');
+                    eGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                    this.ctx.fillStyle = eGlow;
                     this.ctx.beginPath();
-                    this.ctx.arc(eye.x + jx, eye.y + jy, eye.r, 0, Math.PI*2);
+                    this.ctx.arc(eyeX, eyeY, eye.r + glowAmount, 0, Math.PI * 2);
                     this.ctx.fill();
-                    this.ctx.fillStyle = '#000000';
-                    this.ctx.shadowBlur = 0;
-                    this.ctx.beginPath();
-                    this.ctx.ellipse(eye.x + jx, eye.y + jy, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
-                    this.ctx.fill();
+
                     this.ctx.fillStyle = '#ff0000';
-                    
-                    const activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type));
-                    this.ctx.shadowBlur = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
+                    this.ctx.beginPath();
+                    this.ctx.arc(eyeX, eyeY, eye.r, 0, Math.PI*2);
+                    this.ctx.fill();
+
+                    this.ctx.fillStyle = '#000000';
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(eyeX, eyeY, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
+                    this.ctx.fill();
                 });
-                this.ctx.shadowBlur = 0;
 
                 this.ctx.strokeStyle = '#555';
                 this.ctx.lineWidth = 3;
@@ -2088,13 +2187,19 @@ export class Renderer {
             
             this.ctx.font = "900 110px 'Courier New', Courier, monospace";
             this.ctx.fillStyle = '#ffffff';
-            this.ctx.shadowColor = '#8b0000'; 
-            this.ctx.shadowBlur = 20;
+            
+            this.ctx.save();
+            const textGlow = this.ctx.createRadialGradient(0, -50, 0, 0, -50, 400);
+            textGlow.addColorStop(0, 'rgba(139, 0, 0, 0.3)');
+            textGlow.addColorStop(1, 'rgba(139, 0, 0, 0)');
+            this.ctx.fillStyle = textGlow;
+            this.ctx.fillText(titleText, -100 + textJitter, -50);
+            this.ctx.restore();
+
             this.ctx.fillText(titleText, -100 + textJitter, -50);
             
             this.ctx.font = "italic 45px 'Courier New', Courier, monospace";
             this.ctx.fillStyle = '#c5a059';
-            this.ctx.shadowBlur = 0;
             this.ctx.fillText(subText, -90 + textJitter, 60);
             
         } finally {
@@ -2253,13 +2358,22 @@ export class Renderer {
         this.ctx.ellipse(8 + headJitterX*0.5 + headShiftX, 10 + headJitterY*0.5 + headShiftY, 5, 3, Math.PI/4, 0, Math.PI*2);
         this.ctx.fill();
         
-        this.ctx.fillStyle = '#fffae6';
-        this.ctx.shadowColor = '#fffae6';
-        this.ctx.shadowBlur = 8 + Math.random() * 5 * panic; 
+        const eyeX = 12 + headJitterX*0.5 + headShiftX;
+        const eyeY = 10 + headJitterY*0.5 + headShiftY;
+        const eyeR = 2.5;
+        const eyeGlowAmt = 8 + Math.random() * 5 * panic;
+        const eyeGlow = this.ctx.createRadialGradient(eyeX, eyeY, 0, eyeX, eyeY, eyeR + eyeGlowAmt);
+        eyeGlow.addColorStop(0, 'rgba(255, 250, 230, 0.5)');
+        eyeGlow.addColorStop(1, 'rgba(255, 250, 230, 0)');
+        this.ctx.fillStyle = eyeGlow;
         this.ctx.beginPath();
-        this.ctx.arc(12 + headJitterX*0.5 + headShiftX, 10 + headJitterY*0.5 + headShiftY, 2.5, 0, Math.PI*2);
+        this.ctx.arc(eyeX, eyeY, eyeR + eyeGlowAmt, 0, Math.PI * 2);
         this.ctx.fill();
-        this.ctx.shadowBlur = 0;
+
+        this.ctx.fillStyle = '#fffae6';
+        this.ctx.beginPath();
+        this.ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI*2);
+        this.ctx.fill();
 
         const spinner = state.player.weapons.fidget_spinner;
         if (spinner && spinner.level > 0) {

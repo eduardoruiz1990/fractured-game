@@ -31,18 +31,29 @@ export class UIManager {
     }
 
     initBloodRain() {
-        // Create the container so blood stays over the UI but behind interactions
+        // Create the container inside the medical folder so it's visually bounded
         const container = document.createElement('div');
         container.id = 'blood-container';
-        document.body.appendChild(container);
+        
+        const medicalFolder = document.querySelector('.medical-folder');
+        if (medicalFolder) {
+            medicalFolder.appendChild(container);
+        } else {
+            document.body.appendChild(container);
+        }
 
         // Spawn a blood drop every 80 milliseconds
         setInterval(() => {
+            // OPTIMIZATION: Only spawn blood if the menu is actually active and visible
+            if (!this.clinicalFolder || this.clinicalFolder.style.display === 'none' || this.clinicalFolder.style.display === '') {
+                return;
+            }
+
             const drop = document.createElement('div');
             drop.classList.add('blood-drop');
             
             // Randomize position, size, and speed for a natural look
-            drop.style.left = Math.random() * 100 + 'vw';
+            drop.style.left = Math.random() * 100 + '%';
             drop.style.height = (Math.random() * 15 + 5) + 'px';
             drop.style.width = (Math.random() * 2 + 1) + 'px';
             drop.style.animationDuration = (Math.random() * 1.5 + 0.8) + 's';
@@ -51,7 +62,9 @@ export class UIManager {
 
             // Destroy the drop after it falls off screen to prevent memory leaks
             setTimeout(() => {
-                drop.remove();
+                if (drop.parentNode) {
+                    drop.remove();
+                }
             }, 2500);
         }, 80); 
     }
