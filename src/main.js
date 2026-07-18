@@ -48,6 +48,7 @@ function initEngine() {
                 <button id="dev-btn-add-lucidity" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">+1000 LUCIDITY (BANK)</button>
                 <button id="dev-btn-add-patient-xp" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">+5000 SPENT (PATIENT LVL)</button>
                 <button id="dev-btn-force-escape" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE UNLOCK: FIRST ESCAPE</button>
+                <button id="dev-btn-force-boss-kill" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE UNLOCK: FIRST BOSS KILL</button>
             </div>
         `;
         document.getElementById('game-container').appendChild(devUI);
@@ -64,6 +65,11 @@ function initEngine() {
         document.getElementById('dev-btn-force-escape').addEventListener('click', () => {
             saveManager.markFirstEscape();
             console.log('%c DEV: hasEscapedFloor1 forced TRUE. ', 'background: #c5a059; color: #000; font-weight: bold;');
+        });
+        document.getElementById('dev-btn-force-boss-kill').addEventListener('click', () => {
+            saveManager.metaState.killCounts.BOSS = Math.max(1, saveManager.metaState.killCounts.BOSS || 0);
+            saveManager.saveGame();
+            console.log(`%c DEV: killCounts.BOSS forced to ${saveManager.metaState.killCounts.BOSS}. `, 'background: #c5a059; color: #000; font-weight: bold;');
         });
     }
     // --- NEW: SETTINGS MENU INJECTION (THEME ALIGNED) ---
