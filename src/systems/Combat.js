@@ -237,6 +237,7 @@ export class Combat {
 
                     if (canTakeDamage && d <= pipe.radius) {
                         ent.takeDamage(pipe.damage, game);
+                        ent.lastHitByMelee = true;
                         ent.x += (ent.x - state.player.x) / d * 25; 
                         ent.y += (ent.y - state.player.y) / d * 25;
                         hitCount++;
@@ -410,9 +411,8 @@ export class Combat {
                     game.eventBus.emit('enemy_killed', ent.type);
                 }
                 
-                if (state.player.boons && state.player.boons.includes('vampirism') && ent.hp <= -10) {
-                   // actually just doing standard vampirism check... wait, how to know it's a melee kill?
-                   // The prompt said: "vampirism: 'Melee kills restore 2 Sanity.'" 
+                if (state.player.boons && state.player.boons.includes('vampirism') && ent.lastHitByMelee) {
+                    state.sanity = Math.min(state.player.maxHp, state.sanity + 2);
                 }
 
                 deathCount++;

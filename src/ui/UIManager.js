@@ -178,7 +178,7 @@ export class UIManager {
                     this.selectedInventoryItem = null;
                     this.selectedSlotType = null;
                     this.renderLoadoutUI();
-                } else if (targetId === 'tab-tree' || targetId === 'tab-main' || targetId === 'tab-trophies') {
+                } else if (targetId === 'tab-tree' || targetId === 'tab-main' || targetId === 'tab-trophies' || targetId === 'tab-curses') {
                     this.updateMenuUI();
                 }
             });
@@ -323,23 +323,35 @@ export class UIManager {
     }
 
     renderCurseSelection() {
-        const container = document.getElementById('curse-selection-container');
-        if (!container) return;
-
         const meta = this.saveManager.metaState;
         const patientLevel = this.saveManager.getPatientLevelInfo().level;
         const bossKills = (meta.killCounts && meta.killCounts.BOSS) || 0;
         const isUnlocked = patientLevel >= 5 && bossKills > 0;
+        const selected = meta.selectedCurses || [];
+        const bonusPct = Math.round(selected.length * 15);
+
+        const statusLine = document.getElementById('curse-status-line');
+        if (statusLine) {
+            if (!isUnlocked) {
+                statusLine.innerText = '';
+            } else if (selected.length === 0) {
+                statusLine.innerText = 'No Intrusive Thoughts active.';
+                statusLine.style.color = '#888';
+            } else {
+                statusLine.innerText = `Active Intrusive Thoughts: ${selected.length} (+${bonusPct}% Lucidity)`;
+                statusLine.style.color = '#8b0000';
+            }
+        }
+
+        const container = document.getElementById('curse-selection-container');
+        if (!container) return;
 
         if (!isUnlocked) {
             container.innerHTML = `<p class="typewriter-text" style="color:#888; text-align:center; font-size:0.9rem;">🔒 INTRUSIVE THOUGHTS LOCKED — Requires Patient Level 5 and at least one Boss defeated.</p>`;
             return;
         }
 
-        const selected = meta.selectedCurses || [];
-        const bonusPct = Math.round(selected.length * 15);
-
-        let html = `<div class="section-label" style="text-align:center;">INTRUSIVE THOUGHTS — Current Bonus: +${bonusPct}% Lucidity</div>`;
+        let html = `<div class="section-label" style="text-align:center;">CURRENT BONUS: +${bonusPct}% LUCIDITY</div>`;
 
         Object.values(INTRUSIVE_THOUGHTS).forEach(curse => {
             const isActive = selected.includes(curse.id);

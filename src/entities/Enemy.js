@@ -35,6 +35,7 @@ export class Enemy {
     takeDamage(amount, game) {
         this.hp -= amount;
         this.flashTime = 5;
+        this.lastHitByMelee = false;
         
         // NEW: Check if the enemy is allowed to scream again (prevents machine-gun audio overlap)
         if (this.painCooldown <= 0 && game && game.audioEngine && this.painSound) {

@@ -272,7 +272,8 @@ export class Game {
         this.state.frame++;
         this.state.input = moveInput;
 
-        if (moveInput.isDashing && !this.state.player.dash.active && this.state.player.dash.cooldown <= 0) {
+        const canDash = !(this.state.player.boons && this.state.player.boons.includes('lead_shoes'));
+        if (canDash && moveInput.isDashing && !this.state.player.dash.active && this.state.player.dash.cooldown <= 0) {
             this.state.player.dash.active = true;
             this.state.player.dash.timer = this.state.player.dash.duration;
             this.state.player.dash.cooldown = 90;
@@ -284,6 +285,13 @@ export class Game {
             this.state.player.dash.dy = Math.sin(dashAngle);
             
             if (this.audioEngine) this.audioEngine.playSFX('dash');
+
+            if (this.state.player.boons && this.state.player.boons.includes('shadow_step')) {
+                this.state.entities.forEach(ent => {
+                    let d = Math.hypot(ent.x - this.state.player.x, ent.y - this.state.player.y);
+                    if (d < 250) ent.confused = Math.max(ent.confused || 0, 60);
+                });
+            }
         }
 
         if (this.state.player.dash.cooldown > 0) {
@@ -299,6 +307,11 @@ export class Game {
         this.state.player.angle = moveInput.aimAngle;
         
         let currentSpeed = this.state.player.speed;
+
+        if (this.state.player.boons && this.state.player.boons.includes('adrenaline_surge')) {
+            let sanityRatio = this.state.player.maxHp > 0 ? (this.state.sanity / this.state.player.maxHp) : 1;
+            if (sanityRatio < 0.3) currentSpeed *= 2;
+        }
         
         if (this.state.player.dash.active) {
             currentSpeed *= this.state.player.activeTokens.hasPanic ? 2.5 : 3.5; 
