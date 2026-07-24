@@ -44,6 +44,10 @@ function initEngine() {
                 <option value="4">4 - AMALGAMATION</option>
                 <option value="5" selected>5 - ARCHITECT</option>
             </select>
+            <label for="dev-skip-to-boss" style="display:block; margin-top:8px; cursor:pointer; user-select:none;">
+                <input type="checkbox" id="dev-skip-to-boss" style="vertical-align:middle; margin-right:6px;">
+                SKIP TO BOSS ROOM
+            </label>
             <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px;">
                 <button id="dev-btn-add-lucidity" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">+1000 LUCIDITY (BANK)</button>
                 <button id="dev-btn-add-patient-xp" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">+5000 SPENT (PATIENT LVL)</button>
@@ -219,6 +223,21 @@ function initEngine() {
                 saveManager.metaState.maxFloorReached = chosenFloor;
                 saveManager.saveGame();
             }
+        }
+
+        // DEV: jump straight to the boss encounter. Director.spawnRoom() spawns the
+        // floor's boss whenever roomNumber >= maxRoomsPerFloor, and spawnWave() calls
+        // spawnRoom() on the first frame (enemyBudget is still undefined), so parking
+        // roomNumber at the cap is enough — no separate "spawn boss now" path needed.
+        // The announcement banner keys off state.bossSpawned, so it still plays.
+        const devSkipBoss = document.getElementById('dev-skip-to-boss');
+        if (devSkipBoss && devSkipBoss.checked) {
+            game.state.roomNumber = game.state.maxRoomsPerFloor;
+            // Compensate for the rooms' worth of XP that got skipped, otherwise the
+            // boss is fought at level 1 with no weapons and kills you before you can
+            // look at it.
+            game.state.xp += 1200;
+            console.log(`%c DEV OVERRIDE: Skipping to boss room on Floor ${game.state.floor}. `, 'background: #c5a059; color: #000;');
         }
 
         // Re-center player for the actual run
