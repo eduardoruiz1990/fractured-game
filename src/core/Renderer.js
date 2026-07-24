@@ -1582,30 +1582,50 @@ export class Renderer {
                         this.ctx.translate((Math.random()-0.5)*2, (Math.random()-0.5)*2);
                     }
 
+                    let bob = Math.sin(this.renderFrame * 0.1) * 1.5;
+
+                    // Sack: heavy load dragging behind the hunch, drawn first so the
+                    // body's back edge overlaps its top and reads as "carried".
+                    this.ctx.fillStyle = isFlashed ? '#999999' : '#1a1c1a';
+                    let sackSize = 10 + (ent.hp > 30 ? 3 : 0);
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(-9, 6 + bob * 0.5, sackSize, sackSize * 0.85, 0.3, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(-14, 2 + bob * 0.5, sackSize * 0.6, sackSize * 0.5, 0.2, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(-6, 0);
+                    this.ctx.lineTo(-11, 3);
+                    this.ctx.stroke();
+
+                    // Hunched body: shoulders arch up just behind a low, dropped head,
+                    // then slope down toward the rear where the sack tucks in behind.
                     this.ctx.fillStyle = isFlashed ? '#bbbbbb' : '#2a2d2a';
                     this.ctx.beginPath();
-                    this.ctx.ellipse(0, 0, 12, 15 + Math.sin(this.renderFrame*0.1)*2, 0, 0, Math.PI*2);
-                    this.ctx.fill();
-                    
-                    this.ctx.fillStyle = isFlashed ? '#999999' : '#1a1c1a';
-                    this.ctx.beginPath();
-                    let sackSize = 9 + (ent.hp > 30 ? 3 : 0);
-                    this.ctx.arc(-6, 5, sackSize, 0, Math.PI*2);
+                    this.ctx.moveTo(13, 4 + bob);
+                    this.ctx.quadraticCurveTo(10, -11, 2, -9 + bob);
+                    this.ctx.quadraticCurveTo(-6, -6, -9, bob);
+                    this.ctx.quadraticCurveTo(-8, 6, -2, 8 + bob);
+                    this.ctx.quadraticCurveTo(6, 9, 13, 4 + bob);
+                    this.ctx.closePath();
                     this.ctx.fill();
 
                     this.ctx.fillStyle = '#aaaa00';
                     this.ctx.beginPath();
-                    this.ctx.arc(8, -4, 1.5, 0, Math.PI*2);
+                    this.ctx.arc(11, 1 + bob, 1.5, 0, Math.PI*2);
                     this.ctx.fill();
 
                     this.ctx.strokeStyle = '#111';
                     this.ctx.lineWidth = 2.5;
                     this.ctx.beginPath();
-                    this.ctx.moveTo(0, 10);
+                    this.ctx.moveTo(4, 6 + bob);
                     let sweepOffset = ent.vacuumState === 'vacuuming' ? 0 : Math.sin(this.renderFrame * 0.2)*5;
-                    this.ctx.lineTo(10 + sweepOffset, 18);
+                    this.ctx.lineTo(13 + sweepOffset, 12 + bob);
                     this.ctx.stroke();
-                } 
+                }
                 else if (ent.type === 'PREDATOR') {
                     if (ent.attackState === 'telegraphing') {
                         this.ctx.rotate(Math.atan2(ent.lungeVy, ent.lungeVx));
