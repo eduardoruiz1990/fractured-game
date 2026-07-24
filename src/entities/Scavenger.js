@@ -10,6 +10,9 @@ export class Scavenger extends Enemy {
     init(id, x, y, stress) {
         this.vacuumState = 'hunting';
         this.vacuumTimer = 0;
+        // Static per-entity render offset so pooled instances never animate in
+        // lockstep. Re-rolled on init since entities are recycled from the pool.
+        this.phase = Math.random() * Math.PI * 2;
         return this.initBase(id, x, y, 20, 1.2 * stress);
     }
 

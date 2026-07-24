@@ -12,6 +12,9 @@ export class Predator extends Enemy {
     init(id, x, y, stress) {
         this.attackState = 'hunting';
         this.attackTimer = 0;
+        // Static per-entity render offset so pooled instances never animate in
+        // lockstep. Re-rolled on init since entities are recycled from the pool.
+        this.phase = Math.random() * Math.PI * 2;
         return this.initBase(id, x, y, 45 * stress, 1.8 * stress);
     }
 

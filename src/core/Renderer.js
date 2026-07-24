@@ -61,6 +61,19 @@ export class Renderer {
         return `rgba(255, 255, 255, ${alpha})`;
     }
 
+    // Per-entity animation clock. Two detuned sine terms, both offset by the
+    // entity's own .phase, so same-type entities never pulse in lockstep and the
+    // combined wave doesn't visibly loop the way a single sine does.
+    // Range is roughly [-1.3, 1.3] — callers multiplying by an amplitude get a
+    // slightly wider swing than a plain Math.sin() did.
+    // `offset` shifts this call relative to the entity's own phase, for parts that
+    // need a fixed relationship to each other (e.g. counter-phased body edges).
+    entPulse(ent, speed = 0.1, offset = 0) {
+        const p = ((ent && Number.isFinite(ent.phase)) ? ent.phase : 0) + offset;
+        return Math.sin(this.renderFrame * speed + p)
+             + Math.sin(this.renderFrame * speed * 3.7 + p) * 0.3;
+    }
+
     generateFloorPatterns() {
         const patterns = [];
         
@@ -1354,7 +1367,7 @@ export class Renderer {
                 this.ctx.translate(twitch, twitch);
 
                 if (ent.type === 'ARCHITECT') {
-                    let pulse = Math.sin(this.renderFrame * 0.1) * 5;
+                    let pulse = this.entPulse(ent) * 5;
                     let arming = ent.actionState === 'charging_collapse' || ent.actionState === 'collapse_active';
                     let bursting = ent.actionState === 'burst';
 
@@ -1528,7 +1541,7 @@ export class Renderer {
                     this.ctx.restore();
                 }
                 else if (ent.type === 'AMALGAMATION') {
-                    let pulse = Math.sin(this.renderFrame * 0.1) * 8;
+                    let pulse = this.entPulse(ent) * 8;
                     let jitterX = (Math.random() - 0.5) * 4;
                     let jitterY = (Math.random() - 0.5) * 4;
                     this.ctx.translate(jitterX, jitterY);
@@ -1662,8 +1675,8 @@ export class Renderer {
                         this.ctx.restore();
                     }
 
-                    this.ctx.rotate(Math.sin(this.renderFrame * 0.05) * 0.1);
-                    let pulse = Math.sin(this.renderFrame * 0.1) * (5 / ent.generation);
+                    this.ctx.rotate(this.entPulse(ent, 0.05) * 0.1);
+                    let pulse = this.entPulse(ent) * (5 / ent.generation);
                     
                     const rorGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, ent.radius + 15);
                     rorGlow.addColorStop(0, 'rgba(128, 0, 128, 0.5)');
@@ -1706,7 +1719,7 @@ export class Renderer {
 
                         this.ctx.fillStyle = isFlashed ? '#fff' : '#ff0055';
                         this.ctx.beginPath();
-                        this.ctx.arc(ent.radius*0.3 + Math.sin(this.renderFrame*0.1)*2, 0, ent.radius*0.1, 0, Math.PI*2);
+                        this.ctx.arc(ent.radius*0.3 + this.entPulse(ent)*2, 0, ent.radius*0.1, 0, Math.PI*2);
                         this.ctx.fill();
 
                         this.ctx.restore();
@@ -1729,7 +1742,7 @@ export class Renderer {
                         this.ctx.translate((Math.random()-0.5)*2, (Math.random()-0.5)*2);
                     }
 
-                    let bob = Math.sin(this.renderFrame * 0.1) * 1.5;
+                    let bob = this.entPulse(ent) * 1.5;
 
                     // Sack: heavy load dragging behind the hunch, drawn first so the
                     // body's back edge overlaps its top and reads as "carried".
@@ -1769,7 +1782,7 @@ export class Renderer {
                     this.ctx.lineWidth = 2.5;
                     this.ctx.beginPath();
                     this.ctx.moveTo(4, 6 + bob);
-                    let sweepOffset = ent.vacuumState === 'vacuuming' ? 0 : Math.sin(this.renderFrame * 0.2)*5;
+                    let sweepOffset = ent.vacuumState === 'vacuuming' ? 0 : this.entPulse(ent, 0.2)*5;
                     this.ctx.lineTo(13 + sweepOffset, 12 + bob);
                     this.ctx.stroke();
                 }
@@ -1826,11 +1839,11 @@ export class Renderer {
                     // tapering tail behind. Kept flatter (smaller y-extent) than the
                     // old hexagon so it reads as ground-hugging rather than round.
                     this.ctx.moveTo(20 + stretch, 0);
-                    this.ctx.lineTo(9, 5 + Math.sin(this.renderFrame*0.2)*2);
+                    this.ctx.lineTo(9, 5 + this.entPulse(ent, 0.2)*2);
                     this.ctx.lineTo(-11 - stretch, 5);
                     this.ctx.lineTo(-23 - stretch, 0);
                     this.ctx.lineTo(-11 - stretch, -5);
-                    this.ctx.lineTo(9, -5 - Math.cos(this.renderFrame*0.2)*2);
+                    this.ctx.lineTo(9, -5 - this.entPulse(ent, 0.2, Math.PI/2)*2);
                     this.ctx.closePath();
                     this.ctx.fill();
 
@@ -1885,15 +1898,19 @@ export class Renderer {
                     this.ctx.fill();
                 }
                 else if (ent.type === 'PARASITE') {
-                    this.ctx.rotate(this.renderFrame * 0.2); 
-                    
+                    // Body spin carries the entity's phase so parasites don't all rotate
+                    // in unison. The tether below cancels the exact same expression, so
+                    // these two must stay in step if either is ever changed.
+                    let paraSpin = this.renderFrame * 0.2 + (ent.phase || 0);
+                    this.ctx.rotate(paraSpin);
+
                     if (ent.lashingState === 'lashing' && ent.lashTarget) {
                         this.ctx.save();
                         let dx = ent.lashTarget.x - ent.x;
                         let dy = ent.lashTarget.y - ent.y;
-                        
-                        this.ctx.rotate(-this.renderFrame * 0.2); 
-                        
+
+                        this.ctx.rotate(-paraSpin);
+
                         this.ctx.strokeStyle = `rgba(255, 100, 100, ${1 - (ent.lashTimer/30)})`;
                         this.ctx.lineWidth = 3;
                         this.ctx.beginPath();
@@ -1904,8 +1921,8 @@ export class Renderer {
                         this.ctx.restore();
                     }
 
-                    let pulse = Math.sin(this.renderFrame * 0.3) * 1.5;
-                    if (ent.lashingState === 'lashing') pulse = Math.sin(this.renderFrame * 1.5) * 3; 
+                    let pulse = this.entPulse(ent, 0.3) * 1.5;
+                    if (ent.lashingState === 'lashing') pulse = this.entPulse(ent, 1.5) * 3;
 
                     let curl = ent.lashingState === 'lashing' ? 0.5 : 0;
 
@@ -1913,7 +1930,7 @@ export class Renderer {
                     // instead of uniform-width strokes, so they read as flesh, not wire.
                     this.ctx.fillStyle = isFlashed ? '#ffffff' : ent.color;
                     for (let i = 0; i < 8; i++) {
-                        let angle = (i/8) * Math.PI * 2 + (Math.sin(this.renderFrame*0.5 + i)*0.2) + curl;
+                        let angle = (i/8) * Math.PI * 2 + (this.entPulse(ent, 0.5, i)*0.2) + curl;
                         let length = 10 + Math.random() * 4;
                         if (ent.lashingState === 'lashing') length -= 3;
 
@@ -1972,7 +1989,7 @@ export class Renderer {
                         let phase = ent.phase || 0;
                         this.ctx.rotate(Math.sin(phase * 0.5) * 0.1); 
                         
-                        let pulse = Math.sin(this.renderFrame * 0.1) * 3;
+                        let pulse = this.entPulse(ent) * 3;
                         if (ent.pulseState === 'charging') {
                             pulse = Math.sin(this.renderFrame * 0.5) * 5; 
                             this.ctx.translate((Math.random()-0.5)*5, (Math.random()-0.5)*5); 
