@@ -1760,35 +1760,50 @@ export class Renderer {
                     let pulse = Math.sin(this.renderFrame * 0.3) * 1.5;
                     if (ent.lashingState === 'lashing') pulse = Math.sin(this.renderFrame * 1.5) * 3; 
 
+                    let curl = ent.lashingState === 'lashing' ? 0.5 : 0;
+
+                    // Radial tendrils: tapered (wide at core, thin at tip) filled shapes
+                    // instead of uniform-width strokes, so they read as flesh, not wire.
+                    this.ctx.fillStyle = isFlashed ? '#ffffff' : ent.color;
+                    for (let i = 0; i < 8; i++) {
+                        let angle = (i/8) * Math.PI * 2 + (Math.sin(this.renderFrame*0.5 + i)*0.2) + curl;
+                        let length = 10 + Math.random() * 4;
+                        if (ent.lashingState === 'lashing') length -= 3;
+
+                        let dirX = Math.cos(angle), dirY = Math.sin(angle);
+                        let perpX = -dirY, perpY = dirX;
+                        let baseW = 1.6;
+                        let midX = dirX * (length * 0.55) + Math.cos(angle + 0.3) * 2;
+                        let midY = dirY * (length * 0.55) + Math.sin(angle + 0.3) * 2;
+
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(dirX*4 + perpX*baseW, dirY*4 + perpY*baseW);
+                        this.ctx.quadraticCurveTo(midX + perpX*baseW*0.4, midY + perpY*baseW*0.4, dirX*length, dirY*length);
+                        this.ctx.quadraticCurveTo(midX - perpX*baseW*0.4, midY - perpY*baseW*0.4, dirX*4 - perpX*baseW, dirY*4 - perpY*baseW);
+                        this.ctx.closePath();
+                        this.ctx.fill();
+                    }
+
+                    // Small core: faint faux-glow behind a compact body and dark nucleus,
+                    // drawn after the tendrils so it stays the visual focal point.
+                    const paraGlowAmt = 6 + pulse;
+                    const paraGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 5 + paraGlowAmt);
+                    paraGlow.addColorStop(0, this.hexToRgba(isFlashed ? '#ffcccc' : '#6b2222', 0.4));
+                    paraGlow.addColorStop(1, this.hexToRgba(isFlashed ? '#ffcccc' : '#6b2222', 0));
+                    this.ctx.fillStyle = paraGlow;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 5 + paraGlowAmt, 0, Math.PI*2);
+                    this.ctx.fill();
+
                     this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#6b2222';
-                    this.ctx.beginPath(); 
-                    this.ctx.arc(0, 0, 5 + pulse, 0, Math.PI*2); 
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 5 + pulse, 0, Math.PI*2);
                     this.ctx.fill();
 
                     this.ctx.fillStyle = '#050505';
-                    this.ctx.beginPath(); 
-                    this.ctx.arc(0, 0, 2 + pulse*0.5, 0, Math.PI*2); 
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 2 + pulse*0.5, 0, Math.PI*2);
                     this.ctx.fill();
-                    
-                    this.ctx.strokeStyle = isFlashed ? '#ffffff' : ent.color;
-                    this.ctx.lineWidth = 1.5;
-                    this.ctx.lineCap = 'round';
-                    
-                    let curl = ent.lashingState === 'lashing' ? 0.5 : 0;
-                    
-                    for(let i=0; i<8; i++) {
-                        let angle = (i/8) * Math.PI * 2 + (Math.sin(this.renderFrame*0.5 + i)*0.2) + curl;
-                        let length = 8 + Math.random() * 4;
-                        if (ent.lashingState === 'lashing') length -= 3; 
-                        
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(Math.cos(angle)*4, Math.sin(angle)*4);
-                        let midX = Math.cos(angle + 0.3) * (length*0.6);
-                        let midY = Math.sin(angle + 0.3) * (length*0.6);
-                        this.ctx.lineTo(midX, midY);
-                        this.ctx.lineTo(Math.cos(angle)*length, Math.sin(angle)*length);
-                        this.ctx.stroke();
-                    }
                 }
                 else if (ent.type === 'BOSS') {
                     try {
