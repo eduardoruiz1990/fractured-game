@@ -2176,96 +2176,228 @@ export class Renderer {
                 this.ctx.arc(0, 0, 40, 0, Math.PI * 2);
                 this.ctx.fill();
 
-                this.ctx.fillStyle = '#1a0525';
-                
+                // Mirrors the in-world inkblot lobe profile. This panel has its own
+                // coordinate scale, so radius is a local constant rather than ent.radius.
+                const rorR = 30;
+                const rorLobes = [
+                    {y: -1.0, x: 0.08}, {y: -0.82, x: 0.55}, {y: -0.5, x: 1.0},
+                    {y: -0.28, x: 0.5}, {y: -0.02, x: 0.22}, {y: 0.22, x: 0.58},
+                    {y: 0.52, x: 1.08}, {y: 0.8, x: 0.5}, {y: 1.0, x: 0.08}
+                ];
+
                 for (let mirror = -1; mirror <= 1; mirror += 2) {
                     this.ctx.save();
                     this.ctx.scale(mirror, 1);
+
+                    this.ctx.fillStyle = '#1a0525';
                     this.ctx.beginPath();
-                    this.ctx.moveTo(0, -30);
-                    this.ctx.bezierCurveTo(20, -30, 30 + pulse, -15, 25, 0);
-                    this.ctx.bezierCurveTo(40, 15, 20, 30, 0, 30 + pulse);
+                    this.ctx.moveTo(rorLobes[0].x * rorR, rorLobes[0].y * rorR);
+                    for (let i = 0; i < rorLobes.length - 1; i++) {
+                        let a = rorLobes[i], b = rorLobes[i + 1];
+                        let ctrlX = a.x * (rorR + pulse);
+                        let ctrlY = a.y * rorR;
+                        let midX = ((a.x + b.x) / 2) * (rorR + pulse);
+                        let midY = ((a.y + b.y) / 2) * rorR;
+                        this.ctx.quadraticCurveTo(ctrlX, ctrlY, midX, midY);
+                    }
+                    this.ctx.lineTo(rorLobes[rorLobes.length - 1].x * rorR, rorLobes[rorLobes.length - 1].y * rorR);
+                    this.ctx.closePath();
                     this.ctx.fill();
-                    
-                    this.ctx.fillStyle = '#ff0055'; 
+
+                    this.ctx.strokeStyle = 'rgba(180, 100, 220, 0.4)';
+                    this.ctx.lineWidth = 1.5;
+                    this.ctx.stroke();
+
+                    this.ctx.fillStyle = '#ff0055';
                     this.ctx.beginPath();
-                    this.ctx.arc(10 + Math.sin(simulatedPhase)*2, 5, 2, 0, Math.PI*2);
+                    this.ctx.arc(rorR*0.3 + Math.sin(simulatedPhase)*2, 0, 3, 0, Math.PI*2);
                     this.ctx.fill();
                     this.ctx.restore();
                 }
-                
+
             } else if (bossType === 'PANOPTICON') {
                 let pulse = Math.sin(this.renderFrame * 0.1) * 3;
                 
-                const panGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 35 + pulse + 30);
-                panGlow.addColorStop(0, 'rgba(255, 0, 0, 0.5)');
-                panGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                // In-world proportions scaled to this panel's smaller footprint.
+                const panS = 0.73;
+
+                let panSpin = this.renderFrame * 0.012;
+                const panSpokes = 16;
+                for (let i = 0; i < panSpokes; i++) {
+                    let sAngle = (i / panSpokes) * Math.PI * 2 + panSpin;
+                    let long = (i % 2 === 0);
+                    let sLen = ((long ? 110 : 74) + Math.sin(this.renderFrame * 0.06 + i) * 6) * panS;
+
+                    let dirX = Math.cos(sAngle), dirY = Math.sin(sAngle);
+                    let perpX = -dirY, perpY = dirX;
+                    let halfW = (long ? 7 : 4.5) * panS;
+                    let inner = 40 * panS;
+
+                    this.ctx.fillStyle = long ? '#7a0a26' : '#4a0016';
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(dirX * inner + perpX * halfW, dirY * inner + perpY * halfW);
+                    this.ctx.lineTo(dirX * sLen, dirY * sLen);
+                    this.ctx.lineTo(dirX * inner - perpX * halfW, dirY * inner - perpY * halfW);
+                    this.ctx.closePath();
+                    this.ctx.fill();
+
+                    if (long) {
+                        this.ctx.fillStyle = '#ff2f5e';
+                        this.ctx.beginPath();
+                        this.ctx.arc(dirX * sLen, dirY * sLen, 3.5 * panS, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
+                }
+
+                this.ctx.strokeStyle = '#ff2f5e';
+                this.ctx.lineWidth = 2;
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, 52 * panS, 0, Math.PI * 2);
+                this.ctx.stroke();
+
+                const panGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 95 * panS);
+                panGlow.addColorStop(0, 'rgba(255, 40, 90, 0.45)');
+                panGlow.addColorStop(1, 'rgba(255, 40, 90, 0)');
                 this.ctx.fillStyle = panGlow;
                 this.ctx.beginPath();
-                this.ctx.arc(0, 0, 65 + pulse, 0, Math.PI * 2);
+                this.ctx.arc(0, 0, 95 * panS, 0, Math.PI * 2);
                 this.ctx.fill();
 
-                this.ctx.fillStyle = '#1a0005';
+                // single dominant eye, slowly scanning since there is no live gazeAngle here
+                let panLook = Math.sin(simulatedPhase * 0.6) * 0.5;
+
+                this.ctx.fillStyle = '#2a0010';
                 this.ctx.beginPath();
-                this.ctx.arc(0, 0, 35 + pulse, 0, Math.PI * 2);
-                this.ctx.fill();
-                
-                this.ctx.fillStyle = '#ffcccc';
-                this.ctx.beginPath();
-                this.ctx.ellipse(0, 0, 25 + pulse, 30 + pulse, simulatedPhase*0.5, 0, Math.PI * 2);
+                this.ctx.arc(0, 0, 48 * panS, 0, Math.PI * 2);
                 this.ctx.fill();
 
-                this.ctx.fillStyle = '#ff0000';
+                this.ctx.fillStyle = '#ffd6e2';
                 this.ctx.beginPath();
-                this.ctx.ellipse(0, 0, 12 + pulse*0.5, 18 + pulse*0.5, simulatedPhase*0.5, 0, Math.PI * 2);
+                this.ctx.ellipse(0, 0, 40 * panS, 44 * panS, panLook, 0, Math.PI * 2);
                 this.ctx.fill();
+
+                this.ctx.strokeStyle = 'rgba(200, 20, 70, 0.45)';
+                this.ctx.lineWidth = 1.2;
+                for (let v = 0; v < 5; v++) {
+                    let vA = panLook + Math.PI + (v - 2) * 0.45;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(Math.cos(vA) * 40 * panS, Math.sin(vA) * 40 * panS);
+                    this.ctx.quadraticCurveTo(Math.cos(vA) * 22 * panS, Math.sin(vA) * 22 * panS,
+                                              Math.cos(vA + 0.5) * 12 * panS, Math.sin(vA + 0.5) * 12 * panS);
+                    this.ctx.stroke();
+                }
+
+                this.ctx.save();
+                this.ctx.rotate(panLook);
+
+                this.ctx.fillStyle = '#c90f3c';
+                this.ctx.beginPath();
+                this.ctx.ellipse(14 * panS, 0, 26 * panS, 32 * panS, 0, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                this.ctx.strokeStyle = 'rgba(90, 0, 25, 0.8)';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
 
                 this.ctx.fillStyle = '#000';
                 this.ctx.beginPath();
-                this.ctx.ellipse(0, 0, 4, 14, simulatedPhase*0.5, 0, Math.PI * 2);
+                this.ctx.ellipse(17 * panS, 0, (8 + pulse * 0.5) * panS, 26 * panS, 0, 0, Math.PI * 2);
                 this.ctx.fill();
 
-                this.ctx.strokeStyle = '#ff0044';
-                this.ctx.lineWidth = 2;
-                for(let r=0; r<3; r++) {
-                    this.ctx.save();
-                    this.ctx.rotate(simulatedPhase * (1 + r*0.5) * (r%2===0?1:-1));
-                    this.ctx.beginPath();
-                    this.ctx.ellipse(0, 0, 50 + r*15, 20 + r*10, 0, 0, Math.PI*2);
-                    this.ctx.stroke();
-                    this.ctx.restore();
-                }
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+                this.ctx.beginPath();
+                this.ctx.ellipse(26 * panS, -12 * panS, 5 * panS, 7 * panS, -0.4, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.restore();
             } else if (bossType === 'AMALGAMATION') {
                 let pulse = Math.sin(this.renderFrame * 0.1) * 5;
-                const amalGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 45 + pulse + 30);
-                amalGlow.addColorStop(0, 'rgba(85, 255, 85, 0.5)');
-                amalGlow.addColorStop(1, 'rgba(85, 255, 85, 0)');
-                this.ctx.fillStyle = amalGlow;
+                // In-world proportions scaled to this panel's smaller footprint.
+                const amalS = 0.75;
+
+                const amalGrad = this.ctx.createRadialGradient(0, 0, 10 * amalS, 0, 0, (90 + pulse) * amalS);
+                amalGrad.addColorStop(0, '#6d9430');
+                amalGrad.addColorStop(0.6, '#1a2a0a');
+                amalGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                this.ctx.fillStyle = amalGrad;
                 this.ctx.beginPath();
-                this.ctx.arc(0, 0, 75 + pulse, 0, Math.PI * 2);
+                this.ctx.arc(0, 0, (90 + pulse) * amalS, 0, Math.PI * 2);
                 this.ctx.fill();
 
-                this.ctx.fillStyle = '#1a2a0a';
-                this.ctx.beginPath();
-                this.ctx.arc(0, 0, 45 + pulse, 0, Math.PI * 2);
-                this.ctx.fill();
-                
-                this.ctx.fillStyle = '#5a7a2a';
-                for (let m = 0; m < 6; m++) {
-                    this.ctx.save();
-                    let mAngle = (m / 6) * Math.PI * 2 + (simulatedPhase * 0.5);
-                    let mDist = 25 + Math.sin(simulatedPhase * 2 + m) * 10;
-                    this.ctx.translate(Math.cos(mAngle) * mDist, Math.sin(mAngle) * mDist);
+                const amalLobes = [
+                    {dist: 20, ang: 0.0,  rx: 30, ry: 22, rot: 0.3,  spin: 0.010},
+                    {dist: 26, ang: 0.9,  rx: 22, ry: 30, rot: -0.5, spin: -0.013},
+                    {dist: 16, ang: 1.9,  rx: 34, ry: 19, rot: 1.1,  spin: 0.008},
+                    {dist: 24, ang: 2.7,  rx: 19, ry: 24, rot: -0.2, spin: -0.011},
+                    {dist: 14, ang: 3.6,  rx: 27, ry: 31, rot: 0.7,  spin: 0.014},
+                    {dist: 25, ang: 4.5,  rx: 32, ry: 20, rot: -0.9, spin: -0.009},
+                    {dist: 18, ang: 5.4,  rx: 21, ry: 27, rot: 0.5,  spin: 0.012}
+                ];
+
+                this.ctx.fillStyle = '#3a4a1a';
+                amalLobes.forEach((lb, m) => {
+                    let breath = Math.sin(this.renderFrame * 0.05 + m * 1.3) * 4;
                     this.ctx.beginPath();
-                    this.ctx.ellipse(0, 0, 15, 10, simulatedPhase, 0, Math.PI*2);
+                    this.ctx.ellipse(Math.cos(lb.ang) * (lb.dist + breath) * amalS,
+                                     Math.sin(lb.ang) * (lb.dist + breath) * amalS,
+                                     (lb.rx + breath) * amalS, (lb.ry - breath * 0.5) * amalS,
+                                     lb.rot + this.renderFrame * lb.spin, 0, Math.PI * 2);
                     this.ctx.fill();
-                    this.ctx.restore();
-                }
-                
+                });
+
+                this.ctx.fillStyle = '#1f2f0c';
+                amalLobes.forEach((lb, m) => {
+                    let breath = Math.sin(this.renderFrame * 0.05 + m * 1.3) * 4;
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(Math.cos(lb.ang) * (lb.dist + breath) * 0.7 * amalS,
+                                     Math.sin(lb.ang) * (lb.dist + breath) * 0.7 * amalS,
+                                     lb.rx * 0.55 * amalS, lb.ry * 0.55 * amalS,
+                                     lb.rot - this.renderFrame * lb.spin, 0, Math.PI * 2);
+                    this.ctx.fill();
+                });
+
                 this.ctx.fillStyle = '#050505';
                 this.ctx.beginPath();
-                this.ctx.arc(0, 0, 20, 0, Math.PI * 2);
+                this.ctx.arc(0, 0, (15 + pulse * 0.4) * amalS, 0, Math.PI * 2);
                 this.ctx.fill();
+
+                const amalEyes = [
+                    {dist: 30, ang: 0.4,  r: 5.5}, {dist: 22, ang: 1.5, r: 4},
+                    {dist: 34, ang: 2.4,  r: 5},   {dist: 19, ang: 3.3, r: 3.5},
+                    {dist: 31, ang: 4.2,  r: 6},   {dist: 24, ang: 5.1, r: 4.5},
+                    {dist: 12, ang: 6.0,  r: 4}
+                ];
+
+                // no player to track from the announcement panel, so the eyes rove together
+                let amalLook = simulatedPhase * 0.7;
+
+                amalEyes.forEach((ey, i) => {
+                    let drift = Math.sin(this.renderFrame * 0.04 + i * 2.1) * 4;
+                    let ex = Math.cos(ey.ang) * (ey.dist + drift) * amalS;
+                    let ey2 = Math.sin(ey.ang) * (ey.dist + drift) * amalS;
+                    let r = ey.r * amalS;
+
+                    let blink = Math.sin(this.renderFrame * 0.06 + i * 1.7);
+                    let lidScale = blink > 0.93 ? 0.15 : 1;
+
+                    const aGlow = this.ctx.createRadialGradient(ex, ey2, 0, ex, ey2, r + 8 * amalS);
+                    aGlow.addColorStop(0, 'rgba(190, 255, 90, 0.45)');
+                    aGlow.addColorStop(1, 'rgba(190, 255, 90, 0)');
+                    this.ctx.fillStyle = aGlow;
+                    this.ctx.beginPath();
+                    this.ctx.arc(ex, ey2, r + 8 * amalS, 0, Math.PI * 2);
+                    this.ctx.fill();
+
+                    this.ctx.fillStyle = '#e8ffa8';
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(ex, ey2, r, r * lidScale, 0, 0, Math.PI * 2);
+                    this.ctx.fill();
+
+                    this.ctx.fillStyle = '#0a1400';
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(ex + Math.cos(amalLook) * r * 0.35, ey2 + Math.sin(amalLook) * r * 0.35,
+                                     r * 0.45, r * 0.45 * lidScale, 0, 0, Math.PI * 2);
+                    this.ctx.fill();
+                });
             } else if (bossType === 'ARCHITECT') {
                 let pulse = Math.sin(this.renderFrame * 0.1) * 5;
                 const archGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 40 + 30 + pulse);
@@ -2276,17 +2408,30 @@ export class Renderer {
                 this.ctx.arc(0, 0, 70 + pulse, 0, Math.PI * 2);
                 this.ctx.fill();
 
-                this.ctx.fillStyle = '#111';
-                
-                this.ctx.save();
-                this.ctx.rotate(this.renderFrame * 0.05);
-                this.ctx.strokeStyle = '#c5a059';
-                this.ctx.lineWidth = 3;
-                this.ctx.strokeRect(-30, -30, 60, 60);
-                this.ctx.rotate(Math.PI / 4);
-                this.ctx.strokeRect(-30, -30, 60, 60);
-                this.ctx.restore();
+                // Counter-rotating squares with corner nodes, matching the in-world build.
+                let archSpin = this.renderFrame * 0.05;
+                const archSquares = [
+                    {rot: archSpin,               size: 30, color: '#c5a059', width: 3.5, node: 3.5},
+                    {rot: -archSpin + Math.PI/4,  size: 26, color: '#fff6dc', width: 2,   node: 2.5}
+                ];
 
+                archSquares.forEach(sq => {
+                    this.ctx.save();
+                    this.ctx.rotate(sq.rot);
+                    this.ctx.strokeStyle = sq.color;
+                    this.ctx.lineWidth = sq.width;
+                    this.ctx.strokeRect(-sq.size, -sq.size, sq.size * 2, sq.size * 2);
+
+                    this.ctx.fillStyle = sq.color;
+                    [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(c => {
+                        this.ctx.beginPath();
+                        this.ctx.arc(c[0] * sq.size, c[1] * sq.size, sq.node, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    });
+                    this.ctx.restore();
+                });
+
+                this.ctx.fillStyle = '#111';
                 this.ctx.beginPath();
                 this.ctx.moveTo(0, -40);
                 this.ctx.lineTo(25, 0);
@@ -2294,13 +2439,25 @@ export class Renderer {
                 this.ctx.lineTo(-25, 0);
                 this.ctx.closePath();
                 this.ctx.fill();
-                
+
+                this.ctx.strokeStyle = '#c5a059';
+                this.ctx.lineWidth = 2.5;
+                this.ctx.stroke();
+
+                this.ctx.strokeStyle = 'rgba(197, 160, 89, 0.45)';
+                this.ctx.lineWidth = 1;
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, -40); this.ctx.lineTo(0, 40);
+                this.ctx.moveTo(-25, 0); this.ctx.lineTo(25, 0);
+                this.ctx.stroke();
+
+                let corePulse = 1 + Math.sin(this.renderFrame * 0.12) * 0.18;
                 this.ctx.fillStyle = '#ffffff';
                 this.ctx.beginPath();
-                this.ctx.moveTo(0, -15);
-                this.ctx.lineTo(8, 0);
-                this.ctx.lineTo(0, 15);
-                this.ctx.lineTo(-8, 0);
+                this.ctx.moveTo(0, -15 * corePulse);
+                this.ctx.lineTo(8 * corePulse, 0);
+                this.ctx.lineTo(0, 15 * corePulse);
+                this.ctx.lineTo(-8 * corePulse, 0);
                 this.ctx.closePath();
                 this.ctx.fill();
             } else {

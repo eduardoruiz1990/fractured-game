@@ -71,7 +71,14 @@ export class Director {
                 this.spawnEntity('ARCHITECT', 2000, 2000); 
             }
             state.bossSpawned = true;
-            
+            // Resolve activeBoss immediately. processGameLogic() normally computes this,
+            // but it does so *before* spawnWave() runs, and the announcement sets a
+            // 240-frame hitStop that early-returns out of update() before it can catch
+            // up — leaving activeBoss null for the whole banner, which made
+            // drawBossAnnouncement() fall back to 'BOSS' for every floor.
+            state.activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type)) || null;
+
+
             try {
                 if (this.game.saveManager) {
                     let metaData = this.game.saveManager.metaState;
