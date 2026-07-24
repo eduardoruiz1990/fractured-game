@@ -2337,29 +2337,90 @@ export class Renderer {
         }
 
         this.ctx.fillStyle = baseBodyColor;
-        this.ctx.beginPath();
-        
+
         let breathe = state.player.breathPhase ? Math.sin(state.player.breathPhase) * (1 + panic * 3) : 0;
-        this.ctx.ellipse(0, 0, state.player.radius * 0.6 + breathe, state.player.radius, 0, 0, Math.PI*2);
+        let sw = 9 + breathe; // shoulder/hip width, breathes with breathPhase
+
+        // Lean, compact coat silhouette: shield/teardrop shape, forward-pointed,
+        // tapering to a narrow hem at the back. Height ~= width (top-down),
+        // deliberately NOT elongated to avoid a "slithering" read.
+        this.ctx.beginPath();
+        this.ctx.moveTo(9, 0);
+        this.ctx.bezierCurveTo(9, sw * 0.78, 4, sw * 1.22, -3, sw * 1.11);
+        this.ctx.bezierCurveTo(-sw, sw, -sw * 1.22, sw * 0.44, -sw * 1.11, 0);
+        this.ctx.bezierCurveTo(-sw * 1.22, -sw * 0.44, -sw, -sw, -3, -sw * 1.11);
+        this.ctx.bezierCurveTo(4, -sw * 1.22, 9, -sw * 0.78, 9, 0);
+        this.ctx.closePath();
         this.ctx.fill();
+
+        // subtle waist fold so the taper still reads under flash colors
+        this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        this.ctx.moveTo(-2, -6);
+        this.ctx.quadraticCurveTo(-8, 0, -2, 6);
+        this.ctx.stroke();
 
         let headShiftX = Math.max(-5, Math.min(5, moveX * 0.5));
         let headShiftY = Math.max(-5, Math.min(5, moveY * 0.5));
-
-        this.ctx.fillStyle = headColor;
-        this.ctx.beginPath();
         let headJitterX = (Math.random() - 0.5) * panic * 4;
         let headJitterY = (Math.random() - 0.5) * panic * 4;
-        this.ctx.arc(3 + headJitterX + headShiftX, headJitterY + headShiftY, state.player.radius * 0.45, 0, Math.PI*2);
+
+        // Arm + flashlight: shoulder -> hand -> flashlight, extending forward
+        // along the aim axis so it reads as physically held.
+        this.ctx.save();
+        this.ctx.strokeStyle = baseBodyColor;
+        this.ctx.lineWidth = 4;
+        this.ctx.lineCap = 'round';
+        this.ctx.beginPath();
+        this.ctx.moveTo(6, 6);
+        this.ctx.lineTo(22, 3);
+        this.ctx.stroke();
+
+        this.ctx.fillStyle = '#c9a678';
+        this.ctx.beginPath();
+        this.ctx.arc(22, 3, 2.5, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        this.ctx.translate(22, 3);
+        this.ctx.rotate(-0.15);
+        this.ctx.fillStyle = '#4a4a4a';
+        this.ctx.fillRect(0, -2, 14, 4);
+        this.ctx.strokeStyle = '#111111';
+        this.ctx.lineWidth = 1;
+        this.ctx.strokeRect(0, -2, 14, 4);
+        this.ctx.fillStyle = '#2a2a2a';
+        this.ctx.fillRect(3, -2, 1.2, 4);
+        this.ctx.fillRect(6, -2, 1.2, 4);
+
+        const lensGlowAmt = 10 + Math.random() * 4 * panic;
+        const lensGlow = this.ctx.createRadialGradient(14, 0, 0, 14, 0, lensGlowAmt);
+        lensGlow.addColorStop(0, 'rgba(255, 246, 204, 0.9)');
+        lensGlow.addColorStop(1, 'rgba(255, 246, 204, 0)');
+        this.ctx.fillStyle = lensGlow;
+        this.ctx.beginPath();
+        this.ctx.arc(14, 0, lensGlowAmt, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        this.ctx.fillStyle = '#dcdcdc';
+        this.ctx.beginPath();
+        this.ctx.arc(14, 0, 3.5, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.restore();
+
+        // Head: kept small relative to the coat so it doesn't dominate the silhouette
+        this.ctx.fillStyle = headColor;
+        this.ctx.beginPath();
+        this.ctx.arc(13 + headJitterX + headShiftX, headJitterY + headShiftY, 5, 0, Math.PI * 2);
         this.ctx.fill();
 
         this.ctx.fillStyle = '#1a1a24';
         this.ctx.beginPath();
-        this.ctx.ellipse(8 + headJitterX*0.5 + headShiftX, 10 + headJitterY*0.5 + headShiftY, 5, 3, Math.PI/4, 0, Math.PI*2);
+        this.ctx.ellipse(10 + headJitterX * 0.5 + headShiftX, 3 + headJitterY * 0.5 + headShiftY, 4, 2.5, Math.PI / 5, 0, Math.PI * 2);
         this.ctx.fill();
-        
-        const eyeX = 12 + headJitterX*0.5 + headShiftX;
-        const eyeY = 10 + headJitterY*0.5 + headShiftY;
+
+        const eyeX = 16 + headJitterX * 0.5 + headShiftX;
+        const eyeY = headJitterY * 0.5 + headShiftY;
         const eyeR = 2.5;
         const eyeGlowAmt = 8 + Math.random() * 5 * panic;
         const eyeGlow = this.ctx.createRadialGradient(eyeX, eyeY, 0, eyeX, eyeY, eyeR + eyeGlowAmt);
@@ -2372,7 +2433,7 @@ export class Renderer {
 
         this.ctx.fillStyle = '#fffae6';
         this.ctx.beginPath();
-        this.ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI*2);
+        this.ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI * 2);
         this.ctx.fill();
 
         const spinner = state.player.weapons.fidget_spinner;
