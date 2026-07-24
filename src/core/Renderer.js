@@ -1514,7 +1514,7 @@ export class Renderer {
                     }
 
                     let grad = this.ctx.createRadialGradient(0, 0, 10, 0, 0, 90 + pulse);
-                    grad.addColorStop(0, '#5a7a2a');
+                    grad.addColorStop(0, '#6d9430');
                     grad.addColorStop(0.6, '#1a2a0a');
                     grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
                     this.ctx.fillStyle = grad;
@@ -1522,29 +1522,89 @@ export class Renderer {
                     this.ctx.arc(0, 0, 90 + pulse, 0, Math.PI * 2);
                     this.ctx.fill();
 
+                    let amalAngleToPlayer = Math.atan2(state.player.y - ent.y, state.player.x - ent.x);
+
+                    // Fused mass: mismatched ellipses parked close to the hub so they
+                    // overlap into one lumpy body rather than orbiting as separate
+                    // satellites. Table is fixed (not per-frame random) so the anatomy
+                    // stays stable and only drifts via the phase offsets.
+                    const amalLobes = [
+                        {dist: 20, ang: 0.0,  rx: 30, ry: 22, rot: 0.3,  spin: 0.010},
+                        {dist: 26, ang: 0.9,  rx: 22, ry: 30, rot: -0.5, spin: -0.013},
+                        {dist: 16, ang: 1.9,  rx: 34, ry: 19, rot: 1.1,  spin: 0.008},
+                        {dist: 24, ang: 2.7,  rx: 19, ry: 24, rot: -0.2, spin: -0.011},
+                        {dist: 14, ang: 3.6,  rx: 27, ry: 31, rot: 0.7,  spin: 0.014},
+                        {dist: 25, ang: 4.5,  rx: 32, ry: 20, rot: -0.9, spin: -0.009},
+                        {dist: 18, ang: 5.4,  rx: 21, ry: 27, rot: 0.5,  spin: 0.012}
+                    ];
+
                     this.ctx.fillStyle = isFlashed ? '#ddaaaa' : ent.color;
-                    for (let m = 0; m < 8; m++) {
-                        this.ctx.save();
-                        let mAngle = (m / 8) * Math.PI * 2 + (this.renderFrame * 0.01);
-                        let mDist = 25 + Math.sin(this.renderFrame * 0.05 + m) * 15;
-                        this.ctx.translate(Math.cos(mAngle) * mDist, Math.sin(mAngle) * mDist);
-                        this.ctx.rotate(this.renderFrame * 0.05 * (m % 2 === 0 ? 1 : -1));
-                        
+                    amalLobes.forEach((lb, m) => {
+                        let breath = Math.sin(this.renderFrame * 0.05 + m * 1.3) * 4;
+                        let lx = Math.cos(lb.ang) * (lb.dist + breath);
+                        let ly = Math.sin(lb.ang) * (lb.dist + breath);
                         this.ctx.beginPath();
-                        this.ctx.ellipse(0, 0, 20 + Math.sin(this.renderFrame*0.1)*5, 15, 0, 0, Math.PI*2);
+                        this.ctx.ellipse(lx, ly, lb.rx + breath, lb.ry - breath * 0.5,
+                                         lb.rot + this.renderFrame * lb.spin, 0, Math.PI * 2);
                         this.ctx.fill();
-                        
-                        this.ctx.fillStyle = '#ffaa00';
+                    });
+
+                    // darker inner bulk, kept inside the outline so the mass gains depth
+                    // without breaking the fused silhouette
+                    this.ctx.fillStyle = isFlashed ? '#cc9999' : '#1f2f0c';
+                    amalLobes.forEach((lb, m) => {
+                        let breath = Math.sin(this.renderFrame * 0.05 + m * 1.3) * 4;
+                        let lx = Math.cos(lb.ang) * (lb.dist + breath) * 0.7;
+                        let ly = Math.sin(lb.ang) * (lb.dist + breath) * 0.7;
                         this.ctx.beginPath();
-                        this.ctx.arc(5, 0, 3, 0, Math.PI*2);
+                        this.ctx.ellipse(lx, ly, lb.rx * 0.55, lb.ry * 0.55,
+                                         lb.rot - this.renderFrame * lb.spin, 0, Math.PI * 2);
                         this.ctx.fill();
-                        this.ctx.restore();
-                    }
+                    });
 
                     this.ctx.fillStyle = isFlashed ? '#fff' : '#050505';
                     this.ctx.beginPath();
-                    this.ctx.arc(0, 0, 20 + pulse * 0.5, 0, Math.PI * 2);
+                    this.ctx.arc(0, 0, 15 + pulse * 0.4, 0, Math.PI * 2);
                     this.ctx.fill();
+
+                    // Visible small eyes studded across the mass, all tracking the player.
+                    // Drawn last so they stay readable over every lobe layer.
+                    const amalEyes = [
+                        {dist: 30, ang: 0.4,  r: 5.5}, {dist: 22, ang: 1.5, r: 4},
+                        {dist: 34, ang: 2.4,  r: 5},   {dist: 19, ang: 3.3, r: 3.5},
+                        {dist: 31, ang: 4.2,  r: 6},   {dist: 24, ang: 5.1, r: 4.5},
+                        {dist: 12, ang: 6.0,  r: 4}
+                    ];
+
+                    amalEyes.forEach((ey, i) => {
+                        let drift = Math.sin(this.renderFrame * 0.04 + i * 2.1) * 4;
+                        let ex = Math.cos(ey.ang) * (ey.dist + drift);
+                        let ey2 = Math.sin(ey.ang) * (ey.dist + drift);
+
+                        // slow asynchronous blink
+                        let blink = Math.sin(this.renderFrame * 0.06 + i * 1.7);
+                        let lidScale = blink > 0.93 ? 0.15 : 1;
+
+                        const aGlow = this.ctx.createRadialGradient(ex, ey2, 0, ex, ey2, ey.r + 8);
+                        aGlow.addColorStop(0, 'rgba(190, 255, 90, 0.45)');
+                        aGlow.addColorStop(1, 'rgba(190, 255, 90, 0)');
+                        this.ctx.fillStyle = aGlow;
+                        this.ctx.beginPath();
+                        this.ctx.arc(ex, ey2, ey.r + 8, 0, Math.PI * 2);
+                        this.ctx.fill();
+
+                        this.ctx.fillStyle = '#e8ffa8';
+                        this.ctx.beginPath();
+                        this.ctx.ellipse(ex, ey2, ey.r, ey.r * lidScale, 0, 0, Math.PI * 2);
+                        this.ctx.fill();
+
+                        this.ctx.fillStyle = '#0a1400';
+                        this.ctx.beginPath();
+                        this.ctx.ellipse(ex + Math.cos(amalAngleToPlayer) * ey.r * 0.35,
+                                         ey2 + Math.sin(amalAngleToPlayer) * ey.r * 0.35,
+                                         ey.r * 0.45, ey.r * 0.45 * lidScale, 0, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    });
 
                     if (ent.actionState === 'spawning') {
                         this.ctx.strokeStyle = '#55ff55';
