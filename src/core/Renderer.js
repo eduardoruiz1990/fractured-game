@@ -1831,64 +1831,80 @@ export class Renderer {
                             this.ctx.translate((Math.random()-0.5)*5, (Math.random()-0.5)*5); 
                         }
 
-                        this.ctx.fillStyle = isFlashed ? '#ddaaaa' : '#1a0d15';
-                        this.ctx.beginPath();
-                        for (let i = 0; i < 16; i++) {
-                            let angle = (i / 16) * Math.PI * 2;
-                            let reach = 35 + Math.sin(phase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
-                            if (ent.pulseState === 'charging') reach -= 10; 
-                            if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
-                            else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
-                        }
-                        this.ctx.closePath();
-                        this.ctx.fill();
-
-                        this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#2b1010';
-                        this.ctx.beginPath();
-                        this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
-                        this.ctx.fill();
-
-                        this.ctx.fillStyle = '#050000';
-                        this.ctx.beginPath();
-                        for (let i = 0; i < 10; i++) {
-                            let angle = (i / 10) * Math.PI * 2;
-                            let innerReach = 10 + Math.random() * 8; 
-                            if (ent.pulseState === 'charging') innerReach += 5 + Math.random()*5; 
-                            if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
-                            else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
-                        }
-                        this.ctx.closePath();
-                        this.ctx.fill();
-
                         const activeBoss = state.activeBoss;
-                        const eyes = [
-                            {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
-                            {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
-                        ];
+                        const orbR = 26;
 
-                        eyes.forEach(eye => {
-                            let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
-                            let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
-                            const eyeX = eye.x + jx;
-                            const eyeY = eye.y + jy;
-                            const glowAmount = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
+                        // Real tendril anatomy: curved (quadratic) limbs radiating from the
+                        // orb, tapered via a thick base segment + thinner tip segment,
+                        // instead of the old jagged-polygon "spike ball" silhouette.
+                        const tendrilCount = 6;
+                        const tendrils = [];
+                        for (let i = 0; i < tendrilCount; i++) {
+                            let angle = (i / tendrilCount) * Math.PI * 2 + phase * 0.15;
+                            let reach = 42 + Math.sin(phase * 3 + i * 2) * 12;
+                            if (ent.pulseState === 'charging') reach -= 12;
+                            let perpX = -Math.sin(angle), perpY = Math.cos(angle);
+                            let wave = Math.sin(phase * 4 + i * 1.7) * 10;
+                            tendrils.push({
+                                baseX: Math.cos(angle) * (orbR - 4), baseY: Math.sin(angle) * (orbR - 4),
+                                ctrlX: Math.cos(angle) * (orbR + reach * 0.55) + perpX * wave,
+                                ctrlY: Math.sin(angle) * (orbR + reach * 0.55) + perpY * wave,
+                                tipX: Math.cos(angle) * (orbR + reach), tipY: Math.sin(angle) * (orbR + reach),
+                                angle
+                            });
+                        }
 
-                            const eGlow = this.ctx.createRadialGradient(eyeX, eyeY, 0, eyeX, eyeY, eye.r + glowAmount);
+                        this.ctx.strokeStyle = isFlashed ? '#ddaaaa' : '#1a0d15';
+                        this.ctx.lineCap = 'round';
+                        tendrils.forEach(t => {
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(t.baseX, t.baseY);
+                            this.ctx.lineTo(t.ctrlX, t.ctrlY);
+                            this.ctx.lineWidth = 7;
+                            this.ctx.stroke();
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(t.ctrlX, t.ctrlY);
+                            this.ctx.lineTo(t.tipX, t.tipY);
+                            this.ctx.lineWidth = 3;
+                            this.ctx.stroke();
+                        });
+
+                        // Floating orb: drawn over the tendril bases so they read as
+                        // emerging from beneath it.
+                        const orbGrad = this.ctx.createRadialGradient(-8, -8, 4, 0, 0, orbR + pulse);
+                        orbGrad.addColorStop(0, isFlashed ? '#ffffff' : '#3a1d25');
+                        orbGrad.addColorStop(1, isFlashed ? '#ddaaaa' : '#1a0d15');
+                        this.ctx.fillStyle = orbGrad;
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, orbR + pulse, 0, Math.PI * 2);
+                        this.ctx.fill();
+
+                        // Multiple eyes along the tendrils, one per limb, positioned at
+                        // its curve point rather than fixed on the body.
+                        const glowAmount = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
+                        tendrils.forEach((t, i) => {
+                            let et = 0.55 + (i % 2) * 0.25;
+                            let mt = 1 - et;
+                            const eyeX = mt*mt*t.baseX + 2*mt*et*t.ctrlX + et*et*t.tipX;
+                            const eyeY = mt*mt*t.baseY + 2*mt*et*t.ctrlY + et*et*t.tipY;
+                            const eyeR = 3 + (i % 3);
+
+                            const eGlow = this.ctx.createRadialGradient(eyeX, eyeY, 0, eyeX, eyeY, eyeR + glowAmount);
                             eGlow.addColorStop(0, 'rgba(255, 0, 0, 0.5)');
                             eGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
                             this.ctx.fillStyle = eGlow;
                             this.ctx.beginPath();
-                            this.ctx.arc(eyeX, eyeY, eye.r + glowAmount, 0, Math.PI * 2);
+                            this.ctx.arc(eyeX, eyeY, eyeR + glowAmount, 0, Math.PI * 2);
                             this.ctx.fill();
 
                             this.ctx.fillStyle = '#ff0000';
                             this.ctx.beginPath();
-                            this.ctx.arc(eyeX, eyeY, eye.r, 0, Math.PI*2);
+                            this.ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI*2);
                             this.ctx.fill();
 
                             this.ctx.fillStyle = '#000000';
                             this.ctx.beginPath();
-                            this.ctx.ellipse(eyeX, eyeY, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
+                            this.ctx.ellipse(eyeX, eyeY, eyeR * 0.2, eyeR * 0.8, t.angle, 0, Math.PI*2);
                             this.ctx.fill();
                         });
 
@@ -2142,61 +2158,76 @@ export class Renderer {
                 this.ctx.fill();
             } else {
                 let pulse = Math.sin(this.renderFrame * 0.1) * 3;
-                this.ctx.fillStyle = '#1a0d15';
-                this.ctx.beginPath();
-                for (let i = 0; i < 16; i++) {
-                    let angle = (i / 16) * Math.PI * 2;
-                    let reach = 35 + Math.sin(simulatedPhase * 4 + i * 2) * 15 + (i % 2 === 0 ? 10 : -5);
-                    if (i === 0) this.ctx.moveTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
-                    else this.ctx.lineTo(Math.cos(angle)*reach, Math.sin(angle)*reach);
+                const orbR = 26;
+                const chargingNow = activeBoss && activeBoss.pulseState === 'charging';
+
+                // Mirrors the in-world BOSS anatomy (tendrils + orb + eyes-on-tendrils)
+                // added in the drawWorldItems() patch, using simulatedPhase since this
+                // announcement panel runs its own fake phase clock, not ent.phase.
+                const tendrilCount = 6;
+                const tendrils = [];
+                for (let i = 0; i < tendrilCount; i++) {
+                    let angle = (i / tendrilCount) * Math.PI * 2 + simulatedPhase * 0.15;
+                    let reach = 42 + Math.sin(simulatedPhase * 3 + i * 2) * 12;
+                    if (chargingNow) reach -= 12;
+                    let perpX = -Math.sin(angle), perpY = Math.cos(angle);
+                    let wave = Math.sin(simulatedPhase * 4 + i * 1.7) * 10;
+                    tendrils.push({
+                        baseX: Math.cos(angle) * (orbR - 4), baseY: Math.sin(angle) * (orbR - 4),
+                        ctrlX: Math.cos(angle) * (orbR + reach * 0.55) + perpX * wave,
+                        ctrlY: Math.sin(angle) * (orbR + reach * 0.55) + perpY * wave,
+                        tipX: Math.cos(angle) * (orbR + reach), tipY: Math.sin(angle) * (orbR + reach),
+                        angle
+                    });
                 }
-                this.ctx.closePath();
-                this.ctx.fill();
 
-                this.ctx.fillStyle = '#2b1010';
+                this.ctx.strokeStyle = '#1a0d15';
+                this.ctx.lineCap = 'round';
+                tendrils.forEach(t => {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(t.baseX, t.baseY);
+                    this.ctx.lineTo(t.ctrlX, t.ctrlY);
+                    this.ctx.lineWidth = 7;
+                    this.ctx.stroke();
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(t.ctrlX, t.ctrlY);
+                    this.ctx.lineTo(t.tipX, t.tipY);
+                    this.ctx.lineWidth = 3;
+                    this.ctx.stroke();
+                });
+
+                const orbGrad = this.ctx.createRadialGradient(-8, -8, 4, 0, 0, orbR + pulse);
+                orbGrad.addColorStop(0, '#3a1d25');
+                orbGrad.addColorStop(1, '#1a0d15');
+                this.ctx.fillStyle = orbGrad;
                 this.ctx.beginPath();
-                this.ctx.ellipse(0, 0, 25 + pulse, 30 - pulse, 0, 0, Math.PI*2);
+                this.ctx.arc(0, 0, orbR + pulse, 0, Math.PI * 2);
                 this.ctx.fill();
 
-                this.ctx.fillStyle = '#050000';
-                this.ctx.beginPath();
-                for (let i = 0; i < 10; i++) {
-                    let angle = (i / 10) * Math.PI * 2;
-                    let innerReach = 10 + Math.random() * 8; 
-                    if (i === 0) this.ctx.moveTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
-                    else this.ctx.lineTo(Math.cos(angle)*innerReach, Math.sin(angle)*innerReach);
-                }
-                this.ctx.closePath();
-                this.ctx.fill();
+                const glowAmount = chargingNow ? 30 : 15;
+                tendrils.forEach((t, i) => {
+                    let et = 0.55 + (i % 2) * 0.25;
+                    let mt = 1 - et;
+                    const eyeX = mt*mt*t.baseX + 2*mt*et*t.ctrlX + et*et*t.tipX;
+                    const eyeY = mt*mt*t.baseY + 2*mt*et*t.ctrlY + et*et*t.tipY;
+                    const eyeR = 3 + (i % 3);
 
-                const eyes = [
-                    {x: -12, y: -15, r: 4}, {x: 18, y: -10, r: 3},
-                    {x: 5, y: 22, r: 5}, {x: -20, y: 8, r: 2}, {x: 15, y: 15, r: 2.5}
-                ];
-
-                eyes.forEach(eye => {
-                    let jx = Math.cos(this.renderFrame * 0.2 + eye.x) * 1.5;
-                    let jy = Math.sin(this.renderFrame * 0.2 + eye.y) * 1.5;
-                    const eyeX = eye.x + jx;
-                    const eyeY = eye.y + jy;
-                    const glowAmount = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
-
-                    const eGlow = this.ctx.createRadialGradient(eyeX, eyeY, 0, eyeX, eyeY, eye.r + glowAmount);
+                    const eGlow = this.ctx.createRadialGradient(eyeX, eyeY, 0, eyeX, eyeY, eyeR + glowAmount);
                     eGlow.addColorStop(0, 'rgba(255, 0, 0, 0.5)');
                     eGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
                     this.ctx.fillStyle = eGlow;
                     this.ctx.beginPath();
-                    this.ctx.arc(eyeX, eyeY, eye.r + glowAmount, 0, Math.PI * 2);
+                    this.ctx.arc(eyeX, eyeY, eyeR + glowAmount, 0, Math.PI * 2);
                     this.ctx.fill();
 
                     this.ctx.fillStyle = '#ff0000';
                     this.ctx.beginPath();
-                    this.ctx.arc(eyeX, eyeY, eye.r, 0, Math.PI*2);
+                    this.ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI*2);
                     this.ctx.fill();
 
                     this.ctx.fillStyle = '#000000';
                     this.ctx.beginPath();
-                    this.ctx.ellipse(eyeX, eyeY, eye.r * 0.2, eye.r * 0.8, 0, 0, Math.PI*2);
+                    this.ctx.ellipse(eyeX, eyeY, eyeR * 0.2, eyeR * 0.8, t.angle, 0, Math.PI*2);
                     this.ctx.fill();
                 });
 
