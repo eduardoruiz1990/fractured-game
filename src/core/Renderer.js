@@ -1672,49 +1672,69 @@ export class Renderer {
                     
                     this.ctx.fillStyle = isFlashed ? '#ddaaaa' : (ent.buffed ? '#3a0a0a' : '#111111');
                     this.ctx.beginPath();
-                    
+
                     let stretch = ent.attackState === 'lunging' ? 5 : 0;
-                    this.ctx.moveTo(18 + stretch, 0); 
-                    this.ctx.lineTo(5, 12 - stretch + Math.sin(this.renderFrame*0.2)*3);
-                    this.ctx.lineTo(-15 - stretch, 10);
-                    this.ctx.lineTo(-20 - stretch, 0); 
-                    this.ctx.lineTo(-15 - stretch, -10);
-                    this.ctx.lineTo(5, -12 + stretch - Math.cos(this.renderFrame*0.2)*3);
+
+                    // Low, elongated body: pointed snout forward, long low belly,
+                    // tapering tail behind. Kept flatter (smaller y-extent) than the
+                    // old hexagon so it reads as ground-hugging rather than round.
+                    this.ctx.moveTo(20 + stretch, 0);
+                    this.ctx.lineTo(9, 5 + Math.sin(this.renderFrame*0.2)*2);
+                    this.ctx.lineTo(-11 - stretch, 5);
+                    this.ctx.lineTo(-23 - stretch, 0);
+                    this.ctx.lineTo(-11 - stretch, -5);
+                    this.ctx.lineTo(9, -5 - Math.cos(this.renderFrame*0.2)*2);
+                    this.ctx.closePath();
+                    this.ctx.fill();
+
+                    // Jagged spine: serrated ridge along the top edge, tail to shoulders.
+                    this.ctx.beginPath();
+                    let spineStartX = -20 - stretch;
+                    let spineEndX = 8;
+                    let spikes = 5;
+                    this.ctx.moveTo(spineStartX, -4);
+                    for (let i = 1; i <= spikes; i++) {
+                        let t = i / spikes;
+                        let x = spineStartX + (spineEndX - spineStartX) * t;
+                        let spikeH = (i % 2 === 0) ? -12 : -6;
+                        this.ctx.lineTo(x, spikeH);
+                    }
+                    this.ctx.lineTo(spineEndX, -4);
                     this.ctx.closePath();
                     this.ctx.fill();
 
                     this.ctx.strokeStyle = this.ctx.fillStyle;
                     this.ctx.lineWidth = 2;
                     this.ctx.beginPath();
-                    
+
                     if (ent.attackState === 'lunging') {
-                        this.ctx.moveTo(0, 10);
-                        this.ctx.lineTo(-20, 15);
-                        this.ctx.moveTo(0, -10);
-                        this.ctx.lineTo(-20, -15);
+                        this.ctx.moveTo(-2, 5);
+                        this.ctx.lineTo(-22, 9);
+                        this.ctx.moveTo(-2, -5);
+                        this.ctx.lineTo(-22, -9);
                     } else {
-                        this.ctx.moveTo(0, 10);
-                        this.ctx.quadraticCurveTo(15, 20, 18, 8);
-                        this.ctx.moveTo(0, -10);
-                        this.ctx.quadraticCurveTo(15, -20, 18, -8);
+                        this.ctx.moveTo(-2, 5);
+                        this.ctx.quadraticCurveTo(8, 13, 12, 4);
+                        this.ctx.moveTo(-2, -5);
+                        this.ctx.quadraticCurveTo(8, -13, 12, -4);
                     }
                     this.ctx.stroke();
 
                     const predGlowAmt = (ent.attackState === 'telegraphing') ? 20 : 10;
                     const predEyeColor = (ent.attackState === 'telegraphing') ? '#ff3333' : (ent.buffed ? '#ff0000' : '#cc0000');
-                    
-                    const pEyeGlow = this.ctx.createRadialGradient(10 + stretch, 0, 0, 10 + stretch, 0, 10 + predGlowAmt);
+
+                    // Single glowing red eye, centered on the snout.
+                    const pEyeGlow = this.ctx.createRadialGradient(13 + stretch, 0, 0, 13 + stretch, 0, 10 + predGlowAmt);
                     pEyeGlow.addColorStop(0, this.hexToRgba(predEyeColor, 0.5));
                     pEyeGlow.addColorStop(1, this.hexToRgba(predEyeColor, 0));
                     this.ctx.fillStyle = pEyeGlow;
                     this.ctx.beginPath();
-                    this.ctx.arc(10 + stretch, 0, 10 + predGlowAmt, 0, Math.PI * 2);
+                    this.ctx.arc(13 + stretch, 0, 10 + predGlowAmt, 0, Math.PI * 2);
                     this.ctx.fill();
 
                     this.ctx.fillStyle = predEyeColor;
                     this.ctx.beginPath();
-                    this.ctx.ellipse(10 + stretch, -4, 3, 1.5, Math.PI/6, 0, Math.PI*2);
-                    this.ctx.ellipse(10 + stretch, 4, 3, 1.5, -Math.PI/6, 0, Math.PI*2);
+                    this.ctx.ellipse(13 + stretch, 0, 3, 2, 0, 0, Math.PI*2);
                     this.ctx.fill();
                 }
                 else if (ent.type === 'PARASITE') {
