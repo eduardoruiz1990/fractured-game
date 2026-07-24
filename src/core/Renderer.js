@@ -1399,64 +1399,100 @@ export class Renderer {
                     let angleToPlayer = Math.atan2(state.player.y - ent.y, state.player.x - ent.x);
                     if (ent.gazeState === 'sweeping' || ent.gazeState === 'charging') angleToPlayer = ent.gazeAngle;
                     
-                    this.ctx.strokeStyle = '#4a0010';
-                    this.ctx.lineWidth = 4;
-                    for(let i=0; i<12; i++) {
-                        let tAngle = (i/12) * Math.PI * 2 + (this.renderFrame * 0.02);
-                        let tLen = 60 + Math.sin(this.renderFrame * 0.1 + i) * 20;
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(0, 0);
-                        this.ctx.quadraticCurveTo(Math.cos(tAngle + 0.5)*tLen*0.5, Math.sin(tAngle + 0.5)*tLen*0.5, Math.cos(tAngle)*tLen, Math.sin(tAngle)*tLen);
-                        this.ctx.stroke();
-                    }
+                    let charging = ent.gazeState === 'charging';
+                    let watching = charging || ent.gazeState === 'sweeping';
 
-                    this.ctx.strokeStyle = '#ff0044';
-                    this.ctx.lineWidth = 2;
-                    let spinSpeed = ent.gazeState === 'charging' ? 0.1 : 0.02;
-                    for(let r=0; r<4; r++) {
-                        this.ctx.save();
-                        this.ctx.rotate(this.renderFrame * (spinSpeed + r*0.01) * (r%2===0?1:-1));
+                    // Radial spokes: straight tapered wedges radiating from the hub, like
+                    // the cell wings of a panopticon. Replaces the old wobbly curved
+                    // tendrils, which read organic rather than architectural.
+                    let spokeSpin = this.renderFrame * (charging ? 0.05 : 0.012);
+                    const spokeCount = 16;
+                    for (let i = 0; i < spokeCount; i++) {
+                        let sAngle = (i / spokeCount) * Math.PI * 2 + spokeSpin;
+                        let long = (i % 2 === 0);
+                        let sLen = (long ? 110 : 74) + Math.sin(this.renderFrame * 0.06 + i) * 6;
+                        if (charging) sLen += 18;
+
+                        let dirX = Math.cos(sAngle), dirY = Math.sin(sAngle);
+                        let perpX = -dirY, perpY = dirX;
+                        let halfW = long ? 7 : 4.5;
+
+                        this.ctx.fillStyle = long ? '#7a0a26' : '#4a0016';
                         this.ctx.beginPath();
-                        this.ctx.ellipse(0, 0, 60 + r*15, 25 + r*10, 0, 0, Math.PI*2);
-                        this.ctx.stroke();
-                        
-                        this.ctx.fillStyle = '#ff0000';
-                        this.ctx.beginPath();
-                        this.ctx.arc(60 + r*15, 0, 5, 0, Math.PI*2);
-                        this.ctx.arc(-(60 + r*15), 0, 5, 0, Math.PI*2);
+                        this.ctx.moveTo(dirX * 40 + perpX * halfW, dirY * 40 + perpY * halfW);
+                        this.ctx.lineTo(dirX * sLen, dirY * sLen);
+                        this.ctx.lineTo(dirX * 40 - perpX * halfW, dirY * 40 - perpY * halfW);
+                        this.ctx.closePath();
                         this.ctx.fill();
-                        this.ctx.restore();
+
+                        // watch-lamp at each long spoke's tip
+                        if (long) {
+                            this.ctx.fillStyle = watching ? '#ff96b4' : '#ff2f5e';
+                            this.ctx.beginPath();
+                            this.ctx.arc(dirX * sLen, dirY * sLen, 3.5, 0, Math.PI * 2);
+                            this.ctx.fill();
+                        }
                     }
 
-                    const panGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 45 + 40);
-                    panGlow.addColorStop(0, 'rgba(255, 0, 0, 0.5)');
-                    panGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                    // hub ring binding the spokes together
+                    this.ctx.strokeStyle = '#ff2f5e';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, 52, 0, Math.PI * 2);
+                    this.ctx.stroke();
+
+                    const panGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 95);
+                    panGlow.addColorStop(0, watching ? 'rgba(255, 90, 140, 0.55)' : 'rgba(255, 40, 90, 0.45)');
+                    panGlow.addColorStop(1, 'rgba(255, 40, 90, 0)');
                     this.ctx.fillStyle = panGlow;
                     this.ctx.beginPath();
-                    this.ctx.arc(0, 0, 85, 0, Math.PI * 2);
+                    this.ctx.arc(0, 0, 95, 0, Math.PI * 2);
                     this.ctx.fill();
 
-                    this.ctx.fillStyle = isFlashed ? '#ffffff' : '#1a0005';
+                    // Single dominant eye: scaled up so it owns the silhouette, with the
+                    // socket, sclera, iris and pupil all sharing the pink/red palette.
+                    this.ctx.fillStyle = isFlashed ? '#ffffff' : '#2a0010';
                     this.ctx.beginPath();
-                    this.ctx.arc(0, 0, 45, 0, Math.PI * 2);
+                    this.ctx.arc(0, 0, 48, 0, Math.PI * 2);
                     this.ctx.fill();
 
-                    this.ctx.fillStyle = '#ffcccc';
+                    this.ctx.fillStyle = isFlashed ? '#ffffff' : '#ffd6e2';
                     this.ctx.beginPath();
-                    this.ctx.ellipse(0, 0, 35, 40, angleToPlayer, 0, Math.PI * 2);
+                    this.ctx.ellipse(0, 0, 40, 44, angleToPlayer, 0, Math.PI * 2);
                     this.ctx.fill();
+
+                    // veining across the sclera
+                    this.ctx.strokeStyle = 'rgba(200, 20, 70, 0.45)';
+                    this.ctx.lineWidth = 1.2;
+                    for (let v = 0; v < 5; v++) {
+                        let vA = angleToPlayer + Math.PI + (v - 2) * 0.45;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(Math.cos(vA) * 40, Math.sin(vA) * 40);
+                        this.ctx.quadraticCurveTo(Math.cos(vA) * 22, Math.sin(vA) * 22, Math.cos(vA + 0.5) * 12, Math.sin(vA + 0.5) * 12);
+                        this.ctx.stroke();
+                    }
 
                     this.ctx.save();
                     this.ctx.rotate(angleToPlayer);
-                    this.ctx.fillStyle = (ent.gazeState === 'sweeping' || ent.gazeState === 'charging') ? '#ffff00' : '#ff0000';
+
+                    this.ctx.fillStyle = watching ? '#ff5c8a' : '#c90f3c';
                     this.ctx.beginPath();
-                    this.ctx.ellipse(15, 0, 18, 24, 0, 0, Math.PI * 2);
+                    this.ctx.ellipse(14, 0, 26, 32, 0, 0, Math.PI * 2);
                     this.ctx.fill();
-                    
+
+                    this.ctx.strokeStyle = 'rgba(90, 0, 25, 0.8)';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.stroke();
+
                     this.ctx.fillStyle = '#000';
                     this.ctx.beginPath();
-                    let pWidth = (ent.gazeState === 'charging') ? 2 : (ent.gazeState === 'sweeping' ? 12 : 6);
-                    this.ctx.ellipse(18, 0, pWidth, 20, 0, 0, Math.PI * 2);
+                    let pWidth = charging ? 3 : (ent.gazeState === 'sweeping' ? 16 : 8);
+                    this.ctx.ellipse(17, 0, pWidth, 26, 0, 0, Math.PI * 2);
+                    this.ctx.fill();
+
+                    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(26, -12, 5, 7, -0.4, 0, Math.PI * 2);
                     this.ctx.fill();
                     this.ctx.restore();
                 }
