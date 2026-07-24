@@ -1355,25 +1355,44 @@ export class Renderer {
 
                 if (ent.type === 'ARCHITECT') {
                     let pulse = Math.sin(this.renderFrame * 0.1) * 5;
-                    const archGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 40 + 30 + pulse);
-                    archGlow.addColorStop(0, 'rgba(197, 160, 89, 0.5)');
+                    let arming = ent.actionState === 'charging_collapse' || ent.actionState === 'collapse_active';
+                    let bursting = ent.actionState === 'burst';
+
+                    const archGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 70 + pulse);
+                    archGlow.addColorStop(0, arming ? 'rgba(255, 245, 215, 0.65)' : 'rgba(197, 160, 89, 0.5)');
                     archGlow.addColorStop(1, 'rgba(197, 160, 89, 0)');
                     this.ctx.fillStyle = archGlow;
                     this.ctx.beginPath();
                     this.ctx.arc(0, 0, 70 + pulse, 0, Math.PI * 2);
                     this.ctx.fill();
 
-                    this.ctx.fillStyle = '#111';
-                    
-                    this.ctx.save();
-                    this.ctx.rotate(this.renderFrame * 0.05);
-                    this.ctx.strokeStyle = '#c5a059';
-                    this.ctx.lineWidth = 3;
-                    this.ctx.strokeRect(-30, -30, 60, 60);
-                    this.ctx.rotate(Math.PI / 4);
-                    this.ctx.strokeRect(-30, -30, 60, 60);
-                    this.ctx.restore();
+                    // Two overlapping squares, counter-rotating so they scissor against
+                    // each other instead of spinning as one rigid 8-point star.
+                    let archSpin = this.renderFrame * (arming ? 0.11 : 0.05);
+                    const archSquares = [
+                        {rot: archSpin,               size: 30, color: '#c5a059', width: 3.5, node: 3.5},
+                        {rot: -archSpin + Math.PI/4,  size: 26, color: '#fff6dc', width: 2,   node: 2.5}
+                    ];
 
+                    archSquares.forEach(sq => {
+                        this.ctx.save();
+                        this.ctx.rotate(sq.rot);
+                        this.ctx.strokeStyle = isFlashed ? '#ffffff' : sq.color;
+                        this.ctx.lineWidth = sq.width;
+                        this.ctx.strokeRect(-sq.size, -sq.size, sq.size * 2, sq.size * 2);
+
+                        // corner nodes give the frame joints rather than bare line ends
+                        this.ctx.fillStyle = isFlashed ? '#ffffff' : sq.color;
+                        [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(c => {
+                            this.ctx.beginPath();
+                            this.ctx.arc(c[0] * sq.size, c[1] * sq.size, sq.node, 0, Math.PI * 2);
+                            this.ctx.fill();
+                        });
+                        this.ctx.restore();
+                    });
+
+                    // Diamond core: dark body, gold rim, faceted, with a pulsing white heart.
+                    this.ctx.fillStyle = isFlashed ? '#ddaaaa' : '#111';
                     this.ctx.beginPath();
                     this.ctx.moveTo(0, -40);
                     this.ctx.lineTo(25, 0);
@@ -1381,13 +1400,25 @@ export class Renderer {
                     this.ctx.lineTo(-25, 0);
                     this.ctx.closePath();
                     this.ctx.fill();
-                    
+
+                    this.ctx.strokeStyle = isFlashed ? '#ffffff' : '#c5a059';
+                    this.ctx.lineWidth = 2.5;
+                    this.ctx.stroke();
+
+                    this.ctx.strokeStyle = 'rgba(197, 160, 89, 0.45)';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, -40); this.ctx.lineTo(0, 40);
+                    this.ctx.moveTo(-25, 0); this.ctx.lineTo(25, 0);
+                    this.ctx.stroke();
+
+                    let corePulse = 1 + Math.sin(this.renderFrame * (bursting ? 0.4 : 0.12)) * 0.18;
                     this.ctx.fillStyle = '#ffffff';
                     this.ctx.beginPath();
-                    this.ctx.moveTo(0, -15);
-                    this.ctx.lineTo(8, 0);
-                    this.ctx.lineTo(0, 15);
-                    this.ctx.lineTo(-8, 0);
+                    this.ctx.moveTo(0, -15 * corePulse);
+                    this.ctx.lineTo(8 * corePulse, 0);
+                    this.ctx.lineTo(0, 15 * corePulse);
+                    this.ctx.lineTo(-8 * corePulse, 0);
                     this.ctx.closePath();
                     this.ctx.fill();
                 }
