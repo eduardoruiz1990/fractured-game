@@ -1546,22 +1546,42 @@ export class Renderer {
                     this.ctx.arc(0, 0, ent.radius + 15, 0, Math.PI * 2);
                     this.ctx.fill();
 
-                    this.ctx.fillStyle = isFlashed ? '#ddaaaa' : ent.color;
-                    
+                    // Inkblot silhouette: an irregular, lumpy half-profile mirrored across
+                    // the spine (x=0) via scale(-1,1) — real symmetry, not just a round blob.
+                    const rorLobes = [
+                        {y: -1.0, x: 0.08}, {y: -0.82, x: 0.55}, {y: -0.5, x: 1.0},
+                        {y: -0.28, x: 0.5}, {y: -0.02, x: 0.22}, {y: 0.22, x: 0.58},
+                        {y: 0.52, x: 1.08}, {y: 0.8, x: 0.5}, {y: 1.0, x: 0.08}
+                    ];
+
                     for (let mirror = -1; mirror <= 1; mirror += 2) {
                         this.ctx.save();
                         this.ctx.scale(mirror, 1);
+
+                        this.ctx.fillStyle = isFlashed ? '#ddaaaa' : ent.color;
                         this.ctx.beginPath();
-                        this.ctx.moveTo(0, -ent.radius);
-                        this.ctx.bezierCurveTo(ent.radius, -ent.radius, ent.radius + pulse, -ent.radius/2, ent.radius*0.8, 0);
-                        this.ctx.bezierCurveTo(ent.radius*1.2, ent.radius/2, ent.radius, ent.radius, 0, ent.radius + pulse);
+                        this.ctx.moveTo(rorLobes[0].x * ent.radius, rorLobes[0].y * ent.radius);
+                        for (let i = 0; i < rorLobes.length - 1; i++) {
+                            let a = rorLobes[i], b = rorLobes[i + 1];
+                            let ctrlX = a.x * (ent.radius + pulse);
+                            let ctrlY = a.y * ent.radius;
+                            let midX = ((a.x + b.x) / 2) * (ent.radius + pulse);
+                            let midY = ((a.y + b.y) / 2) * ent.radius;
+                            this.ctx.quadraticCurveTo(ctrlX, ctrlY, midX, midY);
+                        }
+                        this.ctx.lineTo(rorLobes[rorLobes.length - 1].x * ent.radius, rorLobes[rorLobes.length - 1].y * ent.radius);
+                        this.ctx.closePath();
                         this.ctx.fill();
-                        
-                        this.ctx.fillStyle = isFlashed ? '#fff' : '#ff0055'; 
+
+                        this.ctx.strokeStyle = 'rgba(180, 100, 220, 0.4)';
+                        this.ctx.lineWidth = 1.5;
+                        this.ctx.stroke();
+
+                        this.ctx.fillStyle = isFlashed ? '#fff' : '#ff0055';
                         this.ctx.beginPath();
                         this.ctx.arc(ent.radius*0.3 + Math.sin(this.renderFrame*0.1)*2, 0, ent.radius*0.1, 0, Math.PI*2);
                         this.ctx.fill();
-                        
+
                         this.ctx.restore();
                     }
                 }
