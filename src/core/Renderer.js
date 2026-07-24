@@ -11,7 +11,17 @@ export class Renderer {
         this.lightCanvas = document.createElement('canvas');
         this.lightCtx = this.lightCanvas.getContext('2d');
         
-        this.zoom = 1.3; 
+        this.zoom = 1.3;
+
+        // Offscreen sprite cache (see getSprite/drawGlow). Lazily populated rather
+        // than built at init like cachedFloorPatterns, because entity sprites are
+        // keyed on runtime state (per-floor colour, flash, hp tier) that isn't
+        // known until a run starts.
+        this.spriteCache = new Map();
+        // World is drawn at this.zoom, so sprites are supersampled to stay crisp
+        // instead of being upscaled from 1:1.
+        this.spriteScale = 2;
+
         this.legPhase = 0;
         this.lastPx = -1;
         this.lastPy = -1;
@@ -66,6 +76,58 @@ export class Renderer {
     // combined wave doesn't visibly loop the way a single sine does.
     // Range is roughly [-1.3, 1.3] — callers multiplying by an amplitude get a
     // slightly wider swing than a plain Math.sin() did.
+    // Generic offscreen sprite cache, following the cachedFloorPatterns /
+    // HubWorld.cachedFloor pattern. `key` MUST capture every input that changes the
+    // drawing — a missed input means entities render with a stale sprite forever.
+    // `drawFn` gets a context already translated to the sprite centre, so body code
+    // can be moved in verbatim using the same local coordinates.
+    getSprite(key, w, h, drawFn) {
+        let sprite = this.spriteCache.get(key);
+        if (sprite) return sprite;
+
+        const ss = this.spriteScale;
+        const c = document.createElement('canvas');
+        c.width = Math.ceil(w * ss);
+        c.height = Math.ceil(h * ss);
+        const cx = c.getContext('2d');
+        cx.scale(ss, ss);
+        cx.translate(w / 2, h / 2);
+        drawFn(cx);
+
+        sprite = { canvas: c, w, h };
+        this.spriteCache.set(key, sprite);
+        return sprite;
+    }
+
+    drawSprite(sprite, x = 0, y = 0) {
+        this.ctx.drawImage(sprite.canvas, x - sprite.w / 2, y - sprite.h / 2, sprite.w, sprite.h);
+    }
+
+    // Radial faux-glow from a cached bitmap. The ramp is identical at every size, so
+    // one sprite per (colour, alpha) scales to any radius: the pulse stays fully live
+    // via the destination rect, while createRadialGradient() runs once instead of
+    // once per entity per frame. Still faux-glow — no shadowBlur.
+    drawGlow(x, y, radius, color, alpha) {
+        if (!Number.isFinite(radius) || radius <= 0) return;
+
+        const key = `glow|${color}|${alpha}`;
+        let sprite = this.spriteCache.get(key);
+        if (!sprite) {
+            const R = 64;
+            const c = document.createElement('canvas');
+            c.width = c.height = R * 2;
+            const cx = c.getContext('2d');
+            const g = cx.createRadialGradient(R, R, 0, R, R, R);
+            g.addColorStop(0, this.hexToRgba(color, alpha));
+            g.addColorStop(1, this.hexToRgba(color, 0));
+            cx.fillStyle = g;
+            cx.fillRect(0, 0, R * 2, R * 2);
+            sprite = { canvas: c };
+            this.spriteCache.set(key, sprite);
+        }
+        this.ctx.drawImage(sprite.canvas, x - radius, y - radius, radius * 2, radius * 2);
+    }
+
     // `offset` shifts this call relative to the entity's own phase, for parts that
     // need a fixed relationship to each other (e.g. counter-phased body edges).
     entPulse(ent, speed = 0.1, offset = 0) {
@@ -1248,13 +1310,7 @@ export class Renderer {
                 
                 this.ctx.save();
                 const pGlowAmt = 15 * lifeRatio;
-                const pGlow = this.ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius + pGlowAmt);
-                pGlow.addColorStop(0, 'rgba(217, 0, 255, 0.5)');
-                pGlow.addColorStop(1, 'rgba(217, 0, 255, 0)');
-                this.ctx.fillStyle = pGlow;
-                this.ctx.beginPath();
-                this.ctx.arc(p.x, p.y, p.radius + pGlowAmt, 0, Math.PI * 2);
-                this.ctx.fill();
+                this.drawGlow(p.x, p.y, p.radius + pGlowAmt, '#d900ff', 0.5);
 
                 this.ctx.fillStyle = `rgba(80, 10, 120, ${0.8 * lifeRatio})`; 
                 
@@ -1296,13 +1352,7 @@ export class Renderer {
                 
                 const dropY = Math.sin(time*2)*3;
                 const dropR = 2.5 + pulse*0.5;
-                const xpGlow = this.ctx.createRadialGradient(0, dropY, 0, 0, dropY, dropR + 10);
-                xpGlow.addColorStop(0, 'rgba(136, 204, 255, 0.5)');
-                xpGlow.addColorStop(1, 'rgba(136, 204, 255, 0)');
-                this.ctx.fillStyle = xpGlow;
-                this.ctx.beginPath();
-                this.ctx.arc(0, dropY, dropR + 10, 0, Math.PI * 2);
-                this.ctx.fill();
+                this.drawGlow(0, dropY, dropR + 10, '#88ccff', 0.5);
                 
                 this.ctx.fillStyle = '#ffffff';
                 this.ctx.beginPath();
@@ -1329,13 +1379,7 @@ export class Renderer {
                 const pulse = Math.sin(time) * 3;
                 
                 const tokGlowAmt = 15 + pulse;
-                const tokGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 10 + tokGlowAmt);
-                tokGlow.addColorStop(0, this.hexToRgba(token.color, 0.5));
-                tokGlow.addColorStop(1, this.hexToRgba(token.color, 0));
-                this.ctx.fillStyle = tokGlow;
-                this.ctx.beginPath();
-                this.ctx.arc(0, 0, 10 + tokGlowAmt, 0, Math.PI * 2);
-                this.ctx.fill();
+                this.drawGlow(0, 0, 10 + tokGlowAmt, token.color, 0.5);
                 
                 this.ctx.fillStyle = token.color;
                 this.ctx.beginPath();
@@ -1629,13 +1673,7 @@ export class Renderer {
                         let blink = Math.sin(this.renderFrame * 0.06 + i * 1.7);
                         let lidScale = blink > 0.93 ? 0.15 : 1;
 
-                        const aGlow = this.ctx.createRadialGradient(ex, ey2, 0, ex, ey2, ey.r + 8);
-                        aGlow.addColorStop(0, 'rgba(190, 255, 90, 0.45)');
-                        aGlow.addColorStop(1, 'rgba(190, 255, 90, 0)');
-                        this.ctx.fillStyle = aGlow;
-                        this.ctx.beginPath();
-                        this.ctx.arc(ex, ey2, ey.r + 8, 0, Math.PI * 2);
-                        this.ctx.fill();
+                        this.drawGlow(ex, ey2, ey.r + 8, '#beff5a', 0.45);
 
                         this.ctx.fillStyle = '#e8ffa8';
                         this.ctx.beginPath();
@@ -1678,13 +1716,7 @@ export class Renderer {
                     this.ctx.rotate(this.entPulse(ent, 0.05) * 0.1);
                     let pulse = this.entPulse(ent) * (5 / ent.generation);
                     
-                    const rorGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, ent.radius + 15);
-                    rorGlow.addColorStop(0, 'rgba(128, 0, 128, 0.5)');
-                    rorGlow.addColorStop(1, 'rgba(128, 0, 128, 0)');
-                    this.ctx.fillStyle = rorGlow;
-                    this.ctx.beginPath();
-                    this.ctx.arc(0, 0, ent.radius + 15, 0, Math.PI * 2);
-                    this.ctx.fill();
+                    this.drawGlow(0, 0, ent.radius + 15, '#800080', 0.5);
 
                     // Inkblot silhouette: an irregular, lumpy half-profile mirrored across
                     // the spine (x=0) via scale(-1,1) — real symmetry, not just a round blob.
@@ -1742,48 +1774,61 @@ export class Renderer {
                         this.ctx.translate((Math.random()-0.5)*2, (Math.random()-0.5)*2);
                     }
 
-                    let bob = this.entPulse(ent) * 1.5;
-
-                    // Sack: heavy load dragging behind the hunch, drawn first so the
-                    // body's back edge overlaps its top and reads as "carried".
-                    this.ctx.fillStyle = isFlashed ? '#999999' : '#1a1c1a';
+                    // Body is cached to an offscreen sprite. The breathing bob is
+                    // quantised into 0.5px buckets so per-entity phase (and therefore
+                    // desync) survives caching — each scavenger picks the bucket its own
+                    // phase currently lands in, rather than all sharing one bitmap.
+                    // 2 flash states x 2 hp tiers x 9 buckets = 36 sprites, built lazily.
+                    let bobQ = Math.round(this.entPulse(ent) * 1.5 * 2) / 2;
                     let sackSize = 10 + (ent.hp > 30 ? 3 : 0);
-                    this.ctx.beginPath();
-                    this.ctx.ellipse(-9, 6 + bob * 0.5, sackSize, sackSize * 0.85, 0.3, 0, Math.PI * 2);
-                    this.ctx.fill();
-                    this.ctx.beginPath();
-                    this.ctx.ellipse(-14, 2 + bob * 0.5, sackSize * 0.6, sackSize * 0.5, 0.2, 0, Math.PI * 2);
-                    this.ctx.fill();
-                    this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-                    this.ctx.lineWidth = 1;
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(-6, 0);
-                    this.ctx.lineTo(-11, 3);
-                    this.ctx.stroke();
 
-                    // Hunched body: shoulders arch up just behind a low, dropped head,
-                    // then slope down toward the rear where the sack tucks in behind.
-                    this.ctx.fillStyle = isFlashed ? '#bbbbbb' : '#2a2d2a';
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(13, 4 + bob);
-                    this.ctx.quadraticCurveTo(10, -11, 2, -9 + bob);
-                    this.ctx.quadraticCurveTo(-6, -6, -9, bob);
-                    this.ctx.quadraticCurveTo(-8, 6, -2, 8 + bob);
-                    this.ctx.quadraticCurveTo(6, 9, 13, 4 + bob);
-                    this.ctx.closePath();
-                    this.ctx.fill();
+                    const scavSprite = this.getSprite(
+                        `scav|${isFlashed ? 1 : 0}|${sackSize}|${bobQ}`, 64, 64,
+                        (cx) => {
+                            // Sack: heavy load dragging behind the hunch, drawn first so the
+                            // body's back edge overlaps its top and reads as "carried".
+                            cx.fillStyle = isFlashed ? '#999999' : '#1a1c1a';
+                            cx.beginPath();
+                            cx.ellipse(-9, 6 + bobQ * 0.5, sackSize, sackSize * 0.85, 0.3, 0, Math.PI * 2);
+                            cx.fill();
+                            cx.beginPath();
+                            cx.ellipse(-14, 2 + bobQ * 0.5, sackSize * 0.6, sackSize * 0.5, 0.2, 0, Math.PI * 2);
+                            cx.fill();
+                            cx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+                            cx.lineWidth = 1;
+                            cx.beginPath();
+                            cx.moveTo(-6, 0);
+                            cx.lineTo(-11, 3);
+                            cx.stroke();
 
-                    this.ctx.fillStyle = '#aaaa00';
-                    this.ctx.beginPath();
-                    this.ctx.arc(11, 1 + bob, 1.5, 0, Math.PI*2);
-                    this.ctx.fill();
+                            // Hunched body: shoulders arch up just behind a low, dropped head,
+                            // then slope down toward the rear where the sack tucks in behind.
+                            cx.fillStyle = isFlashed ? '#bbbbbb' : '#2a2d2a';
+                            cx.beginPath();
+                            cx.moveTo(13, 4 + bobQ);
+                            cx.quadraticCurveTo(10, -11, 2, -9 + bobQ);
+                            cx.quadraticCurveTo(-6, -6, -9, bobQ);
+                            cx.quadraticCurveTo(-8, 6, -2, 8 + bobQ);
+                            cx.quadraticCurveTo(6, 9, 13, 4 + bobQ);
+                            cx.closePath();
+                            cx.fill();
 
+                            cx.fillStyle = '#aaaa00';
+                            cx.beginPath();
+                            cx.arc(11, 1 + bobQ, 1.5, 0, Math.PI*2);
+                            cx.fill();
+                        }
+                    );
+                    this.drawSprite(scavSprite);
+
+                    // Sweeping arm stays live — it swings independently of the body and
+                    // would otherwise multiply the sprite count by every sweep position.
                     this.ctx.strokeStyle = '#111';
                     this.ctx.lineWidth = 2.5;
                     this.ctx.beginPath();
-                    this.ctx.moveTo(4, 6 + bob);
+                    this.ctx.moveTo(4, 6 + bobQ);
                     let sweepOffset = ent.vacuumState === 'vacuuming' ? 0 : this.entPulse(ent, 0.2)*5;
-                    this.ctx.lineTo(13 + sweepOffset, 12 + bob);
+                    this.ctx.lineTo(13 + sweepOffset, 12 + bobQ);
                     this.ctx.stroke();
                 }
                 else if (ent.type === 'PREDATOR') {
@@ -1810,13 +1855,7 @@ export class Renderer {
                         this.ctx.lineWidth = 3;
                         this.ctx.lineCap = 'round';
                         
-                        const pGlow = this.ctx.createRadialGradient(15, 0, 0, 15, 0, 30);
-                        pGlow.addColorStop(0, this.hexToRgba(pColor, 0.4));
-                        pGlow.addColorStop(1, this.hexToRgba(pColor, 0));
-                        this.ctx.fillStyle = pGlow;
-                        this.ctx.beginPath();
-                        this.ctx.arc(15, 0, 30, 0, Math.PI * 2);
-                        this.ctx.fill();
+                        this.drawGlow(15, 0, 30, pColor, 0.4);
 
                         this.ctx.beginPath();
                         this.ctx.moveTo(15, -4);
@@ -1884,13 +1923,7 @@ export class Renderer {
                     const predEyeColor = (ent.attackState === 'telegraphing') ? '#ff3333' : (ent.buffed ? '#ff0000' : '#cc0000');
 
                     // Single glowing red eye, centered on the snout.
-                    const pEyeGlow = this.ctx.createRadialGradient(13 + stretch, 0, 0, 13 + stretch, 0, 10 + predGlowAmt);
-                    pEyeGlow.addColorStop(0, this.hexToRgba(predEyeColor, 0.5));
-                    pEyeGlow.addColorStop(1, this.hexToRgba(predEyeColor, 0));
-                    this.ctx.fillStyle = pEyeGlow;
-                    this.ctx.beginPath();
-                    this.ctx.arc(13 + stretch, 0, 10 + predGlowAmt, 0, Math.PI * 2);
-                    this.ctx.fill();
+                    this.drawGlow(13 + stretch, 0, 10 + predGlowAmt, predEyeColor, 0.5);
 
                     this.ctx.fillStyle = predEyeColor;
                     this.ctx.beginPath();
@@ -1951,13 +1984,7 @@ export class Renderer {
                     // Small core: faint faux-glow behind a compact body and dark nucleus,
                     // drawn after the tendrils so it stays the visual focal point.
                     const paraGlowAmt = 6 + pulse;
-                    const paraGlow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 5 + paraGlowAmt);
-                    paraGlow.addColorStop(0, this.hexToRgba(isFlashed ? '#ffcccc' : '#6b2222', 0.4));
-                    paraGlow.addColorStop(1, this.hexToRgba(isFlashed ? '#ffcccc' : '#6b2222', 0));
-                    this.ctx.fillStyle = paraGlow;
-                    this.ctx.beginPath();
-                    this.ctx.arc(0, 0, 5 + paraGlowAmt, 0, Math.PI*2);
-                    this.ctx.fill();
+                    this.drawGlow(0, 0, 5 + paraGlowAmt, isFlashed ? '#ffcccc' : '#6b2222', 0.4);
 
                     this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#6b2222';
                     this.ctx.beginPath();
@@ -2053,13 +2080,7 @@ export class Renderer {
                             const eyeY = mt*mt*t.baseY + 2*mt*et*t.ctrlY + et*et*t.tipY;
                             const eyeR = 3 + (i % 3);
 
-                            const eGlow = this.ctx.createRadialGradient(eyeX, eyeY, 0, eyeX, eyeY, eyeR + glowAmount);
-                            eGlow.addColorStop(0, 'rgba(255, 0, 0, 0.5)');
-                            eGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
-                            this.ctx.fillStyle = eGlow;
-                            this.ctx.beginPath();
-                            this.ctx.arc(eyeX, eyeY, eyeR + glowAmount, 0, Math.PI * 2);
-                            this.ctx.fill();
+                            this.drawGlow(eyeX, eyeY, eyeR + glowAmount, '#ff0000', 0.5);
 
                             this.ctx.fillStyle = '#ff0000';
                             this.ctx.beginPath();
