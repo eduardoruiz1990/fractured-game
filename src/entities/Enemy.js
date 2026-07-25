@@ -28,15 +28,30 @@ export class Enemy {
         this.damageAccumulator = 0;
         this.damageTick = 0;
         this.painCooldown = 0; // NEW: Audio throttle for individual enemy hits
-        
+        this.knockbackX = 0;
+        this.knockbackY = 0;
+
         return this;
     }
 
-    takeDamage(amount, game) {
+    // knockbackForce is optional and defaults to 0 (no behavior change for the
+    // many existing call sites that don't pass it). When present, direction is
+    // always away from the player — every real caller's hit source is player-
+    // centered (cone, aura, dash, orbiting blade), so there's no need to thread
+    // a separate origin point through every call site.
+    takeDamage(amount, game, knockbackForce = 0) {
         this.hp -= amount;
         this.flashTime = 5;
         this.lastHitByMelee = false;
-        
+
+        if (knockbackForce > 0 && game && game.state && game.state.player) {
+            const dx = this.x - game.state.player.x;
+            const dy = this.y - game.state.player.y;
+            const dist = Math.max(Math.hypot(dx, dy), 0.001);
+            this.knockbackX += (dx / dist) * knockbackForce;
+            this.knockbackY += (dy / dist) * knockbackForce;
+        }
+
         // NEW: Check if the enemy is allowed to scream again (prevents machine-gun audio overlap)
         if (this.painCooldown <= 0 && game && game.audioEngine && this.painSound) {
             game.audioEngine.playSFX(this.painSound, 0.3);
@@ -107,6 +122,18 @@ export class Enemy {
 
         this.x += (this.vx || 0) * this.speedModifier;
         this.y += (this.vy || 0) * this.speedModifier;
+
+        // Knockback decays independently of vx/vy so it survives every entity
+        // subclass recomputing vx/vy fresh each frame (chase/flee/orbit logic).
+        if (this.knockbackX || this.knockbackY) {
+            this.x += this.knockbackX;
+            this.y += this.knockbackY;
+            this.knockbackX *= 0.8;
+            this.knockbackY *= 0.8;
+            if (Math.abs(this.knockbackX) < 0.05) this.knockbackX = 0;
+            if (Math.abs(this.knockbackY) < 0.05) this.knockbackY = 0;
+        }
+
         if (this.flashTime > 0) this.flashTime--;
     }
 

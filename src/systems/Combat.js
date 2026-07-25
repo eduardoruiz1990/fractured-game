@@ -1,6 +1,17 @@
 // src/systems/Combat.js
 import { getActiveSynergies } from '../data/Manifestations.js';
 
+// Patch 16: generic tag-scaled knockback, consumed by Enemy.takeDamage's
+// optional knockbackForce param. Only wired at call sites with no existing
+// hand-tuned push (camera's 30px shove, lead_pipe's 25px shove, and the
+// centrifuge synergy's deliberately-capped 12px are left untouched — they
+// already have impulse-like behavior and are separately tuned).
+function tagKnockback(tags, damage) {
+    if (!tags || tags.includes('aura') || tags.includes('passive')) return 0;
+    if (tags.includes('kinetic') || tags.includes('melee')) return Math.min(14, 3 + damage * 0.4);
+    return Math.min(6, 1 + damage * 0.15);
+}
+
 export class Combat {
     static resolveWeapons(game) {
         const state = game.state;
@@ -270,7 +281,10 @@ export class Combat {
 
                 if (canTakeDamage && dist > spinner.baseRadius - 15 && dist < spinner.baseRadius + 15) {
                      if (state.frame % spinnerTick === 0) {
-                         ent.takeDamage(spinnerDmg, game);
+                         // Plain spinner hit had no push at all. Gated on !hasCentrifuge so
+                         // this never stacks with that synergy's own hand-tuned 12px shove
+                         // below, which is deliberately capped to stay inside the blade band.
+                         ent.takeDamage(spinnerDmg, game, hasCentrifuge ? 0 : tagKnockback(spinner.tags, spinnerDmg));
                          game.spawnParticles(ent.x, ent.y, '#aaaaaa', 2);
                          if (Math.random() < 0.3 && game.director && typeof game.director.spawnDecal === 'function') {
                              game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 4);
@@ -437,7 +451,8 @@ export class Combat {
             if (state.player.dash && state.player.dash.active && state.player.boons && state.player.boons.includes('kinetic_dash')) {
                 if (distToPlayer < (ent.radius || 15) + state.player.radius) {
                     if (state.frame % 5 === 0) {
-                        ent.takeDamage(15, game);
+                        // kinetic_dash: literally dashing through the enemy, heavy tier fits.
+                        ent.takeDamage(15, game, tagKnockback(['kinetic'], 15));
                         game.spawnParticles(ent.x, ent.y, '#00ffcc', 5);
                     }
                 }
@@ -506,7 +521,11 @@ export class Combat {
                             && state.player.synergies.includes('ritual_focus');
 
                         if (Math.abs(angleDiff) < hitAngle || wardedBypass) {
-                            ent.takeDamage((flDamage / 60) * dmgMult, game);
+                            const flDmgDealt = (flDamage / 60) * dmgMult;
+                            // The always-on starter weapon had zero positional push before
+                            // this patch (the vx/vy dampen below is a separate flinch effect,
+                            // not knockback) — light tier, ticks every frame it's lit up.
+                            ent.takeDamage(flDmgDealt, game, tagKnockback(state.player.weapons.flashlight.tags, flDmgDealt));
                             ent.x -= ent.vx * 0.5; ent.y -= ent.vy * 0.5;
                             if (state.player.synergies && state.player.synergies.includes('blinding_signal')) ent.confused = 180; 
                             
