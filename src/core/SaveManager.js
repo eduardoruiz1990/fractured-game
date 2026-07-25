@@ -1,4 +1,13 @@
 // src/core/SaveManager.js
+import { SYNAPSE_NODES_BY_ID } from '../data/SynapseNodes.js';
+
+// Patch 29.4: legacy "level" units <-> native stat-delta units, mirroring
+// Game.js's own formulas exactly (maxSanity: +20/lvl, speedBuff: +5%/lvl,
+// lightBuff: +10%/lvl) and Combat.js's magnet (+30px/lvl). This is the same
+// mapping the Synapse Tree's hard constraint (tree effects on these four stats
+// are exact integer multiples of these steps) is built to stay compatible with.
+const LEGACY_STEP = { sanity: 20, speed: 5, light: 10, magnet: 30 };
+
 export class SaveManager {
     constructor() {
         this.metaState = {
@@ -27,6 +36,12 @@ export class SaveManager {
         // snapshot immediately, rather than leaving it undefined until their first
         // save/load round-trip.
         this._migrateMetaState();
+        // Self-healing: always re-derive metaState.upgrades from legacyUpgrades +
+        // treeNodes on load, rather than trusting whatever was last persisted. For
+        // a freshly-migrated legacy save (treeNodes still empty) this reproduces
+        // the exact same numbers the old flat upgrades held — not a save (no
+        // purchase happened), just an in-memory refresh.
+        this._recomputeUpgradeMirror();
     }
 
     loadGame() {
@@ -138,6 +153,7 @@ export class SaveManager {
                 if (parsed.legacyUpgrades === undefined) {
                     this.metaState.legacyUpgrades = { ...(parsed.upgrades || this.metaState.upgrades) };
                 }
+                this._recomputeUpgradeMirror();
 
                 this.saveGame();
                 return true;
@@ -221,19 +237,118 @@ export class SaveManager {
         return false;
     }
 
+    // Patch 29.4: cost curve now scales off legacyUpgrades (the legacy track's own
+    // level counter) instead of metaState.upgrades directly — upgrades is now a
+    // derived mirror (see _recomputeUpgradeMirror below), and scaling this curve
+    // off the mirror would make the price creep every time a Synapse Tree node
+    // happened to touch the same stat, coupling two tracks that are meant to be
+    // independent. Externally unchanged: same params, same 1.1^lvl curve, same
+    // 100-level cap, still self-saves.
     buyUpgrade(upgradeId, baseCost) {
-        const currentLvl = this.metaState.upgrades[upgradeId] || 0;
-        if (currentLvl >= 100) return false; 
+        const currentLvl = this.metaState.legacyUpgrades[upgradeId] || 0;
+        if (currentLvl >= 100) return false;
 
         const cost = Math.floor(baseCost * Math.pow(1.1, currentLvl));
         if (this.metaState.lucidityBank >= cost) {
             this.metaState.lucidityBank -= cost;
             this.metaState.spentLucidity += cost;
-            this.metaState.upgrades[upgradeId] = currentLvl + 1;
+            this.metaState.legacyUpgrades[upgradeId] = currentLvl + 1;
+            this._recomputeUpgradeMirror();
             this.saveGame();
             return true;
         }
         return false;
+    }
+
+    // Resolver total = legacyUpgrades (frozen pre-tree progress, converted from
+    // level units into native stat-delta units) + every owned tree node's effects.
+    // Deliberately never reads metaState.upgrades — that field is a DERIVED OUTPUT
+    // of this method (see _recomputeUpgradeMirror), not an input; reading it here
+    // would double-count whatever it already mirrored from a previous resolve.
+    // grants is a Set so discrete unlocks (e.g. 'denial_recharge') can never be
+    // accidentally summed as if they were numeric deltas.
+    getResolvedUpgrades() {
+        const legacy = this.metaState.legacyUpgrades || { hp: 0, speed: 0, light: 0, magnet: 0 };
+        const stats = {
+            sanity: legacy.hp * LEGACY_STEP.sanity,
+            speed: legacy.speed * LEGACY_STEP.speed,
+            light: legacy.light * LEGACY_STEP.light,
+            magnet: legacy.magnet * LEGACY_STEP.magnet,
+            iframes: 0,
+            flashlightAngle: 0,
+            tagDamage: {},
+            lucidityGain: 0,
+            tokenDropRate: 0,
+            dashCooldown: 0,
+            dashDuration: 0,
+            rerollCost: 0
+        };
+        const grants = new Set();
+
+        const owned = this.metaState.treeNodes || [];
+        for (const nodeId of owned) {
+            const node = SYNAPSE_NODES_BY_ID[nodeId];
+            if (!node) continue; // unknown/stale id — ignore rather than throw
+            for (const [key, value] of Object.entries(node.effects)) {
+                if (key === 'grant') {
+                    grants.add(value);
+                } else if (key === 'tagDamage') {
+                    for (const [tag, amt] of Object.entries(value)) {
+                        stats.tagDamage[tag] = (stats.tagDamage[tag] || 0) + amt;
+                    }
+                } else {
+                    stats[key] = (stats[key] || 0) + value;
+                }
+            }
+        }
+
+        return { stats, grants };
+    }
+
+    // Writes metaState.upgrades as a PURE DERIVED MIRROR of getResolvedUpgrades(),
+    // converted back from native stat-delta units into legacy LEVEL units, so
+    // readers that predate the tree (e.g. Combat.js's magnet lookup) keep working
+    // unmodified regardless of whether a given point of "level" came from
+    // legacyUpgrades or from a tree node. Division is always exact — the tree's
+    // hard constraint guarantees every contribution to these four stats is an
+    // integer multiple of its legacy step.
+    _recomputeUpgradeMirror() {
+        const { stats } = this.getResolvedUpgrades();
+        this.metaState.upgrades = {
+            hp: stats.sanity / LEGACY_STEP.sanity,
+            speed: stats.speed / LEGACY_STEP.speed,
+            light: stats.light / LEGACY_STEP.light,
+            magnet: stats.magnet / LEGACY_STEP.magnet
+        };
+    }
+
+    // Patch 29.4: purchase a Synapse Tree node. Validates ownership (no
+    // double-buy), requires (AND by default; requireMode:'any' + requireCount for
+    // the 3 capstones), minPatientLevel, and bank — in that order, so a failed
+    // check never has side effects.
+    buyNode(nodeId) {
+        const node = SYNAPSE_NODES_BY_ID[nodeId];
+        if (!node) return false;
+
+        const owned = this.metaState.treeNodes || (this.metaState.treeNodes = []);
+        if (owned.includes(nodeId)) return false;
+
+        const neededCount = node.requireMode === 'any' ? (node.requireCount || 1) : node.requires.length;
+        const satisfiedCount = node.requires.filter(r => owned.includes(r)).length;
+        if (satisfiedCount < neededCount) return false;
+
+        if (node.minPatientLevel !== null && node.minPatientLevel !== undefined) {
+            if (this.getPatientLevelInfo().level < node.minPatientLevel) return false;
+        }
+
+        if (this.metaState.lucidityBank < node.cost) return false;
+
+        this.metaState.lucidityBank -= node.cost;
+        this.metaState.spentLucidity += node.cost;
+        owned.push(nodeId);
+        this._recomputeUpgradeMirror();
+        this.saveGame();
+        return true;
     }
 
     getPatientLevelInfo() {
