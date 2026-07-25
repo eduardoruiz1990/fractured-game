@@ -147,22 +147,10 @@
                     </div>
                     
                     <div style="display: flex; flex-direction: column; align-items: center;">
-                        <div class="synapse-node-file">
-                            <div class="node-info"><strong>Cognitive Resistance</strong><br><span class="typewriter-text">Base Sanity +20 (Lvl <span id="upg-hp-lvl">0</span>)</span><br><span class="typewriter-text" id="upg-hp-delta" style="color:#888; font-size:0.85em;"></span></div>
-                            <button class="file-btn small" id="btn-upg-hp">50 L</button>
-                        </div>
-                        <div class="synapse-node-file">
-                            <div class="node-info"><strong>Adrenal Gland</strong><br><span class="typewriter-text">Base Speed +5% (Lvl <span id="upg-speed-lvl">0</span>)</span><br><span class="typewriter-text" id="upg-speed-delta" style="color:#888; font-size:0.85em;"></span></div>
-                            <button class="file-btn small" id="btn-upg-speed">75 L</button>
-                        </div>
-                        <div class="synapse-node-file">
-                            <div class="node-info"><strong>Halogen Bulb</strong><br><span class="typewriter-text">Light Range +10% (Lvl <span id="upg-light-lvl">0</span>)</span><br><span class="typewriter-text" id="upg-light-delta" style="color:#888; font-size:0.85em;"></span></div>
-                            <button class="file-btn small" id="btn-upg-light">100 L</button>
-                        </div>
-                        <div class="synapse-node-file">
-                            <div class="node-info"><strong>Neuro-Magnetic Pull</strong><br><span class="typewriter-text">Vacuum Radius +30px (Lvl <span id="upg-magnet-lvl">0</span>)</span><br><span class="typewriter-text" id="upg-magnet-delta" style="color:#888; font-size:0.85em;"></span></div>
-                            <button class="file-btn small" id="btn-upg-magnet">150 L</button>
-                        </div>
+                        <!-- Patch 29.7: the 4 flat upgrade rows are replaced by the Synapse
+                             Tree, rendered here by src/ui/SynapseTree.js (UIManager.js
+                             instantiates and calls .render() on it). -->
+                        <div id="synapse-tree-container" style="width: 100%;"></div>
 
                         <button class="file-btn danger" id="btn-wipe-save" style="margin-top: 30px;">WIPE CLINICAL FILE (HARD RESET)</button>
                     </div>

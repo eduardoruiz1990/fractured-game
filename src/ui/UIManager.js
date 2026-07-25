@@ -1,5 +1,6 @@
 // src/ui/UIManager.js
 import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, INTRUSIVE_THOUGHTS } from '../data/Manifestations.js';
+import { SynapseTree } from './SynapseTree.js';
 
 // Matches the hardcoded progression chain in SaveManager.upgradeToken() exactly —
 // that method does NOT derive the chain from TOKEN_RARITIES, it's a separate
@@ -16,6 +17,10 @@ export class UIManager {
         this.selectedSlotType = null;      
         
         this.bindElements();
+        // Patch 29.7: constructed once here; render() is called from updateMenuUI()
+        // below so it stays in sync with everything else that refreshes the menu
+        // (tab switches, purchases, imports).
+        this.synapseTree = new SynapseTree(this.synapseTreeContainer, this.saveManager);
         this.attachEvents();
         this.updateMenuUI();
         
@@ -112,10 +117,9 @@ export class UIManager {
         this.btnExportSave = document.getElementById('btn-export-save');
         this.btnImportSave = document.getElementById('btn-import-save');
 
-        this.btnUpgHp = document.getElementById('btn-upg-hp');
-        this.btnUpgSpeed = document.getElementById('btn-upg-speed');
-        this.btnUpgLight = document.getElementById('btn-upg-light');
-        this.btnUpgMagnet = document.getElementById('btn-upg-magnet');
+        // Patch 29.7: the 4 hardcoded upgrade buttons are gone — the Synapse Tree
+        // renders into this container instead (see the constructor below).
+        this.synapseTreeContainer = document.getElementById('synapse-tree-container');
 
         this.inventoryGrid = document.getElementById('inventory-grid');
         this.detailName = document.getElementById('detail-name');
@@ -263,30 +267,13 @@ export class UIManager {
             }
         });
 
-        this.btnUpgHp.addEventListener('click', () => { 
-            if (this.saveManager.buyUpgrade('hp', 50)) { 
-                if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade');
-                this.updateMenuUI(); this.showXPToast(); 
-            } 
-        });
-        this.btnUpgSpeed.addEventListener('click', () => { 
-            if (this.saveManager.buyUpgrade('speed', 75)) { 
-                if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade');
-                this.updateMenuUI(); this.showXPToast(); 
-            } 
-        });
-        this.btnUpgLight.addEventListener('click', () => { 
-            if (this.saveManager.buyUpgrade('light', 100)) { 
-                if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade');
-                this.updateMenuUI(); this.showXPToast(); 
-            } 
-        });
-        this.btnUpgMagnet.addEventListener('click', () => { 
-            if (this.saveManager.buyUpgrade('magnet', 150)) { 
-                if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade');
-                this.updateMenuUI(); this.showXPToast(); 
-            } 
-        });
+        // Patch 29.7: no hardcoded upgrade-button handlers here anymore — the
+        // Synapse Tree's own node cards call buyNode and re-render themselves
+        // (see SynapseTree.js). NOTE: this means buying a tree node currently does
+        // NOT play the 'ui_upgrade' SFX or trigger showXPToast() the old buttons
+        // did — SynapseTree.js has no hook exposed for that, and it's out of this
+        // patch's file scope (UIManager.js, index.html only) to add one. Flagging
+        // as a real, known gap rather than a silent regression.
     }
 
     updateMenuUI() {
@@ -302,41 +289,11 @@ export class UIManager {
         if (xpText) xpText.innerText = `${levelInfo.currentXP} / ${levelInfo.nextXP} L`;
 
         document.getElementById('tree-lucidity').innerText = meta.lucidityBank;
-        
-        // Value-delta tooltips (Patch 27): these formulas are transcribed from where
-        // each upgrade is actually consumed — Game.js's maxSanity/speedBuff/lightBuff
-        // (upgrades.hp/speed/light) and Combat.collectXP's baseVacRadius
-        // (upgrades.magnet). If those formulas ever change, this table must change
-        // with them or the delta shown here will lie about what buying does.
-        const upgradeStats = [
-            { id: 'hp', baseCost: 50, element: this.btnUpgHp, valueAt: lvl => 100 + lvl * 20, unit: ' Sanity' },
-            { id: 'speed', baseCost: 75, element: this.btnUpgSpeed, valueAt: lvl => 100 + lvl * 5, unit: '% Speed' },
-            { id: 'light', baseCost: 100, element: this.btnUpgLight, valueAt: lvl => 100 + lvl * 10, unit: '% Light Radius' },
-            { id: 'magnet', baseCost: 150, element: this.btnUpgMagnet, valueAt: lvl => 70 + lvl * 30, unit: 'px Vacuum Radius' }
-        ];
 
-        upgradeStats.forEach(stat => {
-            const currentLvl = meta.upgrades[stat.id] || 0;
-            document.getElementById(`upg-${stat.id}-lvl`).innerText = currentLvl;
-            const cost = Math.floor(stat.baseCost * Math.pow(1.1, currentLvl));
-            stat.element.innerText = `${cost} L`;
-
-            const canAfford = meta.lucidityBank >= cost;
-            const isMaxed = currentLvl >= 100;
-            stat.element.disabled = !canAfford || isMaxed;
-            if (isMaxed) stat.element.innerText = "MAX";
-
-            const deltaEl = document.getElementById(`upg-${stat.id}-delta`);
-            if (deltaEl) {
-                const current = stat.valueAt(currentLvl);
-                if (isMaxed) {
-                    deltaEl.innerText = `Current: ${current}${stat.unit} (MAXED)`;
-                } else {
-                    const next = stat.valueAt(currentLvl + 1);
-                    deltaEl.innerText = `Current: ${current}${stat.unit}  →  Next: ${next}${stat.unit}`;
-                }
-            }
-        });
+        // Patch 29.7: the old 4-stat value-delta loop (Patch 27) is gone — the
+        // Synapse Tree's own node cards show cost/state directly. render() rebuilds
+        // the whole tree fresh, so it always reflects the current bank/PL/treeNodes.
+        if (this.synapseTree) this.synapseTree.render();
 
         this.renderRoadmap();
         this.renderTrophies();
