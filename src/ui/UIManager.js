@@ -1,6 +1,11 @@
 // src/ui/UIManager.js
 import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, INTRUSIVE_THOUGHTS } from '../data/Manifestations.js';
 
+// Matches the hardcoded progression chain in SaveManager.upgradeToken() exactly —
+// that method does NOT derive the chain from TOKEN_RARITIES, it's a separate
+// hardcoded if/else, so this order must be kept in sync with it by hand.
+const RARITY_UPGRADE_ORDER = ['common', 'rare', 'epic', 'legendary', 'mythic'];
+
 export class UIManager {
     constructor(saveManager, audioEngine, onStartGameCallback) {
         this.saveManager = saveManager;
@@ -298,11 +303,16 @@ export class UIManager {
 
         document.getElementById('tree-lucidity').innerText = meta.lucidityBank;
         
+        // Value-delta tooltips (Patch 27): these formulas are transcribed from where
+        // each upgrade is actually consumed — Game.js's maxSanity/speedBuff/lightBuff
+        // (upgrades.hp/speed/light) and Combat.collectXP's baseVacRadius
+        // (upgrades.magnet). If those formulas ever change, this table must change
+        // with them or the delta shown here will lie about what buying does.
         const upgradeStats = [
-            { id: 'hp', baseCost: 50, element: this.btnUpgHp },
-            { id: 'speed', baseCost: 75, element: this.btnUpgSpeed },
-            { id: 'light', baseCost: 100, element: this.btnUpgLight },
-            { id: 'magnet', baseCost: 150, element: this.btnUpgMagnet }
+            { id: 'hp', baseCost: 50, element: this.btnUpgHp, valueAt: lvl => 100 + lvl * 20, unit: ' Sanity' },
+            { id: 'speed', baseCost: 75, element: this.btnUpgSpeed, valueAt: lvl => 100 + lvl * 5, unit: '% Speed' },
+            { id: 'light', baseCost: 100, element: this.btnUpgLight, valueAt: lvl => 100 + lvl * 10, unit: '% Light Radius' },
+            { id: 'magnet', baseCost: 150, element: this.btnUpgMagnet, valueAt: lvl => 70 + lvl * 30, unit: 'px Vacuum Radius' }
         ];
 
         upgradeStats.forEach(stat => {
@@ -310,11 +320,22 @@ export class UIManager {
             document.getElementById(`upg-${stat.id}-lvl`).innerText = currentLvl;
             const cost = Math.floor(stat.baseCost * Math.pow(1.1, currentLvl));
             stat.element.innerText = `${cost} L`;
-            
+
             const canAfford = meta.lucidityBank >= cost;
             const isMaxed = currentLvl >= 100;
             stat.element.disabled = !canAfford || isMaxed;
             if (isMaxed) stat.element.innerText = "MAX";
+
+            const deltaEl = document.getElementById(`upg-${stat.id}-delta`);
+            if (deltaEl) {
+                const current = stat.valueAt(currentLvl);
+                if (isMaxed) {
+                    deltaEl.innerText = `Current: ${current}${stat.unit} (MAXED)`;
+                } else {
+                    const next = stat.valueAt(currentLvl + 1);
+                    deltaEl.innerText = `Current: ${current}${stat.unit}  →  Next: ${next}${stat.unit}`;
+                }
+            }
         });
 
         this.renderRoadmap();
@@ -530,7 +551,20 @@ export class UIManager {
         this.detailName.style.color = rarityData.color;
         
         this.detailDesc.innerText = tokenData.desc;
-        this.detailSet.innerText = `Set: ${setData.name} | (2) ${setData['2']} | (4) ${setData['4']}\n\n[CLICK PRESCRIBE TO EQUIP]`;
+
+        // Value-delta (Patch 27): rarity is the only field upgradeToken() actually
+        // changes today. TOKEN_RARITIES.multiplier and the token's own .level are
+        // not read by any gameplay system (Game.js/Combat.js) — grep confirms it —
+        // so this deliberately shows the rarity-tier change rather than inventing a
+        // stat number that would misrepresent what forging currently does.
+        const rarityIdx = RARITY_UPGRADE_ORDER.indexOf(invItem.rarity);
+        const nextRarity = (rarityIdx >= 0 && rarityIdx < RARITY_UPGRADE_ORDER.length - 1)
+            ? RARITY_UPGRADE_ORDER[rarityIdx + 1] : null;
+        const rarityDeltaLine = nextRarity
+            ? `Forge: ${invItem.rarity} → ${nextRarity}`
+            : `Rarity: ${invItem.rarity} (MAXED)`;
+
+        this.detailSet.innerText = `Set: ${setData.name} | (2) ${setData['2']} | (4) ${setData['4']}\n${rarityDeltaLine}\n\n[CLICK PRESCRIBE TO EQUIP]`;
 
         this.btnEquipItem.innerText = "[ PRESCRIBE TO PATIENT ]";
         this.btnEquipItem.style.cssText = 'display: block; width: 100%; background-color: var(--blood-red); color: white; padding: 12px; font-weight: bold; font-size: 1rem; border: 2px solid #ef4444; margin-bottom: 15px; cursor: pointer; text-shadow: 0 0 5px red; font-family: Courier New; text-transform: uppercase; white-space: normal; line-height: 1.2;';
