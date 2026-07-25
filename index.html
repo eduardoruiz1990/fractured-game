@@ -106,7 +106,18 @@
                 <div id="tab-curses" class="tab-pane">
                     <div style="text-align: center; margin-bottom: 20px;">
                         <h2 style="color: var(--ink-black); border-bottom: 2px solid var(--ink-black); padding-bottom: 10px; margin-top: 0; letter-spacing: 2px; font-family: var(--ui-font);">INTRUSIVE THOUGHTS</h2>
-                        <p class="typewriter-text" style="color: #555; font-size: 0.9rem;">Permanent traits, chosen freely. Each one you adopt makes the descent harder — and pays out more Lucidity for the risk.</p>
+                        <p class="typewriter-text" style="color: #555; font-size: 0.9rem;">Permanent traits, chosen freely. Each one you adopt makes the descent harder — and pays out more Lucidity for the risk. Not every thought is equally dangerous, and the payout follows accordingly.</p>
+                        <!-- Patch 32: static risk-tier key. Per-curse weight values are
+                             rendered dynamically by UIManager.renderCurseSelection()
+                             (out of this patch's file scope) reading
+                             INTRUSIVE_THOUGHTS[id].lucidityWeight — this legend just
+                             explains what the tiers mean so the numbers aren't opaque. -->
+                        <div style="display:flex; justify-content:center; gap:14px; margin-top:10px; flex-wrap:wrap; font-size:0.75rem;">
+                            <span class="typewriter-text" style="color:#888;">MILD +10%</span>
+                            <span class="typewriter-text" style="color:#a67c00;">MODERATE +15%</span>
+                            <span class="typewriter-text" style="color:#c05a00;">SEVERE +20%</span>
+                            <span class="typewriter-text" style="color:var(--ui-red);">EXTREME +30%</span>
+                        </div>
                     </div>
                     <div id="curse-selection-container"></div>
                 </div>
@@ -343,7 +354,7 @@
                             </div>
                             <strong style="color: #5a2a7a; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">IX. INTRUSIVE THOUGHTS</strong>
                             <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
-                                Unlocked at Patient Level 5, after your first Boss kill. Adopt permanent, self-inflicted curses in exchange for +15% Lucidity gain each — a real cost, for a real reward.
+                                Unlocked at Patient Level 5, after your first Boss kill. Adopt permanent, self-inflicted curses in exchange for Lucidity gain — the riskier the thought, the greater the payout. Stack as many as you can survive.
                             </p>
                         </div>
                     </div>

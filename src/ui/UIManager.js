@@ -309,13 +309,26 @@ export class UIManager {
         this.renderCurseSelection();
     }
 
+    // Patch 32b: weight -> tier label/colour, matching the static legend added to
+    // #tab-curses in index.html (Patch 32) exactly, so the numbers on each card
+    // agree with what that legend promises.
+    curseTierLabel(weight) {
+        if (weight >= 30) return { text: 'EXTREME', color: 'var(--ui-red)' };
+        if (weight >= 20) return { text: 'SEVERE', color: '#c05a00' };
+        if (weight >= 15) return { text: 'MODERATE', color: '#a67c00' };
+        return { text: 'MILD', color: '#888' };
+    }
+
     renderCurseSelection() {
         const meta = this.saveManager.metaState;
-        const patientLevel = this.saveManager.getPatientLevelInfo().level;
-        const bossKills = (meta.killCounts && meta.killCounts.BOSS) || 0;
-        const isUnlocked = patientLevel >= 5 && bossKills > 0;
+        // Patch 32b: isCurseUnlocked() is now the single source of truth for this
+        // gate (also enforced server-side in toggleCurse) — reads it here instead
+        // of re-deriving the same patientLevel >= 5 && bossKills > 0 check locally.
+        const isUnlocked = this.saveManager.isCurseUnlocked();
         const selected = meta.selectedCurses || [];
-        const bonusPct = Math.round(selected.length * 15);
+        // Patch 32b: was Math.round(selected.length * 15) — flat 15% regardless of
+        // which curses were adopted. Now the real weighted total from the ladder.
+        const bonusPct = this.saveManager.getResolvedCurseBonus().totalPct;
 
         const statusLine = document.getElementById('curse-status-line');
         if (statusLine) {
@@ -342,9 +355,14 @@ export class UIManager {
 
         Object.values(INTRUSIVE_THOUGHTS).forEach(curse => {
             const isActive = selected.includes(curse.id);
+            const tier = this.curseTierLabel(curse.lucidityWeight);
             html += `
                 <div class="synapse-node-file">
-                    <div class="node-info"><strong>${curse.name}</strong><br><span class="typewriter-text">${curse.desc}</span></div>
+                    <div class="node-info">
+                        <strong>${curse.name}</strong>
+                        <span style="color:${tier.color}; font-size:0.7rem; font-weight:bold; margin-left:6px;">${tier.text} +${curse.lucidityWeight}%</span>
+                        <br><span class="typewriter-text">${curse.desc}</span>
+                    </div>
                     <button class="file-btn small ${isActive ? 'danger' : ''}" data-curse-id="${curse.id}">${isActive ? 'ACTIVE (REVOKE)' : 'ADOPT'}</button>
                 </div>
             `;

@@ -87,13 +87,71 @@ export function getActiveSynergies(weapons) {
     return active;
 }
 
+// Patch 32: curse risk ladder. Every curse now carries `lucidityWeight` (percent
+// Lucidity bonus while it's active), replacing the flat 15%-per-curse rate that
+// used to be hardcoded directly in Game.js's lucidityBonusMultiplier line. Weights
+// are tiered by how much real, currently-CODED risk each curse actually adds —
+// not by its flavor text — because two of the four original curses turned out to
+// promise an effect the code never implemented (see the note on
+// everything_is_target below). Tiers: MILD 10 / MODERATE 15 / SEVERE 20 / EXTREME 30.
+//
+// NOTE — everything_is_target's description has always claimed "+100% Damage".
+// Grepping Combat.js confirms that half was never implemented — the ONLY coded
+// effect is the flashlight destroying its own XP drops. Rather than silently
+// dropping the claim or fabricating the missing damage buff here (this patch's
+// file scope is data + SaveManager, not Combat.js), the description is corrected
+// to what actually runs, weighted MILD to match its real (not promised) cost, and
+// the missing buff is flagged in this patch's report as a Combat.js follow-up —
+// same shape as the token effects revived in Patch 31b.
+//
+// hemophilia / nyctophobia / fragile_mind existed as dead `.includes()` checks in
+// Game.js (real, working effect code) with NO entry in this pool — orphaned
+// exactly like the token ids fixed in Patch 31b, just never surfaced as choices.
+// Revived here as pure-downside curses: the system's actual "payout" for adopting
+// any curse is the Lucidity weight itself, not a mandatory in-run buff — tunnel_
+// vision/manic_episode/compulsive_cleaner happen to also carry a buff, but that
+// was never a hard requirement, and inventing one for these three would be the
+// same mistake as the original everything_is_target text.
 export const INTRUSIVE_THOUGHTS = {
-    everything_is_target: { id: 'everything_is_target', name: 'Everything is a Target', desc: '+100% Damage, but your flashlight destroys your own XP drops.' },
-    manic_episode: { id: 'manic_episode', name: 'Manic Episode', desc: '+50% Fire Rate, but Sanity drains 2x faster.' },
-    compulsive_cleaner: { id: 'compulsive_cleaner', name: 'Compulsive Cleaner', desc: 'Janitors drop more XP, but Hall Monitors hunt you at 2x speed.' },
-    
+    everything_is_target: {
+        id: 'everything_is_target', name: 'Everything is a Target',
+        desc: 'Your flashlight destroys any XP drop caught in its beam.',
+        lucidityWeight: 10
+    },
+    manic_episode: {
+        id: 'manic_episode', name: 'Manic Episode',
+        desc: '+50% Fire Rate, but Sanity drains twice as fast.',
+        lucidityWeight: 20
+    },
+    compulsive_cleaner: {
+        id: 'compulsive_cleaner', name: 'Compulsive Cleaner',
+        desc: 'Scavengers drop more XP, but every Predator hunts at 2x speed for the whole run.',
+        lucidityWeight: 15
+    },
+
     // --- EPIC 4: NEW CURSE ---
-    tunnel_vision: { id: 'tunnel_vision', name: 'Tunnel Vision', desc: 'Flashlight damage x3, but the ambient 360-degree safe-glow is removed.' }
+    tunnel_vision: {
+        id: 'tunnel_vision', name: 'Tunnel Vision',
+        desc: 'Flashlight damage x3, but the ambient 360-degree safe-glow is removed.',
+        lucidityWeight: 20
+    },
+
+    // --- PATCH 32: revived from orphaned Game.js checks ---
+    hemophilia: {
+        id: 'hemophilia', name: 'Hemophilia',
+        desc: 'Every hit you take deals 50% more damage. No exceptions.',
+        lucidityWeight: 30
+    },
+    nyctophobia: {
+        id: 'nyctophobia', name: 'Nyctophobia',
+        desc: 'Sanity drains 2.5x faster whenever you stand outside light or a ward.',
+        lucidityWeight: 20
+    },
+    fragile_mind: {
+        id: 'fragile_mind', name: 'Fragile Mind',
+        desc: 'Your maximum Grip is halved for the entire descent.',
+        lucidityWeight: 30
+    }
 };
 
 export const TOKEN_RARITIES = {

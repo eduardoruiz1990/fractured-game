@@ -17,7 +17,7 @@
 
 import { Game } from './src/core/Game.js';
 import {
-    SYNERGIES, TOKENS, TOKEN_SETS, TOKEN_RARITIES, TOKEN_SLOT_TYPES
+    SYNERGIES, TOKENS, TOKEN_SETS, TOKEN_RARITIES, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS
 } from './src/data/Manifestations.js';
 import { getXPRequiredForLevel } from './src/data/Config.js';
 
@@ -197,6 +197,65 @@ console.log('\ngetXPRequiredForLevel is monotonically increasing');
 
     check('getXPRequiredForLevel(1..50) strictly increases every level',
           monotonic, `first non-increasing at level ${firstBadLevel}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nCurse risk ladder (Patch 32)');
+
+{
+    const VALID_WEIGHTS = [10, 15, 20, 30]; // MILD / MODERATE / SEVERE / EXTREME
+    const REVIVED_IDS = ['hemophilia', 'nyctophobia', 'fragile_mind']; // previously orphaned Game.js checks
+
+    const curseIds = Object.keys(INTRUSIVE_THOUGHTS);
+    check('at least 7 curses (4 original + 3 revived)', curseIds.length >= 7, `got ${curseIds.length}`);
+    check('no duplicate curse ids', new Set(curseIds).size === curseIds.length);
+
+    for (const [curseId, curse] of Object.entries(INTRUSIVE_THOUGHTS)) {
+        check(`INTRUSIVE_THOUGHTS.${curseId}.id matches its key`, curse.id === curseId);
+        check(`INTRUSIVE_THOUGHTS.${curseId}.lucidityWeight is a real ladder tier`,
+              VALID_WEIGHTS.includes(curse.lucidityWeight), `got ${curse.lucidityWeight}`);
+        check(`INTRUSIVE_THOUGHTS.${curseId} has a non-empty desc`,
+              typeof curse.desc === 'string' && curse.desc.length > 0);
+    }
+
+    for (const id of REVIVED_IDS) {
+        check(`revived curse '${id}' is present in the selectable pool`, curseIds.includes(id));
+    }
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nSaveManager.getResolvedCurseBonus / toggleCurse gate (Patch 32)');
+
+{
+    // Real SaveManager instance, isolated localStorage mock — same pattern as
+    // test_synapse.js's fixture tests.
+    const store = {};
+    global.localStorage = { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } };
+    const { SaveManager } = await import('./src/core/SaveManager.js');
+
+    const sm = new SaveManager();
+    sm.metaState.spentLucidity = 20000; // PL5+
+    sm.metaState.killCounts.BOSS = 0;   // but no boss kill yet
+
+    check('toggleCurse REJECTS adoption before the gate (no boss kill)',
+          sm.toggleCurse('manic_episode') === false);
+    check('selectedCurses stays empty on a rejected adopt', sm.metaState.selectedCurses.length === 0);
+
+    sm.metaState.killCounts.BOSS = 1;
+    check('toggleCurse ACCEPTS adoption once the gate is met', sm.toggleCurse('manic_episode') === true);
+    check('selectedCurses now contains it', sm.metaState.selectedCurses.includes('manic_episode'));
+
+    check('toggleCurse REJECTS an unknown curse id', sm.toggleCurse('not_a_real_curse') === false);
+
+    sm.toggleCurse('hemophilia'); // extreme, weight 30
+    const { totalPct, weights } = sm.getResolvedCurseBonus();
+    check('getResolvedCurseBonus sums real per-curse weights (20 + 30 = 50)',
+          totalPct === 50, `got ${totalPct}`);
+    check('weights breakdown is per-curse, not just a total',
+          weights.manic_episode === 20 && weights.hemophilia === 30);
+
+    check('revoking an adopted curse is always allowed, gate or not',
+          sm.toggleCurse('manic_episode') === true && !sm.metaState.selectedCurses.includes('manic_episode'));
 }
 
 // ---------------------------------------------------------------------------

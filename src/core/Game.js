@@ -251,9 +251,23 @@ export class Game {
 
         this.state.player.synergies = getActiveSynergies(this.state.player.weapons);
 
+        // Patch 32b: was a flat curses.length*0.15 — every curse paid the same 15%
+        // regardless of how much real risk it added. Now reads the weighted ladder
+        // from Manifestations.js via the same resolver UIManager's curse screen
+        // uses, passing state.player.curses (not metaState.selectedCurses) so a
+        // token-granted curse's weight is counted too, not just adopted ones.
+        // Falls back to the pre-32 flat rate for saveManager-like objects that
+        // don't implement the resolver (test harness mocks).
+        let curseBonusPct;
+        if (saveManager && typeof saveManager.getResolvedCurseBonus === 'function') {
+            curseBonusPct = saveManager.getResolvedCurseBonus(this.state.player.curses).totalPct;
+        } else {
+            curseBonusPct = this.state.player.curses.length * 15;
+        }
+
         // Patch 29.5: T3/T6/T7's lucidityGain (no legacy equivalent) stacks onto the
         // existing curse-driven bonus rather than replacing it.
-        this.state.lucidityBonusMultiplier = 1 + (this.state.player.curses.length * 0.15) + ((stats.lucidityGain || 0) / 100);
+        this.state.lucidityBonusMultiplier = 1 + (curseBonusPct / 100) + ((stats.lucidityGain || 0) / 100);
 
         // FIXED: The engine requires 'startGameDrone()', not 'startDrone()'
         if (this.audioEngine) this.audioEngine.startGameDrone();

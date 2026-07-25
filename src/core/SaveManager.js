@@ -1,6 +1,6 @@
 // src/core/SaveManager.js
 import { SYNAPSE_NODES_BY_ID } from '../data/SynapseNodes.js';
-import { TOKENS, TOKEN_SETS, TOKEN_RARITIES, TOKEN_SLOT_TYPES } from '../data/Manifestations.js';
+import { TOKENS, TOKEN_SETS, TOKEN_RARITIES, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS } from '../data/Manifestations.js';
 
 // Patch 31: built from TOKEN_SLOT_TYPES so the equippedTokens shape has ONE source
 // of truth. §2 of the handoff listed five hardcoded copies of the old 4-slot shape;
@@ -204,12 +204,58 @@ export class SaveManager {
         }
     }
 
+    // Patch 32: the unlock gate previously lived ONLY in UIManager.renderCurseSelection
+    // (it simply never rendered an ADOPT button while locked) — toggleCurse itself had
+    // no check, so anything else calling it (a bug, a dev-console slip) could adopt a
+    // curse before Patient Level 5 + a boss kill. Keep clause is "keep the gate", so
+    // making it authoritative here, not just trusted-from-the-UI, is a strengthening of
+    // that guarantee, not a change to its threshold. Revoking an already-adopted curse
+    // is always allowed regardless of gate state, same as before.
+    isCurseUnlocked() {
+        const patientLevel = this.getPatientLevelInfo().level;
+        const bossKills = (this.metaState.killCounts && this.metaState.killCounts.BOSS) || 0;
+        return patientLevel >= 5 && bossKills > 0;
+    }
+
     toggleCurse(curseId) {
         if (!this.metaState.selectedCurses) this.metaState.selectedCurses = [];
         const idx = this.metaState.selectedCurses.indexOf(curseId);
-        if (idx === -1) this.metaState.selectedCurses.push(curseId);
-        else this.metaState.selectedCurses.splice(idx, 1);
+        if (idx === -1) {
+            if (!INTRUSIVE_THOUGHTS[curseId]) return false; // unknown id
+            if (!this.isCurseUnlocked()) return false;
+            this.metaState.selectedCurses.push(curseId);
+        } else {
+            this.metaState.selectedCurses.splice(idx, 1);
+        }
         this.saveGame();
+        return true;
+    }
+
+    // Patch 32: cumulative Lucidity bonus from stacked curses, weighted per curse
+    // (the risk ladder) instead of the flat 15%-per-curse rate this used to be.
+    // Mirrors getResolvedUpgrades()/getResolvedTokenEffects()'s shape so a future
+    // consumer merges it the same way. totalPct is also exposed pre-computed since
+    // that's the one number every current display site (curse-status-line,
+    // per-curse card, run-end banking) actually needs.
+    //
+    // Patch 32b: optional curseList override. Default (metaState.selectedCurses) is
+    // what the pre-run menu (UIManager) wants — the player's adopted set. Game.js's
+    // in-run multiplier instead passes state.player.curses, which can include curses
+    // a token grants on top of the adopted set (Game.js's `tokenData.curses` path) —
+    // reading metaState.selectedCurses there would silently under-count a token-
+    // granted curse's payout.
+    getResolvedCurseBonus(curseList) {
+        const selected = curseList || this.metaState.selectedCurses || [];
+        let totalPct = 0;
+        const weights = {};
+        for (const curseId of selected) {
+            const curse = INTRUSIVE_THOUGHTS[curseId];
+            if (!curse) continue; // stale id from an older build — ignore, don't throw
+            const weight = curse.lucidityWeight || 0;
+            weights[curseId] = weight;
+            totalPct += weight;
+        }
+        return { totalPct, weights };
     }
 
     addLucidity(amount) {
