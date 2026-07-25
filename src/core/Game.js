@@ -96,6 +96,13 @@ export class Game {
                 flashTime: 0,
                 breathPhase: 0,
                 denialShieldActive: false,
+                // Patch 19: base i-frame duration lives here (not a magic number in
+                // takeDamage) so the Synapse Tree's R4/R7 nodes (iframes +Xf) can add to
+                // it the same way maxSanity/speedBuff/lightBuff are built from base+upgrades.
+                iframeDuration: 30,
+                iframes: 0,
+                lastHitAngle: null,
+                hitIndicatorTime: 0,
                 dash: { active: false, timer: 0, duration: 12, cooldown: 0, dx: 0, dy: 0 },
                 weapons: carriedState ? carriedState.weapons : {
                     flashlight: { 
@@ -174,6 +181,10 @@ export class Game {
     }
 
     takeDamage(amount) {
+        // Already invulnerable from a previous hit this window — ignore entirely,
+        // same as denialShieldActive's block below, just without consuming anything.
+        if (this.state.player.iframes > 0) return;
+
         if (this.state.player.denialShieldActive) {
             this.state.player.denialShieldActive = false;
             this.state.cameraFlash = 10;
@@ -207,8 +218,27 @@ export class Game {
         }
 
         this.state.player.flashTime = 10;
+        this.state.player.iframes = this.state.player.iframeDuration;
         this.state.cameraShake = Math.max(this.state.cameraShake, finalDmg * 2);
-        
+
+        // Directional hit indicator. takeDamage() only receives an amount — every
+        // caller (projectiles, contact damage, boss attacks) lives outside this
+        // patch's file scope (Combat.js, entity files), so there's no source
+        // position to read directly. Nearest enemy is a reasonable stand-in: for
+        // contact damage it IS the source, and for most ranged hits it's still the
+        // immediate threat the player needs to react to.
+        if (this.state.entities && this.state.entities.length > 0) {
+            let nearest = null, minD = Infinity;
+            for (const e of this.state.entities) {
+                const d = Math.hypot(e.x - this.state.player.x, e.y - this.state.player.y);
+                if (d < minD) { minD = d; nearest = e; }
+            }
+            if (nearest) {
+                this.state.player.lastHitAngle = Math.atan2(nearest.y - this.state.player.y, nearest.x - this.state.player.x);
+                this.state.player.hitIndicatorTime = 40;
+            }
+        }
+
         if (this.state.player.boons && this.state.player.boons.includes('toxic_blood')) {
             if (this.director && typeof this.director.spawnInkPuddle === 'function') {
                 this.director.spawnInkPuddle(this.state.player.x, this.state.player.y, 60, 5);
@@ -372,6 +402,8 @@ export class Game {
         }
 
         if (this.state.player.flashTime > 0) this.state.player.flashTime--;
+        if (this.state.player.iframes > 0) this.state.player.iframes--;
+        if (this.state.player.hitIndicatorTime > 0) this.state.player.hitIndicatorTime--;
         if (this.state.cameraShake > 0) this.state.cameraShake *= 0.9;
         if (this.state.cameraShake < 0.5) this.state.cameraShake = 0;
         if (this.state.cameraFlash > 0) this.state.cameraFlash--;

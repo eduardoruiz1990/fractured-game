@@ -2743,7 +2743,29 @@ export class Renderer {
             this.ctx.stroke();
             this.ctx.setLineDash([]);
         }
-        
+
+        // Patch 19: directional hit indicator. World-space, drawn with absolute
+        // player coords before the local translate/rotate below — same convention
+        // as the denialShield ring above — since lastHitAngle is a world angle.
+        if (state.player.hitIndicatorTime > 0 && Number.isFinite(state.player.lastHitAngle)) {
+            const indAlpha = Math.min(1, state.player.hitIndicatorTime / 40);
+            const indDist = state.player.radius + 14;
+            this.ctx.save();
+            this.ctx.translate(
+                state.player.x + Math.cos(state.player.lastHitAngle) * indDist,
+                state.player.y + Math.sin(state.player.lastHitAngle) * indDist
+            );
+            this.ctx.rotate(state.player.lastHitAngle);
+            this.ctx.fillStyle = `rgba(255, 40, 40, ${indAlpha * 0.85})`;
+            this.ctx.beginPath();
+            this.ctx.moveTo(6, 0);
+            this.ctx.lineTo(-5, -6);
+            this.ctx.lineTo(-5, 6);
+            this.ctx.closePath();
+            this.ctx.fill();
+            this.ctx.restore();
+        }
+
         if (state.playerAfterimages) {
             for (let i = state.playerAfterimages.length - 1; i >= 0; i--) {
                 let img = state.playerAfterimages[i];
@@ -2837,7 +2859,13 @@ export class Renderer {
         this.ctx.fill();
 
         this.ctx.globalAlpha = 1.0;
-        
+
+        // i-frame tell: a slower blink than flashTime's 6-frame color flicker above,
+        // so it stays readable as "still invulnerable" after the initial flash fades.
+        if (state.player.iframes > 0) {
+            this.ctx.globalAlpha = (Math.floor(this.renderFrame / 4) % 2 === 0) ? 1.0 : 0.35;
+        }
+
         this.ctx.strokeStyle = '#050505';
         this.ctx.lineWidth = 4;
         this.ctx.lineCap = 'round';
