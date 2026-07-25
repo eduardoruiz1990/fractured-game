@@ -108,7 +108,8 @@ export class LevelUpUI {
                     desc: 'Upgrade this weapon.',
                     color: '#c5a059',
                     icon: '🔧',
-                    currentLevel: wep.level
+                    currentLevel: wep.level,
+                    tags: wep.tags || []
                 });
             }
         }
@@ -124,7 +125,48 @@ export class LevelUpUI {
             return;
         }
 
-        const shuffled = combinedPool.sort(() => 0.5 - Math.random());
+        // Tag affinity: weight offers toward the build the player is already committing
+        // to, so a run converges on an identity instead of drifting into a grab-bag.
+        // Levelled weapons contribute by level (a level-4 weapon is a stronger
+        // commitment than a level-1); already-taken boons contribute a flat 1.
+        const affinity = {};
+        const addAffinity = (tags, weight) => {
+            (tags || []).forEach(t => { affinity[t] = (affinity[t] || 0) + weight; });
+        };
+        Object.values(game.state.player.weapons).forEach(wep => {
+            if (wep && wep.level > 0) addAffinity(wep.tags, wep.level);
+        });
+        game.state.player.boons.forEach(id => {
+            const taken = BOONS.find(b => b.id === id);
+            if (taken) addAffinity(taken.tags, 1);
+        });
+
+        // Floor of 1 keeps every card reachable and the per-tag cap stops one maxed
+        // weapon from dominating — weighting must stay a nudge, never a lock, or the
+        // 24-boon pool collapses back to the same handful of cards every run.
+        const weightOf = (item) => {
+            let w = 1;
+            (item.tags || []).forEach(t => { w += Math.min(affinity[t] || 0, 6) * 0.4; });
+            return w;
+        };
+
+        // Weighted shuffle: repeated weighted draw WITHOUT replacement, so the three
+        // cards rendered below are always distinct. Ordering the whole pool rather than
+        // picking 3 directly leaves slice(0, 3) as the single source of "how many".
+        const weightedPool = [...combinedPool];
+        const shuffled = [];
+        while (weightedPool.length > 0) {
+            const weights = weightedPool.map(weightOf);
+            const total = weights.reduce((a, b) => a + b, 0);
+            let r = Math.random() * total;
+            let idx = 0;
+            for (; idx < weightedPool.length - 1; idx++) {
+                r -= weights[idx];
+                if (r <= 0) break;
+            }
+            shuffled.push(weightedPool.splice(idx, 1)[0]);
+        }
+
         let selected = shuffled.slice(0, 3);
         
         selected.forEach((choice) => {
