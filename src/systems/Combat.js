@@ -346,13 +346,23 @@ export class Combat {
                 if (Math.hypot(ent.x - sz.x, ent.y - sz.y) < sz.radius) {
                     dmgMult = 2.0;
                     if (state.player.synergies && state.player.synergies.includes('scholastic_purge')) {
-                        if (ent.type === 'PARASITE') ent.takeDamage(9999, game); 
+                        if (ent.type === 'PARASITE') ent.takeDamage(9999, game);
                         else if (state.frame % 30 === 0) ent.takeDamage(state.player.weapons.corrosive_battery.damage * 2, game);
                     }
                     break;
                 }
             }
-            
+
+            // glass_cannon: previously defined as a card but never implemented — picking
+            // it did nothing at all. Applied AFTER the safe-zone loop, because that loop
+            // assigns dmgMult rather than compounding it and would otherwise wipe this
+            // bonus out whenever the player stood in a ward. dmgMult feeds the flashlight
+            // and static lines below, which is why the card text names those two weapons
+            // instead of promising a global damage boost — there is no global damage
+            // pipeline in Combat.js to hook into.
+            if (state.player.boons && state.player.boons.includes('glass_cannon')) dmgMult *= 2.0;
+
+
             let isBoss = ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(ent.type);
             let canTakeDamage = !(isBoss && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
@@ -382,6 +392,9 @@ export class Combat {
 
                         let flDamage = state.player.weapons.flashlight.damage;
                         if (state.player.curses && state.player.curses.includes('tunnel_vision')) flDamage *= 3.0;
+                        if (state.player.boons && state.player.boons.includes('last_light')) {
+                            if (state.sanity < state.player.maxHp * 0.5) flDamage *= 1.5;
+                        }
 
                         if (Math.abs(angleDiff) < hitAngle) {
                             ent.takeDamage((flDamage / 60) * dmgMult, game);
@@ -402,7 +415,15 @@ export class Combat {
                 
                 if (staticWep.active && distToPlayer < staticWep.radius) {
                     ent.takeDamage((staticWep.damage / 60) * dmgMult, game);
-                    ent.x += (dx / distToPlayer) * 1.5; ent.y += (dy / distToPlayer) * 1.5; 
+                    ent.x += (dx / distToPlayer) * 1.5; ent.y += (dy / distToPlayer) * 1.5;
+
+                    // slowing_field: halve movement while inside the aura. Applied to the
+                    // velocity the entity already computed this frame, so it decays
+                    // naturally next frame without needing a persistent status field.
+                    if (state.player.boons && state.player.boons.includes('slowing_field')) {
+                        ent.vx *= 0.5;
+                        ent.vy *= 0.5;
+                    }
                 }
             }
 
@@ -501,7 +522,10 @@ export class Combat {
         
         let baseVacRadius = 70;
         if (state.player.upgrades && state.player.upgrades.magnet) {
-            baseVacRadius += (state.player.upgrades.magnet * 30); 
+            baseVacRadius += (state.player.upgrades.magnet * 30);
+        }
+        if (state.player.boons && state.player.boons.includes('scavenger_instinct')) {
+            baseVacRadius += 80;
         }
         
         for (let i = state.xpDrops.length - 1; i >= 0; i--) {

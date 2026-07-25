@@ -188,7 +188,12 @@ export class Game {
 
         let dmgReduction = 0;
         if (this.state.player.sets && this.state.player.sets.medicated >= 2) {
-            dmgReduction = 0.2; 
+            dmgReduction = 0.2;
+        }
+
+        if (this.state.player.boons && this.state.player.boons.includes('reinforced_frame')) {
+            // Additive with the set bonus, clamped so stacking can never reach immunity.
+            dmgReduction = Math.min(0.75, dmgReduction + 0.15);
         }
 
         const finalDmg = amount * (1 - dmgReduction);
@@ -207,6 +212,26 @@ export class Game {
         if (this.state.player.boons && this.state.player.boons.includes('toxic_blood')) {
             if (this.director && typeof this.director.spawnInkPuddle === 'function') {
                 this.director.spawnInkPuddle(this.state.player.x, this.state.player.y, 60, 5);
+            }
+        }
+
+        // static_discharge: previously defined as a card but never implemented — the
+        // player could pick it and nothing happened. Damages everything in a burst.
+        if (this.state.player.boons && this.state.player.boons.includes('static_discharge')) {
+            const burstRadius = 220;
+            this.state.entities.forEach(ent => {
+                if (Math.hypot(ent.x - this.state.player.x, ent.y - this.state.player.y) < burstRadius) {
+                    ent.takeDamage(35, this);
+                }
+            });
+            this.spawnParticles(this.state.player.x, this.state.player.y, '#00ffff', 30);
+            this.state.cameraShake = Math.max(this.state.cameraShake, 18);
+        }
+
+        // martyr: leaves a warding circle (2x damage zone) where you were hit.
+        if (this.state.player.boons && this.state.player.boons.includes('martyr')) {
+            if (this.director && typeof this.director.spawnSafeZone === 'function') {
+                this.director.spawnSafeZone(this.state.player.x, this.state.player.y, 90, 240);
             }
         }
 
@@ -435,7 +460,17 @@ export class Game {
                 let drainRate = 0.02;
                 if (this.state.player.curses && this.state.player.curses.includes('nyctophobia')) drainRate = 0.05;
                 if (this.state.player.curses && this.state.player.curses.includes('manic_episode')) drainRate *= 2;
+                // glass_cannon: the drain half of its tradeoff (damage half is in Combat.js).
+                if (this.state.player.boons && this.state.player.boons.includes('glass_cannon')) drainRate *= 2;
                 this.state.sanity -= drainRate;
+            }
+        }
+
+        // second_wind: slow regen while badly hurt. Runs outside the drain block so it
+        // still ticks inside safe zones and the Void, where drain is suppressed.
+        if (this.state.sanity > 0 && this.state.player.boons && this.state.player.boons.includes('second_wind')) {
+            if (this.state.sanity < this.state.player.maxHp * 0.25) {
+                this.state.sanity = Math.min(this.state.player.maxHp, this.state.sanity + 0.05);
             }
         }
 

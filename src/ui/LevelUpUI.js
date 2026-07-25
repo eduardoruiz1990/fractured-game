@@ -63,17 +63,37 @@ export class LevelUpUI {
             }
         }
 
+        // `tags` mirrors the 12-tag vocabulary used by state.player.weapons, so offers
+        // can later be weighted toward the build the player is already committing to.
+        // Every boon here has a real implementation — see selectCard() below for the
+        // instant-apply ones, and the boons.includes() hooks in Game.js / Combat.js
+        // for the persistent ones.
         const BOONS = [
-            { id: 'kinetic_dash', name: 'Kinetic Routing', desc: 'Dashing damages enemies you pass through.', color: '#00ffcc', icon: '⚡' },
-            { id: 'toxic_blood', name: 'Toxic Blood', desc: 'Taking damage spawns a Spilled Ink hazard at your feet.', color: '#aa00ff', icon: '🩸' },
-            { id: 'tunnel_vision', name: 'Hyperfocus', desc: 'Flashlight cone width is halved, but damage is doubled.', color: '#ffcc00', icon: '🔦' },
-            { id: 'adrenaline_surge', name: 'Adrenaline Surge', desc: 'Dropping below 30% Sanity doubles your movement speed.', color: '#ff0033', icon: '💉' },
-            { id: 'iron_will', name: 'Iron Will', desc: 'Max Sanity increased by 50.', color: '#ffffff', icon: '🛡️' },
-            { id: 'glass_cannon', name: 'Glass Cannon', desc: 'Damage +100%, Sanity drains twice as fast.', color: '#ff4444', icon: '💥' },
-            { id: 'vampirism', name: 'Vampirism', desc: 'Melee kills restore 2 Sanity.', color: '#bb0000', icon: '🦇' },
-            { id: 'static_discharge', name: 'Static Discharge', desc: 'Taking damage triggers a massive Static AoE.', color: '#00ffff', icon: '⚡' },
-            { id: 'lead_shoes', name: 'Lead Shoes', desc: 'Cannot Dash. Max Sanity +200.', color: '#777777', icon: '🥾' },
-            { id: 'shadow_step', name: 'Shadow Step', desc: 'Dashing grants 1 second of invisibility (enemies lose tracking).', color: '#555555', icon: '🥷' }
+            { id: 'kinetic_dash', name: 'Kinetic Routing', desc: 'Dashing damages enemies you pass through.', color: '#00ffcc', icon: '⚡', tags: ['kinetic', 'utility'] },
+            { id: 'toxic_blood', name: 'Toxic Blood', desc: 'Taking damage spawns a Spilled Ink hazard at your feet.', color: '#aa00ff', icon: '🩸', tags: ['hazard', 'dark'] },
+            { id: 'tunnel_vision', name: 'Hyperfocus', desc: 'Flashlight cone width is halved, but damage is doubled.', color: '#ffcc00', icon: '🔦', tags: ['light', 'focus'] },
+            { id: 'adrenaline_surge', name: 'Adrenaline Surge', desc: 'Dropping below 30% Sanity doubles your movement speed.', color: '#ff0033', icon: '💉', tags: ['kinetic', 'passive'] },
+            { id: 'iron_will', name: 'Iron Will', desc: 'Max Sanity increased by 50.', color: '#ffffff', icon: '🛡️', tags: ['passive', 'utility'] },
+            { id: 'glass_cannon', name: 'Glass Cannon', desc: 'Flashlight and Static damage doubled, but Sanity drains twice as fast.', color: '#ff4444', icon: '💥', tags: ['passive', 'kinetic'] },
+            { id: 'vampirism', name: 'Vampirism', desc: 'Melee kills restore 2 Sanity.', color: '#bb0000', icon: '🦇', tags: ['melee', 'dark'] },
+            { id: 'static_discharge', name: 'Static Discharge', desc: 'Taking damage triggers a massive Static AoE.', color: '#00ffff', icon: '⚡', tags: ['aura', 'tech'] },
+            { id: 'lead_shoes', name: 'Lead Shoes', desc: 'Cannot Dash. Max Sanity +200.', color: '#777777', icon: '🥾', tags: ['passive', 'utility'] },
+            { id: 'shadow_step', name: 'Shadow Step', desc: 'Dashing grants 1 second of invisibility (enemies lose tracking).', color: '#555555', icon: '🥷', tags: ['dark', 'utility'] },
+
+            { id: 'steady_hands', name: 'Steady Hands', desc: 'All weapon cooldowns reduced by 20%.', color: '#88ccff', icon: '🤲', tags: ['focus', 'tech'] },
+            { id: 'wide_lens', name: 'Wide Lens', desc: 'Flashlight range +40%, but its damage drops by 10%.', color: '#ffdd88', icon: '🔎', tags: ['light', 'burst'] },
+            { id: 'overcharge', name: 'Overcharge', desc: 'Static Receiver radius +50% and damage +30%.', color: '#66ffff', icon: '🔌', tags: ['aura', 'tech'] },
+            { id: 'heavy_swing', name: 'Heavy Swing', desc: 'Pipe damage +60%, but it swings 20% slower.', color: '#cc8844', icon: '🔨', tags: ['melee', 'kinetic'] },
+            { id: 'ink_flood', name: 'Ink Flood', desc: 'Spilled Ink pools are 50% larger and drop far more often.', color: '#8822cc', icon: '🌊', tags: ['hazard', 'dark'] },
+            { id: 'sharpened_blades', name: 'Sharpened Blades', desc: 'Spinner damage +50% and it orbits wider.', color: '#dddddd', icon: '🗡️', tags: ['orbit', 'kinetic'] },
+            { id: 'long_exposure', name: 'Long Exposure', desc: 'Camera flash reaches 50% further and recharges 25% faster.', color: '#ffffcc', icon: '📷', tags: ['burst', 'light'] },
+            { id: 'chalk_dust', name: 'Chalk Dust', desc: 'Warding circles are 30% larger and last 50% longer.', color: '#f0f0e0', icon: '🕯️', tags: ['utility', 'focus'] },
+            { id: 'second_wind', name: 'Second Wind', desc: 'Slowly regain Sanity while below 25%.', color: '#88ffaa', icon: '🌬️', tags: ['passive', 'utility'] },
+            { id: 'scavenger_instinct', name: "Scavenger's Instinct", desc: 'Greatly increases the range you pull Lucidity from.', color: '#ffcc66', icon: '🧲', tags: ['utility', 'passive'] },
+            { id: 'martyr', name: 'Martyr', desc: 'Taking damage leaves a warding circle where you stood.', color: '#ddaaff', icon: '✝️', tags: ['dark', 'hazard'] },
+            { id: 'slowing_field', name: 'Slowing Field', desc: 'Enemies caught in your Static aura move at half speed.', color: '#aaddff', icon: '❄️', tags: ['aura', 'focus'] },
+            { id: 'last_light', name: 'Last Light', desc: 'Flashlight damage +50% while below half Sanity.', color: '#ffaa33', icon: '🕯️', tags: ['light', 'focus'] },
+            { id: 'reinforced_frame', name: 'Reinforced Frame', desc: 'Take 15% less damage from everything.', color: '#99aabb', icon: '🦴', tags: ['passive', 'melee'] }
         ];
 
         let availableBoons = BOONS.filter(b => !game.state.player.boons.includes(b.id)).map(b => ({ ...b, type: 'boon' }));
@@ -175,15 +195,43 @@ export class LevelUpUI {
         } else {
             game.state.player.boons.push(choice.id);
             
+            const w = game.state.player.weapons;
+
             if (choice.id === 'tunnel_vision') {
-                game.state.player.weapons.flashlight.angle /= 2;
-                game.state.player.weapons.flashlight.damage *= 2;
+                w.flashlight.angle /= 2;
+                w.flashlight.damage *= 2;
             } else if (choice.id === 'iron_will') {
                 game.state.player.maxHp += 50;
                 game.state.sanity += 50;
             } else if (choice.id === 'lead_shoes') {
                 game.state.player.maxHp += 200;
                 game.state.sanity += 200;
+            } else if (choice.id === 'steady_hands') {
+                // Applies to every weapon that actually has a cooldown field.
+                ['lead_pipe', 'broken_chalk', 'polaroid_camera'].forEach(id => {
+                    if (w[id] && w[id].cooldown) w[id].cooldown = Math.max(20, Math.floor(w[id].cooldown * 0.8));
+                });
+            } else if (choice.id === 'wide_lens') {
+                w.flashlight.radius *= 1.4;
+                w.flashlight.damage *= 0.9;
+            } else if (choice.id === 'overcharge') {
+                w.static.radius *= 1.5;
+                w.static.damage *= 1.3;
+            } else if (choice.id === 'heavy_swing') {
+                w.lead_pipe.damage *= 1.6;
+                w.lead_pipe.cooldown = Math.floor(w.lead_pipe.cooldown * 1.2);
+            } else if (choice.id === 'ink_flood') {
+                w.spilled_ink.radius *= 1.5;
+                w.spilled_ink.dropRate = Math.max(8, Math.floor(w.spilled_ink.dropRate * 0.5));
+            } else if (choice.id === 'sharpened_blades') {
+                w.fidget_spinner.damage *= 1.5;
+                w.fidget_spinner.baseRadius += 20;
+            } else if (choice.id === 'long_exposure') {
+                w.polaroid_camera.radius *= 1.5;
+                w.polaroid_camera.cooldown = Math.max(60, Math.floor(w.polaroid_camera.cooldown * 0.75));
+            } else if (choice.id === 'chalk_dust') {
+                w.broken_chalk.radius *= 1.3;
+                w.broken_chalk.duration = Math.floor(w.broken_chalk.duration * 1.5);
             }
         }
 
