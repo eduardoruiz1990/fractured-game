@@ -30,6 +30,45 @@ export const SYNERGIES = {
         id: 'scholastic_purge', name: 'Scholastic Purge',
         desc: 'Chalk wards emit acid mist. Instantly kills Parasites.',
         reqs: ['broken_chalk', 'corrosive_battery']
+    },
+
+    // Both weapons must reach max level for a synergy to fire (see
+    // getActiveSynergies below), so each of these is a deliberate two-weapon
+    // commitment rather than something a scattergun build stumbles into.
+    overexposure: {
+        id: 'overexposure', name: 'Overexposure',
+        desc: 'The flash sears. Camera victims are blinded twice as long and take burst flashlight damage.',
+        reqs: ['flashlight', 'polaroid_camera']
+    },
+    chemical_burn: {
+        id: 'chemical_burn', name: 'Chemical Burn',
+        desc: 'The camera flash bakes acid onto everything it catches.',
+        reqs: ['polaroid_camera', 'corrosive_battery']
+    },
+    centrifuge: {
+        id: 'centrifuge', name: 'Centrifuge',
+        desc: 'Blades shred three times as fast and fling enemies outward.',
+        reqs: ['fidget_spinner', 'lead_pipe']
+    },
+    kinetic_discharge: {
+        id: 'kinetic_discharge', name: 'Kinetic Discharge',
+        desc: 'The orbit is live. Blade hits arc static into everything nearby.',
+        reqs: ['fidget_spinner', 'static']
+    },
+    ion_trail: {
+        id: 'ion_trail', name: 'Ion Trail',
+        desc: 'Ink conducts. Pools electrify, hitting harder and slowing far more.',
+        reqs: ['static', 'spilled_ink']
+    },
+    ritual_focus: {
+        id: 'ritual_focus', name: 'Ritual Focus',
+        desc: 'Enemies inside your wards are struck by the flashlight no matter where you aim.',
+        reqs: ['flashlight', 'broken_chalk']
+    },
+    consecrated_ground: {
+        id: 'consecrated_ground', name: 'Consecrated Ground',
+        desc: 'Pipe swings landed inside a ward restore Sanity.',
+        reqs: ['lead_pipe', 'broken_chalk']
     }
 };
 

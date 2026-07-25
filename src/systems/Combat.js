@@ -185,8 +185,18 @@ export class Combat {
                         
                         if (Math.abs(diff) < camera.angle) {
                             ent.takeDamage(camera.damage, game);
-                            ent.confused = 120; 
-                            ent.x += (dx / dist) * 30; 
+                            ent.confused = 120;
+
+                            if (state.player.synergies && state.player.synergies.includes('overexposure')) {
+                                ent.confused = 240;
+                                ent.takeDamage(state.player.weapons.flashlight.damage, game);
+                            }
+                            if (state.player.synergies && state.player.synergies.includes('chemical_burn')) {
+                                const camBatt = state.player.weapons.corrosive_battery;
+                                if (camBatt) { ent.acidTime = camBatt.duration; ent.acidDmg = camBatt.damage; }
+                            }
+
+                            ent.x += (dx / dist) * 30;
                             // Defensive check for decals
                             if (game.director && typeof game.director.spawnDecal === 'function') {
                                 game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 8);
@@ -200,7 +210,12 @@ export class Combat {
         const spinner = state.player.weapons.fidget_spinner;
         if (spinner && spinner.level > 0) {
             let spinnerDmg = spinner.damage;
-            if (state.player.dash && state.player.dash.active) spinnerDmg *= 2; 
+            if (state.player.dash && state.player.dash.active) spinnerDmg *= 2;
+
+            const hasCentrifuge = !!(state.player.synergies && state.player.synergies.includes('centrifuge'));
+            const hasDischarge = !!(state.player.synergies && state.player.synergies.includes('kinetic_discharge'));
+            // Blades normally bite every 15 frames; centrifuge triples that rate.
+            const spinnerTick = hasCentrifuge ? 5 : 15;
 
             for (let i = state.entities.length - 1; i >= 0; i--) {
                 let ent = state.entities[i];
@@ -209,11 +224,35 @@ export class Combat {
                 let canTakeDamage = !(isBoss && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
                 if (canTakeDamage && dist > spinner.baseRadius - 15 && dist < spinner.baseRadius + 15) {
-                     if (state.frame % 15 === 0) { 
+                     if (state.frame % spinnerTick === 0) {
                          ent.takeDamage(spinnerDmg, game);
                          game.spawnParticles(ent.x, ent.y, '#aaaaaa', 2);
                          if (Math.random() < 0.3 && game.director && typeof game.director.spawnDecal === 'function') {
                              game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 4);
+                         }
+
+                         if (hasCentrifuge) {
+                             // Kept below the ring's ~30px band (baseRadius +/-15) on
+                             // purpose: a bigger shove would eject enemies out of the
+                             // blade band entirely and REDUCE total hits, defeating the
+                             // 3x tick rate this synergy is built around.
+                             const d = Math.max(dist, 0.001);
+                             ent.x += ((ent.x - state.player.x) / d) * 12;
+                             ent.y += ((ent.y - state.player.y) / d) * 12;
+                         }
+
+                         if (hasDischarge) {
+                             // Arc static into everything around the struck enemy.
+                             const arcRadius = 90;
+                             const arcDmg = state.player.weapons.static.damage;
+                             for (let j = state.entities.length - 1; j >= 0; j--) {
+                                 const other = state.entities[j];
+                                 if (other === ent) continue;
+                                 if (Math.hypot(other.x - ent.x, other.y - ent.y) < arcRadius) {
+                                     other.takeDamage(arcDmg, game);
+                                     game.spawnParticles(other.x, other.y, '#66ffff', 2);
+                                 }
+                             }
                          }
                      }
                 }
@@ -253,9 +292,20 @@ export class Combat {
                 }
                 
                 if (hitCount > 0) {
-                    state.hitStop = Math.min(25, state.hitStop + 6 + (hitCount * 3)); 
+                    state.hitStop = Math.min(25, state.hitStop + 6 + (hitCount * 3));
                     state.cameraShake = Math.max(state.cameraShake, 10 + hitCount * 3);
                     if (game.audioEngine) game.audioEngine.playSFX('pipe_hit', hitCount);
+
+                    // consecrated_ground: only pays out while the PLAYER is standing in
+                    // one of their own wards, so it rewards holding ground rather than
+                    // swinging anywhere. Capped so a big crowd can't fully heal a swing.
+                    if (state.player.synergies && state.player.synergies.includes('consecrated_ground')) {
+                        const playerInWard = state.safeZones.some(sz =>
+                            Math.hypot(state.player.x - sz.x, state.player.y - sz.y) < sz.radius);
+                        if (playerInWard) {
+                            state.sanity = Math.min(state.player.maxHp, state.sanity + Math.min(hitCount, 5));
+                        }
+                    }
                 }
             }
         }
@@ -320,10 +370,17 @@ export class Combat {
             }
             
             ent.speedModifier = 1.0;
+            const hasIonTrail = !!(state.player.synergies && state.player.synergies.includes('ion_trail'));
             for (let p of state.inkPuddles) {
                 if (Math.hypot(ent.x - p.x, ent.y - p.y) < p.radius) {
-                    ent.speedModifier = 0.5; 
-                    if (state.frame % 30 === 0) ent.takeDamage(p.damage, game); 
+                    ent.speedModifier = hasIonTrail ? 0.25 : 0.5;
+                    if (state.frame % 30 === 0) {
+                        ent.takeDamage(p.damage, game);
+                        // Electrified ink: adds the static receiver's damage on top,
+                        // read directly off state rather than the staticWep local so
+                        // this stays independent of declaration order above.
+                        if (hasIonTrail) ent.takeDamage(state.player.weapons.static.damage, game);
+                    }
                     break;
                 }
             }
@@ -396,9 +453,16 @@ export class Combat {
                             if (state.sanity < state.player.maxHp * 0.5) flDamage *= 1.5;
                         }
 
-                        if (Math.abs(angleDiff) < hitAngle) {
+                        // ritual_focus bypasses the cone entirely for warded enemies.
+                        // dmgMult > 1.0 is already the "this enemy is inside a ward"
+                        // signal computed above, so no extra zone check is needed.
+                        const wardedBypass = dmgMult > 1.0
+                            && state.player.synergies
+                            && state.player.synergies.includes('ritual_focus');
+
+                        if (Math.abs(angleDiff) < hitAngle || wardedBypass) {
                             ent.takeDamage((flDamage / 60) * dmgMult, game);
-                            ent.x -= ent.vx * 0.5; ent.y -= ent.vy * 0.5; 
+                            ent.x -= ent.vx * 0.5; ent.y -= ent.vy * 0.5;
                             if (state.player.synergies && state.player.synergies.includes('blinding_signal')) ent.confused = 180; 
                             
                             const batt = state.player.weapons.corrosive_battery;
