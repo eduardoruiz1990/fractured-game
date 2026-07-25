@@ -1,11 +1,19 @@
 // src/core/SaveManager.js
 export class SaveManager {
     constructor() {
-        this.metaState = { 
+        this.metaState = {
             lucidityBank: 0,
-            spentLucidity: 0, 
+            spentLucidity: 0,
             upgrades: { hp: 0, speed: 0, light: 0, magnet: 0 },
-            inventory: [], 
+            // Patch 29.3: Synapse Tree scaffolding. treeNodes is the list of purchased
+            // node ids. legacyUpgrades is intentionally NOT defaulted here — it's a
+            // frozen snapshot of pre-tree upgrade LEVELS (see _migrateMetaState below),
+            // and it must still read as undefined right up until that snapshot runs, or
+            // an existing save's real upgrade progress (e.g. hp level 30) would be
+            // masked by this default surviving the loadGame()/importSave() merge and
+            // silently snapshot as all-zero instead.
+            treeNodes: [],
+            inventory: [],
             equippedTokens: { head: null, body: null, hands: null, legs: null },
             maxFloorReached: 1,
             maxBossEncountered: 0,
@@ -14,6 +22,11 @@ export class SaveManager {
             killCounts: { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 }
         };
         this.loadGame();
+        // Runs even when loadGame() found nothing in localStorage (a truly fresh
+        // save), so a brand-new player still gets a real (all-zero) legacyUpgrades
+        // snapshot immediately, rather than leaving it undefined until their first
+        // save/load round-trip.
+        this._migrateMetaState();
     }
 
     loadGame() {
@@ -45,8 +58,24 @@ export class SaveManager {
                     this.metaState.killCounts = { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 };
                 }
             }
-        } catch(e) { 
-            console.warn("Local storage disabled or blocked."); 
+        } catch(e) {
+            console.warn("Local storage disabled or blocked.");
+        }
+    }
+
+    // Patch 29.3: back-fills treeNodes and takes a ONE-TIME snapshot of pre-tree
+    // upgrade levels into legacyUpgrades, guarded on legacyUpgrades === undefined
+    // so re-running this on an already-migrated save is a no-op. Deliberately does
+    // NOT touch spentLucidity and does NOT convert legacy levels into purchased
+    // tree nodes — a legacy hp level of 30 represents real spent Lucidity and would
+    // lose power if silently translated into tree-node ownership instead. Called
+    // unconditionally from the constructor (covers both the loadGame() merge path
+    // AND a truly fresh save with nothing in localStorage) and again from
+    // importSave(), so an imported pre-tree export gets the same migration.
+    _migrateMetaState() {
+        if (!this.metaState.treeNodes) this.metaState.treeNodes = [];
+        if (this.metaState.legacyUpgrades === undefined) {
+            this.metaState.legacyUpgrades = { ...this.metaState.upgrades };
         }
     }
 
@@ -96,6 +125,20 @@ export class SaveManager {
             const parsed = JSON.parse(atob(base64String));
             if (parsed && typeof parsed === 'object') {
                 this.metaState = { ...this.metaState, ...parsed };
+                if (!this.metaState.treeNodes) this.metaState.treeNodes = [];
+
+                // Deliberately NOT _migrateMetaState() here — that helper guards on
+                // this.metaState.legacyUpgrades === undefined, which is only a safe
+                // check right after this SaveManager's OWN one-time construction. An
+                // import REPLACES the save wholesale and can happen on an instance
+                // that already has a legacyUpgrades value sitting there (even a stale
+                // fresh-profile zero default) — that guard would then never fire, and
+                // an old-format import's real upgrade levels would get masked instead
+                // of snapshotted. Derive from the IMPORTED data specifically instead.
+                if (parsed.legacyUpgrades === undefined) {
+                    this.metaState.legacyUpgrades = { ...(parsed.upgrades || this.metaState.upgrades) };
+                }
+
                 this.saveGame();
                 return true;
             }

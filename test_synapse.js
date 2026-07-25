@@ -11,11 +11,12 @@
  * upgrade-level mirror lossless), and the PL-deadlock invariant: you can never
  * be cost-blocked from a node whose own Patient Level gate you can't yet reach.
  *
- * Patch 29.3 will extend this file with fixture-save assertions (legacy /
- * fresh / maxed) once SaveManager.treeNodes exists — not yet, on purpose.
+ * Also covers Patch 29.3's save migration: fixture saves (legacy / fresh /
+ * maxed) asserted against the real SaveManager class, not a reimplementation.
  */
 
 import { SYNAPSE_NODES } from './src/data/SynapseNodes.js';
+import { SaveManager } from './src/core/SaveManager.js';
 
 let passed = 0;
 let failed = 0;
@@ -215,6 +216,119 @@ console.log('\nTotal tree cost');
 
 const totalCost = SYNAPSE_NODES.reduce((s, n) => s + n.cost, 0);
 check('total tree cost is 84,900', totalCost === 84900, `got ${totalCost}`);
+
+// ---------------------------------------------------------------------------
+console.log('\nSave migration fixtures (Patch 29.3)');
+
+// Minimal stateful localStorage mock — SaveManager has no other globals to fake.
+function mockLocalStorage(initial = {}) {
+    const store = { ...initial };
+    return {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => { store[k] = v; },
+        _store: store
+    };
+}
+
+{
+    console.log('\n  fresh (no localStorage entry at all)');
+    global.localStorage = mockLocalStorage();
+    const sm = new SaveManager();
+
+    check('treeNodes defaults to []', Array.isArray(sm.metaState.treeNodes) && sm.metaState.treeNodes.length === 0);
+    check('legacyUpgrades is defined immediately (not left undefined until first save)',
+        sm.metaState.legacyUpgrades !== undefined);
+    check('legacyUpgrades is all-zero for a brand-new player',
+        JSON.stringify(sm.metaState.legacyUpgrades) === JSON.stringify({ hp: 0, speed: 0, light: 0, magnet: 0 }),
+        JSON.stringify(sm.metaState.legacyUpgrades));
+    check('spentLucidity defaults to 0', sm.metaState.spentLucidity === 0);
+}
+
+{
+    console.log('\n  legacy (pre-Patch-29 save: real upgrade levels, no treeNodes/legacyUpgrades fields)');
+    const legacyUpgradesInSave = { hp: 5, speed: 3, light: 2, magnet: 1 };
+    global.localStorage = mockLocalStorage({
+        fractured_meta: JSON.stringify({
+            lucidityBank: 100,
+            spentLucidity: 9450, // real invested progress predating the tree
+            upgrades: legacyUpgradesInSave
+            // no treeNodes, no legacyUpgrades — exactly what a pre-Patch-29 save looks like
+        })
+    });
+    const sm = new SaveManager();
+
+    check('treeNodes back-filled to []', Array.isArray(sm.metaState.treeNodes) && sm.metaState.treeNodes.length === 0);
+    check('legacyUpgrades snapshots the REAL prior upgrade levels, not zero',
+        JSON.stringify(sm.metaState.legacyUpgrades) === JSON.stringify(legacyUpgradesInSave),
+        JSON.stringify(sm.metaState.legacyUpgrades));
+    check('spentLucidity is untouched by migration', sm.metaState.spentLucidity === 9450, `got ${sm.metaState.spentLucidity}`);
+    check('upgrades (the future derived mirror) is untouched by this patch',
+        JSON.stringify(sm.metaState.upgrades) === JSON.stringify(legacyUpgradesInSave));
+}
+
+{
+    console.log('\n  maxed (already migrated once: legacyUpgrades pre-existing and DIFFERENT from upgrades)');
+    // Simulates a save from AFTER 29.4 exists: upgrades has since become a derived
+    // mirror that includes tree contributions, so it now differs from the frozen
+    // legacyUpgrades snapshot. Re-loading must NOT re-snapshot from upgrades —
+    // that would silently erase the distinction and corrupt the future resolver.
+    const frozenLegacy = { hp: 5, speed: 3, light: 2, magnet: 1 };
+    const derivedMirror = { hp: 11, speed: 3, light: 4, magnet: 3 }; // legacy + tree, hypothetically
+    global.localStorage = mockLocalStorage({
+        fractured_meta: JSON.stringify({
+            spentLucidity: 20000,
+            upgrades: derivedMirror,
+            legacyUpgrades: frozenLegacy,
+            treeNodes: ['R1', 'R2', 'F1']
+        })
+    });
+    const sm = new SaveManager();
+
+    check('treeNodes round-trips unchanged', JSON.stringify(sm.metaState.treeNodes) === JSON.stringify(['R1', 'R2', 'F1']));
+    check('legacyUpgrades is NOT re-snapshotted from upgrades (idempotency)',
+        JSON.stringify(sm.metaState.legacyUpgrades) === JSON.stringify(frozenLegacy),
+        `expected frozen ${JSON.stringify(frozenLegacy)}, got ${JSON.stringify(sm.metaState.legacyUpgrades)}`);
+    check('upgrades mirror is left as-is, not collapsed back to legacyUpgrades',
+        JSON.stringify(sm.metaState.upgrades) === JSON.stringify(derivedMirror));
+}
+
+{
+    console.log('\n  importSave() applies the same migration to an old-format export');
+    global.localStorage = mockLocalStorage(); // fresh instance, nothing loaded locally
+    const sm = new SaveManager();
+    const legacyUpgradesInExport = { hp: 8, speed: 0, light: 4, magnet: 2 };
+    const oldExport = btoa(JSON.stringify({
+        spentLucidity: 5000,
+        upgrades: legacyUpgradesInExport
+        // no treeNodes, no legacyUpgrades — an export taken before Patch 29
+    }));
+
+    const ok = sm.importSave(oldExport);
+    check('importSave succeeds on an old-format export', ok === true);
+    check('importSave back-fills treeNodes to []', Array.isArray(sm.metaState.treeNodes) && sm.metaState.treeNodes.length === 0);
+    check('importSave snapshots legacyUpgrades from the imported real upgrades',
+        JSON.stringify(sm.metaState.legacyUpgrades) === JSON.stringify(legacyUpgradesInExport),
+        JSON.stringify(sm.metaState.legacyUpgrades));
+    check('importSave leaves spentLucidity untouched', sm.metaState.spentLucidity === 5000, `got ${sm.metaState.spentLucidity}`);
+}
+
+{
+    console.log('\n  importSave() of an ALREADY-migrated export uses its real legacyUpgrades as-is');
+    global.localStorage = mockLocalStorage();
+    const sm = new SaveManager(); // fresh instance, legacyUpgrades defaults to all-zero
+    const realFrozenLegacy = { hp: 5, speed: 3, light: 2, magnet: 1 };
+    const newExport = btoa(JSON.stringify({
+        spentLucidity: 9450,
+        upgrades: { hp: 11, speed: 3, light: 4, magnet: 3 }, // derived mirror, tree-inflated
+        legacyUpgrades: realFrozenLegacy,
+        treeNodes: ['R1', 'R2']
+    }));
+
+    sm.importSave(newExport);
+    check('imported legacyUpgrades is used directly, not re-derived from upgrades',
+        JSON.stringify(sm.metaState.legacyUpgrades) === JSON.stringify(realFrozenLegacy),
+        JSON.stringify(sm.metaState.legacyUpgrades));
+}
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
