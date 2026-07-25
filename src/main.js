@@ -919,6 +919,26 @@ function gameLoop(time) {
                 document.getElementById('glitch-overlay').style.opacity = targetGlitchOpacity;
                 
                 document.getElementById('score').innerHTML = `LUCIDITY: ${game.state.lucidity} <br> FLOOR: ${game.state.floor} - ROOM: ${game.state.roomNumber}`;
+
+                // Patch 25: screen-fixed tutorial banner, driven off the same
+                // state.isTutorial gate Director.spawnRoom/Combat.js already use.
+                // Purely presentational — doesn't touch the tutorialCompleted flow.
+                const tutorialBanner = document.getElementById('tutorial-banner');
+                const tutorialBannerText = document.getElementById('tutorial-banner-text');
+                if (tutorialBanner && tutorialBannerText) {
+                    if (game.state.isTutorial) {
+                        tutorialBanner.style.display = 'block';
+                        if (game.state.roomCleared) {
+                            tutorialBannerText.innerText = 'Manifestation eliminated. Step through a door to descend — each door tells you what it holds before you enter.';
+                        } else if (game.state.entities && game.state.entities.length > 0) {
+                            tutorialBannerText.innerText = 'A Manifestation, given form by your own mind. Defeat it to proceed.';
+                        } else {
+                            tutorialBannerText.innerText = 'Move with WASD. Aim with your mouse. Press SPACE to dash.';
+                        }
+                    } else {
+                        tutorialBanner.style.display = 'none';
+                    }
+                }
             }
             
             // Send the gameState so the renderer knows to bypass the Void code!

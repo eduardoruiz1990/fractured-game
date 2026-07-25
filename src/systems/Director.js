@@ -128,9 +128,19 @@ export class Director {
         // are drawn each room-clear, so the choice varies room to room instead of
         // always being the same fixed pair. Effects for each rewardType live in
         // Combat.js's ROOM_DOOR branch.
-        const rewardPool = ['LUCIDITY', 'HEAL', 'WEAPON_UPGRADE', 'TOKEN_DOOR', 'RISK_REWARD'];
-        const shuffledRewards = [...rewardPool].sort(() => 0.5 - Math.random());
-        const [rewardA, rewardB] = shuffledRewards;
+        // Patch 25: the tutorial room's doors stay on the two rewards a first-time
+        // player already has context for (they've just been told "step through a
+        // door to descend" and nothing about tokens/upgrades/risk trades yet).
+        // Every other room still draws the full pool below.
+        let rewardA, rewardB;
+        if (state.isTutorial) {
+            rewardA = 'LUCIDITY';
+            rewardB = 'HEAL';
+        } else {
+            const rewardPool = ['LUCIDITY', 'HEAL', 'WEAPON_UPGRADE', 'TOKEN_DOOR', 'RISK_REWARD'];
+            const shuffledRewards = [...rewardPool].sort(() => 0.5 - Math.random());
+            [rewardA, rewardB] = shuffledRewards;
+        }
 
         state.interactables.push({
             type: 'ROOM_DOOR',
