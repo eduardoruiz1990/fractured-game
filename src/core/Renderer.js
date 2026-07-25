@@ -153,6 +153,16 @@ export class Renderer {
              + Math.sin(this.renderFrame * speed * 3.7 + p) * 0.3;
     }
 
+    // Patch 17: per-entity hit squash/recoil, driven off flashTime (set to 5 on
+    // takeDamage, ticking down to 0 in Enemy.applyMovement — see Enemy.js). Widens
+    // then eases back to 1,1 as flashTime decays, giving a one-frame "impact pop."
+    // Scoped inside each entity branch's own local save/restore so it never touches
+    // the health bar drawn after the dispatch chain in the shared outer transform.
+    hitSquash(ent) {
+        const t = (ent && ent.flashTime > 0) ? ent.flashTime / 5 : 0;
+        return { x: 1 + t * 0.22, y: 1 - t * 0.18 };
+    }
+
     generateFloorPatterns() {
         const patterns = [];
         
@@ -1445,6 +1455,10 @@ export class Renderer {
                 }
 
                 if (ent.type === 'ARCHITECT') {
+                    this.ctx.save();
+                    const archSquash = this.hitSquash(ent);
+                    this.ctx.scale(archSquash.x, archSquash.y);
+
                     let pulse = this.entPulse(ent) * 5;
                     let arming = ent.actionState === 'charging_collapse' || ent.actionState === 'collapse_active';
                     let bursting = ent.actionState === 'burst';
@@ -1512,8 +1526,14 @@ export class Renderer {
                     this.ctx.lineTo(-8 * corePulse, 0);
                     this.ctx.closePath();
                     this.ctx.fill();
+
+                    this.ctx.restore();
                 }
                 else if (ent.type === 'PANOPTICON') {
+                    this.ctx.save();
+                    const panSquash = this.hitSquash(ent);
+                    this.ctx.scale(panSquash.x, panSquash.y);
+
                     let bob = Math.sin(this.renderFrame * 0.05) * 15;
                     let panicTwitch = (Math.random() - 0.5) * (ent.gazeState === 'charging' ? 8 : 2);
                     this.ctx.translate(panicTwitch, bob + panicTwitch);
@@ -1617,8 +1637,14 @@ export class Renderer {
                     this.ctx.ellipse(26, -12, 5, 7, -0.4, 0, Math.PI * 2);
                     this.ctx.fill();
                     this.ctx.restore();
+
+                    this.ctx.restore();
                 }
                 else if (ent.type === 'AMALGAMATION') {
+                    this.ctx.save();
+                    const amalSquash = this.hitSquash(ent);
+                    this.ctx.scale(amalSquash.x, amalSquash.y);
+
                     let pulse = this.entPulse(ent) * 8;
                     let jitterX = (Math.random() - 0.5) * 4;
                     let jitterY = (Math.random() - 0.5) * 4;
@@ -1731,8 +1757,14 @@ export class Renderer {
                         this.ctx.stroke();
                         this.ctx.setLineDash([]);
                     }
+
+                    this.ctx.restore();
                 }
                 else if (ent.type === 'RORSCHACH') {
+                    this.ctx.save();
+                    const rorSquash = this.hitSquash(ent);
+                    this.ctx.scale(rorSquash.x, rorSquash.y);
+
                     if (ent.shootState === 'telegraphing') {
                         this.ctx.save();
                         this.ctx.rotate(ent.shootAngle);
@@ -1790,9 +1822,14 @@ export class Renderer {
 
                         this.ctx.restore();
                     }
+
+                    this.ctx.restore();
                 }
                 else if (ent.type === 'SCAVENGER') {
-                    this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
+                    this.ctx.save();
+                    const scavSquash = this.hitSquash(ent);
+                    this.ctx.scale(scavSquash.x, scavSquash.y);
+                    this.ctx.rotate(Math.atan2(ent.vy, ent.vx));
                     
                     if (ent.vacuumState === 'vacuuming') {
                         this.ctx.save();
@@ -1864,8 +1901,14 @@ export class Renderer {
                     let sweepOffset = ent.vacuumState === 'vacuuming' ? 0 : this.entPulse(ent, 0.2)*5;
                     this.ctx.lineTo(13 + sweepOffset, 12 + bobQ);
                     this.ctx.stroke();
+
+                    this.ctx.restore();
                 }
                 else if (ent.type === 'PREDATOR') {
+                    this.ctx.save();
+                    const predSquash = this.hitSquash(ent);
+                    this.ctx.scale(predSquash.x, predSquash.y);
+
                     if (ent.attackState === 'telegraphing') {
                         this.ctx.rotate(Math.atan2(ent.lungeVy, ent.lungeVx));
                         
@@ -1963,8 +2006,14 @@ export class Renderer {
                     this.ctx.beginPath();
                     this.ctx.ellipse(13 + stretch, 0, 3, 2, 0, 0, Math.PI*2);
                     this.ctx.fill();
+
+                    this.ctx.restore();
                 }
                 else if (ent.type === 'PARASITE') {
+                    this.ctx.save();
+                    const paraSquash = this.hitSquash(ent);
+                    this.ctx.scale(paraSquash.x, paraSquash.y);
+
                     // Body spin carries the entity's phase so parasites don't all rotate
                     // in unison. The tether below cancels the exact same expression, so
                     // these two must stay in step if either is ever changed.
@@ -2029,8 +2078,14 @@ export class Renderer {
                     this.ctx.beginPath();
                     this.ctx.arc(0, 0, 2 + pulse*0.5, 0, Math.PI*2);
                     this.ctx.fill();
+
+                    this.ctx.restore();
                 }
                 else if (ent.type === 'BOSS') {
+                    this.ctx.save();
+                    const bossSquash = this.hitSquash(ent);
+                    this.ctx.scale(bossSquash.x, bossSquash.y);
+
                     try {
                         if (ent.pulseState === 'charging' || ent.pulseState === 'pulsing') {
                             this.ctx.save();
@@ -2143,6 +2198,12 @@ export class Renderer {
                         }
                     } catch(bossError) {
                         console.warn("Recoverable boss rendering error:", bossError);
+                    } finally {
+                        // finally, not just a trailing restore() — the try above is there
+                        // specifically so a mid-draw exception doesn't crash the render
+                        // loop, and the new save() at branch start must never be left
+                        // unbalanced (which would silently corrupt every render after it).
+                        this.ctx.restore();
                     }
                 }
 
