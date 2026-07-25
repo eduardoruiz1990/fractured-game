@@ -1,5 +1,13 @@
 // src/core/SaveManager.js
 import { SYNAPSE_NODES_BY_ID } from '../data/SynapseNodes.js';
+import { TOKENS, TOKEN_SETS, TOKEN_RARITIES, TOKEN_SLOT_TYPES } from '../data/Manifestations.js';
+
+// Patch 31: built from TOKEN_SLOT_TYPES so the equippedTokens shape has ONE source
+// of truth. §2 of the handoff listed five hardcoded copies of the old 4-slot shape;
+// the three inside this file now derive from here instead of repeating a literal.
+function emptyEquippedTokens() {
+    return TOKEN_SLOT_TYPES.reduce((acc, slot) => { acc[slot] = null; return acc; }, {});
+}
 
 // Patch 29.4: legacy "level" units <-> native stat-delta units, mirroring
 // Game.js's own formulas exactly (maxSanity: +20/lvl, speedBuff: +5%/lvl,
@@ -23,7 +31,7 @@ export class SaveManager {
             // silently snapshot as all-zero instead.
             treeNodes: [],
             inventory: [],
-            equippedTokens: { head: null, body: null, hands: null, legs: null },
+            equippedTokens: emptyEquippedTokens(),
             maxFloorReached: 1,
             maxBossEncountered: 0,
             hasEscapedFloor1: false,
@@ -62,7 +70,14 @@ export class SaveManager {
                 }
 
                 if (!this.metaState.inventory) this.metaState.inventory = [];
-                if (!this.metaState.equippedTokens) this.metaState.equippedTokens = { head: null, body: null, hands: null, legs: null };
+                // Patch 31: per-slot back-fill, not just a whole-object fallback. A
+                // pre-31 save HAS equippedTokens but is missing the new 'prescription'
+                // key entirely, so the old `if (!equippedTokens)` guard would skip it
+                // and leave that slot undefined rather than null.
+                if (!this.metaState.equippedTokens) this.metaState.equippedTokens = emptyEquippedTokens();
+                TOKEN_SLOT_TYPES.forEach(slot => {
+                    if (this.metaState.equippedTokens[slot] === undefined) this.metaState.equippedTokens[slot] = null;
+                });
                 if (!this.metaState.maxFloorReached) this.metaState.maxFloorReached = 1; 
                 if (!this.metaState.maxBossEncountered) this.metaState.maxBossEncountered = 0;
                 if (this.metaState.tutorialCompleted === undefined) this.metaState.tutorialCompleted = false;
@@ -141,6 +156,14 @@ export class SaveManager {
             if (parsed && typeof parsed === 'object') {
                 this.metaState = { ...this.metaState, ...parsed };
                 if (!this.metaState.treeNodes) this.metaState.treeNodes = [];
+
+                // Patch 31: the spread above replaces equippedTokens WHOLESALE, so a
+                // pre-31 export (4 keys, no 'prescription') would leave that slot
+                // undefined no matter what this instance held before the import.
+                if (!this.metaState.equippedTokens) this.metaState.equippedTokens = emptyEquippedTokens();
+                TOKEN_SLOT_TYPES.forEach(slot => {
+                    if (this.metaState.equippedTokens[slot] === undefined) this.metaState.equippedTokens[slot] = null;
+                });
 
                 // Deliberately NOT _migrateMetaState() here — that helper guards on
                 // this.metaState.legacyUpgrades === undefined, which is only a safe
@@ -305,6 +328,64 @@ export class SaveManager {
         return { stats, grants };
     }
 
+    // Patch 31: resolves every equipped token + earned set bonus into the SAME
+    // { stats, grants } shape getResolvedUpgrades() returns, so a consumer can merge
+    // the two bundles without translating between vocabularies. Also returns
+    // setCounts so the loadout UI can show 2/4 progress without recomputing it.
+    //
+    // Rarity multiplier: TOKEN_RARITIES.multiplier was dead data before this patch
+    // (confirmed in Patch 27 — nothing read it). It is now applied to a token's
+    // POSITIVE numeric effects only, so forging a token is always strictly an
+    // upgrade and never amplifies its own drawback. Set bonuses are never scaled —
+    // they come from the set, not from any one token's rarity.
+    getResolvedTokenEffects() {
+        const stats = {
+            sanity: 0, speed: 0, light: 0, magnet: 0, iframes: 0,
+            flashlightAngle: 0, tagDamage: {}, lucidityGain: 0,
+            dashCooldown: 0, dashDuration: 0
+        };
+        const grants = new Set();
+        const setCounts = {};
+
+        const apply = (effects, mult) => {
+            for (const [key, value] of Object.entries(effects || {})) {
+                if (key === 'grant') {
+                    grants.add(value);
+                } else if (key === 'tagDamage') {
+                    for (const [tag, amt] of Object.entries(value)) {
+                        const scaled = amt > 0 ? amt * mult : amt;
+                        stats.tagDamage[tag] = (stats.tagDamage[tag] || 0) + scaled;
+                    }
+                } else {
+                    stats[key] = (stats[key] || 0) + (value > 0 ? value * mult : value);
+                }
+            }
+        };
+
+        const equipped = this.metaState.equippedTokens || {};
+        const inventory = this.metaState.inventory || [];
+        for (const uid of Object.values(equipped)) {
+            if (!uid) continue;
+            const invItem = inventory.find(i => i.uid === uid);
+            if (!invItem) continue;
+            const tokenData = TOKENS[invItem.id];
+            if (!tokenData) continue; // stale id from an older build — ignore, don't throw
+
+            setCounts[tokenData.set] = (setCounts[tokenData.set] || 0) + 1;
+            const rarity = TOKEN_RARITIES[invItem.rarity];
+            apply(tokenData.effects, (rarity && rarity.multiplier) || 1.0);
+        }
+
+        for (const [setKey, count] of Object.entries(setCounts)) {
+            const setData = TOKEN_SETS[setKey];
+            if (!setData || !setData.bonuses) continue;
+            if (count >= 2) apply(setData.bonuses[2], 1.0);
+            if (count >= 4) apply(setData.bonuses[4], 1.0);
+        }
+
+        return { stats, grants, setCounts };
+    }
+
     // Writes metaState.upgrades as a PURE DERIVED MIRROR of getResolvedUpgrades(),
     // converted back from native stat-delta units into legacy LEVEL units, so
     // readers that predate the tree (e.g. Combat.js's magnet lookup) keep working
@@ -373,7 +454,7 @@ export class SaveManager {
         this.metaState = { 
             lucidityBank: 0, spentLucidity: 0, 
             upgrades: { hp: 0, speed: 0, light: 0, magnet: 0 },
-            inventory: [], equippedTokens: { head: null, body: null, hands: null, legs: null },
+            inventory: [], equippedTokens: emptyEquippedTokens(),
             maxFloorReached: 1, maxBossEncountered: 0,
             tutorialCompleted: false,
             hasEscapedFloor1: false,

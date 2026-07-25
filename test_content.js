@@ -17,7 +17,7 @@
 
 import { Game } from './src/core/Game.js';
 import {
-    SYNERGIES, TOKENS, TOKEN_SETS, TOKEN_RARITIES
+    SYNERGIES, TOKENS, TOKEN_SETS, TOKEN_RARITIES, TOKEN_SLOT_TYPES
 } from './src/data/Manifestations.js';
 import { getXPRequiredForLevel } from './src/data/Config.js';
 
@@ -98,9 +98,23 @@ console.log('\nSynergy requirements reference real weapons');
 console.log('\nToken validity');
 
 {
-    const validSlotTypes = ['head', 'body', 'hands', 'legs']; // matches SaveManager's equippedTokens shape
+    // Patch 31: reads TOKEN_SLOT_TYPES rather than a local copy, so this test tracks
+    // the real source of truth instead of drifting from it (the old hardcoded
+    // ['head','body','hands','legs'] would have silently rejected the new
+    // 'prescription' slot).
+    const validSlotTypes = TOKEN_SLOT_TYPES;
     const tokenSetKeys = Object.keys(TOKEN_SETS);
     const setCounts = {};
+    const slotCounts = {};
+
+    // Effect keys a consumer knows how to resolve. Mirrors the stat vocabulary in
+    // SaveManager.getResolvedTokenEffects() — a typo'd key here means a token whose
+    // effect silently does nothing, which is exactly the class of bug Patch 31 found
+    // across the pre-existing token data.
+    const KNOWN_EFFECT_KEYS = [
+        'sanity', 'speed', 'light', 'magnet', 'iframes', 'flashlightAngle',
+        'tagDamage', 'lucidityGain', 'dashCooldown', 'dashDuration', 'grant'
+    ];
 
     for (const [tokenId, token] of Object.entries(TOKENS)) {
         check(`TOKENS.${tokenId}.type is a real slot type`,
@@ -109,16 +123,41 @@ console.log('\nToken validity');
         check(`TOKENS.${tokenId}.set references a real TOKEN_SETS key`,
               tokenSetKeys.includes(token.set), `got '${token.set}'`);
 
+        check(`TOKENS.${tokenId} has a non-empty effects object`,
+              !!token.effects && Object.keys(token.effects).length > 0);
+
+        for (const key of Object.keys(token.effects || {})) {
+            check(`TOKENS.${tokenId}.effects key '${key}' is one a resolver knows`,
+                  KNOWN_EFFECT_KEYS.includes(key));
+        }
+
         if (tokenSetKeys.includes(token.set)) {
             setCounts[token.set] = (setCounts[token.set] || 0) + 1;
         }
+        slotCounts[token.type] = (slotCounts[token.type] || 0) + 1;
     }
 
     console.log('\nTOKEN_SETS coverage (set bonuses trigger at 2 and 4 equipped)');
     for (const setKey of tokenSetKeys) {
-        check(`TOKEN_SETS.${setKey} is referenced by >= 2 tokens`,
-              (setCounts[setKey] || 0) >= 2,
+        // >= 4, not >= 2: a set whose 4-piece bonus can never be assembled is a
+        // bonus the player can read but never earn.
+        check(`TOKEN_SETS.${setKey} has >= 4 tokens, so its 4pc bonus is reachable`,
+              (setCounts[setKey] || 0) >= 4,
               `referenced by ${setCounts[setKey] || 0}`);
+
+        check(`TOKEN_SETS.${setKey} declares machine-readable bonuses for 2 and 4`,
+              !!TOKEN_SETS[setKey].bonuses && !!TOKEN_SETS[setKey].bonuses[2] && !!TOKEN_SETS[setKey].bonuses[4]);
+
+        // The '2'/'4' display strings are what the loadout UI prints; a set that
+        // resolves a bonus with no text to show it is invisible to the player.
+        check(`TOKEN_SETS.${setKey} keeps its '2' and '4' display strings`,
+              typeof TOKEN_SETS[setKey]['2'] === 'string' && typeof TOKEN_SETS[setKey]['4'] === 'string');
+    }
+
+    console.log('\nEvery slot type is fillable');
+    for (const slot of validSlotTypes) {
+        check(`slot '${slot}' has at least one token that fits it`,
+              (slotCounts[slot] || 0) >= 1, `got ${slotCounts[slot] || 0}`);
     }
 }
 

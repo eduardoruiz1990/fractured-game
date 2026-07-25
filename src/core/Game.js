@@ -41,6 +41,28 @@ export class Game {
             grants = new Set();
         }
 
+        // Patch 31b: fold equipped tokens + earned set bonuses into the SAME bundle.
+        // getResolvedTokenEffects() deliberately returns the same { stats, grants }
+        // shape as getResolvedUpgrades(), so the merge is a plain sum with no
+        // translation. tokenSetCounts feeds state.player.sets below, replacing the
+        // hand-rolled counting loop that used to live here — one source of truth.
+        let tokenSetCounts = {};
+        if (saveManager && typeof saveManager.getResolvedTokenEffects === 'function') {
+            const tokenBundle = saveManager.getResolvedTokenEffects();
+            tokenSetCounts = tokenBundle.setCounts || {};
+            for (const [key, value] of Object.entries(tokenBundle.stats || {})) {
+                if (key === 'tagDamage') {
+                    stats.tagDamage = stats.tagDamage || {};
+                    for (const [tag, amt] of Object.entries(value)) {
+                        stats.tagDamage[tag] = (stats.tagDamage[tag] || 0) + amt;
+                    }
+                } else {
+                    stats[key] = (stats[key] || 0) + value;
+                }
+            }
+            tokenBundle.grants.forEach(g => grants.add(g));
+        }
+
         const maxSanity = 100 + (stats.sanity || 0);
         const speedBuff = 1.0 + ((stats.speed || 0) / 100);
         const lightBuff = 1.0 + ((stats.light || 0) / 100);
@@ -49,8 +71,16 @@ export class Game {
         let effectiveMaxSanity = maxSanity;
 
         const pCurses = [];
-        const pSets = {};
+        // Patch 31b: was a hand-rolled count in the loop below; now comes straight
+        // off the token resolver so this can never disagree with what the loadout
+        // screen shows. Combat.js and Renderer.js still read state.player.sets for
+        // the insomniac 4pc burn zone, so the shape is unchanged.
+        const pSets = tokenSetCounts;
         const pSynergies = [];
+        // Patch 31b: these two were previously gated on ids ('adrenaline_gland',
+        // 'broken_watch') that DO NOT EXIST in TOKENS — so the working code behind
+        // them in Combat.js and Game.js could never fire. Now driven by grants
+        // declared in the token data itself, which the resolver collects.
         const pTokens = { hasTwitch: false, hasPanic: false };
 
         // Patch 29.5: start_boon/start_weapon (C1/C2) only fire on a genuinely
@@ -67,18 +97,21 @@ export class Game {
             pBoons.push('reinforced_frame');
         }
 
+        pTokens.hasTwitch = grants.has('twitch_cooldown');
+        pTokens.hasPanic = grants.has('panic_dash');
+
+        // Set counting and the twitch/panic flags now come from the resolver above.
+        // This loop survives only to collect token-attached curses — and it now
+        // guards on tokenData, which the old version did not: a stale id left in an
+        // inventory by an older build made `tokenData.curses` throw on undefined and
+        // took the whole run start down with it.
         if (meta.equippedTokens) {
             Object.values(meta.equippedTokens).forEach(uid => {
                 if (!uid) return;
                 const invItem = meta.inventory.find(i => i.uid === uid);
-                if (invItem) {
-                    const tokenData = TOKENS[invItem.id];
-                    if (tokenData.curses) pCurses.push(...tokenData.curses);
-                    pSets[tokenData.set] = (pSets[tokenData.set] || 0) + 1;
-                    
-                    if (invItem.id === 'adrenaline_gland') pTokens.hasTwitch = true;
-                    if (invItem.id === 'broken_watch') pTokens.hasPanic = true;
-                }
+                if (!invItem) return;
+                const tokenData = TOKENS[invItem.id];
+                if (tokenData && tokenData.curses) pCurses.push(...tokenData.curses);
             });
         }
 
@@ -127,10 +160,29 @@ export class Game {
                 activeTokens: pTokens,
                 boons: pBoons,
                 // Patch 29.5: sums per-tag damage bonuses (F5/F7). Consumed by Combat.js.
+                // Patch 31b: token tagDamage (melee/kinetic/tech) is merged in too.
                 tagDamage: stats.tagDamage || {},
+                // Patch 31b: TOTAL vacuum-radius bonus in px (legacy + tree + tokens).
+                // getResolvedUpgrades already returns magnet in px (level x 30), and
+                // token magnet effects are px too, so the merge above is already the
+                // correct total. Combat.js now reads this instead of recomputing from
+                // upgrades.magnet — recomputing there would miss the token half.
+                vacRadiusBonusPx: stats.magnet || 0,
                 flashTime: 0,
                 breathPhase: 0,
-                denialShieldActive: false,
+                // Patch 31b: body_denial's 'denial_shield' grant — "begin each floor
+                // with a shield that ignores one hit". init() runs on every floor
+                // descent, so granting it here gives exactly the per-floor cadence
+                // the token promises. Before this, denialShieldActive started false
+                // unconditionally and body_denial did nothing at all.
+                denialShieldActive: grants.has('denial_shield'),
+                // Institutionalized 4pc: shockwave on damage, and no dashing.
+                hasShockwaveOnHit: grants.has('shockwave_no_dash'),
+                noDash: grants.has('shockwave_no_dash'),
+                // Medicated 2pc. The pre-existing dmgReduction check in takeDamage
+                // read state.player.sets.medicated — a set that did not exist until
+                // Patch 31, so that code was unreachable. Now driven by the grant.
+                hasMedicatedMitigation: grants.has('medicated_mitigation'),
                 // R6's 'denial_recharge' grant: the shield rearms itself on a long
                 // timer after being consumed, instead of staying gone for the run.
                 hasDenialRecharge: grants.has('denial_recharge'),
@@ -192,7 +244,10 @@ export class Game {
             decals: []
         };
         
-        if (pSets.insomniac >= 2) this.state.player.weapons.flashlight.radius *= 1.25;
+        // Patch 31b: the insomniac 2pc flashlight bonus USED to be applied here as a
+        // hardcoded x1.25. It now lives in TOKEN_SETS.insomniac.bonuses[2] as
+        // { light: 25 } and flows through lightBuff above like every other light
+        // source. Re-applying it here would double-count it.
 
         this.state.player.synergies = getActiveSynergies(this.state.player.weapons);
 
@@ -259,7 +314,10 @@ export class Game {
         }
 
         let dmgReduction = 0;
-        if (this.state.player.sets && this.state.player.sets.medicated >= 2) {
+        // Patch 31b: was `sets.medicated >= 2`, referring to a set that did not exist
+        // until Patch 31 created it — so this branch was unreachable dead code. Now
+        // driven by the grant the medicated 2pc bonus actually declares.
+        if (this.state.player.hasMedicatedMitigation) {
             dmgReduction = 0.2;
         }
 
@@ -317,6 +375,22 @@ export class Game {
             });
             this.spawnParticles(this.state.player.x, this.state.player.y, '#00ffff', 30);
             this.state.cameraShake = Math.max(this.state.cameraShake, 18);
+        }
+
+        // Patch 31b: Institutionalized 4pc — "taking damage triggers an AoE
+        // shockwave, but you cannot dash". Wider and harder-hitting than
+        // static_discharge above, since it costs an entire 4-token set plus the
+        // dash. Both can fire on the same hit; that is the intended payoff for
+        // committing to the set AND spending a boon pick on the same idea.
+        if (this.state.player.hasShockwaveOnHit) {
+            const shockRadius = 300;
+            this.state.entities.forEach(ent => {
+                if (Math.hypot(ent.x - this.state.player.x, ent.y - this.state.player.y) < shockRadius) {
+                    ent.takeDamage(60, this);
+                }
+            });
+            this.spawnParticles(this.state.player.x, this.state.player.y, '#ffddaa', 40);
+            this.state.cameraShake = Math.max(this.state.cameraShake, 26);
         }
 
         // martyr: leaves a warding circle (2x damage zone) where you were hit.
@@ -436,7 +510,10 @@ export class Game {
 
         this.state.input = moveInput;
 
-        const canDash = !(this.state.player.boons && this.state.player.boons.includes('lead_shoes'));
+        // Patch 31b: player.noDash is the Institutionalized 4pc's cost, and reuses the
+        // exact same suppression path the lead_shoes boon already established.
+        const canDash = !this.state.player.noDash
+            && !(this.state.player.boons && this.state.player.boons.includes('lead_shoes'));
         // Patch 29.5: charge-based (M7's dash_charge_2 grant can raise maxCharges to
         // 2). Ready to dash whenever a charge is banked, regardless of whether the
         // regen timer toward the NEXT charge is still counting down.

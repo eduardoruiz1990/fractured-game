@@ -119,6 +119,13 @@
                             <div class="token-slot" id="slot-body" data-type="body">BODY<br>Empty</div>
                             <div class="token-slot" id="slot-hands" data-type="hands">HANDS<br>Empty</div>
                             <div class="token-slot" id="slot-legs" data-type="legs">LEGS<br>Empty</div>
+                            <!-- Patch 31: 5th slot. Must stay in sync with TOKEN_SLOT_TYPES
+                                 in src/data/Manifestations.js. -->
+                            <div class="token-slot" id="slot-prescription" data-type="prescription">PRESCRIPTION<br>Empty</div>
+
+                            <!-- Patch 31: 2/4 set progress, rendered by UIManager.renderSetProgress(). -->
+                            <div class="section-label" style="margin-top: 15px;">SET PROGRESS</div>
+                            <div id="set-progress-container"></div>
                         </div>
                         
                         <div class="inventory-panel-container">

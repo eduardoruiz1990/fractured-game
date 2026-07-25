@@ -1,5 +1,5 @@
 // src/ui/UIManager.js
-import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, INTRUSIVE_THOUGHTS } from '../data/Manifestations.js';
+import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS } from '../data/Manifestations.js';
 import { SynapseTree } from './SynapseTree.js';
 
 // Matches the hardcoded progression chain in SaveManager.upgradeToken() exactly —
@@ -450,15 +450,52 @@ export class UIManager {
         updateBossTrophy('architect', kills.ARCHITECT || 0, '#c5a059');
     }
 
+    // Patch 31: pre-run 2/4 set progress. Reads setCounts straight off the token
+    // resolver so this display can never disagree with what the equipped tokens
+    // actually resolve to. Only shows sets the player has at least one piece of —
+    // listing all four unconditionally would bury the one they're building.
+    renderSetProgress() {
+        const container = document.getElementById('set-progress-container');
+        if (!container) return;
+
+        const { setCounts } = this.saveManager.getResolvedTokenEffects();
+        const owned = Object.entries(setCounts).filter(([, count]) => count > 0);
+
+        if (owned.length === 0) {
+            container.innerHTML = `<div class="typewriter-text" style="font-size:0.7rem; color:#666;">No set pieces prescribed.</div>`;
+            return;
+        }
+
+        container.innerHTML = owned.map(([setKey, count]) => {
+            const setData = TOKEN_SETS[setKey];
+            if (!setData) return '';
+            const tier2 = count >= 2;
+            const tier4 = count >= 4;
+            const line = (active, n, text) => `
+                <div style="font-size:0.65rem; line-height:1.25; color:${active ? 'var(--ui-red)' : '#888'}; font-weight:${active ? 'bold' : 'normal'};">
+                    ${active ? '&#10003;' : '&#9679;'} (${n}) ${text}
+                </div>`;
+            return `
+                <div style="margin-bottom:8px;">
+                    <div class="typewriter-text" style="font-size:0.75rem;">${setData.name} &mdash; ${count}/4</div>
+                    ${line(tier2, 2, setData['2'])}
+                    ${line(tier4, 4, setData['4'])}
+                </div>`;
+        }).join('');
+    }
+
     renderLoadoutUI() {
         const meta = this.saveManager.metaState;
         
-        ['head', 'body', 'hands', 'legs'].forEach(slotType => {
+        // Patch 31: driven by TOKEN_SLOT_TYPES rather than a hardcoded 4-slot literal,
+        // so the new 'prescription' slot needs no change here and a 6th never would.
+        TOKEN_SLOT_TYPES.forEach(slotType => {
             const slotEl = document.getElementById(`slot-${slotType}`);
+            if (!slotEl) return;
             const equippedUid = meta.equippedTokens[slotType];
-            
+
             slotEl.className = 'token-slot';
-            
+
             if (equippedUid) {
                 const invItem = meta.inventory.find(i => i.uid === equippedUid);
                 if (invItem) {
@@ -469,11 +506,12 @@ export class UIManager {
                     slotEl.onclick = () => this.selectEquippedSlot(slotType, invItem);
                 }
             } else {
-                let slotName = slotType === 'head' ? 'HEAD' : (slotType === 'body' ? 'BODY' : (slotType === 'hands' ? 'HANDS' : 'LEGS'));
-                slotEl.innerHTML = `${slotName}<br>Empty`;
+                slotEl.innerHTML = `${slotType.toUpperCase()}<br>Empty`;
                 slotEl.onclick = null;
             }
         });
+
+        this.renderSetProgress();
 
         this.inventoryGrid.innerHTML = '';
         meta.inventory.forEach(invItem => {
@@ -486,6 +524,8 @@ export class UIManager {
             const el = document.createElement('div');
             el.className = `inventory-item filled rarity-${invItem.rarity}`;
             
+            // 💊 is the prescription slot's icon and also the pre-existing fallback,
+            // so the new slot type needs no extra branch here.
             let icon = '💊';
             if (tokenData.type === 'head') icon = '🧠';
             else if (tokenData.type === 'body') icon = '🦺';

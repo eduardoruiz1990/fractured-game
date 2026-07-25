@@ -104,26 +104,145 @@ export const TOKEN_RARITIES = {
     mythic: { color: '#ff5555', costToUpgrade: null, multiplier: 4.0 }
 };
 
+// Patch 31: sets gained a machine-readable `bonuses` field alongside the existing
+// '2'/'4' display strings (which UIManager reads directly — do not rename them).
+// Set bonuses are NOT rarity-scaled; only the per-token effects below are.
+//
+// NOTE ON THE '2'/'4' TEXT: two of these strings previously described behaviour
+// the code did not have. insomniac's 2pc claimed "Move Speed +10%" while
+// Game.js:195 actually applies flashlight radius x1.25 — the text has been
+// corrected to match the code that really runs, rather than the reverse.
 export const TOKEN_SETS = {
-    insomniac: { name: "The Insomniac", 2: "Move Speed +10%", 4: "Permanent outer safe zone that burns enemies." },
-    institutionalized: { name: "Institutionalized", 2: "Max Sanity +50", 4: "Damage triggers AoE shockwave, but you cannot dash." }
-};
-
-export const TOKENS = {
-    head_paranoia: { 
-        id: 'head_paranoia', type: 'head', set: 'insomniac', 
-        name: 'Paranoid Gaze', desc: 'Flashlight range +50%, angle -20%.' 
+    insomniac: {
+        name: "The Insomniac",
+        2: "Flashlight range +25%",
+        4: "Permanent outer safe zone that burns enemies.",
+        bonuses: { 2: { light: 25 }, 4: { grant: 'insomniac_burn_zone' } }
     },
-    body_denial: { 
-        id: 'body_denial', type: 'body', set: 'institutionalized', 
-        name: 'Straitjacket of Denial', desc: 'Ignore the first instance of damage per floor.' 
+    institutionalized: {
+        name: "Institutionalized",
+        2: "Max Grip +50",
+        4: "Taking damage triggers an AoE shockwave, but you cannot dash.",
+        bonuses: { 2: { sanity: 50 }, 4: { grant: 'shockwave_no_dash' } }
     },
-    hands_twitch: { 
-        id: 'hands_twitch', type: 'hands', set: 'insomniac', 
-        name: 'Twitching Fingers', desc: 'Weapon cooldowns decrease as Sanity drops.' 
+    medicated: {
+        name: "Medicated",
+        2: "Damage taken -20%",
+        4: "Max Grip +80",
+        bonuses: { 2: { grant: 'medicated_mitigation' }, 4: { sanity: 80 } }
     },
-    legs_panic: { 
-        id: 'legs_panic', type: 'legs', set: 'institutionalized', 
-        name: 'Panic Sprint', desc: 'Dash cooldown halved, dash distance reduced.' 
+    relapse: {
+        name: "The Relapse",
+        2: "Lucidity gain +20%",
+        4: "Melee and kinetic damage +30%, but max Grip -40.",
+        bonuses: { 2: { lucidityGain: 20 }, 4: { tagDamage: { melee: 30, kinetic: 30 }, sanity: -40 } }
     }
 };
+
+// Patch 31: 4 -> 16 tokens across 5 slot types (head/body/hands/legs/prescription),
+// 4 tokens per set so every set can actually reach its 4-piece bonus with one slot
+// still free.
+//
+// `effects` is machine-readable and deliberately reuses the SAME stat vocabulary as
+// the Synapse Tree resolver (sanity/speed/light/magnet/iframes/flashlightAngle/
+// tagDamage/lucidityGain/dashCooldown), so both bundles merge without translation.
+// `grant` names a discrete unlock, never summed as a number.
+//
+// The four original ids (head_paranoia, body_denial, hands_twitch, legs_panic) are
+// preserved EXACTLY — they are referenced by uid->id in existing player inventories,
+// so renaming one would orphan every save that owns it.
+export const TOKENS = {
+    // --- THE INSOMNIAC: sleepless hyper-awareness. Light, speed, tempo. ---
+    head_paranoia: {
+        id: 'head_paranoia', type: 'head', set: 'insomniac',
+        name: 'Paranoid Gaze', desc: 'Flashlight range +50%, cone angle -20%.',
+        effects: { light: 50, flashlightAngle: -20 }
+    },
+    hands_twitch: {
+        id: 'hands_twitch', type: 'hands', set: 'insomniac',
+        name: 'Twitching Fingers', desc: 'Weapon cooldowns accelerate as Grip drops.',
+        effects: { grant: 'twitch_cooldown' }
+    },
+    legs_pacing: {
+        id: 'legs_pacing', type: 'legs', set: 'insomniac',
+        name: 'Pacing Gait', desc: 'Move speed +8%.',
+        effects: { speed: 8 }
+    },
+    presc_stimulant: {
+        id: 'presc_stimulant', type: 'prescription', set: 'insomniac',
+        name: 'Amphetamine Script', desc: 'Move speed +5%, but max Grip -20.',
+        effects: { speed: 5, sanity: -20 }
+    },
+
+    // --- INSTITUTIONALIZED: confinement, endurance, surviving the process. ---
+    body_denial: {
+        id: 'body_denial', type: 'body', set: 'institutionalized',
+        name: 'Straitjacket of Denial', desc: 'Begin each floor with a shield that ignores one hit.',
+        effects: { grant: 'denial_shield' }
+    },
+    legs_panic: {
+        id: 'legs_panic', type: 'legs', set: 'institutionalized',
+        name: 'Panic Sprint', desc: 'Dash recharges far faster, but covers less ground.',
+        effects: { dashCooldown: -45, grant: 'panic_dash' }
+    },
+    head_compliance: {
+        id: 'head_compliance', type: 'head', set: 'institutionalized',
+        name: 'Compliance Cap', desc: 'Max Grip +40, flashlight range -10%.',
+        effects: { sanity: 40, light: -10 }
+    },
+    presc_sedative: {
+        id: 'presc_sedative', type: 'prescription', set: 'institutionalized',
+        name: 'Sedative Script', desc: 'Invulnerability after a hit +15f, move speed -5%.',
+        effects: { iframes: 15, speed: -5 }
+    },
+
+    // --- MEDICATED: dulled senses traded for durability. ---
+    head_haze: {
+        id: 'head_haze', type: 'head', set: 'medicated',
+        name: 'Medicated Haze', desc: 'Invulnerability after a hit +10f, vacuum radius +30px.',
+        effects: { iframes: 10, magnet: 30 }
+    },
+    body_regimen: {
+        id: 'body_regimen', type: 'body', set: 'medicated',
+        name: 'Dosage Regimen', desc: 'Max Grip +30.',
+        effects: { sanity: 30 }
+    },
+    hands_tremor: {
+        id: 'hands_tremor', type: 'hands', set: 'medicated',
+        name: 'Lithium Tremor', desc: 'Tech weapon damage +15%.',
+        effects: { tagDamage: { tech: 15 } }
+    },
+    presc_antipsychotic: {
+        id: 'presc_antipsychotic', type: 'prescription', set: 'medicated',
+        name: 'Antipsychotic Script', desc: 'Max Grip +40, but Lucidity gain -10%.',
+        effects: { sanity: 40, lucidityGain: -10 }
+    },
+
+    // --- THE RELAPSE: raw damage and greed, paid for in Grip. ---
+    body_scars: {
+        id: 'body_scars', type: 'body', set: 'relapse',
+        name: 'Old Scars', desc: 'Melee and kinetic damage +20%, but max Grip -20.',
+        effects: { tagDamage: { melee: 20, kinetic: 20 }, sanity: -20 }
+    },
+    hands_grip: {
+        id: 'hands_grip', type: 'hands', set: 'relapse',
+        name: 'White-Knuckle Grip', desc: 'Kinetic weapon damage +15%.',
+        effects: { tagDamage: { kinetic: 15 } }
+    },
+    legs_flight: {
+        id: 'legs_flight', type: 'legs', set: 'relapse',
+        name: 'Flight Instinct', desc: 'Dash cooldown -20f, move speed +5%.',
+        effects: { dashCooldown: -20, speed: 5 }
+    },
+    presc_withdrawal: {
+        id: 'presc_withdrawal', type: 'prescription', set: 'relapse',
+        name: 'Withdrawal', desc: 'Lucidity gain +25%, but max Grip -30.',
+        effects: { lucidityGain: 25, sanity: -30 }
+    }
+};
+
+// Slot types, in display order. Single source of truth — SaveManager's
+// equippedTokens shape, UIManager's render loop, and index.html's .token-slot divs
+// must all agree with this list (§2 called out five hardcoded copies of the old
+// 4-slot shape; this constant exists so a 6th slot never needs five more edits).
+export const TOKEN_SLOT_TYPES = ['head', 'body', 'hands', 'legs', 'prescription'];

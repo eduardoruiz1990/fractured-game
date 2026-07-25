@@ -293,7 +293,9 @@ export class Combat {
 
         const spinner = state.player.weapons.fidget_spinner;
         if (spinner && spinner.level > 0) {
-            let spinnerDmg = spinner.damage;
+            // Patch 31b: spinner is tagged orbit/kinetic, so token kinetic bonuses
+            // (hands_grip, body_scars, relapse 4pc) now reach it.
+            let spinnerDmg = spinner.damage * tagDamageMultiplier(spinner.tags, state.player.tagDamage);
             if (state.player.dash && state.player.dash.active) spinnerDmg *= 2;
 
             const hasCentrifuge = !!(state.player.synergies && state.player.synergies.includes('centrifuge'));
@@ -366,7 +368,9 @@ export class Combat {
                     let canTakeDamage = !(isBoss && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
                     if (canTakeDamage && d <= pipe.radius) {
-                        ent.takeDamage(pipe.damage, game);
+                        // Patch 31b: pipe is tagged melee/kinetic — the primary
+                        // beneficiary of the Relapse set's damage bonuses.
+                        ent.takeDamage(pipe.damage * tagDamageMultiplier(pipe.tags, state.player.tagDamage), game);
                         ent.lastHitByMelee = true;
                         ent.x += (ent.x - state.player.x) / d * 25; 
                         ent.y += (ent.y - state.player.y) / d * 25;
@@ -577,7 +581,9 @@ export class Combat {
                 }
                 
                 if (staticWep.active && distToPlayer < staticWep.radius) {
-                    const staticDmgDealt = (staticWep.damage / 60) * dmgMult;
+                    // Patch 31b: static is tagged aura/tech — the target of hands_tremor.
+                    const staticDmgDealt = (staticWep.damage / 60) * dmgMult
+                        * tagDamageMultiplier(staticWep.tags, state.player.tagDamage);
                     ent.takeDamage(staticDmgDealt, game);
                     state.cameraShake = Math.max(state.cameraShake, tagShake(staticWep.tags, staticDmgDealt));
                     ent.x += (dx / distToPlayer) * 1.5; ent.y += (dy / distToPlayer) * 1.5;
@@ -702,8 +708,14 @@ export class Combat {
         const state = game.state;
         let pickupCount = 0;
         
+        // Patch 31b: reads the pre-summed total (legacy + tree + tokens, all in px)
+        // that Game.init computes, instead of recomputing from upgrades.magnet —
+        // that mirror only covers legacy+tree, so token magnet was invisible here.
+        // Falls back to the old derivation for states built before this field existed.
         let baseVacRadius = 70;
-        if (state.player.upgrades && state.player.upgrades.magnet) {
+        if (state.player.vacRadiusBonusPx !== undefined) {
+            baseVacRadius += state.player.vacRadiusBonusPx;
+        } else if (state.player.upgrades && state.player.upgrades.magnet) {
             baseVacRadius += (state.player.upgrades.magnet * 30);
         }
         if (state.player.boons && state.player.boons.includes('scavenger_instinct')) {
