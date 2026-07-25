@@ -14,7 +14,9 @@ npm run build     # production build to dist/
 npm run preview   # preview the production build
 ```
 
-There is no test runner configured (no `test` script, no framework installed). `test_director.js` and `test_save.js` at the repo root are standalone Node scripts that mock `document`/`window`/`localStorage` and exercise `Game`/`SaveManager` directly — run them with `node test_director.js` / `node test_save.js`. `patch_game.cjs` is a one-off migration script (regex-based source patcher), not part of any workflow — don't run it against current source without reading it first, it assumes an older shape of `Game.js`.
+There is no test runner configured (no `test` script, no framework installed). `test_director.js`, `test_save.js` and `test_bosses.js` at the repo root are standalone Node scripts that mock `document`/`window`/`localStorage` and exercise `Game`/`SaveManager`/`Director` directly — run them with `node test_director.js` etc. `test_director.js` and `test_save.js` are exploratory (they print, they don't assert); **`test_bosses.js` is assertion-based and exits non-zero on failure**, so it's the one worth running after touching boss spawning, `state.activeBoss`, or entity `init()`.
+
+Anything *visual* cannot be covered by these — `Renderer` needs a real canvas. Use the in-game **VISUAL TEST BENCH** instead: press `0` at the title/hub to reveal the dev panel (now also visible during `PLAYING`), then use SPAWN ONE OF EACH ENEMY / SPAWN ALL 5 BOSSES, FREEZE ENEMY AI (sets `state.devFreezeEntities`, which halts `entity.update()` and further spawning in `Game.processGameLogic()` while rendering keeps animating), and the scenario dropdown (IDLE / TELEGRAPH / ATTACK / HIT FLASH) to pin every entity into a state that would otherwise tick past in well under a second. `patch_game.cjs` is a one-off migration script (regex-based source patcher), not part of any workflow — don't run it against current source without reading it first, it assumes an older shape of `Game.js`.
 
 ## Architecture
 
