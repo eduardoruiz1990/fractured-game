@@ -54,6 +54,27 @@ function initEngine() {
                 <button id="dev-btn-force-escape" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE UNLOCK: FIRST ESCAPE</button>
                 <button id="dev-btn-force-boss-kill" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE UNLOCK: FIRST BOSS KILL</button>
             </div>
+            <div style="margin-top:10px; border-top:1px solid #333; padding-top:8px;">
+                VISUAL TEST BENCH (in-run)
+                <label for="dev-freeze-entities" style="display:block; margin-top:6px; cursor:pointer; user-select:none;">
+                    <input type="checkbox" id="dev-freeze-entities" style="vertical-align:middle; margin-right:6px;">
+                    FREEZE ENEMY AI
+                </label>
+                <div style="margin-top:6px; display:flex; flex-direction:column; gap:4px;">
+                    <button id="dev-btn-spawn-enemies" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">SPAWN ONE OF EACH ENEMY</button>
+                    <button id="dev-btn-spawn-bosses" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">SPAWN ALL 5 BOSSES</button>
+                    <button id="dev-btn-clear-entities" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">CLEAR ALL ENTITIES</button>
+                    <div style="display:flex; gap:4px; align-items:center;">
+                        <select id="dev-scenario-select" style="flex:1; background:#111; color:var(--ui-gold); border:1px solid #333; outline:none; font-family:inherit; padding:2px;">
+                            <option value="IDLE">IDLE</option>
+                            <option value="TELEGRAPH">TELEGRAPH / CHARGE</option>
+                            <option value="ATTACK">ATTACK / ACTIVE</option>
+                            <option value="FLASH">HIT FLASH</option>
+                        </select>
+                        <button id="dev-btn-apply-scenario" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">APPLY</button>
+                    </div>
+                </div>
+            </div>
         `;
         document.getElementById('game-container').appendChild(devUI);
 
@@ -74,6 +95,109 @@ function initEngine() {
             saveManager.metaState.killCounts.BOSS = Math.max(1, saveManager.metaState.killCounts.BOSS || 0);
             saveManager.saveGame();
             console.log(`%c DEV: killCounts.BOSS forced to ${saveManager.metaState.killCounts.BOSS}. `, 'background: #c5a059; color: #000; font-weight: bold;');
+        });
+
+        // --- VISUAL TEST BENCH -------------------------------------------------
+        // Spawns entities on demand and pins them into a chosen state, so a visual
+        // can be checked without playing until the condition naturally occurs.
+        const devSpawnRing = (types, radius) => {
+            if (!game || !game.state || !game.director) return;
+            const px = game.state.player.x;
+            const py = game.state.player.y;
+            types.forEach((type, i) => {
+                const a = (i / types.length) * Math.PI * 2 - Math.PI / 2;
+                game.director.spawnEntity(
+                    type, canvas.width, canvas.height,
+                    px + Math.cos(a) * radius,
+                    py + Math.sin(a) * radius
+                );
+            });
+            console.log(`%c DEV: spawned ${types.join(', ')}. `, 'background: #c5a059; color: #000;');
+        };
+
+        document.getElementById('dev-btn-spawn-enemies').addEventListener('click', () => {
+            devSpawnRing(['SCAVENGER', 'PREDATOR', 'PARASITE'], 150);
+        });
+
+        document.getElementById('dev-btn-spawn-bosses').addEventListener('click', () => {
+            devSpawnRing(['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'], 340);
+        });
+
+        document.getElementById('dev-btn-clear-entities').addEventListener('click', () => {
+            if (!game || !game.state) return;
+            // Release back to the pools rather than plain-splicing, or the pools leak.
+            for (let i = game.state.entities.length - 1; i >= 0; i--) {
+                const ent = game.state.entities[i];
+                const pool = game.director && game.director.pools
+                    ? game.director.pools[ent.type.toLowerCase()]
+                    : null;
+                if (pool && typeof pool.release === 'function') pool.release(ent);
+                game.state.entities.splice(i, 1);
+            }
+            game.state.activeBoss = null;
+            game.state.bossSpawned = false;
+            console.log('%c DEV: cleared all entities. ', 'background: #c5a059; color: #000;');
+        });
+
+        document.getElementById('dev-freeze-entities').addEventListener('change', (e) => {
+            if (!game || !game.state) return;
+            game.state.devFreezeEntities = e.target.checked;
+            console.log(`%c DEV: enemy AI ${e.target.checked ? 'FROZEN' : 'RUNNING'}. `, 'background: #c5a059; color: #000;');
+        });
+
+        document.getElementById('dev-btn-apply-scenario').addEventListener('click', () => {
+            if (!game || !game.state || !game.state.entities) return;
+            const scenario = document.getElementById('dev-scenario-select').value;
+
+            game.state.entities.forEach(ent => {
+                if (scenario === 'FLASH') {
+                    ent.flashTime = 999;
+                    return;
+                }
+                ent.flashTime = 0;
+
+                const pick = (idle, telegraph, attack) =>
+                    scenario === 'TELEGRAPH' ? telegraph : (scenario === 'ATTACK' ? attack : idle);
+
+                switch (ent.type) {
+                    case 'SCAVENGER':
+                        ent.vacuumState = pick('hunting', 'hunting', 'vacuuming');
+                        break;
+                    case 'PREDATOR':
+                        ent.attackState = pick('hunting', 'telegraphing', 'lunging');
+                        ent.attackTimer = 30;
+                        ent.lungeVx = 1; ent.lungeVy = 0;
+                        break;
+                    case 'PARASITE':
+                        ent.lashingState = pick('searching', 'searching', 'lashing');
+                        ent.lashTimer = 15;
+                        ent.lashTarget = scenario === 'ATTACK'
+                            ? { x: ent.x + 90, y: ent.y - 40, hp: 100, buffed: false }
+                            : null;
+                        break;
+                    case 'BOSS':
+                        ent.pulseState = pick('hunting', 'charging', 'pulsing');
+                        ent.pulseTimer = 30;
+                        ent.pulseRadius = ent.maxPulseRadius * 0.6;
+                        break;
+                    case 'RORSCHACH':
+                        ent.shootState = pick('hunting', 'telegraphing', 'telegraphing');
+                        ent.shootTimer = 20;
+                        ent.shootAngle = 0;
+                        break;
+                    case 'PANOPTICON':
+                        ent.gazeState = pick('moving', 'charging', 'sweeping');
+                        ent.gazeAngle = 0;
+                        break;
+                    case 'AMALGAMATION':
+                        ent.actionState = pick('resting', 'pulling', 'spawning');
+                        break;
+                    case 'ARCHITECT':
+                        ent.actionState = pick('hovering', 'charging_collapse', 'collapse_active');
+                        break;
+                }
+            });
+            console.log(`%c DEV: applied scenario ${scenario} to ${game.state.entities.length} entities. `, 'background: #c5a059; color: #000;');
         });
     }
     // --- NEW: SETTINGS MENU INJECTION (THEME ALIGNED) ---
@@ -517,7 +641,9 @@ function gameLoop(time) {
     try {
         const devModeContainer = document.getElementById('dev-mode-container');
         if (devModeContainer) {
-            const shouldShowDevPanel = window.FRACTURED_DEV_MODE && (gameState === 'TITLE' || gameState === 'MENU' || gameState === 'HUB');
+            // PLAYING included so the visual test bench (spawn / freeze / scenario)
+            // is reachable mid-run, which is the only place entities actually exist.
+            const shouldShowDevPanel = window.FRACTURED_DEV_MODE && (gameState === 'TITLE' || gameState === 'MENU' || gameState === 'HUB' || gameState === 'PLAYING');
             devModeContainer.style.display = shouldShowDevPanel ? 'block' : 'none';
         }
 

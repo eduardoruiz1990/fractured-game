@@ -396,14 +396,20 @@ export class Game {
             this.onDeath();
         }
 
-        if (this.director && typeof this.director.spawnWave === 'function') {
+        // DEV: devFreezeEntities halts enemy AI and further spawning so a state can be
+        // held still and inspected. Rendering keeps ticking, so animations still play.
+        const devFrozen = !!this.state.devFreezeEntities;
+
+        if (this.director && typeof this.director.spawnWave === 'function' && !devFrozen) {
             this.director.spawnWave(canvasWidth, canvasHeight);
         }
-        
-        for (let i = this.state.entities.length - 1; i >= 0; i--) {
-            let ent = this.state.entities[i];
-            if (typeof ent.update === 'function') {
-                ent.update(this.state, this);
+
+        if (!devFrozen) {
+            for (let i = this.state.entities.length - 1; i >= 0; i--) {
+                let ent = this.state.entities[i];
+                if (typeof ent.update === 'function') {
+                    ent.update(this.state, this);
+                }
             }
         }
 
