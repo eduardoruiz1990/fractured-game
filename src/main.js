@@ -6,7 +6,7 @@ import { Renderer } from './core/Renderer.js';
 import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
-import { TOKENS } from './data/Manifestations.js';
+import { TOKENS, getActiveSynergies } from './data/Manifestations.js';
 
 console.log("FRACTURED Engine Bootstrapping...");
 
@@ -29,6 +29,29 @@ try {
     const savedSettings = localStorage.getItem('fractured_settings');
     if (savedSettings) gameSettings = { ...gameSettings, ...JSON.parse(savedSettings) };
 } catch(e) { console.warn("Could not load settings."); }
+
+// DEV: build-diversity snapshot (Patch 14). Captures the shape of a completed
+// build so 10 runs can be diffed to see whether builds actually diverge.
+// synergies is recomputed here rather than trusted from state.player.synergies,
+// which Game.init() computes once from floor-1 (mostly level-0) weapons and
+// never updates as weapons level up during the run.
+function buildDiversitySnapshot(game) {
+    const weapons = {};
+    if (game.state.player.weapons) {
+        Object.entries(game.state.player.weapons).forEach(([id, w]) => {
+            if (w && w.level > 0) weapons[id] = w.level;
+        });
+    }
+    return {
+        weapons,
+        levels: game.state.level,
+        boons: game.state.player.boons || [],
+        synergies: getActiveSynergies(game.state.player.weapons),
+        tokens: game.state.runInventory || [],
+        curses: game.state.player.curses || [],
+        floor: game.state.floor
+    };
+}
 
 function initEngine() {
     if (!document.getElementById('dev-floor-select')) {
@@ -53,6 +76,7 @@ function initEngine() {
                 <button id="dev-btn-add-patient-xp" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">+5000 SPENT (PATIENT LVL)</button>
                 <button id="dev-btn-force-escape" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE UNLOCK: FIRST ESCAPE</button>
                 <button id="dev-btn-force-boss-kill" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE UNLOCK: FIRST BOSS KILL</button>
+                <button id="dev-btn-dump-builds" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">DUMP BUILD LOG (CONSOLE)</button>
             </div>
             <div style="margin-top:10px; border-top:1px solid #333; padding-top:8px;">
                 VISUAL TEST BENCH (in-run)
@@ -108,6 +132,19 @@ function initEngine() {
             saveManager.metaState.killCounts.BOSS = Math.max(1, saveManager.metaState.killCounts.BOSS || 0);
             saveManager.saveGame();
             console.log(`%c DEV: killCounts.BOSS forced to ${saveManager.metaState.killCounts.BOSS}. `, 'background: #c5a059; color: #000; font-weight: bold;');
+        });
+        document.getElementById('dev-btn-dump-builds').addEventListener('click', () => {
+            const log = saveManager.getRunBuildLog();
+            console.log(`%c DEV: ${log.length} logged run build(s). `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.table(log.map(entry => ({
+                floor: entry.floor,
+                level: entry.levels,
+                weapons: Object.entries(entry.weapons).map(([id, lvl]) => `${id} L${lvl}`).join(', '),
+                boons: entry.boons.join(', '),
+                synergies: entry.synergies.join(', '),
+                curses: entry.curses.join(', '),
+                tokens: entry.tokens.join(', ')
+            })));
         });
 
         // --- VISUAL TEST BENCH -------------------------------------------------
@@ -481,6 +518,8 @@ function initEngine() {
         let retainedTokens = [];
 
         if (isExitReached) {
+            saveManager.logRunBuild(buildDiversitySnapshot(game));
+
             earnedLucidity = Math.floor(game.state.lucidity * (game.state.lucidityBonusMultiplier || 1));
             retainedTokens = game.state.runInventory || [];
             saveManager.addLucidity(earnedLucidity);
@@ -585,6 +624,8 @@ function initEngine() {
         document.getElementById('death-screen').style.display = 'flex';
         document.getElementById('glitch-overlay').style.opacity = '0';
         
+        saveManager.logRunBuild(buildDiversitySnapshot(game));
+
         const recovered = Math.floor(game.state.lucidity * 0.5 * (game.state.lucidityBonusMultiplier || 1));
         saveManager.addLucidity(recovered);
         if (audioEngine) audioEngine.stop(); 

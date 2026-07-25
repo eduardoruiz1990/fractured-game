@@ -58,6 +58,30 @@ export class SaveManager {
         }
     }
 
+    // DEV: build-diversity logger (Patch 14). Deliberately a SEPARATE localStorage
+    // key from 'fractured_meta' — this is throwaway dev telemetry, not part of the
+    // save file, and must never round-trip through exportSave/importSave.
+    logRunBuild(buildData) {
+        try {
+            const key = 'fractured_build_log';
+            const log = JSON.parse(localStorage.getItem(key) || '[]');
+            log.push({ ...buildData, loggedAt: Date.now() });
+            const MAX_ENTRIES = 20;
+            while (log.length > MAX_ENTRIES) log.shift();
+            localStorage.setItem(key, JSON.stringify(log));
+        } catch(e) {
+            console.warn("Failed to log run build.", e);
+        }
+    }
+
+    getRunBuildLog() {
+        try {
+            return JSON.parse(localStorage.getItem('fractured_build_log') || '[]');
+        } catch(e) {
+            return [];
+        }
+    }
+
     exportSave() {
         try {
             return btoa(JSON.stringify(this.metaState));
