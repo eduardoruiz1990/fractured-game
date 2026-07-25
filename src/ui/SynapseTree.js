@@ -13,9 +13,15 @@ const BRANCH_LABELS = { RESILIENCE: 'RESILIENCE', FOCUS: 'FOCUS', MOTOR: 'MOTOR'
 const STYLE_TAG_ID = 'synapse-tree-structural-styles';
 
 export class SynapseTree {
-    constructor(container, saveManager) {
+    // onPurchase(nodeId) is optional — called after a successful buyNode, before
+    // this class's own render(). Lets a host (UIManager) react to a purchase that
+    // otherwise happens entirely inside this class's own click handler, with
+    // nothing telling the host it occurred (e.g. UIManager's separate
+    // #tree-lucidity display, SFX, or the XP toast — none of those live in here).
+    constructor(container, saveManager, onPurchase = null) {
         this.container = container;
         this.saveManager = saveManager;
+        this.onPurchase = onPurchase;
         this._injectStyles();
     }
 
@@ -162,7 +168,8 @@ export class SynapseTree {
 
     _handleBuyClick(nodeId) {
         if (!this.saveManager || typeof this.saveManager.buyNode !== 'function') return;
-        this.saveManager.buyNode(nodeId);
+        const bought = this.saveManager.buyNode(nodeId);
+        if (bought && typeof this.onPurchase === 'function') this.onPurchase(nodeId);
         this.render();
     }
 

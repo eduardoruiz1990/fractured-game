@@ -19,8 +19,17 @@ export class UIManager {
         this.bindElements();
         // Patch 29.7: constructed once here; render() is called from updateMenuUI()
         // below so it stays in sync with everything else that refreshes the menu
-        // (tab switches, purchases, imports).
-        this.synapseTree = new SynapseTree(this.synapseTreeContainer, this.saveManager);
+        // (tab switches, purchases, imports). onPurchase closes the gap flagged
+        // after 29.7: a node buy happens entirely inside SynapseTree's own click
+        // handler, so without this hook nothing tells UIManager it occurred —
+        // #tree-lucidity (a separate element SynapseTree doesn't touch) would only
+        // catch up next time the tab was reopened, and the purchase SFX/XP toast
+        // the old upgrade buttons had would never fire at all.
+        this.synapseTree = new SynapseTree(this.synapseTreeContainer, this.saveManager, () => {
+            if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade');
+            this.updateMenuUI();
+            this.showXPToast();
+        });
         this.attachEvents();
         this.updateMenuUI();
         
