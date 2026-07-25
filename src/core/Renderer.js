@@ -71,6 +71,23 @@ export class Renderer {
         return `rgba(255, 255, 255, ${alpha})`;
     }
 
+    // ROOM_DOOR reward-type -> {color, glowRgb, label}. Shared by the world-item
+    // door render and the off-screen objective pointer, so both stay in sync when
+    // a reward type is added (Patch 23 added 3 new types; before this, everything
+    // but LUCIDITY rendered as the same green door with its raw enum id as text).
+    // Falls back to HEAL's look for any unrecognized rewardType rather than
+    // drawing with an undefined color.
+    roomDoorVisual(rewardType) {
+        const table = {
+            LUCIDITY: { color: '#ffaa00', glowRgb: '255, 200, 100', label: 'LUCIDITY +50' },
+            HEAL: { color: '#33ff55', glowRgb: '100, 255, 100', label: 'GRIP +50' },
+            WEAPON_UPGRADE: { color: '#4499ff', glowRgb: '80, 160, 255', label: 'WEAPON UP' },
+            TOKEN_DOOR: { color: '#ff8c00', glowRgb: '255, 140, 0', label: 'TOKEN' },
+            RISK_REWARD: { color: '#ff3333', glowRgb: '255, 60, 60', label: 'RISK / REWARD' }
+        };
+        return table[rewardType] || table.HEAL;
+    }
+
     // Per-entity animation clock. Two detuned sine terms, both offset by the
     // entity's own .phase, so same-type entities never pulse in lockstep and the
     // combined wave doesn't visibly loop the way a single sine does.
@@ -1003,8 +1020,8 @@ export class Renderer {
                             this.ctx.fill();
                         } else if (obj.type === 'ROOM_DOOR') {
                             let pulse = Math.sin(this.renderFrame * 0.2) * 0.5 + 0.5;
-                            let doorColor = obj.rewardType === 'LUCIDITY' ? `rgba(255, 200, 100, ${0.4 + pulse * 0.6})` : `rgba(100, 255, 100, ${0.4 + pulse * 0.6})`;
-                            this.ctx.fillStyle = doorColor;
+                            const doorInfo = this.roomDoorVisual(obj.rewardType);
+                            this.ctx.fillStyle = `rgba(${doorInfo.glowRgb}, ${0.4 + pulse * 0.6})`;
                             this.ctx.beginPath();
                             this.ctx.moveTo(20, 0); this.ctx.lineTo(-15, 15); this.ctx.lineTo(-10, 0); this.ctx.lineTo(-15, -15);
                             this.ctx.closePath();
@@ -1278,26 +1295,27 @@ export class Renderer {
                     this.ctx.fill();
                 } else if (obj.type === 'ROOM_DOOR') {
                     let pulse = Math.sin(this.renderFrame * 0.1) * 10;
-                    
+                    const doorInfo = this.roomDoorVisual(obj.rewardType);
+
                     const doorGlow = this.ctx.createRadialGradient(0, 0, 10, 0, 0, 80 + pulse);
-                    doorGlow.addColorStop(0, obj.rewardType === 'LUCIDITY' ? 'rgba(255, 200, 100, 0.8)' : 'rgba(100, 255, 100, 0.8)');
+                    doorGlow.addColorStop(0, `rgba(${doorInfo.glowRgb}, 0.8)`);
                     doorGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
                     this.ctx.fillStyle = doorGlow;
                     this.ctx.beginPath();
                     this.ctx.arc(0, 0, 80 + pulse, 0, Math.PI * 2);
                     this.ctx.fill();
-                    
+
                     this.ctx.fillStyle = '#111';
                     this.ctx.fillRect(-25, -40, 50, 80);
-                    this.ctx.strokeStyle = obj.rewardType === 'LUCIDITY' ? '#ffaa00' : '#00ff00';
+                    this.ctx.strokeStyle = doorInfo.color;
                     this.ctx.lineWidth = 3;
                     this.ctx.strokeRect(-25, -40, 50, 80);
-                    
-                    this.ctx.fillStyle = obj.rewardType === 'LUCIDITY' ? '#ffcc00' : '#aaffaa';
+
+                    this.ctx.fillStyle = doorInfo.color;
                     this.ctx.textAlign = 'center';
                     this.ctx.textBaseline = 'middle';
                     this.ctx.font = "bold 16px 'Courier New', Courier, monospace";
-                    this.ctx.fillText(obj.rewardType, 0, -60);
+                    this.ctx.fillText(doorInfo.label, 0, -60);
                 }
                 
                 this.ctx.restore();

@@ -1,4 +1,6 @@
 // src/systems/Combat.js
+import { getActiveSynergies } from '../data/Manifestations.js';
+
 export class Combat {
     static resolveWeapons(game) {
         const state = game.state;
@@ -125,6 +127,49 @@ export class Combat {
                         } else if (obj.rewardType === 'HEAL') {
                             state.sanity = Math.min(state.player.maxHp, state.sanity + 50);
                             game.spawnDamageText(state.player.x, state.player.y - 20, "+50 GRIP", '#aaffaa', 1.5, 2.0);
+                        } else if (obj.rewardType === 'WEAPON_UPGRADE') {
+                            const upgradeable = Object.values(state.player.weapons).filter(w => w.level < 5);
+                            if (upgradeable.length > 0) {
+                                const wep = upgradeable[Math.floor(Math.random() * upgradeable.length)];
+                                wep.level++;
+                                // Generic stat bump rather than per-weapon branches — that
+                                // table lives in LevelUpUI.js's selectCard(), outside this
+                                // patch's file scope. Scales whichever fields this weapon
+                                // actually has, mirroring the "lower cooldown/dropRate is
+                                // better" convention every weapon's own upgrade already uses.
+                                if (wep.damage) wep.damage *= 1.15;
+                                if (wep.radius) wep.radius *= 1.08;
+                                if (wep.baseRadius) wep.baseRadius += 8;
+                                if (wep.angle) wep.angle += 0.03;
+                                if (wep.cooldown) wep.cooldown = Math.max(20, Math.floor(wep.cooldown * 0.9));
+                                if (wep.dropRate) wep.dropRate = Math.max(10, Math.floor(wep.dropRate * 0.9));
+                                if (wep.duration) wep.duration = Math.floor(wep.duration * 1.1);
+                                game.spawnDamageText(state.player.x, state.player.y - 20, "WEAPON UPGRADED", '#c5a059', 1.5, 2.0);
+                            } else {
+                                // Every weapon already maxed — fall back rather than a no-op door.
+                                state.lucidity += 50;
+                                state.xp += 50;
+                                game.spawnDamageText(state.player.x, state.player.y - 20, "+50 LUCIDITY", '#ffddaa', 1.5, 2.0);
+                            }
+                            state.player.synergies = getActiveSynergies(state.player.weapons);
+                        } else if (obj.rewardType === 'TOKEN_DOOR') {
+                            game.spawnTokenDrop(state.player.x, state.player.y);
+                            game.spawnDamageText(state.player.x, state.player.y - 20, "TOKEN DROPPED!", '#ff8c00', 1.5, 2.0);
+                        } else if (obj.rewardType === 'RISK_REWARD') {
+                            // Direct sanity cost rather than game.takeDamage(): takeDamage
+                            // can trigger onDeath(), and this fires mid-room-transition
+                            // (roomNumber++ and a full entity/interactable reset happen
+                            // right after this block) — letting a menu-adjacent, chosen
+                            // cost kill the player through that transition is an edge case
+                            // worth avoiding entirely, so it's clamped instead of lethal.
+                            // It also deliberately bypasses denialShieldActive/curses: this
+                            // is a self-inflicted cost, not enemy damage, so it shouldn't be
+                            // negatable by defenses meant for combat.
+                            state.lucidity += 150;
+                            state.xp += 150;
+                            game.spawnTokenDrop(state.player.x, state.player.y);
+                            state.sanity = Math.max(1, state.sanity - 30);
+                            game.spawnDamageText(state.player.x, state.player.y - 20, "+150 LUCIDITY -30 GRIP", '#ff3333', 1.5, 2.0);
                         }
 
                         if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 0.8);

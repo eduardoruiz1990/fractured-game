@@ -123,16 +123,24 @@ export class Director {
         const state = this.game.state;
         const px = state.player.x;
         const py = state.player.y;
-        
+
+        // Reward pool expanded beyond LUCIDITY/HEAL (Patch 23). Two distinct types
+        // are drawn each room-clear, so the choice varies room to room instead of
+        // always being the same fixed pair. Effects for each rewardType live in
+        // Combat.js's ROOM_DOOR branch.
+        const rewardPool = ['LUCIDITY', 'HEAL', 'WEAPON_UPGRADE', 'TOKEN_DOOR', 'RISK_REWARD'];
+        const shuffledRewards = [...rewardPool].sort(() => 0.5 - Math.random());
+        const [rewardA, rewardB] = shuffledRewards;
+
         state.interactables.push({
             type: 'ROOM_DOOR',
             x: px - 200, y: py - 200, radius: 40, active: true, dead: false,
-            rewardType: 'LUCIDITY'
+            rewardType: rewardA
         });
         state.interactables.push({
             type: 'ROOM_DOOR',
             x: px + 200, y: py - 200, radius: 40, active: true, dead: false,
-            rewardType: 'HEAL'
+            rewardType: rewardB
         });
     }
 
