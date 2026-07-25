@@ -12,6 +12,21 @@ function tagKnockback(tags, damage) {
     return Math.min(6, 1 + damage * 0.15);
 }
 
+// Patch 18: cameraShake-only impact weight by tag. Deliberately NOT generalizing
+// hitStop here — hitStop is a full sim freeze (Game.processGameLogic short-circuits
+// every frame it's > 0), so it stays wired to lead_pipe's existing cooldown-gated
+// swing alone (Keep: its Math.min(25, ...) ceiling, untouched below). Applying
+// hitStop to any per-frame continuous tick (flashlight, static, ink) would
+// stutter-freeze the game solid for as long as the tick kept firing. `passive`
+// is excluded (a DoT layered on top of another hit, not a player-aimed swing);
+// `aura` is NOT excluded here despite Patch 16 excluding it for knockback — the
+// spec names static explicitly as the "light" example for this weight.
+function tagShake(tags, damage) {
+    if (!tags || tags.includes('passive')) return 0;
+    if (tags.includes('kinetic') || tags.includes('melee')) return Math.min(10, 3 + damage * 0.35);
+    return Math.min(6, 1 + damage * 0.15);
+}
+
 export class Combat {
     static resolveWeapons(game) {
         const state = game.state;
@@ -285,6 +300,10 @@ export class Combat {
                          // this never stacks with that synergy's own hand-tuned 12px shove
                          // below, which is deliberately capped to stay inside the blade band.
                          ent.takeDamage(spinnerDmg, game, hasCentrifuge ? 0 : tagKnockback(spinner.tags, spinnerDmg));
+                         // Shake isn't gated on hasCentrifuge like the knockback above — it's
+                         // screen-wide, not a positional shove, so it can't eject anyone from
+                         // the blade band and there's nothing to double-stack against.
+                         state.cameraShake = Math.max(state.cameraShake, tagShake(spinner.tags, spinnerDmg));
                          game.spawnParticles(ent.x, ent.y, '#aaaaaa', 2);
                          if (Math.random() < 0.3 && game.director && typeof game.director.spawnDecal === 'function') {
                              game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 4);
@@ -435,6 +454,7 @@ export class Combat {
                     ent.speedModifier = hasIonTrail ? 0.25 : 0.5;
                     if (state.frame % 30 === 0) {
                         ent.takeDamage(p.damage, game);
+                        state.cameraShake = Math.max(state.cameraShake, tagShake(state.player.weapons.spilled_ink.tags, p.damage));
                         // Electrified ink: adds the static receiver's damage on top,
                         // read directly off state rather than the staticWep local so
                         // this stays independent of declaration order above.
@@ -453,6 +473,7 @@ export class Combat {
                     if (state.frame % 5 === 0) {
                         // kinetic_dash: literally dashing through the enemy, heavy tier fits.
                         ent.takeDamage(15, game, tagKnockback(['kinetic'], 15));
+                        state.cameraShake = Math.max(state.cameraShake, tagShake(['kinetic'], 15));
                         game.spawnParticles(ent.x, ent.y, '#00ffcc', 5);
                     }
                 }
@@ -526,6 +547,7 @@ export class Combat {
                             // this patch (the vx/vy dampen below is a separate flinch effect,
                             // not knockback) — light tier, ticks every frame it's lit up.
                             ent.takeDamage(flDmgDealt, game, tagKnockback(state.player.weapons.flashlight.tags, flDmgDealt));
+                            state.cameraShake = Math.max(state.cameraShake, tagShake(state.player.weapons.flashlight.tags, flDmgDealt));
                             ent.x -= ent.vx * 0.5; ent.y -= ent.vy * 0.5;
                             if (state.player.synergies && state.player.synergies.includes('blinding_signal')) ent.confused = 180; 
                             
@@ -542,7 +564,9 @@ export class Combat {
                 }
                 
                 if (staticWep.active && distToPlayer < staticWep.radius) {
-                    ent.takeDamage((staticWep.damage / 60) * dmgMult, game);
+                    const staticDmgDealt = (staticWep.damage / 60) * dmgMult;
+                    ent.takeDamage(staticDmgDealt, game);
+                    state.cameraShake = Math.max(state.cameraShake, tagShake(staticWep.tags, staticDmgDealt));
                     ent.x += (dx / distToPlayer) * 1.5; ent.y += (dy / distToPlayer) * 1.5;
 
                     // slowing_field: halve movement while inside the aura. Applied to the
