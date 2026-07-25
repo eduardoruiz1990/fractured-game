@@ -13,6 +13,11 @@ export class Scavenger extends Enemy {
         // Static per-entity render offset so pooled instances never animate in
         // lockstep. Re-rolled on init since entities are recycled from the pool.
         this.phase = Math.random() * Math.PI * 2;
+        // Variant is cleared on every init, not just set on spawn — these come from a
+        // pool, so a recycled instance would otherwise stay ARMORED/FAST/VOLATILE
+        // forever. Director.spawnEntity() re-rolls and re-applies after this returns.
+        this.variant = null;
+        this.variantTint = null;
         return this.initBase(id, x, y, 20, 1.2 * stress);
     }
 

@@ -545,6 +545,23 @@ export class Combat {
                     state.sanity = Math.min(state.player.maxHp, state.sanity + 2);
                 }
 
+                // VOLATILE variant detonates on death. Runs before the splice below so
+                // ent.x/y are still the death position. Damages the player only —
+                // chaining into other enemies would turn crowds into a trivial cascade,
+                // so the counterplay here is simply to kill these at range.
+                if (ent.variant === 'VOLATILE') {
+                    const blastRadius = 130;
+                    const distToPlayer = Math.hypot(ent.x - state.player.x, ent.y - state.player.y);
+                    if (distToPlayer < blastRadius) {
+                        game.takeDamage(18);
+                    }
+                    game.spawnParticles(ent.x, ent.y, '#ff7043', 40);
+                    state.cameraShake = Math.max(state.cameraShake, 16);
+                    if (game.director && typeof game.director.spawnDecal === 'function') {
+                        game.director.spawnDecal(ent.x, ent.y, '#ff7043', 22);
+                    }
+                }
+
                 deathCount++;
                 ent.active = false;
                 

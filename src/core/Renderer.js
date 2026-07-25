@@ -1428,6 +1428,22 @@ export class Renderer {
                 const twitch = state.sanity < 20 ? (Math.random()-0.5)*4 : 0;
                 this.ctx.translate(twitch, twitch);
 
+                // Enemy variant tell (Patch 24). Drawn once here, before the per-type
+                // dispatch, so all three enemy types get it from one code path. A ring
+                // rather than a body tint on purpose: Scavenger's body is sprite-cached
+                // (a tint would multiply the sprite count by every variant) and both
+                // Scavenger and Predator hardcode their fill colours, so ent.color
+                // tinting would not show on them at all.
+                if (ent.variant && ent.variantTint) {
+                    const vr = (ent.radius || 15) + 7 + Math.sin(this.renderFrame * 0.12 + (ent.phase || 0)) * 1.5;
+                    this.drawGlow(0, 0, vr + 10, ent.variantTint, 0.28);
+                    this.ctx.strokeStyle = ent.variantTint;
+                    this.ctx.lineWidth = 2;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, vr, 0, Math.PI * 2);
+                    this.ctx.stroke();
+                }
+
                 if (ent.type === 'ARCHITECT') {
                     let pulse = this.entPulse(ent) * 5;
                     let arming = ent.actionState === 'charging_collapse' || ent.actionState === 'collapse_active';

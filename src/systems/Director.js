@@ -229,6 +229,40 @@ export class Director {
         }
     }
 
+    // Enemy variants (Patch 24). Applied AFTER init(), which resets variant state on
+    // every pooled reuse, so multipliers always compound onto clean base stats rather
+    // than stacking across recycles. Bosses never reach here — callers guard on type.
+    applyEnemyVariant(ent, state) {
+        // Floor 1 stays variant-free so the three base enemy behaviours are learned
+        // before modifiers are layered on top.
+        const chanceByFloor = { 1: 0, 2: 0.12, 3: 0.20, 4: 0.28 };
+        const chance = state.floor >= 5 ? 0.35 : (chanceByFloor[state.floor] || 0);
+        if (Math.random() >= chance) return;
+
+        const roll = Math.random();
+        let variant;
+        if (roll < 0.38) variant = 'ARMORED';
+        else if (roll < 0.76) variant = 'FAST';
+        else variant = 'VOLATILE';
+
+        // hp/speed are multiplied off the values initBase() just set. maxHp is kept in
+        // sync so the health bar in Renderer reads a correct ratio.
+        if (variant === 'ARMORED') {
+            ent.hp *= 2.2; ent.speed *= 0.7;
+            ent.variantTint = '#6f8fa8';
+        } else if (variant === 'FAST') {
+            ent.hp *= 0.5; ent.speed *= 1.7;
+            ent.variantTint = '#f0e68c';
+        } else {
+            ent.hp *= 0.8;
+            ent.variantTint = '#ff7043';
+        }
+
+        ent.maxHp = ent.hp;
+        ent.baseSpeed = ent.speed;
+        ent.variant = variant;
+    }
+
     spawnEntity(type, canvasWidth, canvasHeight, forceX = null, forceY = null, generation = 1) {
         const state = this.game.state;
         const spawnRadius = Math.max(canvasWidth, canvasHeight) * 0.5 + 50;
@@ -281,6 +315,12 @@ export class Director {
                     ent.speed *= 1.15;
                     ent.baseSpeed = ent.speed;
                     ent.buffed = true;
+                } else {
+                    // Variants are deliberately suppressed in ELITE rooms so the two
+                    // threat systems stay orthogonal rather than compounding —
+                    // ARMORED x ELITE would be 3.96x base hp, and `buffed` forces the
+                    // colour red in Enemy.update(), which would mask the variant tell.
+                    this.applyEnemyVariant(ent, state);
                 }
             }
 

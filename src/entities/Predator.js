@@ -15,6 +15,9 @@ export class Predator extends Enemy {
         // Static per-entity render offset so pooled instances never animate in
         // lockstep. Re-rolled on init since entities are recycled from the pool.
         this.phase = Math.random() * Math.PI * 2;
+        // Cleared on every init — pooled instances must not inherit a variant.
+        this.variant = null;
+        this.variantTint = null;
         return this.initBase(id, x, y, 45 * stress, 1.8 * stress);
     }
 
