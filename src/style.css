@@ -158,6 +158,69 @@ canvas { display: block; image-rendering: pixelated; }
 .synapse-node-file { width: 100%; max-width: 500px; border-bottom: 2px dashed #c2b59b; padding: 15px 20px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; background: rgba(253, 250, 243, 0.85); box-shadow: 2px 2px 10px rgba(0,0,0,0.1); border-radius: 4px; }
 .node-info strong { font-size: 1.1rem; color: var(--ink-black); text-shadow: 1px 1px 0 #fff; }
 
+/* Synapse Tree grid — node states (Patch 29.8). Scoped under #synapse-tree-grid
+   so none of this touches .synapse-node-file/.file-btn's base rules above,
+   which stay exactly as they were (Keep clause). Branch colour coding (node
+   name text, the tier connector lines) is already applied per-node via inline
+   styles from SynapseTree.js (Patch 29.6, `node.color`/`--connector-color`) —
+   the top accent bar here just extends that same signal onto the card itself,
+   reading off the column's `color` (currentColor) so it never fights those
+   inline values. */
+#synapse-tree-grid .synapse-node-file {
+    border-top: 3px solid currentColor;
+    transition: opacity 0.2s, filter 0.2s, border-color 0.2s;
+}
+
+#synapse-tree-grid .synapse-node-file.synapse-node--available,
+#synapse-tree-grid .synapse-node-file.synapse-node--unaffordable {
+    border: 2px solid var(--ui-gold);
+    border-top: 3px solid currentColor;
+    box-shadow: 0 0 8px rgba(197, 160, 89, 0.25);
+}
+
+#synapse-tree-grid .synapse-node-file.synapse-node--unaffordable .file-btn.small {
+    color: var(--ui-red);
+    border-color: var(--ui-red);
+}
+
+/* Purchased: the button becomes a rotated "AUTHORISED" overprint, matching the
+   existing .patient-stamp treatment (border/colour/rotate) — reusing that
+   exact visual recipe rather than the class itself, since SynapseTree.js sets
+   the button's text but not its classList, and this patch's file scope is
+   style.css only. */
+#synapse-tree-grid .synapse-node-file.synapse-node--purchased {
+    background: rgba(139, 0, 0, 0.04);
+    border-color: rgba(139, 0, 0, 0.3);
+}
+#synapse-tree-grid .synapse-node-file.synapse-node--purchased .file-btn.small {
+    background: transparent;
+    color: var(--ui-red);
+    border: 3px solid var(--ui-red);
+    transform: rotate(-4deg);
+    opacity: 0.85;
+    font-size: 0.75rem;
+    letter-spacing: 1px;
+    box-shadow: none;
+    cursor: default;
+}
+#synapse-tree-grid .synapse-node-file.synapse-node--purchased .file-btn.small:disabled {
+    opacity: 0.85; /* overrides the generic :disabled dimming below the stamp look */
+}
+
+/* No card-level opacity here on purpose — the button's own base .file-btn:disabled
+   rule (opacity: 0.3) already dims it, and opacity compounds multiplicatively
+   per element, so stacking a second card-level opacity would leave the
+   "PATIENT LEVEL n REQUIRED" text nearly unreadable. grayscale alone still
+   reads clearly as "not available yet" without that compounding. */
+#synapse-tree-grid .synapse-node-file.synapse-node--locked {
+    filter: grayscale(1) brightness(0.92);
+}
+#synapse-tree-grid .synapse-node-file.synapse-node--locked .file-btn.small {
+    font-size: 0.68rem;
+}
+
+#synapse-tree-grid .synapse-node-badge { color: var(--ink-black); }
+
 /* Roadmap Timeline */
 .roadmap-timeline { display: flex; flex-direction: column; gap: 15px; position: relative; padding-left: 20px; }
 .roadmap-timeline::before { content: ''; position: absolute; left: 6px; top: 0; bottom: 0; width: 4px; background: #c2b59b; }
