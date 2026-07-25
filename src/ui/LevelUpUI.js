@@ -23,14 +23,26 @@ export class LevelUpUI {
         });
     }
 
+    // Patch 29.5: C3's rerollCost effect (-10, 20 -> 10 sanity) has no legacy
+    // equivalent, so it's read straight off the resolver rather than through
+    // Game.init's stat pipeline. Floored at 5 so future stacking can never reach
+    // a degenerate free-or-negative reroll.
+    getRerollCost() {
+        const baseCost = 20;
+        if (!this.saveManager || typeof this.saveManager.getResolvedUpgrades !== 'function') return baseCost;
+        const { stats } = this.saveManager.getResolvedUpgrades();
+        return Math.max(5, baseCost + (stats.rerollCost || 0));
+    }
+
     attachRerollEvent() {
         if (this.btnReroll) {
             this.btnReroll.addEventListener('click', () => {
-                if (this.currentGame && this.currentGame.state.sanity > 20) {
-                    this.currentGame.state.sanity -= 20; 
+                const cost = this.getRerollCost();
+                if (this.currentGame && this.currentGame.state.sanity > cost) {
+                    this.currentGame.state.sanity -= cost;
                     this.currentGame.state.cameraShake = 15;
                     if (this.audioEngine) this.audioEngine.playSFX('damage', 2);
-                    
+
                     this.show(this.currentGame, this.currentCallback);
                 }
             });
@@ -55,9 +67,10 @@ export class LevelUpUI {
         if (this.btnReroll) {
             if (patLvl >= 3) {
                 this.btnReroll.style.display = 'block';
-                const canAfford = game.state.sanity > 20;
+                const cost = this.getRerollCost();
+                const canAfford = game.state.sanity > cost;
                 this.btnReroll.disabled = !canAfford;
-                this.btnReroll.innerText = canAfford ? "Reroll Choices (-20 Sanity)" : "Insufficient Sanity";
+                this.btnReroll.innerText = canAfford ? `Reroll Choices (-${cost} Sanity)` : "Insufficient Sanity";
             } else {
                 this.btnReroll.style.display = 'none';
             }

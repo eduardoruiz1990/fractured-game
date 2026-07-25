@@ -20,12 +20,30 @@ export class Game {
     }
 
     init(saveManager, carriedState = null) {
-        this.saveManager = saveManager; 
+        this.saveManager = saveManager;
         const meta = saveManager.metaState;
-        
-        const maxSanity = 100 + ((meta.upgrades.hp || 0) * 20);
-        const speedBuff = 1.0 + ((meta.upgrades.speed || 0) * 0.05);
-        const lightBuff = 1.0 + ((meta.upgrades.light || 0) * 0.1);
+
+        // Patch 29.5: read the Synapse Tree resolver instead of meta.upgrades
+        // directly, so legacy upgrades AND tree nodes both feed these buffs.
+        // Defensive fallback reproduces the exact pre-29.5 legacy-only math for
+        // saveManager-like objects that don't implement the resolver (e.g. the
+        // plain mock objects test_bosses.js/test_content.js construct by hand).
+        let stats, grants;
+        if (saveManager && typeof saveManager.getResolvedUpgrades === 'function') {
+            ({ stats, grants } = saveManager.getResolvedUpgrades());
+        } else {
+            stats = {
+                sanity: (meta.upgrades.hp || 0) * 20,
+                speed: (meta.upgrades.speed || 0) * 5,
+                light: (meta.upgrades.light || 0) * 10,
+                magnet: (meta.upgrades.magnet || 0) * 30
+            };
+            grants = new Set();
+        }
+
+        const maxSanity = 100 + (stats.sanity || 0);
+        const speedBuff = 1.0 + ((stats.speed || 0) / 100);
+        const lightBuff = 1.0 + ((stats.light || 0) / 100);
 
         const startFloor = carriedState ? carriedState.floor : 1;
         let effectiveMaxSanity = maxSanity;
@@ -34,6 +52,20 @@ export class Game {
         const pSets = {};
         const pSynergies = [];
         const pTokens = { hasTwitch: false, hasPanic: false };
+
+        // Patch 29.5: start_boon/start_weapon (C1/C2) only fire on a genuinely
+        // fresh run, not a floor-descent carry-over — carriedState is null only
+        // on a brand-new HUB-launched run. player.boons was previously never
+        // carried across floors or pre-seeded here at all (LevelUpUI lazily
+        // created it on first level-up); building it explicitly here is strictly
+        // additive, not a change to that pre-existing (and out-of-scope) gap.
+        const pBoons = carriedState && carriedState.boons ? [...carriedState.boons] : [];
+        if (!carriedState && grants.has('start_boon')) {
+            // 'reinforced_frame' is a flag-style boon (Game.js reads it via a plain
+            // .includes() check, no instant-apply weapon mutation needed at pick
+            // time) — safe to grant directly without going through LevelUpUI.
+            pBoons.push('reinforced_frame');
+        }
 
         if (meta.equippedTokens) {
             Object.values(meta.equippedTokens).forEach(uid => {
@@ -93,27 +125,52 @@ export class Game {
                 sets: pSets,
                 synergies: pSynergies,
                 activeTokens: pTokens,
+                boons: pBoons,
+                // Patch 29.5: sums per-tag damage bonuses (F5/F7). Consumed by Combat.js.
+                tagDamage: stats.tagDamage || {},
                 flashTime: 0,
                 breathPhase: 0,
                 denialShieldActive: false,
+                // R6's 'denial_recharge' grant: the shield rearms itself on a long
+                // timer after being consumed, instead of staying gone for the run.
+                hasDenialRecharge: grants.has('denial_recharge'),
+                denialRechargeTimer: 0,
                 // Patch 19: base i-frame duration lives here (not a magic number in
                 // takeDamage) so the Synapse Tree's R4/R7 nodes (iframes +Xf) can add to
                 // it the same way maxSanity/speedBuff/lightBuff are built from base+upgrades.
-                iframeDuration: 30,
+                iframeDuration: 30 + (stats.iframes || 0),
                 iframes: 0,
                 lastHitAngle: null,
                 hitIndicatorTime: 0,
-                dash: { active: false, timer: 0, duration: 12, cooldown: 0, dx: 0, dy: 0 },
+                dash: {
+                    active: false, timer: 0,
+                    duration: 12 + (stats.dashDuration || 0),
+                    cooldown: 0,
+                    // M3's dashCooldown is a negative frame delta (-15f); clamped so
+                    // stacking future nodes can never reach a degenerate near-0 cooldown.
+                    baseCooldown: Math.max(20, 90 + (stats.dashCooldown || 0)),
+                    // M7's 'dash_charge_2' grant: a real second charge, not just a
+                    // shorter cooldown — see processGameLogic's charge-regen block.
+                    maxCharges: 1 + (grants.has('dash_charge_2') ? 1 : 0),
+                    charges: 1 + (grants.has('dash_charge_2') ? 1 : 0),
+                    dx: 0, dy: 0
+                },
                 weapons: carriedState ? carriedState.weapons : {
-                    flashlight: { 
-                        level: 1, damage: 15, radius: 250 * lightBuff, 
-                        angle: 0.6, type: 'cone', 
-                        tags: ['light', 'focus'] 
+                    flashlight: {
+                        level: 1, damage: 15, radius: 250 * lightBuff,
+                        // F3/F7's flashlightAngle has no legacy equivalent — applied here
+                        // directly as a percentage widening of the base cone.
+                        angle: 0.6 * (1 + (stats.flashlightAngle || 0) / 100), type: 'cone',
+                        tags: ['light', 'focus']
                     },
                     static: { level: 0, damage: 5, radius: 100, active: false, pulsePhase: 0, tags: ['aura', 'tech'] },
                     polaroid_camera: { level: 0, damage: 30, radius: 300, angle: Math.PI/3, cooldown: 180, timer: 0, tags: ['burst', 'light'] },
                     fidget_spinner: { level: 0, damage: 8, baseRadius: 60, speed: 0.1, tags: ['orbit', 'kinetic'] },
-                    lead_pipe: { level: 0, damage: 45, radius: 70, cooldown: 90, timer: 0, tags: ['melee', 'kinetic'] },
+                    // C2's 'start_weapon:<choice>' grant: no selection UI exists yet (the
+                    // '<choice>' in the grant string is a placeholder for future work), so
+                    // this always grants the same fixed weapon — lead_pipe at level 1 —
+                    // rather than fabricating a choice mechanism that isn't built.
+                    lead_pipe: { level: grants.has('start_weapon:<choice>') ? 1 : 0, damage: 45, radius: 70, cooldown: 90, timer: 0, tags: ['melee', 'kinetic'] },
                     spilled_ink: { level: 0, damage: 10, radius: 45, dropRate: 45, timer: 0, tags: ['hazard', 'dark'] },
                     broken_chalk: { level: 0, radius: 60, duration: 300, cooldown: 600, timer: 0, tags: ['utility', 'focus'] },
                     corrosive_battery: { level: 0, damage: 2, duration: 180, tags: ['passive', 'tech'] }
@@ -139,7 +196,9 @@ export class Game {
 
         this.state.player.synergies = getActiveSynergies(this.state.player.weapons);
 
-        this.state.lucidityBonusMultiplier = 1 + (this.state.player.curses.length * 0.15);
+        // Patch 29.5: T3/T6/T7's lucidityGain (no legacy equivalent) stacks onto the
+        // existing curse-driven bonus rather than replacing it.
+        this.state.lucidityBonusMultiplier = 1 + (this.state.player.curses.length * 0.15) + ((stats.lucidityGain || 0) / 100);
 
         // FIXED: The engine requires 'startGameDrone()', not 'startDrone()'
         if (this.audioEngine) this.audioEngine.startGameDrone();
@@ -190,6 +249,8 @@ export class Game {
             this.state.cameraFlash = 10;
             this.state.cameraShake = 20;
             if (this.audioEngine) this.audioEngine.playSFX('glass_shatter');
+            // R6's grant, additive only — without it this block is unchanged.
+            if (this.state.player.hasDenialRecharge) this.state.player.denialRechargeTimer = 2700; // 45s @ 60fps
             return;
         }
 
@@ -376,10 +437,18 @@ export class Game {
         this.state.input = moveInput;
 
         const canDash = !(this.state.player.boons && this.state.player.boons.includes('lead_shoes'));
-        if (canDash && moveInput.isDashing && !this.state.player.dash.active && this.state.player.dash.cooldown <= 0) {
+        // Patch 29.5: charge-based (M7's dash_charge_2 grant can raise maxCharges to
+        // 2). Ready to dash whenever a charge is banked, regardless of whether the
+        // regen timer toward the NEXT charge is still counting down.
+        if (canDash && moveInput.isDashing && !this.state.player.dash.active && this.state.player.dash.charges > 0) {
             this.state.player.dash.active = true;
             this.state.player.dash.timer = this.state.player.dash.duration;
-            this.state.player.dash.cooldown = 90;
+            this.state.player.dash.charges--;
+            // Only (re)start the regen timer if it isn't already running — spending a
+            // second banked charge shouldn't reset progress toward the first refill.
+            if (this.state.player.dash.cooldown <= 0 && this.state.player.dash.charges < this.state.player.dash.maxCharges) {
+                this.state.player.dash.cooldown = this.state.player.dash.baseCooldown;
+            }
             let dashAngle = this.state.player.angle;
             if (moveInput.isMoving) {
                 dashAngle = Math.atan2(moveInput.moveY, moveInput.moveX);
@@ -397,8 +466,28 @@ export class Game {
             }
         }
 
-        if (this.state.player.dash.cooldown > 0) {
-            this.state.player.dash.cooldown--;
+        // Regens one charge at a time, each taking baseCooldown frames, only while
+        // below maxCharges. main.js's dash-bar HUD still reads dash.cooldown against
+        // a hardcoded /90 — out of this patch's file scope (Game.js/Combat.js/
+        // LevelUpUI.js only), so with M3 owned or a second charge banked the bar
+        // will read slightly off. Flagged for a future HUD patch (Patch 38), not
+        // fixed here.
+        if (this.state.player.dash.charges < this.state.player.dash.maxCharges) {
+            if (this.state.player.dash.cooldown > 0) {
+                this.state.player.dash.cooldown--;
+            } else {
+                this.state.player.dash.charges++;
+                if (this.state.player.dash.charges < this.state.player.dash.maxCharges) {
+                    this.state.player.dash.cooldown = this.state.player.dash.baseCooldown;
+                }
+            }
+        }
+
+        if (this.state.player.denialRechargeTimer > 0) {
+            this.state.player.denialRechargeTimer--;
+            if (this.state.player.denialRechargeTimer <= 0) {
+                this.state.player.denialShieldActive = true;
+            }
         }
 
         if (this.state.player.flashTime > 0) this.state.player.flashTime--;

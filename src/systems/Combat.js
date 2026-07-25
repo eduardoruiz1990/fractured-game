@@ -27,6 +27,19 @@ function tagShake(tags, damage) {
     return Math.min(6, 1 + damage * 0.15);
 }
 
+// Patch 29.5: F5/F7 grant tagDamage bonuses (percent) keyed per weapon tag, summed
+// onto state.player.tagDamage at Game.init. Only wired to flashlight and
+// polaroid_camera — the two weapons that actually carry the light/focus tags AND
+// roll direct damage. broken_chalk also carries 'focus' but never deals damage
+// itself (its whole effect is the safeZone 2x dmgMult on OTHER weapons), so there
+// is nothing here for a per-hit multiplier to apply to.
+function tagDamageMultiplier(tags, tagDamageStats) {
+    if (!tags || !tagDamageStats) return 1;
+    let bonus = 0;
+    for (const t of tags) bonus += (tagDamageStats[t] || 0);
+    return 1 + bonus / 100;
+}
+
 export class Combat {
     static resolveWeapons(game) {
         const state = game.state;
@@ -255,7 +268,7 @@ export class Combat {
                         while (diff > Math.PI) diff -= Math.PI * 2;
                         
                         if (Math.abs(diff) < camera.angle) {
-                            ent.takeDamage(camera.damage, game);
+                            ent.takeDamage(camera.damage * tagDamageMultiplier(camera.tags, state.player.tagDamage), game);
                             ent.confused = 120;
 
                             if (state.player.synergies && state.player.synergies.includes('overexposure')) {
@@ -542,7 +555,7 @@ export class Combat {
                             && state.player.synergies.includes('ritual_focus');
 
                         if (Math.abs(angleDiff) < hitAngle || wardedBypass) {
-                            const flDmgDealt = (flDamage / 60) * dmgMult;
+                            const flDmgDealt = (flDamage / 60) * dmgMult * tagDamageMultiplier(state.player.weapons.flashlight.tags, state.player.tagDamage);
                             // The always-on starter weapon had zero positional push before
                             // this patch (the vx/vy dampen below is a separate flinch effect,
                             // not knockback) — light tier, ticks every frame it's lit up.
