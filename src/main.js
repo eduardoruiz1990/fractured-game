@@ -6,7 +6,7 @@ import { Renderer } from './core/Renderer.js';
 import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
-import { TOKENS, getActiveSynergies } from './data/Manifestations.js';
+import { TOKENS, SYNERGIES, getActiveSynergies } from './data/Manifestations.js';
 
 console.log("FRACTURED Engine Bootstrapping...");
 
@@ -51,6 +51,54 @@ function buildDiversitySnapshot(game) {
         curses: game.state.player.curses || [],
         floor: game.state.floor
     };
+}
+
+// DEV note turned player-facing (Patch 28): "what you built" reuses
+// buildDiversitySnapshot() (Patch 14) so both stay in sync. "What killed you" is
+// deliberately NOT included — there is no cause-of-death tracking anywhere in the
+// codebase (Game.takeDamage() only ever receives a bare amount, never a source),
+// and adding it would mean touching Game.js/Combat.js, which are outside this
+// patch's file scope. Boon ids are prettified from their raw id (kinetic_dash ->
+// Kinetic Dash) rather than looked up against a real name table, because that
+// table — BOONS in LevelUpUI.js — is a local const, not exported (same gap
+// Patch 15 hit for the same array). Synergies DO have a real name table
+// (SYNERGIES, imported above) since that one is actually exported.
+function buildRunSummaryHtml(game) {
+    const snap = buildDiversitySnapshot(game);
+    const tel = game.state.telemetry;
+
+    const prettify = (id) => id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+    const weaponList = Object.entries(snap.weapons)
+        .map(([id, lvl]) => `${prettify(id)} L${lvl}`)
+        .join(', ') || 'none';
+
+    const boonList = snap.boons.length
+        ? snap.boons.map(prettify).join(', ')
+        : 'none';
+
+    const synergyList = snap.synergies.length
+        ? snap.synergies.map(id => (SYNERGIES[id] && SYNERGIES[id].name) || prettify(id)).join(', ')
+        : 'none active';
+
+    const curseLine = snap.curses.length
+        ? `<span style="color:var(--ui-red);">CURSES:</span> ${snap.curses.map(prettify).join(', ')}<br>`
+        : '';
+
+    const roomsCleared = tel ? tel.roomClearTimes.length : 0;
+    const sanityLow = tel && Number.isFinite(tel.sanityLowWater) ? Math.floor(tel.sanityLowWater) : '—';
+
+    return `
+        <div class="run-summary">
+            <span style="color:var(--ui-gold);">PATIENT FILE — THIS ATTEMPT</span><br>
+            Character Level: <strong>${snap.levels}</strong> &nbsp; Rooms Cleared: <strong>${roomsCleared}</strong> &nbsp; Lowest Grip: <strong>${sanityLow}</strong><br><br>
+            <span style="color:var(--ui-gold);">WEAPONS:</span> ${weaponList}<br>
+            <span style="color:var(--ui-gold);">BOONS:</span> ${boonList}<br>
+            <span style="color:var(--ui-gold);">SYNERGIES:</span> ${synergyList}<br>
+            ${curseLine}<br>
+            <span style="color:var(--ui-gold);">NEXT STEP:</span> Spend your Lucidity in SYNAPSE RECORDS to grow stronger before your next descent.
+        </div>
+    `;
 }
 
 function initEngine() {
@@ -579,6 +627,7 @@ function initEngine() {
                 Retained <strong>100%</strong> of gathered resources.<br>
                 Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
                 ${tokenHtml}
+                ${buildRunSummaryHtml(game)}
             `;
         } else {
             if (folder) folder.style.borderColor = 'var(--ui-red)';
@@ -594,6 +643,7 @@ function initEngine() {
                 Earned <strong>0</strong> Lucidity (Aborted).<br>
                 Retained <strong>0%</strong> of gathered resources.<br>
                 Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
+                ${buildRunSummaryHtml(game)}
             `;
         }
 
@@ -663,6 +713,7 @@ function initEngine() {
             Lost to the Void: <strong>${game.state.lucidity - recovered}</strong>.<br>
             Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
             ${tokenHtml}
+            ${buildRunSummaryHtml(game)}
         `;
         inputManager.hideJoysticks();
 

@@ -126,6 +126,11 @@ canvas { display: block; image-rendering: pixelated; }
 .xp-bar-fill { height: 100%; width: 0%; background: var(--ink-black); transition: width 0.3s ease-out; }
 .medical-toast { position: absolute; top: -150px; left: 50%; transform: translateX(-50%); transition: top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 9999; background: var(--paper-bg); padding: 15px 30px; border: 3px solid var(--ink-black); text-align: center; border-radius: 2px; box-shadow: 10px 10px 30px rgba(0,0,0,0.8); pointer-events: none; color: var(--ink-black); }
 
+/* End-of-run summary appended below the existing death/awaken/abort text
+   (Patch 28). Divider colour matches .equipped-panel's existing dashed
+   separator, not a new value. */
+.run-summary { text-align: left; margin-top: 20px; padding-top: 15px; border-top: 2px dashed #a89d85; font-size: 0.95rem; line-height: 1.6; }
+
 /* Loadout Panes inside Folder */
 .loadout-container { display: flex; gap: 30px; flex: 1; min-height: 0; }
 .equipped-panel { flex: 1; border-right: 2px dashed #a89d85; padding-right: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; overflow-y: auto; }
