@@ -51,7 +51,33 @@ export class Director {
         state.isTutorial = false;
         state.enemyBudget = Math.floor(10 + (floor * 5) + (roomNumber * 2));
         state.budgetTimer = 0;
-        
+
+        // Room modifiers: rolled once per room, never for the boss room. Pure
+        // spawn-table/budget/rate tuning inside Director.js — no entity file or
+        // Renderer touched, so nothing outside this file needs to know these exist.
+        const isBossRoom = roomNumber >= state.maxRoomsPerFloor && !state.bossSpawned;
+        if (isBossRoom) {
+            state.roomModifier = null;
+        } else {
+            const modRoll = Math.random();
+            if (modRoll < 0.40) state.roomModifier = null;
+            else if (modRoll < 0.55) state.roomModifier = 'ELITE';
+            else if (modRoll < 0.70) state.roomModifier = 'BLACKOUT';
+            else if (modRoll < 0.85) state.roomModifier = 'SWARM';
+            else state.roomModifier = 'HAZARD';
+
+            if (state.roomModifier === 'ELITE') {
+                // Fewer total spawns; each one is tougher via the buff applied in
+                // spawnEntity() below.
+                state.enemyBudget = Math.floor(state.enemyBudget * 0.65);
+            } else if (state.roomModifier === 'SWARM') {
+                // More, weaker spawns — the bias toward SCAVENGER lives in spawnWave().
+                state.enemyBudget = Math.floor(state.enemyBudget * 1.8);
+            } else if (state.roomModifier === 'HAZARD') {
+                state.hazardPuddleTimer = 0;
+            }
+        }
+
         if (roomNumber >= state.maxRoomsPerFloor && !state.bossSpawned) {
             state.enemyBudget = 0;
             if (this.game.audioEngine) {
@@ -125,11 +151,32 @@ export class Director {
             this.spawnRoom(state.floor, state.roomNumber);
         }
 
+        // HAZARD room modifier: environmental ink puddles independent of the
+        // spilled_ink weapon, ticking on its own timer so it keeps firing even
+        // after enemyBudget is spent, until the room itself clears.
+        if (state.roomModifier === 'HAZARD' && !bossAlive) {
+            state.hazardPuddleTimer = (state.hazardPuddleTimer || 0) + 1;
+            if (state.hazardPuddleTimer >= 90) {
+                state.hazardPuddleTimer = 0;
+                const hazAngle = Math.random() * Math.PI * 2;
+                const hazDist = 150 + Math.random() * 300;
+                this.spawnInkPuddle(
+                    state.player.x + Math.cos(hazAngle) * hazDist,
+                    state.player.y + Math.sin(hazAngle) * hazDist,
+                    50, 6
+                );
+            }
+        }
+
         if (state.enemyBudget > 0 || bossAlive) {
             state.budgetTimer++;
-            state.stress = 1.0 + (state.roomNumber * 0.1); 
+            state.stress = 1.0 + (state.roomNumber * 0.1);
 
-            const spawnRate = bossAlive ? 120 : Math.max(15, 60 - (state.roomNumber * 2));
+            let spawnRate = bossAlive ? 120 : Math.max(15, 60 - (state.roomNumber * 2));
+            if (!bossAlive) {
+                if (state.roomModifier === 'BLACKOUT') spawnRate = Math.max(8, Math.floor(spawnRate * 0.6));
+                else if (state.roomModifier === 'SWARM') spawnRate = Math.max(8, Math.floor(spawnRate * 0.5));
+            }
 
             if (state.budgetTimer % spawnRate === 0) {
                 // Determine spawn pools by biome (Floor)
@@ -147,8 +194,16 @@ export class Director {
                     else if (roll < 0.6 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'PARASITE'; 
                 }
                 else if (state.floor >= 4) {
-                    if (roll < 0.3 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR'; 
-                    else if (roll < 0.8 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'PARASITE'; 
+                    if (roll < 0.3 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR';
+                    else if (roll < 0.8 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'PARASITE';
+                }
+
+                // Room-modifier overrides layered on top of the floor's base table
+                // above, not a replacement for it.
+                if (!bossAlive && state.roomModifier === 'SWARM') {
+                    spawnType = 'SCAVENGER'; // cheap and weak, so the bigger budget buys a crowd
+                } else if (!bossAlive && state.roomModifier === 'BLACKOUT' && state.enemyBudget >= 3 && Math.random() < 0.5) {
+                    spawnType = 'PARASITE'; // ambush pressure
                 }
 
                 this.spawnEntity(spawnType, canvasWidth, canvasHeight);
@@ -207,6 +262,18 @@ export class Director {
                 else if (state.floor === 4) ent.originalColor = ent.type === 'SCAVENGER' ? '#2e8b57' : '#004d00';
                 else if (state.floor >= 5) ent.originalColor = ent.type === 'SCAVENGER' ? '#daa520' : '#b8860b';
                 ent.color = ent.originalColor;
+
+                // ELITE room modifier: fewer total spawns (enemyBudget cut in
+                // spawnRoom) but each one is tougher. Reuses the existing `buffed`
+                // flag, so Renderer/Predator's attack-color branch already shows a
+                // visual tell for this with no further changes needed.
+                if (state.roomModifier === 'ELITE') {
+                    ent.hp *= 1.8;
+                    ent.maxHp = ent.hp;
+                    ent.speed *= 1.15;
+                    ent.baseSpeed = ent.speed;
+                    ent.buffed = true;
+                }
             }
 
             state.entities.push(ent);
