@@ -60,6 +60,10 @@ function initEngine() {
                     <input type="checkbox" id="dev-freeze-entities" style="vertical-align:middle; margin-right:6px;">
                     FREEZE ENEMY AI
                 </label>
+                <label for="dev-telemetry-enabled" style="display:block; margin-top:6px; cursor:pointer; user-select:none;">
+                    <input type="checkbox" id="dev-telemetry-enabled" style="vertical-align:middle; margin-right:6px;">
+                    RUN TELEMETRY OVERLAY
+                </label>
                 <div style="margin-top:6px; display:flex; flex-direction:column; gap:4px;">
                     <button id="dev-btn-spawn-enemies" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">SPAWN ONE OF EACH ENEMY</button>
                     <button id="dev-btn-spawn-bosses" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">SPAWN ALL 5 BOSSES</button>
@@ -77,6 +81,15 @@ function initEngine() {
             </div>
         `;
         document.getElementById('game-container').appendChild(devUI);
+
+        // DEV: run telemetry overlay (Patch 13). Plain text panel, shown/updated
+        // per frame from gameLoop only while dev mode + the checkbox above are
+        // both on and a run is in progress. Looked up by id in gameLoop rather
+        // than closed over here, matching how dev-mode-container itself is read.
+        const telemetryOverlay = document.createElement('div');
+        telemetryOverlay.id = 'dev-telemetry-overlay';
+        telemetryOverlay.style.cssText = "position:absolute; top:10px; right:10px; z-index:9999; background:rgba(0,0,0,0.8); border:1px solid var(--ui-gold); padding:8px; color:var(--ui-gold); font-family:monospace; font-size:12px; white-space:pre; display:none; pointer-events:none;";
+        document.getElementById('game-container').appendChild(telemetryOverlay);
 
         document.getElementById('dev-btn-add-lucidity').addEventListener('click', () => {
             saveManager.addLucidity(1000);
@@ -143,6 +156,12 @@ function initEngine() {
             if (!game || !game.state) return;
             game.state.devFreezeEntities = e.target.checked;
             console.log(`%c DEV: enemy AI ${e.target.checked ? 'FROZEN' : 'RUNNING'}. `, 'background: #c5a059; color: #000;');
+        });
+
+        document.getElementById('dev-telemetry-enabled').addEventListener('change', (e) => {
+            if (!game || !game.state) return;
+            game.state.devTelemetryEnabled = e.target.checked;
+            console.log(`%c DEV: telemetry overlay ${e.target.checked ? 'ON' : 'OFF'}. `, 'background: #c5a059; color: #000;');
         });
 
         document.getElementById('dev-btn-apply-scenario').addEventListener('click', () => {
@@ -605,6 +624,18 @@ function initEngine() {
             ${tokenHtml}
         `;
         inputManager.hideJoysticks();
+
+        if (window.FRACTURED_DEV_MODE && game.state.devTelemetryEnabled && game.state.telemetry) {
+            const tel = game.state.telemetry;
+            console.log('%c DEV: RUN TELEMETRY (death) ', 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log({
+                firstBoonAt_s: tel.firstBoonAt === null ? null : +(tel.firstBoonAt / 1000).toFixed(1),
+                firstBossAt_s: tel.firstBossAt === null ? null : +(tel.firstBossAt / 1000).toFixed(1),
+                sanityLowWater: Math.floor(tel.sanityLowWater),
+                roomClearTimes_s: tel.roomClearTimes.map(ms => +(ms / 1000).toFixed(1)),
+                damagePerRoom: tel.damagePerRoom.map(d => Math.floor(d))
+            });
+        }
     };
 
     game.onLevelUp = () => {
@@ -613,7 +644,12 @@ function initEngine() {
         inputManager.keys = { w: false, a: false, s: false, d: false, space: false }; 
         inputManager.updateKeyboardInput();
         audioEngine.playSFX('levelup');
-        levelUpUI.show(game, () => { gameState = 'PLAYING'; });
+        levelUpUI.show(game, () => {
+            if (game.state && game.state.telemetry && game.state.telemetry.firstBoonAt === null) {
+                game.state.telemetry.firstBoonAt = performance.now() - game.state.telemetry.runStartWallClock;
+            }
+            gameState = 'PLAYING';
+        });
     };
 
     game.onFloorComplete = () => {
@@ -645,6 +681,27 @@ function gameLoop(time) {
             // is reachable mid-run, which is the only place entities actually exist.
             const shouldShowDevPanel = window.FRACTURED_DEV_MODE && (gameState === 'TITLE' || gameState === 'MENU' || gameState === 'HUB' || gameState === 'PLAYING');
             devModeContainer.style.display = shouldShowDevPanel ? 'block' : 'none';
+        }
+
+        // DEV: run telemetry overlay (Patch 13).
+        const telemetryOverlayEl = document.getElementById('dev-telemetry-overlay');
+        if (telemetryOverlayEl) {
+            const showTelemetry = window.FRACTURED_DEV_MODE && gameState === 'PLAYING'
+                && game.state && game.state.devTelemetryEnabled && game.state.telemetry;
+            telemetryOverlayEl.style.display = showTelemetry ? 'block' : 'none';
+            if (showTelemetry) {
+                const tel = game.state.telemetry;
+                const fmt = (ms) => ms === null ? '—' : (ms / 1000).toFixed(1) + 's';
+                const clears = tel.roomClearTimes.map(ms => (ms / 1000).toFixed(1)).join(', ') || '—';
+                const dmg = tel.damagePerRoom.map(d => Math.floor(d)).join(', ') || '—';
+                telemetryOverlayEl.innerText =
+                    `RUN TELEMETRY\n` +
+                    `first boon: ${fmt(tel.firstBoonAt)}\n` +
+                    `first boss: ${fmt(tel.firstBossAt)}\n` +
+                    `sanity low: ${Math.floor(tel.sanityLowWater)}\n` +
+                    `room clears (s): ${clears}\n` +
+                    `dmg/room: ${dmg}`;
+            }
         }
 
         if (gameState === 'MENU' || gameState === 'TITLE') {

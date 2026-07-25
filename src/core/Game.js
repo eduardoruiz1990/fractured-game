@@ -80,8 +80,9 @@ export class Game {
             activeBoss: null,
             mapOriginX: null,
             mapOriginY: null,
-            runInventory: carriedState ? carriedState.runInventory : [], 
-            
+            runInventory: carriedState ? carriedState.runInventory : [],
+            telemetry: (carriedState && carriedState.telemetry) ? carriedState.telemetry : this.createFreshTelemetry(startSanity),
+
             player: {
                 x: 0, y: 0,
                 radius: 12,
@@ -149,7 +150,26 @@ export class Game {
             level: this.state.level,
             lucidity: this.state.lucidity,
             runInventory: this.state.runInventory,
-            boons: this.state.player.boons
+            boons: this.state.player.boons,
+            telemetry: this.state.telemetry
+        };
+    }
+
+    // DEV: run telemetry (Patch 13). Fresh per HUB-launched run, carried across
+    // floor descents via getCarriedState() so "first boss"/"first boon" stay
+    // run-relative rather than resetting every floor. Read by the dev overlay
+    // and death-time console dump in main.js.
+    createFreshTelemetry(startSanity) {
+        return {
+            runStartWallClock: performance.now(),
+            firstBoonAt: null,
+            firstBossAt: null,
+            roomClearTimes: [],
+            damagePerRoom: [],
+            sanityLowWater: startSanity,
+            lastRoomNumber: 1,
+            currentRoomStartWallClock: performance.now(),
+            currentRoomDamage: 0
         };
     }
 
@@ -173,6 +193,14 @@ export class Game {
 
         const finalDmg = amount * (1 - dmgReduction);
         this.state.sanity -= finalDmg;
+
+        if (this.state.telemetry) {
+            this.state.telemetry.currentRoomDamage += finalDmg;
+            if (this.state.sanity < this.state.telemetry.sanityLowWater) {
+                this.state.telemetry.sanityLowWater = Math.max(0, this.state.sanity);
+            }
+        }
+
         this.state.player.flashTime = 10;
         this.state.cameraShake = Math.max(this.state.cameraShake, finalDmg * 2);
         
@@ -270,6 +298,26 @@ export class Game {
         }
 
         this.state.frame++;
+
+        // DEV: run telemetry tick (Patch 13). One-frame-late detection of room
+        // clears / boss spawn is fine at this granularity; keeps this out of
+        // Combat.js/Director.js where the actual transitions happen.
+        if (!isHub && this.state.telemetry) {
+            const tel = this.state.telemetry;
+
+            if (this.state.bossSpawned && tel.firstBossAt === null) {
+                tel.firstBossAt = performance.now() - tel.runStartWallClock;
+            }
+
+            if (this.state.roomNumber !== tel.lastRoomNumber) {
+                tel.roomClearTimes.push(performance.now() - tel.currentRoomStartWallClock);
+                tel.damagePerRoom.push(tel.currentRoomDamage);
+                tel.lastRoomNumber = this.state.roomNumber;
+                tel.currentRoomStartWallClock = performance.now();
+                tel.currentRoomDamage = 0;
+            }
+        }
+
         this.state.input = moveInput;
 
         const canDash = !(this.state.player.boons && this.state.player.boons.includes('lead_shoes'));
