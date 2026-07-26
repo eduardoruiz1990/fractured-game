@@ -46,8 +46,22 @@ canvas { display: block; image-rendering: pixelated; }
 #death-screen { display: none; z-index: 1000; background: rgba(10, 0, 0, 0.95); }
 
 /* --- EPIC 6: THE MEDICAL FILE AESTHETIC --- */
+/* Patch 37: paper fibre + age blooms. The folder was a flat colour fill, which
+   read as a coloured box rather than a physical document — and the physical
+   document IS the clinical-file language everything else here leans on.
+   Pure CSS gradients, no image asset, so nothing can trigger an external
+   request. Deliberately applied as background LAYERS rather than a pseudo-
+   element: backgrounds always paint beneath child content, so this cannot
+   overlay the tabs/content the way a stacked ::before could, and it leaves
+   ::before free.
+   KEEP: every original declaration below is preserved verbatim. */
 .medical-folder {
     background-color: var(--paper-bg); color: var(--ink-black); width: 90%; max-width: 1000px; height: 80vh; max-height: 800px; border: 2px solid #555; box-shadow: inset 0 0 80px rgba(0,0,0,0.3), 10px 10px 30px rgba(0,0,0,0.9); display: flex; flex-direction: column; position: relative; font-family: var(--ui-font);
+    background-image:
+        repeating-linear-gradient(90deg, rgba(120,105,80,0.045) 0 1px, transparent 1px 3px),
+        repeating-linear-gradient(0deg,  rgba(120,105,80,0.035) 0 1px, transparent 1px 4px),
+        radial-gradient(ellipse at 20% 12%, rgba(160,140,100,0.10), transparent 55%),
+        radial-gradient(ellipse at 82% 78%, rgba(150,120,85,0.09), transparent 60%);
 }
 .folder-header {
     border-bottom: 3px solid var(--ink-black); padding: 20px;
@@ -89,16 +103,33 @@ canvas { display: block; image-rendering: pixelated; }
     100% { transform: translateX(-50%) scale(1.5); opacity: 0; }
 }
 
-.title-typewriter { font-size: 2.5rem; font-weight: 900; color: var(--ink-black); letter-spacing: 5px; text-align: center; }
-.patient-stamp { color: var(--ui-red); font-size: 1.5rem; font-weight: bold; border: 3px solid var(--ui-red); padding: 5px 15px; transform: rotate(-5deg); opacity: 0.9; }
+/* Patch 37: struck-key ink irregularity — a faint offset ghost, as though the
+   ribbon didn't strike evenly. KEEP: class name, size, weight and spacing all
+   unchanged; this only adds a text-shadow. */
+.title-typewriter { font-size: 2.5rem; font-weight: 900; color: var(--ink-black); letter-spacing: 5px; text-align: center; text-shadow: 1px 1px 0 rgba(0,0,0,0.18), -1px 0 0 rgba(120,100,70,0.14); }
+/* Patch 37: rubber-stamp ink bleed — soft outer halo plus a lighter inner edge,
+   so it reads as pressed ink rather than a plain bordered box. KEEP: colour,
+   border, rotation and opacity all preserved exactly. */
+.patient-stamp { color: var(--ui-red); font-size: 1.5rem; font-weight: bold; border: 3px solid var(--ui-red); padding: 5px 15px; transform: rotate(-5deg); opacity: 0.9; box-shadow: 0 0 6px rgba(139,0,0,0.35), inset 0 0 8px rgba(139,0,0,0.18); border-radius: 2px; }
 .typewriter-text { font-family: var(--ui-font); color: var(--ink-black); font-weight: bold; }
 .section-label { font-weight: bold; color: #222; text-transform: uppercase; margin-bottom: 10px; font-size: 0.95rem; letter-spacing: 1px; }
 
 .folder-tabs { display: flex; background: var(--folder-tab); border-bottom: 3px solid var(--ink-black); }
 .tab-btn { flex: 1; padding: 15px; background: transparent; border: none; border-right: 1px solid #a89d85; font-family: var(--ui-font); font-weight: bold; color: #555; cursor: pointer; transition: 0.2s; text-transform: uppercase; }
-.tab-btn.active { background-color: var(--paper-bg); color: var(--blood-red); font-weight: 900; border-top: 4px solid var(--blood-red); border-bottom: 3px solid var(--paper-bg); margin-bottom: -3px; text-shadow: none; }
+/* Patch 37: the folder metaphor only works if the open tab looks physically in
+   FRONT of the others. Inactive tabs get an inner bottom shadow so they read as
+   tucked behind; the active one gets a lifted edge and rounded top corners. */
+.tab-btn:not(.active) { box-shadow: inset 0 -6px 8px -6px rgba(0,0,0,0.35); }
+.tab-btn:hover:not(.active) { background: rgba(255,255,255,0.22); color: #333; }
+.tab-btn.active { background-color: var(--paper-bg); color: var(--blood-red); font-weight: 900; border-top: 4px solid var(--blood-red); border-bottom: 3px solid var(--paper-bg); margin-bottom: -3px; text-shadow: none; border-radius: 3px 3px 0 0; box-shadow: 0 -3px 8px rgba(0,0,0,0.18); }
 
-.folder-content { padding: 30px; flex: 1; overflow-y: auto; position: relative; }
+/* Patch 37: filed-paper margin rule. Positioned at 20px — inside this element's
+   own 30px padding — so it can never collide with content. Left on the default
+   background-attachment so it stays put while the pane scrolls. */
+.folder-content {
+    padding: 30px; flex: 1; overflow-y: auto; position: relative;
+    background-image: linear-gradient(90deg, transparent 0 20px, rgba(139,0,0,0.16) 20px 21px, transparent 21px);
+}
 .tab-pane { display: none; height: 100%; flex-direction: column; }
 .tab-pane.active { display: flex; }
 
@@ -116,6 +147,20 @@ canvas { display: block; image-rendering: pixelated; }
 .file-btn.danger { border-color: var(--ui-red); color: var(--ui-red); }
 .file-btn.danger:hover:not(:disabled) { background: var(--ui-red); color: white; }
 .file-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Patch 37: these buttons had no :active state and the stylesheet had NO focus
+   styling anywhere at all — a click gave no physical feedback, and a keyboard
+   user had no way to see where they were in the menu. :active presses the
+   button into its own drop-shadow. The focus ring uses --ui-gold so it stays
+   legible against both the paper background and the inverted primary/hover
+   states, and :focus-visible keeps it from firing on mouse clicks. */
+.file-btn:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: none; }
+.file-btn:focus-visible,
+.tab-btn:focus-visible,
+.hud-icon-btn:focus-visible {
+    outline: 3px solid var(--ui-gold);
+    outline-offset: 2px;
+}
 
 /* XP Bar in Menu */
 .xp-bar-wrapper { 
@@ -473,7 +518,19 @@ canvas { display: block; image-rendering: pixelated; }
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     pointer-events: none; overflow: hidden; z-index: 9999;
 }
-.blood-drop {
+/* Patch 37 FIX — selector collision. This block used to be a bare `.blood-drop`,
+   which meant it also matched the 7 STATIC drips in index.html's
+   .blood-spatter-container and overrode their `animation: bloodFallSplash 3s`
+   with `animation: bloodFall linear forwards`. That shorthand omits a duration,
+   so it defaults to 0s — the folder's header drips have therefore never
+   animated at all (their ::after blood pool still ran, since that selector was
+   never overridden, which is why it looked half-broken rather than absent).
+   Scoping to #blood-container fixes the static drips while leaving the dynamic
+   rain from UIManager.initBloodRain() byte-for-byte unchanged: those elements
+   live inside #blood-container and set width/height/animationDuration inline.
+   KEEP: the `.blood-drop` class name itself is untouched — both systems still
+   use it, only this rule's reach is narrowed. */
+#blood-container .blood-drop {
     position: absolute;
     background: var(--blood-red);
     width: 2px;
@@ -486,4 +543,25 @@ canvas { display: block; image-rendering: pixelated; }
     0% { transform: translateY(-10px) scaleY(1); opacity: 0; }
     10% { opacity: 0.8; }
     100% { transform: translateY(100vh) scaleY(4); opacity: 0; }
+}
+
+/* Patch 37: respect prefers-reduced-motion. This menu layer runs several
+   continuous animations (falling blood, the CRT scanline crawl, glitch) plus
+   hover transforms — exactly the kind of thing that triggers discomfort for
+   motion-sensitive users, and it runs on the very first screen they see.
+   KEEP: nothing is removed and no class is disabled — the blood drips and
+   stamps still render, they just stop moving. Gameplay canvas rendering is
+   untouched; this only covers the DOM menu layer. */
+@media (prefers-reduced-motion: reduce) {
+    .blood-drop,
+    .blood-drop::after,
+    #crt-scanlines,
+    .medical-toast {
+        animation: none !important;
+        transition: none !important;
+    }
+    .token-slot:hover, .inventory-item:hover, .card:hover, .roadmap-node.active {
+        transform: none !important;
+    }
+    .file-btn:active:not(:disabled) { transform: none; }
 }

@@ -44,8 +44,21 @@ anything else**, to know what's done and what's next.
   soft-edged flashlight penumbra, fog depth/tint. Also fixed a dead branch in
   `drawFog` where the `hitStop` check had two identical bodies, so fog never
   froze on impact pauses like every other system does.
-- **NEXT: Patch 37** — Menu/DOM visual pass, `[MODEL: OPUS]`.
-- **NOT STARTED:** 37, 38, 39, 40, 41.
+- **Patch 37 DONE** (2026-07-26). Paper fibre on `.medical-folder`, folder-tab
+  physicality, filed-paper margin rule, typewriter/stamp ink polish, first
+  `:focus-visible` styling in the project, `:active` press state, and a
+  `prefers-reduced-motion` block. `index.html` needed no changes — everything
+  was achievable in CSS, the lower-risk of the two fragile files.
+  - Fixed a real pre-existing bug: an unscoped `.blood-drop` rule was
+    clobbering the 7 static folder drips, replacing `bloodFallSplash 3s` with
+    `bloodFall` at the shorthand's default `0s`. Those drips had never
+    animated. Scoped the dynamic-rain rule to `#blood-container`.
+  - **Flagged for Patch 38/41, deliberately NOT fixed here (HUD scope):**
+    `src/style.css` contains TWO byte-identical `@media (max-width: 768px)`
+    blocks (around lines 439 and 498). Merging them means editing HUD rules,
+    which belong to Patch 38.
+- **NEXT: Patch 38** — HUD overhaul, `[MODEL: OPUS]`.
+- **NOT STARTED:** 38, 39, 40, 41.
 
 Also added since v2 was written, outside the numbered queue (ad hoc dev
 tooling, at the user's request): two dev-panel buttons in `src/main.js`
@@ -618,11 +631,11 @@ Files: `src/core/Renderer.js` (`lightCanvas` pipeline, fog clouds)
 Keep: **the `globalCompositeOperation` reset rule** — highest-risk section in
 the codebase for invisible-player bugs.
 
-### Patch 37 — Menu/DOM visual pass  `[MODEL: OPUS]`  ⬅ NEXT
+### Patch 37 — Menu/DOM visual pass  `[MODEL: OPUS]`  ✅ DONE
 Files: `index.html`, `src/style.css`
 Keep: `.medical-folder`, `.blood-drop`, `.patient-stamp`, `.typewriter-text`.
 
-### Patch 38 — HUD overhaul  `[MODEL: OPUS]`
+### Patch 38 — HUD overhaul  `[MODEL: OPUS]`  ⬅ NEXT
 Files: `index.html` (`#ui-layer`), `src/style.css`, `src/ui/UIManager.js`
 Keep: DOM-ONLY. `Renderer.drawHUD()` is dead — do NOT revive it.
 
