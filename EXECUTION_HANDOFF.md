@@ -57,8 +57,24 @@ anything else**, to know what's done and what's next.
     `src/style.css` contains TWO byte-identical `@media (max-width: 768px)`
     blocks (around lines 439 and 498). Merging them means editing HUD rules,
     which belong to Patch 38.
-- **NEXT: Patch 38** — HUD overhaul, `[MODEL: OPUS]`.
-- **NOT STARTED:** 38, 39, 40, 41.
+- **Patch 38 DONE** (2026-07-26). HUD restyled as bedside monitor chrome
+  (instrument bezels, phosphor scanlines, gauge calibration ticks), safe-area
+  insets, de-inlined HUD styles, mobile stacking. Also removed the duplicated
+  `@media (max-width: 768px)` block flagged during Patch 37.
+  - **KNOWN WIRING GAP — needs a `38b` if wanted.** All HUD *state* logic lives
+    inline in `src/main.js` (~lines 880-955), which is NOT in Patch 38's file
+    scope. main.js rewrites inline styles every frame: `#sanity-bar`
+    `backgroundColor`+`boxShadow`; `#dash-bar`/`#convergence-bar` the
+    `background` SHORTHAND; `#convergence-text` `color`+`textShadow`;
+    `.convergence-section` `borderColor`+`boxShadow`; `#score` `innerHTML`
+    wholesale. Inline styles win, so CSS for those exact properties is dead —
+    highlights were therefore applied via `::after` pseudo-elements, which
+    inline styles cannot reach. Still needing main.js to do properly:
+    semantic state CLASSES instead of inline colours, a restructured `#score`
+    readout (it cannot have child markup while innerHTML is overwritten
+    60x/sec), and any low-sanity HUD treatment.
+- **NEXT: Patch 39** — VFX pass, `[MODEL: OPUS]`.
+- **NOT STARTED:** 39, 40, 41.
 
 Also added since v2 was written, outside the numbered queue (ad hoc dev
 tooling, at the user's request): two dev-panel buttons in `src/main.js`
@@ -635,11 +651,11 @@ the codebase for invisible-player bugs.
 Files: `index.html`, `src/style.css`
 Keep: `.medical-folder`, `.blood-drop`, `.patient-stamp`, `.typewriter-text`.
 
-### Patch 38 — HUD overhaul  `[MODEL: OPUS]`  ⬅ NEXT
+### Patch 38 — HUD overhaul  `[MODEL: OPUS]`  ✅ DONE
 Files: `index.html` (`#ui-layer`), `src/style.css`, `src/ui/UIManager.js`
 Keep: DOM-ONLY. `Renderer.drawHUD()` is dead — do NOT revive it.
 
-### Patch 39 — VFX pass  `[MODEL: OPUS]`
+### Patch 39 — VFX pass  `[MODEL: OPUS]`  ⬅ NEXT
 Files: `src/core/Renderer.js`, `src/systems/Director.js`
 Particles are currently 2px lines.
 Keep: pool discipline; no `shadowBlur`; prefer the existing `drawGlow` helper.

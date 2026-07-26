@@ -393,14 +393,17 @@
             <div class="sanity-section">
                 <div class="hud-label">VITAL: GRIP (SANITY)</div>
                 <div class="sanity-bar-container"><div id="sanity-bar"></div></div>
-                <div class="hud-label" style="margin-top: 6px; color: #88aaff;">ADRENAL RECHARGE</div>
+                <div class="hud-label hud-label-dash">ADRENAL RECHARGE</div>
                 <div class="dash-bar-container"><div id="dash-bar"></div></div>
             </div>
             
             <div class="convergence-section">
                 <div id="convergence-text" class="hud-label-large">NIGHTMARE PROGRESS: 0%</div>
                 <div class="convergence-bar-container"><div id="convergence-bar"></div></div>
-                <div id="enemy-counter" class="hud-label" style="margin-top: 5px; color: #ffaaaa; font-size: 14px; text-shadow: 0 0 5px #ff0000; display: none;">ENEMIES LEFT: 0</div>
+                <!-- Patch 38: visual props moved to the stylesheet. `display: none`
+                     stays inline on purpose — main.js toggles it every frame, and
+                     it must start hidden before the loop's first tick. -->
+                <div id="enemy-counter" class="hud-label" style="display: none;">ENEMIES LEFT: 0</div>
             </div>
 
             <div class="score-section">
