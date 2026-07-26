@@ -49,7 +49,49 @@ export class HubWorld {
             }
         }
 
-        cx.strokeStyle = '#1e293b'; 
+        // Patch 35: the hub gets an identity of its own so it reads as a
+        // distinct, lived-in safe room rather than a neutral grid — otherwise
+        // the five new floor biomes have nothing to contrast against.
+        //
+        // Worn traffic paths from the centre out to each interactable. The
+        // player walks these same four routes every single visit, so scuffing
+        // them into the floor is the room telling its own history. Drawn from
+        // this.zones (already populated in the constructor above) rather than
+        // hardcoded, so moving or adding a zone updates the wear automatically.
+        for (const z of this.zones) {
+            const ang = Math.atan2(z.y, z.x);
+            const len = Math.hypot(z.x, z.y);
+            const g = cx.createLinearGradient(0, 0, z.x, z.y);
+            g.addColorStop(0, 'rgba(255,255,255,0.05)');
+            g.addColorStop(0.65, 'rgba(255,255,255,0.028)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            cx.save();
+            cx.rotate(ang);
+            cx.fillStyle = g;
+            // Path widens toward the destination, like real foot traffic fanning
+            // out as people slow down and turn.
+            cx.beginPath();
+            cx.moveTo(0, -26);
+            cx.lineTo(len, -70);
+            cx.lineTo(len, 70);
+            cx.lineTo(0, 26);
+            cx.closePath();
+            cx.fill();
+            cx.restore();
+        }
+
+        // Pacing scuffs — concentric arcs worn by walking the room's perimeter.
+        cx.strokeStyle = 'rgba(255,255,255,0.022)';
+        for (let i = 0; i < 7; i++) {
+            const r = 150 + Math.random() * 300;
+            const start = Math.random() * Math.PI * 2;
+            cx.lineWidth = 3 + Math.random() * 7;
+            cx.beginPath();
+            cx.arc(0, 0, r, start, start + 0.5 + Math.random() * 1.6);
+            cx.stroke();
+        }
+
+        cx.strokeStyle = '#1e293b';
         cx.lineWidth = 16;
         cx.beginPath(); cx.arc(0, 0, this.roomRadius, 0, Math.PI*2); cx.stroke();
         

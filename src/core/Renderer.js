@@ -163,43 +163,243 @@ export class Renderer {
         return { x: 1 + t * 0.22, y: 1 - t * 0.18 };
     }
 
+    // Patch 35 — per-floor BIOME IDENTITY.
+    //
+    // Before this, all five biomes drew the identical structure (a 128px grid
+    // plus 40 random ellipses) and differed only in palette, so every floor
+    // read as "the same room, recoloured". Each biome now has its own visual
+    // language keyed to its boss: institutional tile+rust (Wastes), mirrored
+    // inkblots (Divide/Rorschach), surveillance arcs+tally marks (Panopticon),
+    // organic veins+cell clusters (Amalgamation), and blueprint linework
+    // (Architect).
+    //
+    // KEEP (unchanged contract): still built ONCE at construction into
+    // offscreen 512x512 canvases converted to repeat patterns — nothing here
+    // runs per frame, and drawWorldItems() still just indexes patterns[floor-1].
+    // The five bg/line/accent1/accent2 values are preserved EXACTLY as tuned;
+    // only structure changed, plus additive optional fields (e.g. `crack`).
+    //
+    // SEAMS: the pattern repeats every 512px across an 8000px fill, so any
+    // shape clipped at a tile edge would print a visible 512px grid over the
+    // whole floor. Every scattered element therefore goes through tileWrap(),
+    // which redraws it at the 8 neighbouring tile offsets so edge-crossing
+    // shapes continue correctly on the opposite side. All randomness must be
+    // computed OUTSIDE the tileWrap callback — sampling inside would give each
+    // of the 9 copies different values and defeat the whole point.
     generateFloorPatterns() {
+        const S = 512;
         const patterns = [];
-        
+
         const biomes = [
-            { bg: '#1a1410', line: '#0f0a05', accent1: 'rgba(50, 30, 20, 0.4)', accent2: 'rgba(0, 0, 0, 0.5)' }, // Floor 1: Wastes (Rusty Browns)
+            { bg: '#1a1410', line: '#0f0a05', accent1: 'rgba(50, 30, 20, 0.4)', accent2: 'rgba(0, 0, 0, 0.5)', crack: 'rgba(0, 0, 0, 0.55)' }, // Floor 1: Wastes (Rusty Browns)
             { bg: '#0d0d0d', line: '#222222', accent1: 'rgba(80, 80, 80, 0.2)', accent2: 'rgba(0, 0, 0, 0.6)' }, // Floor 2: Divide (Stark Grayscale)
             { bg: '#250808', line: '#110202', accent1: 'rgba(100, 10, 10, 0.3)', accent2: 'rgba(0, 0, 0, 0.7)' }, // Floor 3: Panopticon (Oppressive Reds)
             { bg: '#081a0c', line: '#030a04', accent1: 'rgba(20, 80, 20, 0.3)', accent2: 'rgba(5, 15, 5, 0.6)' }, // Floor 4: Amalgamation (Toxic Greens)
             { bg: '#000000', line: '#b8860b', accent1: 'rgba(218, 165, 32, 0.1)', accent2: 'rgba(0, 0, 0, 0.8)' }  // Floor 5: Architect (Pitch Black & Gold)
         ];
 
+        const tileWrap = (cx, fn) => {
+            for (let ox = -1; ox <= 1; ox++) {
+                for (let oy = -1; oy <= 1; oy++) {
+                    cx.save();
+                    cx.translate(ox * S, oy * S);
+                    fn();
+                    cx.restore();
+                }
+            }
+        };
+
+        // Floor 1 — THE WASTES: derelict institutional flooring. Big linoleum
+        // tiles, rust pooling in the grout, hairline cracks spidering off it.
+        const drawWastes = (cx, p) => {
+            cx.strokeStyle = p.line;
+            cx.lineWidth = 4;
+            for (let i = 0; i <= S; i += 128) {
+                cx.beginPath(); cx.moveTo(i, 0); cx.lineTo(i, S); cx.stroke();
+                cx.beginPath(); cx.moveTo(0, i); cx.lineTo(S, i); cx.stroke();
+            }
+            for (let i = 0; i < 26; i++) {
+                const x = Math.random() * S, y = Math.random() * S;
+                const r = 8 + Math.random() * 22;
+                const rot = Math.random() * Math.PI;
+                const fill = Math.random() > 0.5 ? p.accent1 : p.accent2;
+                tileWrap(cx, () => {
+                    cx.fillStyle = fill;
+                    cx.beginPath();
+                    cx.ellipse(x, y, r, r * 0.6, rot, 0, Math.PI * 2);
+                    cx.fill();
+                });
+            }
+            for (let i = 0; i < 14; i++) {
+                const pts = [];
+                let px = Math.random() * S, py = Math.random() * S, a = Math.random() * Math.PI * 2;
+                pts.push([px, py]);
+                for (let s = 0; s < 5; s++) {
+                    a += (Math.random() - 0.5) * 1.2;
+                    px += Math.cos(a) * (10 + Math.random() * 18);
+                    py += Math.sin(a) * (10 + Math.random() * 18);
+                    pts.push([px, py]);
+                }
+                tileWrap(cx, () => {
+                    cx.strokeStyle = p.crack;
+                    cx.lineWidth = 1.5;
+                    cx.beginPath();
+                    cx.moveTo(pts[0][0], pts[0][1]);
+                    for (let k = 1; k < pts.length; k++) cx.lineTo(pts[k][0], pts[k][1]);
+                    cx.stroke();
+                });
+            }
+        };
+
+        // Floor 2 — THE DIVIDE (Rorschach): cold hairline grid bisected by a
+        // fold line, with symmetric inkblots mirrored across it.
+        const drawDivide = (cx, p) => {
+            cx.strokeStyle = p.line;
+            cx.lineWidth = 1;
+            for (let i = 0; i <= S; i += 64) {
+                cx.beginPath(); cx.moveTo(i, 0); cx.lineTo(i, S); cx.stroke();
+                cx.beginPath(); cx.moveTo(0, i); cx.lineTo(S, i); cx.stroke();
+            }
+            cx.strokeStyle = p.accent1;
+            cx.lineWidth = 2;
+            cx.beginPath(); cx.moveTo(S / 2, 0); cx.lineTo(S / 2, S); cx.stroke();
+
+            for (let i = 0; i < 5; i++) {
+                const cy = Math.random() * S;
+                const lobes = [];
+                const n = 4 + Math.floor(Math.random() * 3);
+                for (let k = 0; k < n; k++) {
+                    lobes.push({ dx: Math.random() * 90, dy: (Math.random() - 0.5) * 80, r: 10 + Math.random() * 26 });
+                }
+                const fill = Math.random() > 0.5 ? p.accent1 : p.accent2;
+                tileWrap(cx, () => {
+                    cx.fillStyle = fill;
+                    for (const lb of lobes) {
+                        cx.beginPath(); cx.arc(S / 2 - lb.dx, cy + lb.dy, lb.r, 0, Math.PI * 2); cx.fill();
+                        cx.beginPath(); cx.arc(S / 2 + lb.dx, cy + lb.dy, lb.r, 0, Math.PI * 2); cx.fill();
+                    }
+                });
+            }
+        };
+
+        // Floor 3 — THE PANOPTICON: concentric watch-rings and sightlines
+        // radiating from a central tower, scratched over with prisoner tallies.
+        const drawPanopticon = (cx, p) => {
+            cx.strokeStyle = p.line;
+            cx.lineWidth = 3;
+            for (let r = 48; r < 300; r += 52) {
+                cx.beginPath(); cx.arc(S / 2, S / 2, r, 0, Math.PI * 2); cx.stroke();
+            }
+            cx.strokeStyle = p.accent1;
+            cx.lineWidth = 2;
+            for (let k = 0; k < 12; k++) {
+                const a = (k / 12) * Math.PI * 2;
+                cx.beginPath();
+                cx.moveTo(S / 2 + Math.cos(a) * 40, S / 2 + Math.sin(a) * 40);
+                cx.lineTo(S / 2 + Math.cos(a) * 300, S / 2 + Math.sin(a) * 300);
+                cx.stroke();
+            }
+            for (let i = 0; i < 9; i++) {
+                const gx = Math.random() * S, gy = Math.random() * S;
+                const count = 3 + Math.floor(Math.random() * 3);
+                const rot = Math.random() * Math.PI;
+                tileWrap(cx, () => {
+                    cx.save();
+                    cx.translate(gx, gy);
+                    cx.rotate(rot);
+                    cx.strokeStyle = p.accent2;
+                    cx.lineWidth = 2;
+                    for (let t = 0; t < count; t++) {
+                        cx.beginPath(); cx.moveTo(t * 6, 0); cx.lineTo(t * 6, 18); cx.stroke();
+                    }
+                    cx.beginPath(); cx.moveTo(-3, 14); cx.lineTo(count * 6, 4); cx.stroke();
+                    cx.restore();
+                });
+            }
+        };
+
+        // Floor 4 — THE AMALGAMATION: no architecture at all. Branching veins
+        // that taper as they split, studded with cell clusters.
+        const drawAmalgamation = (cx, p) => {
+            for (let i = 0; i < 16; i++) {
+                const segs = [];
+                let vx = Math.random() * S, vy = Math.random() * S;
+                let a = Math.random() * Math.PI * 2;
+                let w = 5 + Math.random() * 4;
+                for (let s = 0; s < 7; s++) {
+                    const nx = vx + Math.cos(a) * (16 + Math.random() * 20);
+                    const ny = vy + Math.sin(a) * (16 + Math.random() * 20);
+                    segs.push({ x1: vx, y1: vy, x2: nx, y2: ny, w });
+                    vx = nx; vy = ny;
+                    a += (Math.random() - 0.5) * 0.9;
+                    w *= 0.82;
+                }
+                tileWrap(cx, () => {
+                    cx.strokeStyle = p.line;
+                    cx.lineCap = 'round';
+                    for (const sg of segs) {
+                        cx.lineWidth = sg.w;
+                        cx.beginPath(); cx.moveTo(sg.x1, sg.y1); cx.lineTo(sg.x2, sg.y2); cx.stroke();
+                    }
+                });
+            }
+            for (let i = 0; i < 20; i++) {
+                const x = Math.random() * S, y = Math.random() * S;
+                const r = 6 + Math.random() * 16;
+                const fill = Math.random() > 0.5 ? p.accent1 : p.accent2;
+                tileWrap(cx, () => {
+                    cx.fillStyle = fill;
+                    cx.beginPath(); cx.arc(x, y, r, 0, Math.PI * 2); cx.fill();
+                    cx.fillStyle = p.accent2;
+                    cx.beginPath(); cx.arc(x + r * 0.25, y - r * 0.25, r * 0.35, 0, Math.PI * 2); cx.fill();
+                });
+            }
+        };
+
+        // Floor 5 — THE ARCHITECT: the only floor that is drafted rather than
+        // decayed. Fine construction grid, layout circles, registration ticks.
+        const drawArchitect = (cx, p) => {
+            cx.strokeStyle = p.line;
+            cx.lineWidth = 1;
+            for (let i = 0; i <= S; i += 64) {
+                cx.beginPath(); cx.moveTo(i, 0); cx.lineTo(i, S); cx.stroke();
+                cx.beginPath(); cx.moveTo(0, i); cx.lineTo(S, i); cx.stroke();
+            }
+            cx.strokeStyle = p.accent2;
+            cx.lineWidth = 1;
+            cx.beginPath(); cx.moveTo(0, 0); cx.lineTo(S, S); cx.stroke();
+            cx.beginPath(); cx.moveTo(S, 0); cx.lineTo(0, S); cx.stroke();
+
+            cx.strokeStyle = p.accent1;
+            cx.lineWidth = 1.5;
+            const rings = [[128, 128, 70], [384, 384, 70], [128, 384, 44], [384, 128, 44], [256, 256, 100]];
+            for (const [rx, ry, rr] of rings) {
+                tileWrap(cx, () => {
+                    cx.beginPath(); cx.arc(rx, ry, rr, 0, Math.PI * 2); cx.stroke();
+                });
+            }
+            cx.strokeStyle = p.line;
+            cx.lineWidth = 2;
+            for (let i = 0; i <= S; i += 128) {
+                cx.beginPath(); cx.moveTo(i - 6, 0); cx.lineTo(i + 6, 0); cx.stroke();
+                cx.beginPath(); cx.moveTo(0, i - 6); cx.lineTo(0, i + 6); cx.stroke();
+            }
+        };
+
+        const motifs = [drawWastes, drawDivide, drawPanopticon, drawAmalgamation, drawArchitect];
+
         for (let b = 0; b < 5; b++) {
             const c = document.createElement('canvas');
-            c.width = 512;
-            c.height = 512;
+            c.width = S;
+            c.height = S;
             const cx = c.getContext('2d');
-            
+
             const p = biomes[b];
             cx.fillStyle = p.bg;
-            cx.fillRect(0, 0, 512, 512);
-            
-            cx.strokeStyle = p.line;
-            cx.lineWidth = b === 4 ? 2 : 4; // Finer lines for Architect floor
-            for(let i = 0; i <= 512; i += 128) {
-                cx.beginPath(); cx.moveTo(i, 0); cx.lineTo(i, 512); cx.stroke();
-                cx.beginPath(); cx.moveTo(0, i); cx.lineTo(512, i); cx.stroke();
-            }
+            cx.fillRect(0, 0, S, S);
 
-            for(let i = 0; i < 40; i++) {
-                cx.fillStyle = Math.random() > 0.5 ? p.accent1 : p.accent2;
-                cx.beginPath();
-                let x = Math.random() * 512;
-                let y = Math.random() * 512;
-                let r = Math.random() * 20 + 5;
-                cx.ellipse(x, y, r, r/2, Math.random() * Math.PI, 0, Math.PI*2);
-                cx.fill();
-            }
+            motifs[b](cx, p);
+
             patterns.push(this.ctx.createPattern(c, 'repeat'));
         }
         return patterns;

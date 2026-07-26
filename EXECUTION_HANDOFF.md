@@ -31,10 +31,16 @@ anything else**, to know what's done and what's next.
     `SaveManager.addTokenToInventory()` when called in a tight loop (surfaced
     by the dev "add one of each token" button), and broken `.rarity-*` CSS
     selectors that meant zero rarity styling had ever rendered on any token.
-- **NEXT: Patch 35** (Track G, `[MODEL: OPUS]`). Confirmed 2026-07-26 with the
-  user that the "separate effort" on per-floor/biome visual differentiation
-  referenced in CLAUDE.md is NOT active elsewhere — Track G is clear to
-  proceed. CLAUDE.md's note about that has been updated accordingly.
+- **Patch 35 DONE** (2026-07-26). Confirmed with the user that the "separate
+  effort" on per-floor/biome visual differentiation referenced in CLAUDE.md is
+  NOT active elsewhere, so Track G was cleared to proceed; CLAUDE.md's note
+  was updated accordingly.
+  - Required a small **out-of-declared-scope** edit: `test_bosses.js` and
+    `test_content.js` mock a 2D context by hand and were missing `rotate`,
+    which `HubWorld.generateFloor` now calls. Both suites crashed until
+    `rotate: () => {}` was added to each mock. Additive, one word per file.
+    Flagging because the patch's declared scope was Renderer.js + HubWorld.js.
+- **NEXT: Patch 36** — Lighting & atmosphere pass, `[MODEL: OPUS]`.
 - **NOT STARTED:** 36, 37, 38, 39, 40, 41.
 
 Also added since v2 was written, outside the numbered queue (ad hoc dev
@@ -599,11 +605,11 @@ Confirm the other effort is not still live, then update that CLAUDE.md line.
 **Confirmed with the user 2026-07-26: no other effort is live. CLAUDE.md
 updated. Cleared to proceed.**
 
-### Patch 35 — Per-floor biome identity  `[MODEL: OPUS]`  ⬅ NEXT (awaiting model switch)
+### Patch 35 — Per-floor biome identity  `[MODEL: OPUS]`  ✅ DONE
 Files: `src/core/Renderer.js` (`generateFloorPatterns`), `src/systems/HubWorld.js`
 Keep: the offscreen-cache pattern; regenerate on floor change only.
 
-### Patch 36 — Lighting & atmosphere pass  `[MODEL: OPUS]`
+### Patch 36 — Lighting & atmosphere pass  `[MODEL: OPUS]`  ⬅ NEXT
 Files: `src/core/Renderer.js` (`lightCanvas` pipeline, fog clouds)
 Keep: **the `globalCompositeOperation` reset rule** — highest-risk section in
 the codebase for invisible-player bugs.

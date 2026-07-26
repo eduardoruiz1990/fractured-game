@@ -34,7 +34,7 @@ global.document = {
             ellipse: () => {}, fill: () => {}, createPattern: () => {}, createImageData: () => ({ data: [] }),
             putImageData: () => {}, createRadialGradient: () => ({ addColorStop: () => {} }),
             createLinearGradient: () => ({ addColorStop: () => {} }), arc: () => {},
-            translate: () => {}, scale: () => {}, restore: () => {}, save: () => {},
+            translate: () => {}, scale: () => {}, rotate: () => {}, restore: () => {}, save: () => {},
             clip: () => {}, rect: () => {}, closePath: () => {}
         })
     })
