@@ -263,8 +263,17 @@ export class SaveManager {
         this.saveGame();
     }
 
+    // uid was previously Date.now() + a 0-999 random suffix — fine for one drop at
+    // a time in real play, but a real collision risk for any caller invoking this
+    // in a tight loop (e.g. a dev tool granting several tokens at once): with ~16
+    // calls sharing the same millisecond and only 1000 random buckets, the
+    // birthday-paradox collision chance is real, not theoretical, and a uid
+    // collision corrupts equip/inventory lookups (two items answering to the same
+    // id). An always-incrementing counter makes every uid unique regardless of
+    // call frequency, with no behavior change for the normal one-at-a-time case.
     addTokenToInventory(tokenId, rarity) {
-        const uid = `token_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        this._tokenUidCounter = (this._tokenUidCounter || 0) + 1;
+        const uid = `token_${Date.now()}_${this._tokenUidCounter}`;
         this.metaState.inventory.push({ uid: uid, id: tokenId, rarity: rarity, level: 1 });
         this.saveGame();
     }

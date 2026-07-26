@@ -7,6 +7,56 @@ import { SynapseTree } from './SynapseTree.js';
 // hardcoded if/else, so this order must be kept in sync with it by hand.
 const RARITY_UPGRADE_ORDER = ['common', 'rare', 'epic', 'legendary', 'mythic'];
 
+// Patch 33: human-readable line per resolver stat key. Mirrors the exact
+// vocabulary SaveManager.getResolvedTokenEffects() reads (see Patch 31/31b) —
+// adding a stat there without a label here just means the hover preview silently
+// skips it, never throws.
+const TOKEN_EFFECT_LABELS = {
+    sanity: v => `${v > 0 ? '+' : ''}${v} Max Grip`,
+    speed: v => `${v > 0 ? '+' : ''}${v}% Move Speed`,
+    light: v => `${v > 0 ? '+' : ''}${v}% Flashlight Range`,
+    magnet: v => `${v > 0 ? '+' : ''}${v}px Vacuum Radius`,
+    iframes: v => `${v > 0 ? '+' : ''}${v}f Invulnerability`,
+    flashlightAngle: v => `${v > 0 ? '+' : ''}${v}% Cone Angle`,
+    lucidityGain: v => `${v > 0 ? '+' : ''}${v}% Lucidity Gain`,
+    dashCooldown: v => `${v > 0 ? '+' : ''}${v}f Dash Cooldown`,
+    dashDuration: v => `${v > 0 ? '+' : ''}${v}f Dash Duration`
+};
+
+// Grant strings aren't numeric, so they get their own short human phrase instead
+// of running through TOKEN_EFFECT_LABELS' +/- formatting.
+const TOKEN_GRANT_LABELS = {
+    denial_shield: 'Shield ignores 1st hit per floor',
+    panic_dash: 'Dash: faster recharge, shorter range',
+    twitch_cooldown: 'Cooldowns shrink as Grip drops',
+    insomniac_burn_zone: '(Insomniac 4pc) Outer burn zone',
+    shockwave_no_dash: '(Institutionalized 4pc) Hit shockwave, no dash',
+    medicated_mitigation: '(Medicated 2pc) Damage taken -20%'
+};
+
+// Patch 33: formats a token's OWN effects at its CURRENT rarity — positive
+// numeric effects scaled by TOKEN_RARITIES.multiplier, exactly matching how
+// SaveManager.getResolvedTokenEffects() actually resolves them (Patch 31b), so
+// this preview can't drift from what equipping the token really does.
+function formatTokenEffects(tokenData, rarity) {
+    const mult = (TOKEN_RARITIES[rarity] && TOKEN_RARITIES[rarity].multiplier) || 1.0;
+    const lines = [];
+    for (const [key, value] of Object.entries(tokenData.effects || {})) {
+        if (key === 'grant') {
+            lines.push(TOKEN_GRANT_LABELS[value] || value);
+        } else if (key === 'tagDamage') {
+            for (const [tag, amt] of Object.entries(value)) {
+                const scaled = amt > 0 ? Math.round(amt * mult) : amt;
+                lines.push(`${scaled > 0 ? '+' : ''}${scaled}% ${tag} damage`);
+            }
+        } else if (TOKEN_EFFECT_LABELS[key]) {
+            const scaled = value > 0 ? Math.round(value * mult) : value;
+            lines.push(TOKEN_EFFECT_LABELS[key](scaled));
+        }
+    }
+    return lines;
+}
+
 export class UIManager {
     constructor(saveManager, audioEngine, onStartGameCallback) {
         this.saveManager = saveManager;
@@ -502,9 +552,49 @@ export class UIManager {
         }).join('');
     }
 
+    // Patch 33: shared drag-SOURCE wiring for both an inventory tile and an
+    // equipped slot. tokenType marks compatibility (readable during dragover via
+    // e.dataTransfer.types, before the payload itself is readable — the standard
+    // way to validate a drop target ahead of the actual drop). sourceSlotType is
+    // only set for a drag that started on an EQUIPPED slot, so a drop onto the
+    // inventory grid knows to unequip rather than no-op.
+    attachDragSource(el, invItem, tokenType, sourceSlotType = null) {
+        el.draggable = true;
+        el.ondragstart = (e) => {
+            e.dataTransfer.setData('text/plain', invItem.uid);
+            e.dataTransfer.setData(`token-type/${tokenType}`, invItem.uid);
+            if (sourceSlotType) e.dataTransfer.setData(`source-slot/${sourceSlotType}`, invItem.uid);
+            e.dataTransfer.effectAllowed = 'move';
+            el.classList.add('dragging');
+        };
+        el.ondragend = () => el.classList.remove('dragging');
+    }
+
+    // Patch 33: drop target for a single equipment slot. Accepts only a drag whose
+    // token-type marker matches this slot — dragging a head token onto the legs
+    // slot is rejected the same way the click path already guarantees it (equipToken
+    // is always called with the TOKEN's own type, never a mismatched target).
+    attachSlotDropTarget(slotEl, slotType) {
+        const isCompatible = (e) => e.dataTransfer.types.includes(`token-type/${slotType}`);
+        slotEl.ondragover = (e) => {
+            if (!isCompatible(e)) return; // no preventDefault => browser shows "not allowed"
+            e.preventDefault();
+            slotEl.classList.add('drag-target-valid');
+        };
+        slotEl.ondragleave = () => slotEl.classList.remove('drag-target-valid');
+        slotEl.ondrop = (e) => {
+            if (!isCompatible(e)) return;
+            e.preventDefault();
+            const uid = e.dataTransfer.getData('text/plain');
+            this.saveManager.equipToken(uid, slotType);
+            if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade');
+            this.renderLoadoutUI();
+        };
+    }
+
     renderLoadoutUI() {
         const meta = this.saveManager.metaState;
-        
+
         // Patch 31: driven by TOKEN_SLOT_TYPES rather than a hardcoded 4-slot literal,
         // so the new 'prescription' slot needs no change here and a 6th never would.
         TOKEN_SLOT_TYPES.forEach(slotType => {
@@ -513,6 +603,7 @@ export class UIManager {
             const equippedUid = meta.equippedTokens[slotType];
 
             slotEl.className = 'token-slot';
+            this.attachSlotDropTarget(slotEl, slotType); // every slot accepts drops, filled or not
 
             if (equippedUid) {
                 const invItem = meta.inventory.find(i => i.uid === equippedUid);
@@ -522,26 +613,47 @@ export class UIManager {
                     slotEl.classList.add('filled');
                     slotEl.classList.add(`rarity-${invItem.rarity}`);
                     slotEl.onclick = () => this.selectEquippedSlot(slotType, invItem);
+                    // Patch 33: drag an equipped item back out to unequip (drop
+                    // target is the inventory grid, wired below), or straight onto
+                    // a different slot's own drop target — pointless in practice
+                    // (only one slot per type exists) but harmless either way.
+                    this.attachDragSource(slotEl, invItem, tokenData.type, slotType);
                 }
             } else {
                 slotEl.innerHTML = `${slotType.toUpperCase()}<br>Empty`;
                 slotEl.onclick = null;
+                slotEl.draggable = false;
+                slotEl.ondragstart = null;
             }
         });
 
         this.renderSetProgress();
 
         this.inventoryGrid.innerHTML = '';
+        // Patch 33: dropping an equipped item's drag here unequips it — the click
+        // fallback for the same action is btn-unequip-item, unchanged below.
+        this.inventoryGrid.ondragover = (e) => {
+            if (!e.dataTransfer.types.some(t => t.startsWith('source-slot/'))) return;
+            e.preventDefault();
+        };
+        this.inventoryGrid.ondrop = (e) => {
+            const sourceType = e.dataTransfer.types.find(t => t.startsWith('source-slot/'));
+            if (!sourceType) return;
+            e.preventDefault();
+            this.saveManager.unequipToken(sourceType.replace('source-slot/', ''));
+            this.renderLoadoutUI();
+        };
+
         meta.inventory.forEach(invItem => {
             const isEquipped = Object.values(meta.equippedTokens).includes(invItem.uid);
             if (isEquipped) return;
 
             const tokenData = TOKENS[invItem.id];
-            if (!tokenData) return; 
+            if (!tokenData) return;
 
             const el = document.createElement('div');
             el.className = `inventory-item filled rarity-${invItem.rarity}`;
-            
+
             // 💊 is the prescription slot's icon and also the pre-existing fallback,
             // so the new slot type needs no extra branch here.
             let icon = '💊';
@@ -550,8 +662,15 @@ export class UIManager {
             else if (tokenData.type === 'hands') icon = '🧤';
             else if (tokenData.type === 'legs') icon = '🥾';
 
-            el.innerHTML = `<div style="font-size:1.5rem;">${icon}</div><div>${tokenData.name}</div>`;
+            // Patch 33: hover stat-delta. Pure CSS reveal (see .item-tooltip in
+            // style.css) — populated once here, no hover JS needed.
+            const rarityLabel = invItem.rarity.charAt(0).toUpperCase() + invItem.rarity.slice(1);
+            const effectLines = formatTokenEffects(tokenData, invItem.rarity);
+            const tooltipText = [`${rarityLabel} — ${tokenData.name}`, ...effectLines].join('\n');
+
+            el.innerHTML = `<div style="font-size:1.5rem;">${icon}</div><div>${tokenData.name}</div><div class="item-tooltip">${tooltipText}</div>`;
             el.onclick = () => this.selectInventoryItem(invItem, tokenData);
+            this.attachDragSource(el, invItem, tokenData.type);
             this.inventoryGrid.appendChild(el);
         });
 
@@ -576,17 +695,19 @@ export class UIManager {
         
         this.detailDesc.innerText = tokenData.desc;
 
-        // Value-delta (Patch 27): rarity is the only field upgradeToken() actually
-        // changes today. TOKEN_RARITIES.multiplier and the token's own .level are
-        // not read by any gameplay system (Game.js/Combat.js) — grep confirms it —
-        // so this deliberately shows the rarity-tier change rather than inventing a
-        // stat number that would misrepresent what forging currently does.
+        // Value-delta (Patch 27, corrected Patch 33): the original comment here said
+        // TOKEN_RARITIES.multiplier was dead data, which was true when it was
+        // written — Patch 31b made it real (positive token effects scale with it),
+        // so forging now has an actual, showable numeric delta instead of just a
+        // tier-name change. Uses the SAME formatTokenEffects() the hover tooltip
+        // uses, so this can't drift from what the tooltip (or an equip) shows.
         const rarityIdx = RARITY_UPGRADE_ORDER.indexOf(invItem.rarity);
         const nextRarity = (rarityIdx >= 0 && rarityIdx < RARITY_UPGRADE_ORDER.length - 1)
             ? RARITY_UPGRADE_ORDER[rarityIdx + 1] : null;
+        const currentEffects = formatTokenEffects(tokenData, invItem.rarity).join(', ') || '(no numeric effect)';
         const rarityDeltaLine = nextRarity
-            ? `Forge: ${invItem.rarity} → ${nextRarity}`
-            : `Rarity: ${invItem.rarity} (MAXED)`;
+            ? `Forge: ${invItem.rarity} → ${nextRarity}\nNow: ${currentEffects}\nNext: ${formatTokenEffects(tokenData, nextRarity).join(', ')}`
+            : `Rarity: ${invItem.rarity} (MAXED)\n${currentEffects}`;
 
         this.detailSet.innerText = `Set: ${setData.name} | (2) ${setData['2']} | (4) ${setData['4']}\n${rarityDeltaLine}\n\n[CLICK PRESCRIBE TO EQUIP]`;
 
@@ -621,10 +742,13 @@ export class UIManager {
         this.detailName.style.color = rarityData.color;
         
         this.detailDesc.innerText = tokenData.desc;
-        this.detailSet.innerText = `Set: ${setData.name} | (2) ${setData['2']} | (4) ${setData['4']}`;
+        // Patch 33: same effect formatter as the inventory hover tooltip and the
+        // forge preview above, so all three surfaces agree with each other.
+        const currentEffects = formatTokenEffects(tokenData, invItem.rarity).join(', ') || '(no numeric effect)';
+        this.detailSet.innerText = `Set: ${setData.name} | (2) ${setData['2']} | (4) ${setData['4']}\nActive: ${currentEffects}`;
 
         this.btnEquipItem.style.display = 'none';
         this.btnUnequipItem.style.display = 'block';
-        this.btnUpgradeItem.style.display = 'none'; 
+        this.btnUpgradeItem.style.display = 'none';
     }
 }

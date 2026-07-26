@@ -6,7 +6,7 @@ import { Renderer } from './core/Renderer.js';
 import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
-import { TOKENS, SYNERGIES, getActiveSynergies } from './data/Manifestations.js';
+import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies } from './data/Manifestations.js';
 
 console.log("FRACTURED Engine Bootstrapping...");
 
@@ -126,6 +126,11 @@ function initEngine() {
                 <button id="dev-btn-force-boss-kill" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE UNLOCK: FIRST BOSS KILL</button>
                 <button id="dev-btn-dump-builds" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">DUMP BUILD LOG (CONSOLE)</button>
             </div>
+            <div style="margin-top:10px; border-top:1px solid #333; padding-top:8px; display:flex; flex-direction:column; gap:4px;">
+                LOADOUT TESTING (Patch 33)
+                <button id="dev-btn-add-one-of-each-token" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">ADD ONE OF EACH TOKEN (16)</button>
+                <button id="dev-btn-add-random-token" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">ADD RANDOM TOKEN (RANDOM RARITY)</button>
+            </div>
             <div style="margin-top:10px; border-top:1px solid #333; padding-top:8px;">
                 VISUAL TEST BENCH (in-run)
                 <label for="dev-freeze-entities" style="display:block; margin-top:6px; cursor:pointer; user-select:none;">
@@ -193,6 +198,33 @@ function initEngine() {
                 curses: entry.curses.join(', '),
                 tokens: entry.tokens.join(', ')
             })));
+        });
+
+        // DEV: loadout testing (Patch 33 follow-up). Reuses addTokenToInventory()
+        // exactly as a real drop would (Combat.js's spawnTokenDrop path) — no
+        // separate dev-only insertion logic to keep in sync with the real one.
+        // Calls uiManager.renderLoadoutUI() directly afterward since neither
+        // button naturally triggers a re-render otherwise (same gap the existing
+        // +1000 LUCIDITY etc. buttons already have — only fixed here because an
+        // inventory tool that doesn't visibly update the grid isn't useful for
+        // what it's for).
+        document.getElementById('dev-btn-add-one-of-each-token').addEventListener('click', () => {
+            const rarities = Object.keys(TOKEN_RARITIES);
+            Object.keys(TOKENS).forEach(tokenId => {
+                saveManager.addTokenToInventory(tokenId, rarities[Math.floor(Math.random() * rarities.length)]);
+            });
+            if (uiManager) uiManager.renderLoadoutUI();
+            console.log(`%c DEV: added all ${Object.keys(TOKENS).length} tokens to inventory (random rarity each). `, 'background: #c5a059; color: #000; font-weight: bold;');
+        });
+
+        document.getElementById('dev-btn-add-random-token').addEventListener('click', () => {
+            const tokenIds = Object.keys(TOKENS);
+            const rarities = Object.keys(TOKEN_RARITIES);
+            const tokenId = tokenIds[Math.floor(Math.random() * tokenIds.length)];
+            const rarity = rarities[Math.floor(Math.random() * rarities.length)];
+            saveManager.addTokenToInventory(tokenId, rarity);
+            if (uiManager) uiManager.renderLoadoutUI();
+            console.log(`%c DEV: added ${rarity} ${TOKENS[tokenId].name}. `, 'background: #c5a059; color: #000; font-weight: bold;');
         });
 
         // --- VISUAL TEST BENCH -------------------------------------------------
