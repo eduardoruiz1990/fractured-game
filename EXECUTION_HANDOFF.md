@@ -40,8 +40,12 @@ anything else**, to know what's done and what's next.
     which `HubWorld.generateFloor` now calls. Both suites crashed until
     `rotate: () => {}` was added to each mock. Additive, one word per file.
     Flagging because the patch's declared scope was Renderer.js + HubWorld.js.
-- **NEXT: Patch 36** — Lighting & atmosphere pass, `[MODEL: OPUS]`.
-- **NOT STARTED:** 36, 37, 38, 39, 40, 41.
+- **Patch 36 DONE** (2026-07-26). Per-floor atmosphere (`getAtmosphere`),
+  soft-edged flashlight penumbra, fog depth/tint. Also fixed a dead branch in
+  `drawFog` where the `hitStop` check had two identical bodies, so fog never
+  froze on impact pauses like every other system does.
+- **NEXT: Patch 37** — Menu/DOM visual pass, `[MODEL: OPUS]`.
+- **NOT STARTED:** 37, 38, 39, 40, 41.
 
 Also added since v2 was written, outside the numbered queue (ad hoc dev
 tooling, at the user's request): two dev-panel buttons in `src/main.js`
@@ -609,12 +613,12 @@ updated. Cleared to proceed.**
 Files: `src/core/Renderer.js` (`generateFloorPatterns`), `src/systems/HubWorld.js`
 Keep: the offscreen-cache pattern; regenerate on floor change only.
 
-### Patch 36 — Lighting & atmosphere pass  `[MODEL: OPUS]`  ⬅ NEXT
+### Patch 36 — Lighting & atmosphere pass  `[MODEL: OPUS]`  ✅ DONE
 Files: `src/core/Renderer.js` (`lightCanvas` pipeline, fog clouds)
 Keep: **the `globalCompositeOperation` reset rule** — highest-risk section in
 the codebase for invisible-player bugs.
 
-### Patch 37 — Menu/DOM visual pass  `[MODEL: OPUS]`
+### Patch 37 — Menu/DOM visual pass  `[MODEL: OPUS]`  ⬅ NEXT
 Files: `index.html`, `src/style.css`
 Keep: `.medical-folder`, `.blood-drop`, `.patient-stamp`, `.typewriter-text`.
 

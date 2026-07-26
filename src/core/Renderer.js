@@ -430,10 +430,35 @@ export class Renderer {
                 y: Math.random() * 2000,
                 r: 150 + Math.random() * 300,
                 vx: (Math.random() - 0.5) * 1.5,
-                vy: (Math.random() - 0.5) * 1.5
+                vy: (Math.random() - 0.5) * 1.5,
+                // Patch 36: per-cloud density and drift phase. Every cloud
+                // previously rendered at one flat shared alpha, so the bank read
+                // as a single uniform sheet with no depth to it.
+                density: 0.35 + Math.random() * 0.65,
+                phase: Math.random() * Math.PI * 2,
+                driftRate: 0.004 + Math.random() * 0.01
             });
         }
         return clouds;
+    }
+
+    // Patch 36: atmosphere is per-floor, matching the biome identities Patch 35
+    // gave the ground. Before this, darkness was a single flat '#010102' and fog
+    // a single grey-blue on every floor — which flattened those biomes straight
+    // back out the moment the lighting mask went down, since the mask covers far
+    // more screen area than the floor texture ever shows through.
+    //
+    // Floor 2 deliberately keeps the original values: the Divide is the stark
+    // grayscale floor, so "no tint" IS its identity.
+    getAtmosphere(floor) {
+        const f = Math.max(1, Math.min(floor || 1, 5));
+        return [
+            { dark: '#0a0704', fog: '190, 172, 150', haze: 0.50 }, // 1 Wastes: warm dust
+            { dark: '#010102', fog: '200, 210, 220', haze: 0.50 }, // 2 Divide: unchanged
+            { dark: '#0b0202', fog: '215, 165, 165', haze: 0.55 }, // 3 Panopticon: blood haze
+            { dark: '#020803', fog: '170, 205, 175', haze: 0.58 }, // 4 Amalgamation: spore bloom
+            { dark: '#000000', fog: '205, 190, 150', haze: 0.42 }  // 5 Architect: gold dust, true black
+        ][f - 1];
     }
 
     drawMenuBackground(time, gameState) {
@@ -843,11 +868,23 @@ export class Renderer {
     }
 
     drawFog(state) {
-        this.ctx.globalAlpha = 0.5;
+        const atmo = this.getAtmosphere(state.floor);
+        // Patch 36: the original read
+        //     if (state.hitStop > 0) { cloud.x += cloud.vx; ... }
+        //     else                   { cloud.x += cloud.vx; ... }
+        // — two IDENTICAL bodies, so the hitStop branch did nothing whatsoever.
+        // Every other system freezes during hitStop (that pause is the whole
+        // point of the impact feel), so the fog now actually holds with them.
+        const frozen = state.hitStop > 0;
+
+        this.ctx.globalAlpha = atmo.haze;
         this.fogClouds.forEach(cloud => {
-            if(state.hitStop > 0) { cloud.x += cloud.vx; cloud.y += cloud.vy; }
-            else { cloud.x += cloud.vx; cloud.y += cloud.vy; }
-            
+            if (!frozen) {
+                cloud.x += cloud.vx;
+                cloud.y += cloud.vy;
+                cloud.phase = (cloud.phase || 0) + (cloud.driftRate || 0.006);
+            }
+
             let dx = (cloud.x - state.player.x) % 2000;
             if (dx < -1000) dx += 2000; else if (dx > 1000) dx -= 2000;
             let dy = (cloud.y - state.player.y) % 2000;
@@ -855,12 +892,21 @@ export class Renderer {
             let drawX = state.player.x + dx;
             let drawY = state.player.y + dy;
 
-            const fGrad = this.ctx.createRadialGradient(drawX, drawY, 0, drawX, drawY, cloud.r);
-            fGrad.addColorStop(0, 'rgba(200, 210, 220, 0.5)');
-            fGrad.addColorStop(1, 'rgba(200, 210, 220, 0)');
+            // Slow breathing so a stationary bank never looks like a decal.
+            // Fallbacks keep NaN out of createRadialGradient/arc per the golden
+            // rule, in case a cloud predates these fields.
+            const breathe = 1 + Math.sin(cloud.phase || 0) * 0.12;
+            const r = cloud.r * breathe;
+            const core = (cloud.density || 0.5) * 0.5;
+            if (!Number.isFinite(r) || r <= 0) return;
+
+            const fGrad = this.ctx.createRadialGradient(drawX, drawY, 0, drawX, drawY, r);
+            fGrad.addColorStop(0, `rgba(${atmo.fog}, ${core})`);
+            fGrad.addColorStop(0.55, `rgba(${atmo.fog}, ${core * 0.4})`);
+            fGrad.addColorStop(1, `rgba(${atmo.fog}, 0)`);
             this.ctx.fillStyle = fGrad;
             this.ctx.beginPath();
-            this.ctx.arc(drawX, drawY, cloud.r, 0, Math.PI * 2);
+            this.ctx.arc(drawX, drawY, r, 0, Math.PI * 2);
             this.ctx.fill();
         });
         this.ctx.globalAlpha = 1.0;
@@ -880,7 +926,9 @@ export class Renderer {
         this.lightCtx.translate(-state.player.x, -state.player.y);
         if (state.cameraShake > 0) this.lightCtx.translate(curShakeX, curShakeY);
 
-        this.lightCtx.fillStyle = '#010102';
+        // Patch 36: per-floor darkness (see getAtmosphere) rather than one flat
+        // near-black everywhere.
+        this.lightCtx.fillStyle = this.getAtmosphere(state.floor).dark;
         this.lightCtx.fillRect(state.player.x - 3000, state.player.y - 3000, 6000, 6000);
 
         this.lightCtx.globalCompositeOperation = 'destination-out';
@@ -947,19 +995,58 @@ export class Renderer {
             this.lightCtx.fill();
         }
 
-        const flHole = this.lightCtx.createRadialGradient(state.player.x, state.player.y, 10, state.player.x, state.player.y, flRadius);
-        flHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        flHole.addColorStop(0.8, 'rgba(255, 255, 255, 0.9)'); 
-        flHole.addColorStop(1, 'rgba(255, 255, 255, 0)');     
-        
-        this.lightCtx.fillStyle = flHole;
-        this.lightCtx.beginPath();
-        this.lightCtx.moveTo(state.player.x, state.player.y);
-        this.lightCtx.arc(state.player.x, state.player.y, flRadius, state.player.angle - currentAngle + jitter, state.player.angle + currentAngle + jitter);
-        this.lightCtx.closePath();
-        this.lightCtx.fill();
+        // Patch 36 — SOFT CONE EDGE. The cone was a single hard-edged wedge:
+        // it had radial falloff along its length, but perfectly sharp scissor
+        // cuts down both sides, which was the most artificial thing on screen.
+        //
+        // This is a destination-out mask, so overlapping punches compound
+        // multiplicatively (remaining = product of (1 - alpha)). Drawing a few
+        // progressively narrower, progressively stronger wedges therefore
+        // clears the core completely while the outermost angles are only ever
+        // partially cleared — an angular gradient the Canvas API cannot express
+        // directly. Widest step is only 30% strength, so the cone reads as
+        // having a penumbra rather than as being wider.
+        const PENUMBRA_STEPS = 4;
+        // Subtle bulb instability, separate from the low-sanity `jitter` above.
+        // Deliberately tiny — a failing fluorescent, not a strobe.
+        const flicker = 1 + Math.sin(this.renderFrame * 0.31) * 0.012
+                          + Math.sin(this.renderFrame * 0.11) * 0.018;
 
-        this.lightCtx.restore(); 
+        for (let i = 0; i < PENUMBRA_STEPS; i++) {
+            const t = i / (PENUMBRA_STEPS - 1);        // 0 = widest & faintest
+            const spread = currentAngle * (1.18 - t * 0.36);
+            const strength = 0.30 + t * 0.70;
+            const reach = flRadius * flicker * (0.94 + t * 0.06);
+            if (!Number.isFinite(spread) || !Number.isFinite(reach) || reach <= 0) continue;
+
+            const flHole = this.lightCtx.createRadialGradient(
+                state.player.x, state.player.y, 10,
+                state.player.x, state.player.y, reach
+            );
+            flHole.addColorStop(0, `rgba(255, 255, 255, ${strength})`);
+            flHole.addColorStop(0.8, `rgba(255, 255, 255, ${strength * 0.9})`);
+            flHole.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+            this.lightCtx.fillStyle = flHole;
+            this.lightCtx.beginPath();
+            this.lightCtx.moveTo(state.player.x, state.player.y);
+            this.lightCtx.arc(
+                state.player.x, state.player.y, reach,
+                state.player.angle - spread + jitter,
+                state.player.angle + spread + jitter
+            );
+            this.lightCtx.closePath();
+            this.lightCtx.fill();
+        }
+
+        this.lightCtx.restore();
+        // KEEP (Patch 36): restore() already reverts globalCompositeOperation,
+        // so this is redundant today — but this function is the codebase's
+        // single highest-risk site for invisible-player bugs, and the reset is
+        // made explicit so that if the save/restore pair above is ever
+        // refactored away, 'destination-out' cannot silently leak onto the next
+        // frame's draws.
+        this.lightCtx.globalCompositeOperation = 'source-over';
 
         this.ctx.save();
         this.ctx.setTransform(1, 0, 0, 1, 0, 0); 
