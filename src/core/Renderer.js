@@ -2316,55 +2316,79 @@ export class Renderer {
                         this.ctx.rotate(Math.atan2(ent.vy, ent.vx)); 
                     }
                     
-                    this.ctx.fillStyle = isFlashed ? '#ddaaaa' : (ent.buffed ? '#3a0a0a' : '#111111');
-                    this.ctx.beginPath();
+                    // Patch 41 (12b): body cached to an offscreen sprite, following the
+                    // exact SCAVENGER recipe (Patch 12) — quantise the animating
+                    // parameters into buckets so per-entity phase desync survives
+                    // caching instead of collapsing every predator onto one shared
+                    // bitmap. There are TWO independent pulse terms here (top/bottom
+                    // edges use different entPulse offsets and diverge over time), so
+                    // BOTH are bucketed and BOTH are in the key — the Patch 11 warning
+                    // is explicit that a cache key missing an input renders stale
+                    // forever, not just "slightly wrong".
+                    // Left OUT of the cache, kept live: the eye (glow + dot) below,
+                    // for the same reason Scavenger's sweeping arm stays live — it
+                    // reflects attackState (telegraphing/buffed) independently of body
+                    // shape, and folding that in would multiply the key space for a
+                    // cheap two-draw element that isn't worth caching.
+                    const lunging = ent.attackState === 'lunging';
+                    let stretch = lunging ? 5 : 0;
+                    let pulseA = Math.round(this.entPulse(ent, 0.2) * 2 * 2) / 2;
+                    let pulseB = Math.round(this.entPulse(ent, 0.2, Math.PI/2) * 2 * 2) / 2;
+                    const predColor = isFlashed ? '#ddaaaa' : (ent.buffed ? '#3a0a0a' : '#111111');
 
-                    let stretch = ent.attackState === 'lunging' ? 5 : 0;
+                    const predSprite = this.getSprite(
+                        `pred|${isFlashed ? 1 : 0}|${ent.buffed ? 1 : 0}|${lunging ? 1 : 0}|${pulseA}|${pulseB}`, 64, 64,
+                        (cx) => {
+                            cx.fillStyle = predColor;
+                            cx.beginPath();
 
-                    // Low, elongated body: pointed snout forward, long low belly,
-                    // tapering tail behind. Kept flatter (smaller y-extent) than the
-                    // old hexagon so it reads as ground-hugging rather than round.
-                    this.ctx.moveTo(20 + stretch, 0);
-                    this.ctx.lineTo(9, 5 + this.entPulse(ent, 0.2)*2);
-                    this.ctx.lineTo(-11 - stretch, 5);
-                    this.ctx.lineTo(-23 - stretch, 0);
-                    this.ctx.lineTo(-11 - stretch, -5);
-                    this.ctx.lineTo(9, -5 - this.entPulse(ent, 0.2, Math.PI/2)*2);
-                    this.ctx.closePath();
-                    this.ctx.fill();
+                            // Low, elongated body: pointed snout forward, long low belly,
+                            // tapering tail behind. Kept flatter (smaller y-extent) than the
+                            // old hexagon so it reads as ground-hugging rather than round.
+                            cx.moveTo(20 + stretch, 0);
+                            cx.lineTo(9, 5 + pulseA);
+                            cx.lineTo(-11 - stretch, 5);
+                            cx.lineTo(-23 - stretch, 0);
+                            cx.lineTo(-11 - stretch, -5);
+                            cx.lineTo(9, -5 - pulseB);
+                            cx.closePath();
+                            cx.fill();
 
-                    // Jagged spine: serrated ridge along the top edge, tail to shoulders.
-                    this.ctx.beginPath();
-                    let spineStartX = -20 - stretch;
-                    let spineEndX = 8;
-                    let spikes = 5;
-                    this.ctx.moveTo(spineStartX, -4);
-                    for (let i = 1; i <= spikes; i++) {
-                        let t = i / spikes;
-                        let x = spineStartX + (spineEndX - spineStartX) * t;
-                        let spikeH = (i % 2 === 0) ? -12 : -6;
-                        this.ctx.lineTo(x, spikeH);
-                    }
-                    this.ctx.lineTo(spineEndX, -4);
-                    this.ctx.closePath();
-                    this.ctx.fill();
+                            // Jagged spine: serrated ridge along the top edge, tail to shoulders.
+                            cx.beginPath();
+                            let spineStartX = -20 - stretch;
+                            let spineEndX = 8;
+                            let spikes = 5;
+                            cx.moveTo(spineStartX, -4);
+                            for (let i = 1; i <= spikes; i++) {
+                                let t = i / spikes;
+                                let x = spineStartX + (spineEndX - spineStartX) * t;
+                                let spikeH = (i % 2 === 0) ? -12 : -6;
+                                cx.lineTo(x, spikeH);
+                            }
+                            cx.lineTo(spineEndX, -4);
+                            cx.closePath();
+                            cx.fill();
 
-                    this.ctx.strokeStyle = this.ctx.fillStyle;
-                    this.ctx.lineWidth = 2;
-                    this.ctx.beginPath();
+                            cx.strokeStyle = predColor;
+                            cx.lineWidth = 2;
+                            cx.beginPath();
 
-                    if (ent.attackState === 'lunging') {
-                        this.ctx.moveTo(-2, 5);
-                        this.ctx.lineTo(-22, 9);
-                        this.ctx.moveTo(-2, -5);
-                        this.ctx.lineTo(-22, -9);
-                    } else {
-                        this.ctx.moveTo(-2, 5);
-                        this.ctx.quadraticCurveTo(8, 13, 12, 4);
-                        this.ctx.moveTo(-2, -5);
-                        this.ctx.quadraticCurveTo(8, -13, 12, -4);
-                    }
-                    this.ctx.stroke();
+                            if (lunging) {
+                                cx.moveTo(-2, 5);
+                                cx.lineTo(-22, 9);
+                                cx.moveTo(-2, -5);
+                                cx.lineTo(-22, -9);
+                            } else {
+                                cx.moveTo(-2, 5);
+                                cx.quadraticCurveTo(8, 13, 12, 4);
+                                cx.moveTo(-2, -5);
+                                cx.quadraticCurveTo(8, -13, 12, -4);
+                            }
+                            cx.stroke();
+                        }
+                    );
+                    this.drawSprite(predSprite);
 
                     const predGlowAmt = (ent.attackState === 'telegraphing') ? 20 : 10;
                     const predEyeColor = (ent.attackState === 'telegraphing') ? '#ff3333' : (ent.buffed ? '#ff0000' : '#cc0000');
@@ -2436,18 +2460,38 @@ export class Renderer {
 
                     // Small core: faint faux-glow behind a compact body and dark nucleus,
                     // drawn after the tendrils so it stays the visual focal point.
+                    //
+                    // Patch 41 (12b): the two fills below ARE cached (same quantised-bucket
+                    // recipe as Scavenger/Predator above) — they depend only on
+                    // (isFlashed, pulse), both deterministic per frame. The 8 tendrils
+                    // above are deliberately left OUT of caching and OUT of this key:
+                    // they call raw Math.random() every frame (`length = 10 +
+                    // Math.random()*4`), which is what gives the parasite its organic
+                    // wriggle. Math.random() cannot be bucketed into a cache key — baking
+                    // it into a cached sprite would freeze that jitter into one static
+                    // shape per bucket, trading a real animated detail for a cache hit.
+                    // drawGlow() is also left live and outside this cache, unchanged from
+                    // before — it already does its own (color, alpha) caching, and
+                    // composing it into this sprite would just double-cache the same glow.
                     const paraGlowAmt = 6 + pulse;
                     this.drawGlow(0, 0, 5 + paraGlowAmt, isFlashed ? '#ffcccc' : '#6b2222', 0.4);
 
-                    this.ctx.fillStyle = isFlashed ? '#ffcccc' : '#6b2222';
-                    this.ctx.beginPath();
-                    this.ctx.arc(0, 0, 5 + pulse, 0, Math.PI*2);
-                    this.ctx.fill();
+                    let pulseQ = Math.round(pulse * 2) / 2;
+                    const paraSprite = this.getSprite(
+                        `para|${isFlashed ? 1 : 0}|${pulseQ}`, 24, 24,
+                        (cx) => {
+                            cx.fillStyle = isFlashed ? '#ffcccc' : '#6b2222';
+                            cx.beginPath();
+                            cx.arc(0, 0, 5 + pulseQ, 0, Math.PI*2);
+                            cx.fill();
 
-                    this.ctx.fillStyle = '#050505';
-                    this.ctx.beginPath();
-                    this.ctx.arc(0, 0, 2 + pulse*0.5, 0, Math.PI*2);
-                    this.ctx.fill();
+                            cx.fillStyle = '#050505';
+                            cx.beginPath();
+                            cx.arc(0, 0, 2 + pulseQ*0.5, 0, Math.PI*2);
+                            cx.fill();
+                        }
+                    );
+                    this.drawSprite(paraSprite);
 
                     this.ctx.restore();
                 }

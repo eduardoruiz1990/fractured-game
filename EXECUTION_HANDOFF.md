@@ -2,10 +2,16 @@
 
 ## STATUS (last updated 2026-07-26)
 
+**🏁 THE ENTIRE PATCH QUEUE (13 → 41) IS COMPLETE.** Patch 41 was the final
+entry. There is no "next patch" — any further work on this codebase is a new,
+separately-scoped request from the user, not a continuation of this queue.
+
 This file is the persistent copy of the patch queue — the original only existed
 in chat, and got lost once already when a session compacted past it. **Any
 Claude session picking this project back up should read this file before doing
-anything else**, to know what's done and what's next.
+anything else**, to know what's done (everything) and to understand the
+accumulated Keep clauses, flagged gaps, and design decisions below before
+touching this code.
 
 **Execution order:** `13 → 14 → 15 → 20 → 21 → 22 → 23 → 24 → 28 → 26 → 27 →
 25 → 16 → 17 → 18 → 19 → 29.1 → 29.2 → 29.3 → 29.4 → 29.5 → 29.6 → 29.7 →
@@ -110,9 +116,34 @@ anything else**, to know what's done and what's next.
     renders under `globalCompositeOperation = 'screen'`, where darkening is
     impossible, and any ring/boundary drawn around a boss risks implying
     gameplay geometry that does not exist — against the clause's intent.
-- **NEXT: Patch 41** — Consistency audit + perf re-check (includes 12b),
-  `[MODEL: SONNET]`. **This is the final patch in the queue.**
-- **NOT STARTED:** 41.
+- **Patch 41 DONE** (2026-07-26). **This was the last patch in the queue —
+  the full v2 handoff (13→...→41) is now complete.**
+  - **12b delivered:** extended sprite caching to PREDATOR and PARASITE
+    bodies, following the exact SCAVENGER quantised-bucket recipe (Patch 12).
+    Predator has TWO independent entPulse terms (top/bottom edges diverge
+    over time) — both are bucketed and both are in the cache key, per the
+    Keep clause's explicit warning that an omitted input renders stale
+    forever, not just "slightly off". Parasite's core (body + nucleus arcs)
+    is cached on (isFlashed, pulse-bucket); its 8 tendrils are deliberately
+    left OUT of caching because they call raw `Math.random()` every frame —
+    baking that into a cached sprite would freeze the organic wriggle into a
+    static shape, trading a real animated detail for a cache hit that isn't
+    worth it. Both entities' attack-state overlays (predator lunge/telegraph
+    lines, the eye glow) stay live, same reasoning as Scavenger's sweeping
+    arm staying live in the original Patch 12.
+  - Verified behaviourally, not just by inspection: identical-input redraws
+    are cache hits; a phase/bucket change or any of
+    flash/buffed/lunging-state produces a genuinely distinct cache entry
+    (proving no input was left out of the key — the specific failure mode
+    the Keep clause warns about); 200 entities with varied phases stay far
+    below 200 cache entries (bucketing, not per-entity growth).
+  - **Consistency audit findings:** no `console.log`/`TODO`/`FIXME` debris in
+    `Renderer.js`; no duplicate method definitions; `globalCompositeOperation`
+    discipline (Patch 36's flagged risk) reconfirmed intact — every `'screen'`
+    still resets to `'source-over'`; no `Director`-side `pool.release()` calls
+    inside `Renderer.js` to audit (rendering never releases pool objects,
+    correctly); `entPulse()` itself untouched, still ~[-1.3, 1.3].
+  - No open follow-ups from this patch.
 
 Also added since v2 was written, outside the numbered queue (ad hoc dev
 tooling, at the user's request): two dev-panel buttons in `src/main.js`
@@ -703,7 +734,7 @@ Files: `src/core/Renderer.js`
 Keep: every telegraph's existing TIMING and HITBOX. Looks only — must not change
 balance.
 
-### Patch 41 — Consistency audit + perf re-check (includes 12b)  `[MODEL: SONNET]`  ⬅ NEXT (FINAL)
+### Patch 41 — Consistency audit + perf re-check (includes 12b)  `[MODEL: SONNET]`  ✅ DONE (FINAL — QUEUE COMPLETE)
 Files: `src/core/Renderer.js`
 Final sweep, plus deferred 12b: extend sprite caching to PREDATOR and PARASITE
 bodies using the SAME quantised-bucket approach used for SCAVENGER, re-measured
