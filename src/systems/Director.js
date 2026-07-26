@@ -22,7 +22,10 @@ export class Director {
             panopticon: new ObjectPool(() => new Panopticon(), 2), 
             amalgamation: new ObjectPool(() => new Amalgamation(), 2),
             architect: new ObjectPool(() => new Architect(), 2), 
-            particle: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '', active: false }), 300),
+            // Patch 39: `pooled` is a provenance marker — see the release guard in
+            // updateParticles(). size/decay/rot/spin give each particle its own
+            // character so a burst doesn't read as one rigid object.
+            particle: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '', active: false, pooled: true, size: 2, decay: 0.05, rot: 0, spin: 0 }), 300),
             xpDrop: new ObjectPool(() => ({ x: 0, y: 0, value: 0, collected: false, active: false }), 300),
             tokenDrop: new ObjectPool(() => ({ x: 0, y: 0, rarity: '', color: '', collected: false, active: false }), 50),
             damageText: new ObjectPool(() => ({ x: 0, y: 0, text: '', life: 0, color: '', scale: 1, active: false }), 200),
@@ -396,18 +399,31 @@ export class Director {
         state.tokenDrops.push(token);
     }
 
+    // Patch 39 — signature deliberately UNCHANGED. 27 call sites across
+    // Combat.js, Game.js and the entity files pass exactly (x, y, color, count),
+    // and none of those files are in this patch's scope, so adding parameters
+    // would only create dead code. All the added variety comes from here.
     spawnParticles(x, y, color, count) {
         const state = this.game.state;
         for(let i=0; i<count; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = Math.random() * 3 + 1;
             let p = this.pools.particle.get();
-            p.x = x; p.y = y; 
-            p.vx = Math.cos(angle) * speed; 
-            p.vy = Math.sin(angle) * speed; 
-            p.life = 1.0; 
+            // Slight spawn scatter — a burst originating from one exact pixel
+            // reads as a mathematical point rather than an impact.
+            p.x = x + (Math.random() - 0.5) * 6;
+            p.y = y + (Math.random() - 0.5) * 6;
+            p.vx = Math.cos(angle) * speed;
+            p.vy = Math.sin(angle) * speed;
+            p.life = 1.0;
             p.color = color;
             p.active = true;
+            p.pooled = true;
+            p.size = 1.2 + Math.random() * 2.2;
+            // Varied decay so a burst stops vanishing all on one frame.
+            p.decay = 0.035 + Math.random() * 0.045;
+            p.rot = Math.random() * Math.PI * 2;
+            p.spin = (Math.random() - 0.5) * 0.4;
             state.particles.push(p);
         }
     }
@@ -449,8 +465,28 @@ export class Director {
         const state = this.game.state;
         for (let i = state.particles.length - 1; i >= 0; i--) {
             let p = state.particles[i];
-            p.x += p.vx; p.y += p.vy; p.life -= 0.05;
-            if (p.life <= 0) { p.active = false; this.pools.particle.release(p); state.particles.splice(i, 1); }
+            // Patch 39: drag plus a little settle, so a burst decelerates and
+            // drifts down instead of flying in perfectly straight lines at
+            // constant speed until it blinks out.
+            p.vx *= 0.94;
+            p.vy = p.vy * 0.94 + 0.05;
+            p.x += p.vx; p.y += p.vy;
+            p.rot = (p.rot || 0) + (p.spin || 0);
+            p.life -= (p.decay || 0.05);
+            if (p.life <= 0) {
+                state.particles.splice(i, 1);
+                p.active = false;
+                // POOL DISCIPLINE FIX (Patch 39). This used to release EVERY
+                // expiring particle. But Renderer.js pushes raw object literals
+                // straight into state.particles for footstep dust, and
+                // ObjectPool.release() is just pool.push() with no provenance
+                // check — so every footstep permanently added 2 foreign objects
+                // to a pool that never allocated them. Over a run the pool grew
+                // without bound, which is precisely the leak pooling exists to
+                // prevent. Only genuine pool objects go back now; foreign ones
+                // are dropped for the GC, which is where they always belonged.
+                if (p.pooled) this.pools.particle.release(p);
+            }
         }
         for (let i = state.damageTexts.length - 1; i >= 0; i--) {
             let dt = state.damageTexts[i];

@@ -2510,16 +2510,52 @@ export class Renderer {
         }
 
         if (state.particles) {
-            state.particles.forEach(p => { 
-                this.ctx.fillStyle = p.color; 
-                this.ctx.globalAlpha = Math.max(0, p.life); 
-                this.ctx.beginPath();
-                this.ctx.moveTo(p.x, p.y);
-                this.ctx.lineTo(p.x - p.vx*2, p.y - p.vy*2);
-                this.ctx.lineWidth = 2;
-                this.ctx.strokeStyle = p.color;
-                this.ctx.stroke();
+            // Patch 39: was a flat 2px line from the particle back to
+            // (x - vx*2, y - vy*2) — every particle identical regardless of how
+            // fast it was moving or what spawned it. Streak length now follows
+            // ACTUAL speed, so a fresh burst streaks hard and then resolves into
+            // settling embers as the new drag takes hold, and bright particles
+            // get a cached faux-glow head.
+            state.particles.forEach(p => {
+                const life = Math.max(0, Math.min(1, p.life));
+                if (life <= 0) return;
+                const speed = Math.hypot(p.vx, p.vy);
+                if (!Number.isFinite(speed) || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
+
+                const size = (p.size || 2) * (0.35 + life * 0.65);
+                const tail = Math.min(speed * 2.2, 14);
+
+                // drawGlow is sprite-cached on `glow|color|alpha`, so the alpha
+                // MUST be quantised — handing it a continuous per-particle value
+                // would mint a fresh 128px canvas per particle per frame and blow
+                // the cache out entirely. Same bucketing discipline the Patch 11
+                // sprite cache uses. Also: hexToRgba returns WHITE for non-hex
+                // input, and the footstep dust colour is an rgba() string, so
+                // glow is restricted to hex colours or that dust would flash white.
+                if (size > 1.2 && p.color && p.color.charAt(0) === '#') {
+                    const glowA = Math.round(life * 4) / 10;
+                    if (glowA > 0) this.drawGlow(p.x, p.y, size * 3, p.color, glowA);
+                }
+
+                this.ctx.globalAlpha = life;
+                if (tail > 1.5) {
+                    this.ctx.strokeStyle = p.color;
+                    this.ctx.lineCap = 'round';
+                    this.ctx.lineWidth = size;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(p.x, p.y);
+                    this.ctx.lineTo(p.x - (p.vx / speed) * tail, p.y - (p.vy / speed) * tail);
+                    this.ctx.stroke();
+                } else {
+                    // Too slow for a streak — it would read as a stray hair.
+                    this.ctx.fillStyle = p.color;
+                    this.ctx.beginPath();
+                    this.ctx.arc(p.x, p.y, Math.max(0.5, size * 0.5), 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
             });
+            // lineCap was changed above; reset it so it can't leak into later draws.
+            this.ctx.lineCap = 'butt';
         }
         this.ctx.globalAlpha = 1.0;
     }
@@ -3110,13 +3146,26 @@ export class Renderer {
                 }
                 
                 for (let i = 0; i < 2; i++) {
+                    // NOTE (Patch 39): these are raw literals, NOT pool objects —
+                    // Renderer has no Director handle to spawn through. They are
+                    // tagged `pooled: false` so Director.updateParticles drops them
+                    // for the GC rather than injecting them into the particle pool,
+                    // which is exactly what used to happen (see the fix there).
+                    // Routing footstep dust through the pool properly needs a
+                    // Director reference here, which means touching main.js —
+                    // outside this patch's scope. Flagged in the report.
                     state.particles.push({
                         x: state.player.x + (Math.random() - 0.5) * 10,
                         y: state.player.y + (Math.random() - 0.5) * 10,
                         vx: (Math.random() - 0.5) * 0.5,
                         vy: (Math.random() - 0.5) * 0.5,
                         life: 0.5 + Math.random() * 0.5,
-                        color: 'rgba(100, 100, 100, 0.5)'
+                        color: 'rgba(100, 100, 100, 0.5)',
+                        pooled: false,
+                        size: 2.5,
+                        decay: 0.03,
+                        rot: 0,
+                        spin: 0
                     });
                 }
             }

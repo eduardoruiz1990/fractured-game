@@ -73,8 +73,28 @@ anything else**, to know what's done and what's next.
     semantic state CLASSES instead of inline colours, a restructured `#score`
     readout (it cannot have child markup while innerHTML is overwritten
     60x/sec), and any low-sanity HUD treatment.
-- **NEXT: Patch 39** — VFX pass, `[MODEL: OPUS]`.
-- **NOT STARTED:** 39, 40, 41.
+- **Patch 39 DONE** (2026-07-26). Particles went from a flat 2px line to
+  speed-proportional tapered streaks that resolve into settling embers, with
+  quantised cached faux-glow heads; added drag, settle, per-particle
+  size/decay/spin/scatter.
+  - **Fixed a real pool leak** (the Keep clause's own subject).
+    `Renderer.js` pushes raw literals into `state.particles` for footstep dust,
+    and `Director.updateParticles` released EVERY expiring particle via
+    `ObjectPool.release()` — which is an unguarded `pool.push()`. So every
+    footstep permanently added 2 foreign objects to a pool that never
+    allocated them; the pool grew without bound for the whole run. Particles
+    now carry a `pooled` provenance flag and only genuine pool objects are
+    returned. Proven behaviourally: 800 foreign particles no longer grow the
+    pool, and it still returns to exactly 300 after pooled bursts expire.
+  - **Residual, needs main.js (out of scope):** footstep dust is still
+    heap-allocated rather than pooled, because `Renderer` has no `Director`
+    handle to spawn through. Correct now (it's dropped for the GC, not leaked)
+    but it does allocate. Routing it through the pool needs a Director
+    reference passed into the renderer.
+  - `spawnParticles(x, y, color, count)` signature deliberately unchanged —
+    27 call sites across Combat.js/Game.js/entities are all out of scope.
+- **NEXT: Patch 40** — Boss arena & telegraph polish, `[MODEL: OPUS]`.
+- **NOT STARTED:** 40, 41.
 
 Also added since v2 was written, outside the numbered queue (ad hoc dev
 tooling, at the user's request): two dev-panel buttons in `src/main.js`
@@ -655,12 +675,12 @@ Keep: `.medical-folder`, `.blood-drop`, `.patient-stamp`, `.typewriter-text`.
 Files: `index.html` (`#ui-layer`), `src/style.css`, `src/ui/UIManager.js`
 Keep: DOM-ONLY. `Renderer.drawHUD()` is dead — do NOT revive it.
 
-### Patch 39 — VFX pass  `[MODEL: OPUS]`  ⬅ NEXT
+### Patch 39 — VFX pass  `[MODEL: OPUS]`  ✅ DONE
 Files: `src/core/Renderer.js`, `src/systems/Director.js`
 Particles are currently 2px lines.
 Keep: pool discipline; no `shadowBlur`; prefer the existing `drawGlow` helper.
 
-### Patch 40 — Boss arena & telegraph polish  `[MODEL: OPUS]`
+### Patch 40 — Boss arena & telegraph polish  `[MODEL: OPUS]`  ⬅ NEXT
 Files: `src/core/Renderer.js`
 Keep: every telegraph's existing TIMING and HITBOX. Looks only — must not change
 balance.
