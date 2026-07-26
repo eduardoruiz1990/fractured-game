@@ -1086,6 +1086,12 @@ export class Renderer {
                         this.ctx.rotate(ent.gazeAngle);
 
                         if (ent.gazeState === 'charging') {
+                            // KEEP (Patch 40): this sliver's geometry is byte-identical
+                            // to before — moveTo(0,0) then lineTo(2000, ±5). It is
+                            // NOT widened to the true sweep cone even though the two
+                            // disagree sharply; that would hand the player information
+                            // they don't currently get, i.e. a balance change. Flagged
+                            // in the report as a design question, not fixed here.
                             this.ctx.globalAlpha = 0.5 + Math.sin(this.renderFrame * 0.5) * 0.5;
                             this.ctx.fillStyle = '#ff0000';
                             this.ctx.beginPath();
@@ -1093,19 +1099,60 @@ export class Renderer {
                             this.ctx.lineTo(2000, -5);
                             this.ctx.lineTo(2000, 5);
                             this.ctx.fill();
+
+                            // Patch 40 (look only): an aperture closing at the lens, so
+                            // the charge reads as energy gathering rather than a static
+                            // red line. Rides the SAME alpha envelope as the sliver
+                            // above, so it appears and vanishes on identical frames —
+                            // no change to when the tell is visible.
+                            const conv = (this.renderFrame % 40) / 40;
+                            this.ctx.strokeStyle = '#ff5555';
+                            this.ctx.lineWidth = 2;
+                            this.ctx.beginPath();
+                            this.ctx.arc(0, 0, 30 + (1 - conv) * 90, -0.35, 0.35);
+                            this.ctx.stroke();
                         } else if (ent.gazeState === 'sweeping') {
                             let pulse = Math.sin(this.renderFrame * 0.5) * 0.2;
                             let grad = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 2000);
                             grad.addColorStop(0, `rgba(255, 0, 0, ${0.8 + pulse})`);
                             grad.addColorStop(0.1, `rgba(255, 50, 0, ${0.5 + pulse})`);
                             grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                            
+
                             this.ctx.fillStyle = grad;
                             this.ctx.beginPath();
                             this.ctx.moveTo(0, 0);
                             this.ctx.arc(0, 0, 2000, -ent.gazeWidth, ent.gazeWidth);
                             this.ctx.fill();
-                            
+
+                            // Patch 40 (look only): crisp lethal-edge rules drawn at
+                            // EXACTLY ±ent.gazeWidth — the very value Panopticon.js
+                            // tests with (Math.abs(angleDiff) < this.gazeWidth). This
+                            // conveys nothing the hard-edged fill above didn't already;
+                            // it just stops the boundary dissolving into the gradient at
+                            // range. Read from the entity, never hardcoded, so it cannot
+                            // drift out of sync with the hitbox.
+                            this.ctx.strokeStyle = `rgba(255, 180, 180, ${0.45 + pulse})`;
+                            this.ctx.lineWidth = 2;
+                            for (const s of [-1, 1]) {
+                                this.ctx.beginPath();
+                                this.ctx.moveTo(0, 0);
+                                this.ctx.lineTo(Math.cos(ent.gazeWidth * s) * 2000, Math.sin(ent.gazeWidth * s) * 2000);
+                                this.ctx.stroke();
+                            }
+
+                            // Surveillance interference — scan arcs travelling outward
+                            // inside the cone. Purely decorative, bounded by the same
+                            // ±gazeWidth so it never paints outside the real hitbox.
+                            this.ctx.strokeStyle = `rgba(255, 120, 120, ${0.18 + pulse * 0.5})`;
+                            this.ctx.lineWidth = 1.5;
+                            for (let k = 0; k < 4; k++) {
+                                const rr = (this.renderFrame * 9 + k * 500) % 2000;
+                                if (rr < 40) continue;
+                                this.ctx.beginPath();
+                                this.ctx.arc(0, 0, rr, -ent.gazeWidth, ent.gazeWidth);
+                                this.ctx.stroke();
+                            }
+
                             this.ctx.fillStyle = `rgba(255, 255, 255, ${0.8 + pulse})`;
                             this.ctx.beginPath();
                             this.ctx.moveTo(0, 0);
@@ -1121,21 +1168,57 @@ export class Renderer {
                         this.ctx.translate(ent.x, ent.y);
                         
                         let pulse = Math.sin(this.renderFrame * 0.5) * 0.2;
-                        let aColor = ent.actionState === 'charging_collapse' ? `rgba(255, 200, 50, ${0.2 + pulse})` : `rgba(255, 50, 50, ${0.6 + pulse})`;
-                        
-                        this.ctx.fillStyle = aColor;
+                        const warn = ent.actionState === 'charging_collapse';
+                        const safeR = ent.safeZoneRadius;
+
+                        // Patch 40 (look only): the danger field used to be ONE flat
+                        // colour across the whole outside region, so nothing in it
+                        // indicated which way safety lay — at a glance the arena just
+                        // went red. It is now a gradient intensifying with distance
+                        // from the boundary, which reads as "run inward".
+                        // KEEP: the boundary is still exactly ent.safeZoneRadius — the
+                        // same field Architect.js tests with
+                        // (distToPlayer > this.safeZoneRadius) — and the evenodd fill
+                        // region is unchanged, so the lethal area is pixel-identical.
+                        // Guarded because a non-finite radius into createRadialGradient
+                        // throws DOMException and kills the render loop.
+                        if (Number.isFinite(safeR) && safeR > 0) {
+                            const dangerGrad = this.ctx.createRadialGradient(0, 0, safeR, 0, 0, 2500);
+                            const a0 = Math.max(0, warn ? 0.10 + pulse * 0.5 : 0.35 + pulse);
+                            const a1 = Math.max(0, warn ? 0.30 + pulse * 0.5 : 0.75 + pulse);
+                            dangerGrad.addColorStop(0, warn ? `rgba(255, 200, 50, ${a0})` : `rgba(255, 60, 40, ${a0})`);
+                            dangerGrad.addColorStop(1, warn ? `rgba(255, 140, 0, ${a1})` : `rgba(255, 0, 0, ${a1})`);
+                            this.ctx.fillStyle = dangerGrad;
+                        } else {
+                            this.ctx.fillStyle = warn ? `rgba(255, 200, 50, ${0.2 + pulse})` : `rgba(255, 50, 50, ${0.6 + pulse})`;
+                        }
                         this.ctx.beginPath();
                         this.ctx.arc(0, 0, 2500, 0, Math.PI * 2);
-                        this.ctx.arc(0, 0, ent.safeZoneRadius, 0, Math.PI * 2);
+                        this.ctx.arc(0, 0, safeR, 0, Math.PI * 2);
                         this.ctx.fill('evenodd');
-                        
-                        this.ctx.strokeStyle = ent.actionState === 'charging_collapse' ? '#ffffff' : '#ff0000';
+
+                        this.ctx.strokeStyle = warn ? '#ffffff' : '#ff0000';
                         this.ctx.lineWidth = 5 + Math.sin(this.renderFrame * 0.5) * 3;
                         this.ctx.setLineDash([20, 10]);
+                        // Patch 40 (look only): travel the dash so the containment ring
+                        // reads as a live field rather than a static circle. Radius is
+                        // untouched — only the dash phase moves.
+                        this.ctx.lineDashOffset = -(this.renderFrame * 0.6) % 30;
                         this.ctx.beginPath();
-                        this.ctx.arc(0, 0, ent.safeZoneRadius, 0, Math.PI * 2);
+                        this.ctx.arc(0, 0, safeR, 0, Math.PI * 2);
                         this.ctx.stroke();
-                        
+
+                        // Patch 40 (look only): the dashed ring is 5-8px wide and
+                        // pulsing, so its exact centreline — which IS the kill boundary —
+                        // is ambiguous by a few pixels at the thin end of the pulse.
+                        // This hairline sits precisely on safeZoneRadius to pin it.
+                        this.ctx.setLineDash([]);
+                        this.ctx.lineWidth = 1.5;
+                        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, safeR, 0, Math.PI * 2);
+                        this.ctx.stroke();
+
                         this.ctx.restore();
                     }
                 }

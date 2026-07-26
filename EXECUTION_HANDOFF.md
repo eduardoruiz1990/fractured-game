@@ -93,8 +93,26 @@ anything else**, to know what's done and what's next.
     reference passed into the renderer.
   - `spawnParticles(x, y, color, count)` signature deliberately unchanged —
     27 call sites across Combat.js/Game.js/entities are all out of scope.
-- **NEXT: Patch 40** — Boss arena & telegraph polish, `[MODEL: OPUS]`.
-- **NOT STARTED:** 40, 41.
+- **Patch 40 DONE** (2026-07-26). Panopticon gaze got a charge aperture, crisp
+  lethal-edge rules at exactly ±`gazeWidth`, and outward scan interference.
+  Architect collapse got a distance-graded danger field (reads as "run
+  inward"), a travelling dash on the containment ring, and a hairline pinning
+  the exact kill boundary. All geometry read from entity fields, never
+  hardcoded, so the picture cannot drift from the hitbox.
+  - **OPEN DESIGN QUESTION, deliberately NOT changed** (would be a balance
+    change, which the Keep clause forbids): Panopticon's *charging* telegraph
+    draws a ±5px-at-2000px sliver (~0.0025 rad half-angle), but the sweep that
+    follows damages anything within `Math.abs(angleDiff) < gazeWidth` = ±0.5
+    rad — roughly 200x wider, and with NO distance limit at all. The warning
+    massively understates the attack. Widening it would make the fight
+    materially easier, so it needs an explicit design decision.
+  - Deliberately skipped: boss-arena floor decoration. The telegraph layer
+    renders under `globalCompositeOperation = 'screen'`, where darkening is
+    impossible, and any ring/boundary drawn around a boss risks implying
+    gameplay geometry that does not exist — against the clause's intent.
+- **NEXT: Patch 41** — Consistency audit + perf re-check (includes 12b),
+  `[MODEL: SONNET]`. **This is the final patch in the queue.**
+- **NOT STARTED:** 41.
 
 Also added since v2 was written, outside the numbered queue (ad hoc dev
 tooling, at the user's request): two dev-panel buttons in `src/main.js`
@@ -680,12 +698,12 @@ Files: `src/core/Renderer.js`, `src/systems/Director.js`
 Particles are currently 2px lines.
 Keep: pool discipline; no `shadowBlur`; prefer the existing `drawGlow` helper.
 
-### Patch 40 — Boss arena & telegraph polish  `[MODEL: OPUS]`  ⬅ NEXT
+### Patch 40 — Boss arena & telegraph polish  `[MODEL: OPUS]`  ✅ DONE
 Files: `src/core/Renderer.js`
 Keep: every telegraph's existing TIMING and HITBOX. Looks only — must not change
 balance.
 
-### Patch 41 — Consistency audit + perf re-check (includes 12b)  `[MODEL: SONNET]`
+### Patch 41 — Consistency audit + perf re-check (includes 12b)  `[MODEL: SONNET]`  ⬅ NEXT (FINAL)
 Files: `src/core/Renderer.js`
 Final sweep, plus deferred 12b: extend sprite caching to PREDATOR and PARASITE
 bodies using the SAME quantised-bucket approach used for SCAVENGER, re-measured
