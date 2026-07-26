@@ -247,6 +247,40 @@ export class UIManager {
 
         this.tabBtns = document.querySelectorAll('.tab-btn');
         this.tabPanes = document.querySelectorAll('.tab-pane');
+
+        // Patch 34b: one shared floating tooltip appended directly to <body>,
+        // outside .inventory-panel's DOM subtree so its overflow-y:auto (which
+        // forces overflow-x to 'auto' too, clipping anything positioned
+        // relative to a card inside it) can never clip this. Positioned via
+        // JS in showItemTooltip() using getBoundingClientRect().
+        this.itemTooltipEl = document.createElement('div');
+        this.itemTooltipEl.className = 'item-tooltip';
+        document.body.appendChild(this.itemTooltipEl);
+    }
+
+    showItemTooltip(targetEl, text) {
+        if (!this.itemTooltipEl) return;
+        this.itemTooltipEl.innerText = text;
+        this.itemTooltipEl.classList.add('visible');
+
+        const rect = targetEl.getBoundingClientRect();
+        const tooltipWidth = 180;
+        const margin = 8;
+        let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+        left = Math.max(margin, Math.min(left, window.innerWidth - tooltipWidth - margin));
+        this.itemTooltipEl.style.left = `${left}px`;
+
+        // Prefer above the card (matches the old anchor); flip below if that
+        // would run off the top of the viewport.
+        const tooltipHeight = this.itemTooltipEl.offsetHeight || 90;
+        const top = (rect.top - tooltipHeight - margin < 0)
+            ? rect.bottom + margin
+            : rect.top - tooltipHeight - margin;
+        this.itemTooltipEl.style.top = `${top}px`;
+    }
+
+    hideItemTooltip() {
+        if (this.itemTooltipEl) this.itemTooltipEl.classList.remove('visible');
     }
 
     showXPToast() {
@@ -661,6 +695,12 @@ export class UIManager {
     renderLoadoutUI() {
         const meta = this.saveManager.metaState;
 
+        // Patch 34b: rebuilding the grid below destroys whichever card the mouse
+        // is currently over (e.g. clicking the inline forge button re-renders
+        // mid-hover) without a mouseleave ever firing on it, which would
+        // otherwise strand the shared tooltip pointing at a removed element.
+        this.hideItemTooltip();
+
         // Patch 31: driven by TOKEN_SLOT_TYPES rather than a hardcoded 4-slot literal,
         // so the new 'prescription' slot needs no change here and a 6th never would.
         TOKEN_SLOT_TYPES.forEach(slotType => {
@@ -777,9 +817,13 @@ export class UIManager {
             const forgeLabel = forgeCost ? `⬆ FORGE (${forgeCost}L)` : 'MAX RARITY';
 
             el.innerHTML = `<div style="font-size:1.5rem;">${icon}</div><div>${tokenData.name}</div>` +
-                `<button type="button" class="inline-forge-btn" style="margin-top:2px; font-size:0.55rem; width:100%; background:var(--ink-black); color:var(--ui-gold); border:1px solid #333; font-family:inherit; padding:2px;">${forgeLabel}</button>` +
-                `<div class="item-tooltip">${tooltipText}</div>`;
+                `<button type="button" class="inline-forge-btn" style="margin-top:2px; font-size:0.55rem; width:100%; background:var(--ink-black); color:var(--ui-gold); border:1px solid #333; font-family:inherit; padding:2px;">${forgeLabel}</button>`;
             el.onclick = () => this.selectInventoryItem(invItem, tokenData);
+            // Patch 34b: shared body-level tooltip (see showItemTooltip) instead of
+            // a per-card absolutely-positioned child — see the CSS comment on
+            // .item-tooltip for why the old approach clipped at the grid's edges.
+            el.addEventListener('mouseenter', () => this.showItemTooltip(el, tooltipText));
+            el.addEventListener('mouseleave', () => this.hideItemTooltip());
             this.attachDragSource(el, invItem, tokenData.type);
 
             const inlineForgeBtn = el.querySelector('.inline-forge-btn');

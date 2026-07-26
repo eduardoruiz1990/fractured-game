@@ -162,17 +162,23 @@ canvas { display: block; image-rendering: pixelated; }
 .rarity-legendary { border-color: #ff8c00 !important; background: #fff6ea !important; }
 .rarity-mythic { border-color: #ff5555 !important; background: #fff0f0 !important; }
 
-/* Patch 33: hover stat-delta preview. Pure CSS reveal (no mousemove tracking) —
-   populated once per item at render time in UIManager.renderLoadoutUI(). Never
-   shown on touch (no hover state there), so the click path — unchanged, see
-   selectInventoryItem — remains the only way to see this on mobile, exactly as
-   required ("click is the touch path — do not remove it"). */
+/* Patch 33: hover stat-delta preview. Never shown on touch (no hover state
+   there), so the click path — unchanged, see selectInventoryItem — remains the
+   only way to see this on mobile, exactly as required ("click is the touch
+   path — do not remove it").
+   Patch 34b fix: this used to be an absolutely-positioned child of each
+   .inventory-item card, but .inventory-panel sets overflow-y:auto, and per the
+   CSS overflow spec that forces the OTHER axis (overflow-x) to compute to
+   'auto' too even though it's never declared — so any card near the grid's
+   left/right edge had its tooltip silently clipped/overlapping neighboring
+   panels. Fixed by making this a single shared element appended to
+   document.body (see UIManager.showItemTooltip/hideItemTooltip) and switching
+   to position:fixed with JS-computed viewport coordinates, so it's no longer a
+   descendant of any scrolling container and can't be clipped by one. */
 .item-tooltip {
     display: none;
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%) rotate(-2deg); /* counters the 2deg hover tilt on the parent */
+    position: fixed;
+    transform: rotate(-2deg);
     width: 180px;
     background: var(--ink-black);
     color: var(--paper-bg);
@@ -181,12 +187,12 @@ canvas { display: block; image-rendering: pixelated; }
     font-size: 0.68rem;
     line-height: 1.4;
     text-align: left;
-    z-index: 30;
+    z-index: 99999;
     box-shadow: 3px 3px 10px rgba(0,0,0,0.5);
     pointer-events: none;
     white-space: pre-line;
 }
-.inventory-item:hover .item-tooltip { display: block; }
+.item-tooltip.visible { display: block; }
 
 /* Patch 33: drag-and-drop visual feedback, additive to the existing click flow. */
 .inventory-item[draggable="true"] { cursor: grab; }
