@@ -57,15 +57,64 @@ function formatTokenEffects(tokenData, rarity) {
     return lines;
 }
 
+// Patch 34: equipped-vs-candidate diff, used by both the inventory hover tooltip
+// and the detail panel so a player can tell what swapping in a token actually
+// changes without doing the swap. Reuses TOKEN_EFFECT_LABELS' v => string
+// formatters to render each delta — they only care about the sign/number/unit,
+// so calling them with a delta instead of an absolute value is safe and keeps
+// this from drifting from formatTokenEffects' own vocabulary. grant is a
+// presence/absence swap, not a numeric delta, so it's reported separately.
+function computeEffectDiff(fromTokenData, fromRarity, toTokenData, toRarity) {
+    const scale = (tokenData, rarity) => {
+        const mult = (TOKEN_RARITIES[rarity] && TOKEN_RARITIES[rarity].multiplier) || 1.0;
+        const out = {};
+        for (const [key, value] of Object.entries(tokenData.effects || {})) {
+            if (key === 'tagDamage') {
+                for (const [tag, amt] of Object.entries(value)) {
+                    out[`tagDamage:${tag}`] = amt > 0 ? Math.round(amt * mult) : amt;
+                }
+            } else if (TOKEN_EFFECT_LABELS[key]) {
+                out[key] = value > 0 ? Math.round(value * mult) : value;
+            }
+        }
+        return out;
+    };
+    const from = scale(fromTokenData, fromRarity);
+    const to = scale(toTokenData, toRarity);
+    const lines = [];
+    new Set([...Object.keys(from), ...Object.keys(to)]).forEach(key => {
+        const delta = (to[key] || 0) - (from[key] || 0);
+        if (delta === 0) return;
+        if (key.startsWith('tagDamage:')) {
+            const tag = key.replace('tagDamage:', '');
+            lines.push(`${delta > 0 ? '+' : ''}${delta}% ${tag} damage`);
+        } else {
+            lines.push(TOKEN_EFFECT_LABELS[key](delta));
+        }
+    });
+
+    const fromGrant = fromTokenData.effects && fromTokenData.effects.grant;
+    const toGrant = toTokenData.effects && toTokenData.effects.grant;
+    if (fromGrant !== toGrant) {
+        if (fromGrant) lines.push(`Lose: ${TOKEN_GRANT_LABELS[fromGrant] || fromGrant}`);
+        if (toGrant) lines.push(`Gain: ${TOKEN_GRANT_LABELS[toGrant] || toGrant}`);
+    }
+    return lines;
+}
+
 export class UIManager {
     constructor(saveManager, audioEngine, onStartGameCallback) {
         this.saveManager = saveManager;
         this.audioEngine = audioEngine;
         this.onStartGameCallback = onStartGameCallback;
         
-        this.selectedInventoryItem = null; 
-        this.selectedSlotType = null;      
-        
+        this.selectedInventoryItem = null;
+        this.selectedSlotType = null;
+
+        // Patch 34: inventory sort/filter state, read by renderLoadoutUI().
+        this.loadoutSort = 'rarity-desc';
+        this.loadoutFilterRarity = 'all';
+
         this.bindElements();
         // Patch 29.7: constructed once here; render() is called from updateMenuUI()
         // below so it stays in sync with everything else that refreshes the menu
@@ -181,6 +230,8 @@ export class UIManager {
         this.synapseTreeContainer = document.getElementById('synapse-tree-container');
 
         this.inventoryGrid = document.getElementById('inventory-grid');
+        this.loadoutSortSelect = document.getElementById('loadout-sort');
+        this.loadoutFilterSelect = document.getElementById('loadout-filter-rarity');
         this.detailName = document.getElementById('detail-name');
         this.detailDesc = document.getElementById('detail-desc');
         this.detailSet = document.getElementById('detail-set');
@@ -290,6 +341,21 @@ export class UIManager {
             this.btnWipeSave.addEventListener('click', () => {
                 const isConfirmed = confirm("WARNING: This will completely erase your clinical file, destroying all tokens, upgrades, and banked lucidity. Do you wish to proceed?");
                 if (isConfirmed) this.saveManager.wipeSave();
+            });
+        }
+
+        // Patch 34: sort/filter controls just re-render the grid — they don't
+        // touch selection state, so a currently-open detail panel stays put.
+        if (this.loadoutSortSelect) {
+            this.loadoutSortSelect.addEventListener('change', () => {
+                this.loadoutSort = this.loadoutSortSelect.value;
+                this.renderLoadoutUI();
+            });
+        }
+        if (this.loadoutFilterSelect) {
+            this.loadoutFilterSelect.addEventListener('change', () => {
+                this.loadoutFilterRarity = this.loadoutFilterSelect.value;
+                this.renderLoadoutUI();
             });
         }
 
@@ -644,12 +710,34 @@ export class UIManager {
             this.renderLoadoutUI();
         };
 
-        meta.inventory.forEach(invItem => {
-            const isEquipped = Object.values(meta.equippedTokens).includes(invItem.uid);
-            if (isEquipped) return;
+        // Patch 34: filter (rarity) then sort, using RARITY_UPGRADE_ORDER as the
+        // single source of tier ordering rather than a second hardcoded list.
+        let unequippedItems = meta.inventory.filter(invItem =>
+            !Object.values(meta.equippedTokens).includes(invItem.uid) && TOKENS[invItem.id]);
 
+        if (this.loadoutFilterRarity && this.loadoutFilterRarity !== 'all') {
+            unequippedItems = unequippedItems.filter(invItem => invItem.rarity === this.loadoutFilterRarity);
+        }
+
+        unequippedItems.sort((a, b) => {
+            const tokenA = TOKENS[a.id], tokenB = TOKENS[b.id];
+            switch (this.loadoutSort) {
+                case 'rarity-asc':
+                    return RARITY_UPGRADE_ORDER.indexOf(a.rarity) - RARITY_UPGRADE_ORDER.indexOf(b.rarity);
+                case 'name':
+                    return tokenA.name.localeCompare(tokenB.name);
+                case 'slot':
+                    return tokenA.type.localeCompare(tokenB.type);
+                case 'rarity-desc':
+                default:
+                    return RARITY_UPGRADE_ORDER.indexOf(b.rarity) - RARITY_UPGRADE_ORDER.indexOf(a.rarity);
+            }
+        });
+
+        const levelInfo = this.saveManager.getPatientLevelInfo();
+
+        unequippedItems.forEach(invItem => {
             const tokenData = TOKENS[invItem.id];
-            if (!tokenData) return;
 
             const el = document.createElement('div');
             el.className = `inventory-item filled rarity-${invItem.rarity}`;
@@ -664,13 +752,54 @@ export class UIManager {
 
             // Patch 33: hover stat-delta. Pure CSS reveal (see .item-tooltip in
             // style.css) — populated once here, no hover JS needed.
+            // Patch 34: appends an equipped-vs-this-item diff when this slot type
+            // already has something prescribed, so hovering tells you what
+            // swapping in would actually change before you commit to it.
             const rarityLabel = invItem.rarity.charAt(0).toUpperCase() + invItem.rarity.slice(1);
             const effectLines = formatTokenEffects(tokenData, invItem.rarity);
-            const tooltipText = [`${rarityLabel} — ${tokenData.name}`, ...effectLines].join('\n');
+            const tooltipLines = [`${rarityLabel} — ${tokenData.name}`, ...effectLines];
 
-            el.innerHTML = `<div style="font-size:1.5rem;">${icon}</div><div>${tokenData.name}</div><div class="item-tooltip">${tooltipText}</div>`;
+            const equippedUid = meta.equippedTokens[tokenData.type];
+            const equippedItem = equippedUid ? meta.inventory.find(i => i.uid === equippedUid) : null;
+            if (equippedItem) {
+                const equippedTokenData = TOKENS[equippedItem.id];
+                const diffLines = computeEffectDiff(equippedTokenData, equippedItem.rarity, tokenData, invItem.rarity);
+                tooltipLines.push('', `vs ${equippedTokenData.name}:`, ...(diffLines.length ? diffLines : ['(no change)']));
+            }
+            const tooltipText = tooltipLines.join('\n');
+
+            // Patch 34: inline forge button — upgrades straight from the grid card
+            // without going through select-then-click-FORGE. Reads the same
+            // TOKEN_RARITIES.costToUpgrade the detail panel does; SaveManager.
+            // upgradeToken() itself (the actual cost curve) is untouched.
+            const rarityData = TOKEN_RARITIES[invItem.rarity];
+            const forgeCost = rarityData.costToUpgrade;
+            const forgeLabel = forgeCost ? `⬆ FORGE (${forgeCost}L)` : 'MAX RARITY';
+
+            el.innerHTML = `<div style="font-size:1.5rem;">${icon}</div><div>${tokenData.name}</div>` +
+                `<button type="button" class="inline-forge-btn" style="margin-top:2px; font-size:0.55rem; width:100%; background:var(--ink-black); color:var(--ui-gold); border:1px solid #333; font-family:inherit; padding:2px;">${forgeLabel}</button>` +
+                `<div class="item-tooltip">${tooltipText}</div>`;
             el.onclick = () => this.selectInventoryItem(invItem, tokenData);
             this.attachDragSource(el, invItem, tokenData.type);
+
+            const inlineForgeBtn = el.querySelector('.inline-forge-btn');
+            if (forgeCost) {
+                inlineForgeBtn.disabled = levelInfo.level < 10 || this.saveManager.metaState.lucidityBank < forgeCost;
+                inlineForgeBtn.style.cursor = inlineForgeBtn.disabled ? 'default' : 'pointer';
+                inlineForgeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (this.saveManager.upgradeToken(invItem.uid)) {
+                        if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade');
+                        this.showXPToast();
+                        this.updateMenuUI();
+                        this.selectInventoryItem(invItem, tokenData);
+                        this.renderLoadoutUI();
+                    }
+                };
+            } else {
+                inlineForgeBtn.disabled = true;
+            }
+
             this.inventoryGrid.appendChild(el);
         });
 
@@ -709,7 +838,20 @@ export class UIManager {
             ? `Forge: ${invItem.rarity} → ${nextRarity}\nNow: ${currentEffects}\nNext: ${formatTokenEffects(tokenData, nextRarity).join(', ')}`
             : `Rarity: ${invItem.rarity} (MAXED)\n${currentEffects}`;
 
-        this.detailSet.innerText = `Set: ${setData.name} | (2) ${setData['2']} | (4) ${setData['4']}\n${rarityDeltaLine}\n\n[CLICK PRESCRIBE TO EQUIP]`;
+        // Patch 34: equipped-vs-selected diff — same computeEffectDiff() the
+        // inventory hover tooltip uses, so this can't disagree with what
+        // hovering already told the player.
+        const meta = this.saveManager.metaState;
+        const equippedUid = meta.equippedTokens[tokenData.type];
+        const equippedItem = equippedUid ? meta.inventory.find(i => i.uid === equippedUid) : null;
+        let compareLine = '';
+        if (equippedItem) {
+            const equippedTokenData = TOKENS[equippedItem.id];
+            const diffLines = computeEffectDiff(equippedTokenData, equippedItem.rarity, tokenData, invItem.rarity);
+            compareLine = `\nvs ${equippedTokenData.name} (equipped): ${diffLines.length ? diffLines.join(', ') : '(no change)'}`;
+        }
+
+        this.detailSet.innerText = `Set: ${setData.name} | (2) ${setData['2']} | (4) ${setData['4']}\n${rarityDeltaLine}${compareLine}\n\n[CLICK PRESCRIBE TO EQUIP]`;
 
         this.btnEquipItem.innerText = "[ PRESCRIBE TO PATIENT ]";
         this.btnEquipItem.style.cssText = 'display: block; width: 100%; background-color: var(--blood-red); color: white; padding: 12px; font-weight: bold; font-size: 1rem; border: 2px solid #ef4444; margin-bottom: 15px; cursor: pointer; text-shadow: 0 0 5px red; font-family: Courier New; text-transform: uppercase; white-space: normal; line-height: 1.2;';

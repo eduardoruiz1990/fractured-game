@@ -145,6 +145,25 @@
                                  equipped item back here to revoke it. Click still works exactly
                                  as before — the touch path, unchanged. -->
                             <p class="typewriter-text" style="font-size: 0.7rem; color: #888; margin: 0 0 8px 0;">Drag to prescribe, or click for details. Hover an item for its effects.</p>
+                            <!-- Patch 34: rarity sort/filter for the inventory grid. Inline-styled
+                                 (this patch's file scope is UIManager.js + index.html only, not
+                                 style.css) to match the existing dev-panel <select> pattern in main.js. -->
+                            <div style="display:flex; gap:6px; margin:0 0 8px 0;">
+                                <select id="loadout-sort" style="flex:1; background:var(--ink-black); color:var(--ui-gold); border:1px solid #333; outline:none; font-family:inherit; font-size:0.7rem; padding:3px;">
+                                    <option value="rarity-desc">Sort: Rarity (High-Low)</option>
+                                    <option value="rarity-asc">Sort: Rarity (Low-High)</option>
+                                    <option value="name">Sort: Name (A-Z)</option>
+                                    <option value="slot">Sort: Slot Type</option>
+                                </select>
+                                <select id="loadout-filter-rarity" style="flex:1; background:var(--ink-black); color:var(--ui-gold); border:1px solid #333; outline:none; font-family:inherit; font-size:0.7rem; padding:3px;">
+                                    <option value="all">All Rarities</option>
+                                    <option value="common">Common</option>
+                                    <option value="rare">Rare</option>
+                                    <option value="epic">Epic</option>
+                                    <option value="legendary">Legendary</option>
+                                    <option value="mythic">Mythic</option>
+                                </select>
+                            </div>
                             <div class="inventory-panel" id="inventory-grid"></div>
                         </div>
                     </div>
