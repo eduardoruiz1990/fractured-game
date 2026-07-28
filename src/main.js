@@ -614,7 +614,10 @@ function initEngine() {
     }
 
     document.getElementById('btn-pause').addEventListener('click', togglePause);
-    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') togglePause(); });
+    // Escape also exits browser fullscreen, so the player can get both effects
+    // at once there. P is offered as a fullscreen-safe alternate; Escape stays
+    // bound because players expect it (Patch 45).
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape' || e.key.toLowerCase() === 'p') togglePause(); });
     document.getElementById('btn-unpause').addEventListener('click', togglePause);
 
     document.getElementById('btn-awaken').addEventListener('click', () => {
