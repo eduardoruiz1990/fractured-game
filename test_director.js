@@ -1,6 +1,9 @@
 import { Game } from './src/core/Game.js';
 
 global.document = {
+    addEventListener: () => {},
+    dispatchEvent: () => {},
+    getElementById: () => null,
     createElement: () => ({
         width: 1920, height: 1080,
         getContext: () => ({
@@ -9,7 +12,7 @@ global.document = {
             ellipse: () => {}, fill: () => {}, createPattern: () => {}, createImageData: () => ({ data: [] }),
             putImageData: () => {}, createRadialGradient: () => ({ addColorStop: () => {} }),
             createLinearGradient: () => ({ addColorStop: () => {} }), arc: () => {},
-            translate: () => {}, scale: () => {}, restore: () => {}, save: () => {},
+            translate: () => {}, scale: () => {}, rotate: () => {}, restore: () => {}, save: () => {},
             clip: () => {}, rect: () => {}, closePath: () => {}
         })
     })
