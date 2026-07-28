@@ -7,6 +7,7 @@ import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
 import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies } from './data/Manifestations.js';
+import { portalSDK } from './systems/PortalSDK.js';
 
 console.log("FRACTURED Engine Bootstrapping...");
 
@@ -21,7 +22,33 @@ window.addEventListener('resize', resize);
 resize();
 
 let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager;
-let gameState = 'TITLE'; 
+let gameState = 'TITLE';
+
+// --- PORTAL SDK (Patch 44) ---
+// Fire-and-forget: init() never rejects, and every portal method is a no-op
+// until (and unless) it resolves to a live portal.
+portalSDK.init();
+
+// Which gameStates count as "gameplay" for the portal's gameplayStart/Stop events.
+// DECISION (Patch 44): only an actual run counts. The Mind Palace HUB is canvas-
+// rendered and walkable, but it is where the player shops, equips tokens and buys
+// tree nodes — menu behaviour — so it is deliberately EXCLUDED, matching the SDK
+// docs' guidance that menus are a gameplay break.
+const PORTAL_GAMEPLAY_STATES = new Set(['PLAYING']);
+let portalLastGameplay = false;
+
+/**
+ * Emits portal gameplayStart/gameplayStop by observing `gameState` once per frame.
+ * Done here rather than at the ~15 `gameState = ...` assignment sites so the state
+ * machine itself is untouched and no transition can be missed or drift out of sync.
+ */
+function syncPortalGameplayState() {
+    const isGameplay = PORTAL_GAMEPLAY_STATES.has(gameState);
+    if (isGameplay === portalLastGameplay) return;
+    portalLastGameplay = isGameplay;
+    if (isGameplay) portalSDK.gameplayStart();
+    else portalSDK.gameplayStop();
+}
 
 // --- NEW: GLOBAL ACCESSIBILITY SETTINGS ---
 let gameSettings = { screenShake: true, photosensitive: false };
@@ -799,6 +826,8 @@ function initEngine() {
 
 function gameLoop(time) {
     try {
+        syncPortalGameplayState();
+
         const devModeContainer = document.getElementById('dev-mode-container');
         if (devModeContainer) {
             // PLAYING included so the visual test bench (spawn / freeze / scenario)
