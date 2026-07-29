@@ -25,8 +25,11 @@ let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager
 let gameState = 'TITLE';
 
 // --- PORTAL SDK (Patch 44) ---
-// Fire-and-forget: init() never rejects, and every portal method is a no-op
-// until (and unless) it resolves to a live portal.
+// Start probing as early as possible. init() never rejects, is memoized, and every
+// portal method stays a no-op unless it resolves to a live portal. Patch 47 makes
+// the bootstrap at the bottom of this file WAIT on this same promise, because
+// SaveManager reads the save in its constructor and the portal's cloud-save backend
+// is only readable once the SDK has initialized.
 portalSDK.init();
 
 // Which gameStates count as "gameplay" for the portal's gameplayStart/Stop events.
@@ -48,6 +51,42 @@ function syncPortalGameplayState() {
     portalLastGameplay = isGameplay;
     if (isGameplay) portalSDK.gameplayStart();
     else portalSDK.gameplayStop();
+}
+
+/**
+ * Shows a midgame ad (when a portal offers one) and then runs `next` (Patch 47b).
+ *
+ * With no portal, `showMidgameAd` completes synchronously, so this degrades to a
+ * direct call of `next()` — identical to the pre-patch behaviour.
+ *
+ * Audio is muted for the ad's full duration and restored afterwards, which
+ * CrazyGames requires. The gameplay events from Patch 44 bracket the ad: gameplay
+ * is reported stopped BEFORE it plays, or ad time is counted as play time in the
+ * platform's metrics. The stop is routed through `portalLastGameplay` rather than
+ * calling `portalSDK.gameplayStop()` alone, so the frame observer stays
+ * authoritative — otherwise it would still believe gameplay was running and would
+ * never re-emit `gameplayStart`.
+ */
+function showAdThen(next) {
+    if (portalLastGameplay) {
+        portalLastGameplay = false;
+        portalSDK.gameplayStop();
+    }
+
+    portalSDK.showMidgameAd({
+        onStart: () => { if (audioEngine) audioEngine.setAdMute(true); },
+        onComplete: () => {
+            if (audioEngine) audioEngine.setAdMute(false);
+            try {
+                next();
+            } catch (e) {
+                console.error("Post-ad transition failed: " + e.message);
+            }
+            // Re-emit gameplayStart immediately if we landed back in gameplay,
+            // rather than waiting up to a frame for the loop's own observer.
+            syncPortalGameplayState();
+        }
+    });
 }
 
 // --- NEW: GLOBAL ACCESSIBILITY SETTINGS ---
@@ -569,11 +608,17 @@ function initEngine() {
 
     document.getElementById('btn-restart').addEventListener('click', () => {
         document.getElementById('death-screen').style.display = 'none';
-        game.init(saveManager); 
-        game.state.player.x = 0; 
-        game.state.player.y = 0;
-        if (audioEngine) audioEngine.playMenuTheme(); 
-        gameState = 'HUB'; 
+        // Patch 47b: interstitial on the death -> summary -> hub transition. The
+        // player has already stopped here, which is the pacing CrazyGames asks for.
+        // NEVER mid-run. Off-portal showMidgameAd() invokes its completion callback
+        // synchronously, so this is a plain function call with no ad and no delay.
+        showAdThen(() => {
+            game.init(saveManager);
+            game.state.player.x = 0;
+            game.state.player.y = 0;
+            if (audioEngine) audioEngine.playMenuTheme();
+            gameState = 'HUB';
+        });
     });
     
     // --- PHASE 2: INITIALIZE BUTTON GOES TO HUB ---
@@ -1014,5 +1059,12 @@ function gameLoop(time) {
     requestAnimationFrame(gameLoop);
 }
 
-initEngine();
-console.log("FRACTURED Engine Online.");
+// Patch 47: boot AFTER the portal has resolved, so SaveManager's constructor reads
+// from the cloud backend when one exists rather than racing it and reading a stale
+// local copy. The promise is memoized (the probe started at the top of this file),
+// never rejects, and self-limits to INIT_TIMEOUT_MS, so an absent or hanging SDK
+// delays boot by at most that timeout and then runs exactly as before.
+portalSDK.init().then(() => {
+    initEngine();
+    console.log("FRACTURED Engine Online.");
+});

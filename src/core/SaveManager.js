@@ -1,6 +1,10 @@
 // src/core/SaveManager.js
 import { SYNAPSE_NODES_BY_ID } from '../data/SynapseNodes.js';
 import { TOKENS, TOKEN_SETS, TOKEN_RARITIES, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS } from '../data/Manifestations.js';
+// Patch 47a: 'fractured_meta' reads/writes route through the portal adapter, which
+// uses the host's cloud-save backend when one exists and plain localStorage when it
+// does not. Off-portal this is exactly the previous localStorage behaviour.
+import { portalSDK } from '../systems/PortalSDK.js';
 
 // Patch 31: built from TOKEN_SLOT_TYPES so the equippedTokens shape has ONE source
 // of truth. §2 of the handoff listed five hardcoded copies of the old 4-slot shape;
@@ -54,7 +58,7 @@ export class SaveManager {
 
     loadGame() {
         try {
-            const saved = localStorage.getItem('fractured_meta');
+            const saved = portalSDK.getItem('fractured_meta');
             if (saved) {
                 const parsed = JSON.parse(saved);
                 this.metaState = { ...this.metaState, ...parsed };
@@ -111,7 +115,7 @@ export class SaveManager {
 
     saveGame() {
         try {
-            localStorage.setItem('fractured_meta', JSON.stringify(this.metaState));
+            portalSDK.setItem('fractured_meta', JSON.stringify(this.metaState));
         } catch(e) {
             console.warn("Failed to save game data.");
         }
