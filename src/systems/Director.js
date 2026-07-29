@@ -227,7 +227,26 @@ export class Director {
                     spawnType = 'PARASITE'; // ambush pressure
                 }
 
-                this.spawnEntity(spawnType, canvasWidth, canvasHeight);
+                // TUTORIAL: spawn the single enemy ON SCREEN, not on the usual
+                // off-screen ring. spawnEntity's default radius is
+                // max(w,h)*0.5+50 (~1010px at 1080p), which is correct when a room
+                // streams in 15+ enemies from every side — but the tutorial budget is
+                // exactly 1, so that put the only enemy in the game somewhere off
+                // screen at a random bearing and left the player wandering to find it.
+                // The world draws at zoom 1.3, so the visible half-extents are only
+                // ~738x415px at 1080p; a quarter of the SMALLER canvas dimension stays
+                // comfortably inside the viewport at any window size.
+                if (state.isTutorial) {
+                    const tutAngle = Math.random() * Math.PI * 2;
+                    const tutDist = Math.min(canvasWidth, canvasHeight) * 0.25;
+                    this.spawnEntity(
+                        spawnType, canvasWidth, canvasHeight,
+                        state.player.x + Math.cos(tutAngle) * tutDist,
+                        state.player.y + Math.sin(tutAngle) * tutDist
+                    );
+                } else {
+                    this.spawnEntity(spawnType, canvasWidth, canvasHeight);
+                }
 
                 if (!bossAlive) {
                     if (spawnType === 'SCAVENGER') state.enemyBudget -= 1;
