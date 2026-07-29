@@ -38,7 +38,7 @@ Anything *visual* cannot be covered by these — `Renderer` needs a real canvas.
 
 ### Entities: shared base class + per-type files
 
-`src/entities/Enemy.js` exports the common `Enemy` base (`initBase`, `takeDamage`, `applyMovement`, `update`) that `Scavenger`, `Predator`, `Parasite`, `Boss`, `Rorschach`, `Panopticon`, `Amalgamation`, `Architect` extend/compose. `takeDamage` batches damage numbers over ~15 frames before spawning a `damageText` (avoids a floating number per hit) and throttles pain-scream SFX via `painCooldown`. `applyMovement` teleports enemies that fall too far behind the player (>1500px) back into range, and handles the `confused` status (used by the `shadow_step` boon on dash) by re-targeting toward the nearest other entity. **`src/entities/Player.js` is an empty stub — player state lives inline in `Game.state.player`, not in a class.**
+`src/entities/Enemy.js` exports the common `Enemy` base (`initBase`, `takeDamage`, `applyMovement`, `update`) that `Scavenger`, `Predator`, `Parasite`, `Boss`, `Rorschach`, `Panopticon`, `Amalgamation`, `Architect` extend/compose. `takeDamage` batches damage numbers over ~15 frames before spawning a `damageText` (avoids a floating number per hit) and throttles pain-scream SFX via `painCooldown`. `applyMovement` teleports enemies that fall too far behind the player (>1500px) back into range, and handles the `confused` status (used by the `shadow_step` boon on dash) by re-targeting toward the nearest other entity. **There is no `Player` class or file — player state lives inline in `Game.state.player`.** (`src/entities/Player.js` was an empty stub, deleted 2026-07-29.)
 
 ### Combat.js resolves interactions, doesn't own state
 
@@ -56,7 +56,7 @@ Meta progression (`SaveManager`) and one run's live state (`Game.state`) intenti
 
 ### Known-empty stub files
 
-`src/entities/Player.js`, `src/systems/EcosystemAI.js`, `src/systems/ParticleGen.js`, `src/ui/HudUI.js`, `src/ui/MenuUI.js`, `src/ui/SynapseTree.js` are all 0 bytes. They are not wired into anything — don't assume functionality lives there just because the filename implies it; grep before assuming a system exists.
+**DELETED (2026-07-29).** `src/entities/Player.js`, `src/systems/EcosystemAI.js`, `src/systems/ParticleGen.js`, `src/ui/HudUI.js` and `src/ui/MenuUI.js` were all 0-byte stubs wired to nothing, and have been removed. `src/ui/SynapseTree.js` is NOT a stub — it has real content as of Patch 29.6. Don't recreate the deleted files: player state lives inline in `Game.state.player`, particles live in `Director`/`Renderer`, and the HUD is DOM-based in `index.html`'s `#ui-layer`. Grep before assuming a system exists.
 
 ## Golden rules (from this project's existing AI dev guidelines)
 

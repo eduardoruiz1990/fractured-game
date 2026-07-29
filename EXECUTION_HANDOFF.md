@@ -201,10 +201,11 @@ Invoke the `game-dev-efficient` skill before starting. Read CLAUDE.md once.
   cross-system wiring lives inline in `initEngine()`.
 - `Game.state` is one big mutable object. Systems mutate it directly.
 - `Director.js` owns `ObjectPool`s. Pool keys are `ent.type.toLowerCase()`.
-- `src/entities/Player.js` is EMPTY — player state lives in `Game.state.player`.
-- Empty 0-byte stubs wired to nothing: `Player.js`, `EcosystemAI.js`,
-  `ParticleGen.js`, `HudUI.js`, `MenuUI.js`, `SynapseTree.js` (**stale as of
-  Patch 29.6 — `SynapseTree.js` is no longer empty**).
+- There is no `Player` class — player state lives in `Game.state.player`.
+- The 0-byte stubs (`Player.js`, `EcosystemAI.js`, `ParticleGen.js`, `HudUI.js`,
+  `MenuUI.js`) were **DELETED 2026-07-29** — unimported and wired to nothing.
+  `SynapseTree.js` was on that list but is NOT a stub (real content since 29.6)
+  and remains.
 - `Renderer.drawHUD()` is DEAD CODE. Real HUD is DOM (`#ui-layer`). Do not
   revive it.
 

@@ -650,8 +650,17 @@ function initEngine() {
         btnEnterSystem.parentNode.replaceChild(newBtn, btnEnterSystem);
         newBtn.addEventListener('click', () => {
             if (audioEngine) {
-                audioEngine.init(); 
-                audioEngine.playMenuTheme(); 
+                // Audio can only be created from a user gesture (autoplay policy), so
+                // the real asset load starts HERE, not at page load. Bracket it with the
+                // portal's loading events, then kick off the deferred ~4.3MB drone
+                // download only after the window has closed so it isn't counted against
+                // the measured load. init() resolves once the essential assets are in.
+                portalSDK.loadingStart();
+                audioEngine.init().then(() => {
+                    portalSDK.loadingStop();
+                    audioEngine.loadDeferredAssets();
+                });
+                audioEngine.playMenuTheme();
             }
             document.getElementById('title-screen').style.display = 'none';
             game.init(saveManager);

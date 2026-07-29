@@ -41,7 +41,6 @@ export class AudioEngine {
         // Never reintroduce a leading slash here.
         this.assetUrls = {
             menu_theme: "sounds/menu_theme.mp3",
-            game_drone: "sounds/game_drone.mp3",
             polaroid: "sounds/polaroid.mp3",
             pipe_swing: "sounds/pipe_swing.mp3",
             pipe_hit: "sounds/pipe_hit.mp3",
@@ -58,8 +57,20 @@ export class AudioEngine {
             boss_hurt: "sounds/boss_hurt.mp3",
             enemy_ambient: "sounds/enemy_ambient.mp3",
             breaker_box: "sounds/breaker_box.mp3",
-            backpack: "sounds/backpack.mp3",
-            player_breath: "sounds/player_breath.mp3"
+            backpack: "sounds/backpack.mp3"
+            // NOTE: no player_breath entry. That mp3 was never added to public/sounds/,
+            // so listing it here only produced a guaranteed 404 on every load (flagged by
+            // CrazyGames QA). It doesn't need one: playSFX falls through to
+            // playProceduralSFX() whenever buffers[key] is absent, and player_breath has a
+            // synthesized implementation there (filtered noise). Only add a URL back here
+            // if the actual file ships in public/sounds/.
+        };
+
+        // Loaded in the background AFTER the loading window closes — see
+        // loadDeferredAssets(). game_drone.mp3 is ~4.3MB, over half the entire
+        // download, and is not audible until a run starts.
+        this.deferredAssetUrls = {
+            game_drone: "sounds/game_drone.mp3"
         };
 
         this.fallbackOscillators = {
@@ -128,18 +139,50 @@ export class AudioEngine {
         }
     }
 
-    async loadAllAssets() {
-        for (const [key, url] of Object.entries(this.assetUrls)) {
-            try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const arrayBuffer = await response.arrayBuffer();
-                this.buffers[key] = await this.audioCtx.decodeAudioData(arrayBuffer);
-                console.log(`[AudioEngine] Successfully loaded: ${key}`);
-            } catch (err) {
-                this.buffers[key] = null; 
-            }
+    async loadOneAsset(key, url) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const arrayBuffer = await response.arrayBuffer();
+            this.buffers[key] = await this.audioCtx.decodeAudioData(arrayBuffer);
+        } catch (err) {
+            // Leave the buffer null: playSFX/startGameDrone fall through to their
+            // procedural synth paths, so a failed asset degrades rather than breaks.
+            this.buffers[key] = null;
         }
+    }
+
+    /**
+     * Loads everything needed before the player can meaningfully interact.
+     *
+     * PARALLEL, not sequential. This used to be an `await` inside a `for` loop, so
+     * all 20 files were fetched one after another, each waiting on the previous —
+     * the single largest contributor to a ~19s reported load time on CrazyGames.
+     * These are independent requests with no ordering constraint.
+     */
+    async loadAllAssets() {
+        await Promise.all(
+            Object.entries(this.assetUrls).map(([key, url]) => this.loadOneAsset(key, url))
+        );
+    }
+
+    /**
+     * Loads assets NOT needed to reach the menu/hub — currently just game_drone.mp3,
+     * which at ~4.3MB is over half the total download but is inaudible until a run
+     * actually starts. Fire-and-forget on purpose: never awaited, so it cannot delay
+     * time-to-interactive, and it is kicked off only AFTER the loading window closes
+     * so its bytes don't count against the platform's measured load size.
+     *
+     * If a run somehow starts before this resolves, startGameDrone() falls back to
+     * the synthesized drone, and the sampled one is picked up on the next run.
+     * Idempotent — safe to call more than once.
+     */
+    loadDeferredAssets() {
+        if (this._deferredLoadStarted) return;
+        this._deferredLoadStarted = true;
+        Object.entries(this.deferredAssetUrls).forEach(([key, url]) => {
+            this.loadOneAsset(key, url);
+        });
     }
 
     safeFade(gainNode, targetValue, duration) {

@@ -1,4 +1,8 @@
-import { MANIFESTATIONS, SYNERGIES, INTRUSIVE_THOUGHTS, getActiveSynergies } from '../data/Manifestations.js';
+// Only getActiveSynergies is used here. MANIFESTATIONS, SYNERGIES and
+// INTRUSIVE_THOUGHTS were imported but never referenced — note in particular that
+// MANIFESTATIONS is NOT the level-up boon pool despite appearing to be; that pool is
+// the local `const BOONS` array inside show(). See the header note in test_content.js.
+import { getActiveSynergies } from '../data/Manifestations.js';
 
 export class LevelUpUI {
     constructor(audioEngine, saveManager) {

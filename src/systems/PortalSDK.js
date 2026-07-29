@@ -53,6 +53,8 @@ class PortalSDK {
         this.gameplayActive = false;
         /** True while an ad is on screen. */
         this.adPlaying = false;
+        /** True between loadingStart() and loadingStop(). */
+        this.loadingActive = false;
     }
 
     /**
@@ -135,6 +137,25 @@ class PortalSDK {
         } catch (e) {
             // A portal event failing must never interrupt the frame.
         }
+    }
+
+    /**
+     * Brackets the game's asset-loading phase. The platform uses this window to
+     * measure load experience, so it must close as soon as the game is genuinely
+     * interactive — deferred background downloads (see AudioEngine.loadDeferredAssets)
+     * belong AFTER loadingStop(), not inside the window.
+     * Idempotent and no-op without a live portal, like every other method here.
+     */
+    loadingStart() {
+        if (!this.available || this.loadingActive) return;
+        this.loadingActive = true;
+        try { window.CrazyGames.SDK.game.loadingStart(); } catch (e) {}
+    }
+
+    loadingStop() {
+        if (!this.available || !this.loadingActive) return;
+        this.loadingActive = false;
+        try { window.CrazyGames.SDK.game.loadingStop(); } catch (e) {}
     }
 
     // ---------------------------------------------------------------------

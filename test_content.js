@@ -259,5 +259,34 @@ console.log('\nSaveManager.getResolvedCurseBonus / toggleCurse gate (Patch 32)')
 }
 
 // ---------------------------------------------------------------------------
+// Audio asset integrity.
+//
+// Guards two bugs that both reached CrazyGames QA:
+//   1. A referenced sound file that doesn't exist on disk (player_breath.mp3),
+//      which 404s on every single load.
+//   2. An ABSOLUTE "/sounds/..." path, which resolves against the domain root and
+//      so breaks on any host serving the game from a subdirectory — CrazyGames
+//      does exactly that. Vite's `base: './'` cannot help here: it only rewrites
+//      paths Vite itself emits, never URLs built at runtime in JS.
+// Parsed from source rather than imported, because instantiating AudioEngine
+// needs a real AudioContext this environment doesn't have.
+{
+    const fs = await import('node:fs');
+    const src = fs.readFileSync('./src/core/AudioEngine.js', 'utf8');
+    const block = src.slice(src.indexOf('this.assetUrls'), src.indexOf('};', src.indexOf('this.assetUrls')));
+    const paths = [...block.matchAll(/["'`]([^"'`]+\.mp3)["'`]/g)].map(m => m[1]);
+
+    check('AudioEngine declares at least one sound asset', paths.length > 0, `found ${paths.length}`);
+
+    const absolute = paths.filter(p => p.startsWith('/'));
+    check('no sound path is absolute (breaks on subdirectory hosts like CrazyGames)',
+          absolute.length === 0, absolute.join(', '));
+
+    const missing = paths.filter(p => !fs.existsSync(`./public/${p}`));
+    check('every referenced sound file exists in public/',
+          missing.length === 0, missing.length ? `missing: ${missing.join(', ')}` : '');
+}
+
+// ---------------------------------------------------------------------------
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
