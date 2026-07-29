@@ -544,6 +544,41 @@ function initEngine() {
         audioEngine.setMuted('platform', muted);
     });
 
+    // Patch 50: show the signed-in portal player as the case file's subject. Fires
+    // once now and again if they sign in mid-session. Guests and off-portal builds
+    // simply never get a user, and the markup's default "UNIDENTIFIED" stands — which
+    // is deliberately in-theme rather than an empty or broken-looking field.
+    portalSDK.onUserChange((user) => {
+        const nameEl = document.getElementById('patient-name');
+        const avatarEl = document.getElementById('patient-avatar');
+        if (!nameEl) return;
+        if (user && user.username) {
+            nameEl.textContent = user.username;
+            if (avatarEl && user.profilePictureUrl) {
+                // Only reveal the avatar once it has actually decoded, so a blocked or
+                // 404'd portrait leaves no broken-image glyph on the folder.
+                avatarEl.onload = () => { avatarEl.style.display = 'block'; };
+                avatarEl.onerror = () => { avatarEl.style.display = 'none'; };
+                avatarEl.src = user.profilePictureUrl;
+            }
+        } else {
+            nameEl.textContent = 'UNIDENTIFIED';
+            if (avatarEl) { avatarEl.style.display = 'none'; avatarEl.removeAttribute('src'); }
+        }
+    });
+
+    // Start downloading audio IMMEDIATELY, not on the INITIALIZE click. The platform
+    // measures load time from page load until loadingStop(), so kicking the download
+    // off from the click made the player's own idle time on the title screen count as
+    // loading. preload() only builds the graph and decodes (legal on a suspended
+    // context); playback still waits for the gesture in audioEngine.init().
+    // The deferred ~4.3MB drone starts only after the window closes.
+    portalSDK.loadingStart();
+    audioEngine.preload().then(() => {
+        portalSDK.loadingStop();
+        audioEngine.loadDeferredAssets();
+    });
+
     uiManager = new UIManager(saveManager, audioEngine, () => {
         // OVERRIDE: Instead of `game.init()`, we are ALREADY loaded. Just close menu and launch!
         document.getElementById('clinical-folder-menu').style.display = 'none';
@@ -649,19 +684,11 @@ function initEngine() {
         const newBtn = btnEnterSystem.cloneNode(true);
         btnEnterSystem.parentNode.replaceChild(newBtn, btnEnterSystem);
         newBtn.addEventListener('click', () => {
-            if (audioEngine) {
-                // Audio can only be created from a user gesture (autoplay policy), so
-                // the real asset load starts HERE, not at page load. Bracket it with the
-                // portal's loading events, then kick off the deferred ~4.3MB drone
-                // download only after the window has closed so it isn't counted against
-                // the measured load. init() resolves once the essential assets are in.
-                portalSDK.loadingStart();
-                audioEngine.init().then(() => {
-                    portalSDK.loadingStop();
-                    audioEngine.loadDeferredAssets();
-                });
-                audioEngine.playMenuTheme();
-            }
+            // Assets are already downloading/decoded from page load (see the preload
+            // call in initEngine). This only resumes the suspended AudioContext on a
+            // real user gesture and starts the menu theme — no loading happens here,
+            // so time spent sitting on the title screen is not counted as load time.
+            if (audioEngine) audioEngine.init();
             document.getElementById('title-screen').style.display = 'none';
             game.init(saveManager);
             game.state.player.x = 0; 

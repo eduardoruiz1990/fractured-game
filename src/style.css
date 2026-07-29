@@ -116,6 +116,31 @@ canvas { display: block; image-rendering: pixelated; }
    border, rotation and opacity all preserved exactly. */
 .patient-stamp { color: var(--ui-red); font-size: 1.5rem; font-weight: bold; border: 3px solid var(--ui-red); padding: 5px 15px; transform: rotate(-5deg); opacity: 0.9; box-shadow: 0 0 6px rgba(139,0,0,0.35), inset 0 0 8px rgba(139,0,0,0.18); border-radius: 2px; }
 .typewriter-text { font-family: var(--ui-font); color: var(--ink-black); font-weight: bold; }
+
+/* Patient identity (Patch 50) — the signed-in portal user, presented as the name
+   typed onto the case file rather than as a game "account" widget, so it reads as
+   part of the clinical-file language. Guests stay UNIDENTIFIED, which is in-theme. */
+.patient-identity {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--ui-font); font-size: 0.85rem; color: #4a4335;
+    letter-spacing: 1px; text-transform: uppercase;
+    border-bottom: 1px dashed rgba(17,17,17,0.35); padding-bottom: 3px;
+}
+.patient-identity-label { opacity: 0.65; }
+#patient-name {
+    font-weight: bold; color: var(--ink-black);
+    /* Usernames are up to 20 chars; keep a long one from shoving the stamp. */
+    max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#patient-avatar {
+    width: 22px; height: 22px; border-radius: 2px;
+    border: 1px solid rgba(17,17,17,0.5); filter: grayscale(0.6) contrast(1.1);
+}
+@media (max-width: 768px) {
+    /* The header is tight on phones — the level stamp matters more than the name. */
+    .patient-identity { font-size: 0.7rem; }
+    #patient-name { max-width: 12ch; }
+}
 .section-label { font-weight: bold; color: #222; text-transform: uppercase; margin-bottom: 10px; font-size: 0.95rem; letter-spacing: 1px; }
 
 .folder-tabs { display: flex; background: var(--folder-tab); border-bottom: 3px solid var(--ink-black); }
@@ -326,6 +351,60 @@ canvas { display: block; image-rendering: pixelated; }
 .roadmap-node.active { border-color: var(--ui-red); color: var(--ui-red); background: #fff0f0; transform: scale(1.02); z-index: 5; box-shadow: 5px 5px 15px rgba(139,0,0,0.2); }
 .roadmap-node.active::before { background: var(--ui-red); border-color: var(--ui-red); box-shadow: 0 0 10px var(--ui-red); }
 .roadmap-node.boss { border-style: dashed; }
+
+/* --- Descent Roadmap overhaul (Patch 51) ---------------------------------
+   Was a flat list of five identical "(UNKNOWN)" rows with no sense of progress.
+   Now reads as a case file's progress chart: a summary band with a real fill bar,
+   then per-floor entries carrying status, area, boss of record and a clinical note.
+   Deliberately reuses the existing paper/ink/stamp palette rather than introducing
+   a new "game UI" idiom. */
+
+.roadmap-summary {
+    margin-left: 10px; margin-bottom: 6px; padding: 14px 16px;
+    background: #fdfaf3; border: 2px solid var(--ink-black);
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+}
+/* Sits outside the timeline's node rail — it's a header, not a stop on the path. */
+.roadmap-summary::before { display: none; }
+.roadmap-summary-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.roadmap-summary-figure { font-family: var(--ui-font); font-weight: bold; color: var(--ui-red); letter-spacing: 1px; }
+.roadmap-summary-sub {
+    margin-top: 8px; font-family: var(--ui-font); font-size: 0.72rem;
+    color: #6b6355; letter-spacing: 1px; text-transform: uppercase;
+}
+.roadmap-progress-track {
+    margin-top: 10px; height: 14px; background: #e0d8c6;
+    border: 2px solid var(--ink-black); position: relative; overflow: hidden;
+}
+.roadmap-progress-fill {
+    height: 100%; background: var(--ui-red);
+    /* Ledger hatching, so a part-filled bar reads as ink on paper, not a game meter. */
+    background-image: repeating-linear-gradient(45deg,
+        rgba(0,0,0,0.18) 0 4px, transparent 4px 8px);
+    transition: width 0.4s ease;
+}
+
+.roadmap-node-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.roadmap-floor-tag { font-family: var(--ui-font); font-size: 0.7rem; letter-spacing: 2px; color: #6b6355; }
+.roadmap-status {
+    font-family: var(--ui-font); font-size: 0.68rem; font-weight: bold;
+    letter-spacing: 1px; padding: 2px 8px; border: 2px solid currentColor; border-radius: 2px;
+}
+.roadmap-status.subdued { color: var(--ink-black); transform: rotate(-2deg); }
+.roadmap-status.pending { color: var(--ui-red); }
+.roadmap-status.redacted { color: #9a917f; border-style: dashed; }
+
+.roadmap-area { font-family: var(--ui-font); font-size: 1.05rem; font-weight: bold; letter-spacing: 1px; color: var(--ink-black); }
+.roadmap-boss { font-family: var(--ui-font); font-size: 0.78rem; color: #55503f; margin-top: 4px; letter-spacing: 1px; }
+.roadmap-note { font-size: 0.72rem; color: #6b6355; margin-top: 6px; font-weight: normal; line-height: 1.35; }
+
+/* A sealed floor is redacted, not merely greyed — it should read as withheld. */
+.redacted-text { color: #9a917f; letter-spacing: 3px; }
+.roadmap-node.locked .roadmap-note { display: none; }
+
+/* The old rule struck through every completed row, which fought the added detail. */
+.roadmap-node.completed { text-decoration: none; }
+.roadmap-node.completed .roadmap-area { text-decoration: none; }
 
 /* --- EPIC 6: IN-GAME HUD OVERHAUL --- */
 /* PATCH 38 — design intent: the menus are a paper clinical FILE, so this HUD is

@@ -80,12 +80,35 @@ export class AudioEngine {
         };
     }
 
-    async init() {
-        if (this.isInitialized) {
-            if (this.audioCtx && this.audioCtx.state === 'suspended') this.audioCtx.resume();
-            return;
-        }
+    /**
+     * Builds the audio graph and downloads/decodes the essential assets.
+     *
+     * Safe to call at PAGE LOAD, before any user gesture — an AudioContext created
+     * without one simply starts in the 'suspended' state, and decodeAudioData works
+     * fine there. Only actual playback needs the gesture, which is what init() does.
+     *
+     * This split exists for the platform's load-time metric: loading used to be
+     * kicked off by the INITIALIZE click, so the clock ran for as long as the player
+     * sat on the title screen (a deliberate ~199s pause was reported as a 198.9s
+     * load). Loading now starts immediately and the reported time reflects real work.
+     *
+     * Memoized — repeated calls share one in-flight load and never rebuild the graph.
+     */
+    async preload() {
+        if (!this._preloadPromise) this._preloadPromise = this._doPreload();
+        return this._preloadPromise;
+    }
 
+    async init() {
+        // Resume on a genuine user gesture, then start the menu bed.
+        await this.preload();
+        try {
+            if (this.audioCtx && this.audioCtx.state === 'suspended') await this.audioCtx.resume();
+        } catch (e) { /* resume can reject if the gesture wasn't trusted; harmless */ }
+        this.playMenuTheme();
+    }
+
+    async _doPreload() {
         try {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             this.audioCtx = new AudioContext();
@@ -131,9 +154,10 @@ export class AudioEngine {
 
             this.isInitialized = true;
 
+            // No playback here — the context may still be suspended (no gesture yet).
+            // init() resumes and starts the menu theme once the player clicks.
             await this.loadAllAssets();
-            this.playMenuTheme();
-            
+
         } catch (e) {
             console.warn("Audio Context Initialization Failed: " + e.message);
         }

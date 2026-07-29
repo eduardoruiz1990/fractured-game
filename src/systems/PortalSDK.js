@@ -159,6 +159,51 @@ class PortalSDK {
     }
 
     // ---------------------------------------------------------------------
+    // User identity (Patch 50)
+    //
+    // getUser() is async and resolves to null when nobody is logged in;
+    // `isUserAccountAvailable` reports whether the account system exists on this
+    // domain at all. Logging IN fires the auth listener; logging OUT does not,
+    // because the platform reloads the whole page.
+    // ---------------------------------------------------------------------
+
+    /**
+     * Resolves to `{ username, profilePictureUrl }` for the signed-in player, or
+     * null when there is no portal, no account system, nobody signed in, or the
+     * call fails. Callers must treat null as the normal case — most players are
+     * guests, so the UI has to read fine without a name.
+     */
+    async getUser() {
+        if (!this.available) return null;
+        try {
+            const userApi = window.CrazyGames.SDK.user;
+            if (!userApi || !userApi.isUserAccountAvailable) return null;
+            const user = await userApi.getUser();
+            if (!user || !user.username) return null;
+            return { username: user.username, profilePictureUrl: user.profilePictureUrl || null };
+        } catch (e) {
+            return null;
+        }
+    }
+
+    /**
+     * Calls `onUser(user|null)` with the current player now, and again whenever they
+     * sign in. No-ops without a live portal, so off-portal builds simply never
+     * receive a user and keep their anonymous presentation.
+     */
+    onUserChange(onUser) {
+        if (!this.available || typeof onUser !== 'function') return;
+        const deliver = () => { this.getUser().then(onUser).catch(() => {}); };
+        try {
+            const userApi = window.CrazyGames.SDK.user;
+            if (userApi && typeof userApi.addAuthListener === 'function') {
+                userApi.addAuthListener(() => deliver());
+            }
+        } catch (e) { /* fall through — the immediate read below still runs */ }
+        deliver();
+    }
+
+    // ---------------------------------------------------------------------
     // Persistence (Patch 47a)
     //
     // The CrazyGames data module is a SYNCHRONOUS, localStorage-compatible API

@@ -533,34 +533,86 @@ export class UIManager {
         const timeline = document.querySelector('.roadmap-timeline');
         if (!timeline) return;
 
-        const maxFloor = this.saveManager.metaState.maxFloorReached || 1;
-        const maxBoss = this.saveManager.metaState.maxBossEncountered || 0;
+        const meta = this.saveManager.metaState;
+        const maxFloor = meta.maxFloorReached || 1;
+        const maxBoss = meta.maxBossEncountered || 0;
+        const kills = meta.killCounts || {};
 
+        // bossKey maps a floor to its killCounts entry, matching Director.spawnRoom's
+        // floor->boss dispatch (1 BOSS, 2 RORSCHACH, 3 PANOPTICON, 4 AMALGAMATION,
+        // 5+ ARCHITECT). That count is what turns this from a static list into a
+        // record of what the patient has actually survived.
         const floors = [
-            { f: 1, name: "Floor 1: The Wastes (Sphere Head)", unknown: "Floor 1: (UNKNOWN)" },
-            { f: 2, name: "Floor 2: The Divide (Rorschach)", unknown: "Floor 2: (UNKNOWN)" },
-            { f: 3, name: "Floor 3: The Panopticon (The All-Seeing Eye)", unknown: "Floor 3: (UNKNOWN)" },
-            { f: 4, name: "Floor 4: The Amalgamation (The Collective Nightmare)", unknown: "Floor 4: (UNKNOWN)" },
-            { f: 5, name: "Floor 5: The Architect (FINAL)", unknown: "Floor 5: (UNKNOWN)", isBoss: true }
+            { f: 1, area: "THE WASTES",       boss: "SPHERE HEAD",  bossKey: 'BOSS',
+              note: "Initial dissociative episode. Baseline hostility." },
+            { f: 2, area: "THE DIVIDE",       boss: "RORSCHACH",    bossKey: 'RORSCHACH',
+              note: "Perceptual splitting. The subject sees pattern where there is none." },
+            { f: 3, area: "THE PANOPTICON",   boss: "THE ALL-SEEING EYE", bossKey: 'PANOPTICON',
+              note: "Persistent surveillance ideation. Constant observation." },
+            { f: 4, area: "THE AMALGAMATION", boss: "THE COLLECTIVE", bossKey: 'AMALGAMATION',
+              note: "Ego dissolution. Boundaries between selves fail." },
+            { f: 5, area: "THE ARCHITECT",    boss: "THE ARCHITECT", bossKey: 'ARCHITECT',
+              note: "Terminal stage. The source of the construct.", isFinal: true }
         ];
 
+        const deepest = Math.min(maxFloor, floors.length);
+        const conquered = floors.filter(fl => (kills[fl.bossKey] || 0) > 0).length;
+        const pct = Math.round((conquered / floors.length) * 100);
+
         timeline.innerHTML = '';
-        
+
+        // --- Summary band: the at-a-glance progress read ---
+        const summary = document.createElement('div');
+        summary.className = 'roadmap-summary';
+        summary.innerHTML = `
+            <div class="roadmap-summary-row">
+                <span class="section-label" style="margin:0;">DESCENT PROGRESS</span>
+                <span class="roadmap-summary-figure">${conquered} / ${floors.length} SUBDUED</span>
+            </div>
+            <div class="roadmap-progress-track"><div class="roadmap-progress-fill" style="width:${pct}%;"></div></div>
+            <div class="roadmap-summary-row roadmap-summary-sub">
+                <span>DEEPEST REACHED: FLOOR ${deepest}</span>
+                <span>${meta.hasEscapedFloor1 ? 'ESCAPE ON RECORD' : 'NO ESCAPE ON RECORD'}</span>
+            </div>
+        `;
+        timeline.appendChild(summary);
+
         floors.forEach(floor => {
+            const bossKills = kills[floor.bossKey] || 0;
+            const defeated = bossKills > 0;
+            // "Seen" means the player actually got to this floor, so its identity is
+            // no longer redacted even if the boss is still standing.
+            const seen = floor.f <= maxFloor || maxBoss >= floor.f;
+
             const node = document.createElement('div');
             node.className = 'roadmap-node';
-            if (floor.isBoss) node.classList.add('boss');
+            if (floor.isFinal) node.classList.add('boss');
 
-            if (floor.f < maxFloor) {
-                node.classList.add('completed');
-                node.innerText = floor.name;
-            } else if (floor.f === maxFloor) {
-                node.classList.add('active');
-                if (maxBoss >= floor.f) node.innerText = floor.name;
-                else node.innerText = floor.unknown;
+            if (defeated) node.classList.add('completed');
+            else if (floor.f === maxFloor) node.classList.add('active');
+            else if (!seen) node.classList.add('locked');
+
+            if (!seen) {
+                node.innerHTML = `
+                    <div class="roadmap-node-head">
+                        <span class="roadmap-floor-tag">FLOOR ${floor.f}</span>
+                        <span class="roadmap-status redacted">SEALED</span>
+                    </div>
+                    <div class="roadmap-area redacted-text">(UNKNOWN)</div>
+                `;
             } else {
-                node.classList.add('locked');
-                node.innerText = floor.unknown;
+                const status = defeated
+                    ? `SUBDUED ×${bossKills}`
+                    : (floor.f === maxFloor ? 'IN PROGRESS' : 'ENCOUNTERED');
+                node.innerHTML = `
+                    <div class="roadmap-node-head">
+                        <span class="roadmap-floor-tag">FLOOR ${floor.f}</span>
+                        <span class="roadmap-status ${defeated ? 'subdued' : 'pending'}">${status}</span>
+                    </div>
+                    <div class="roadmap-area">${floor.area}</div>
+                    <div class="roadmap-boss">SUBJECT OF RECORD: <strong>${floor.boss}</strong></div>
+                    <div class="roadmap-note typewriter-text">${floor.note}</div>
+                `;
             }
             timeline.appendChild(node);
         });

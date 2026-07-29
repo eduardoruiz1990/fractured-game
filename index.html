@@ -72,6 +72,13 @@
             
             <div class="folder-header">
                 <div class="title-typewriter">PROJECT: FRACTURED</div>
+                <!-- Patient identity. Populated from the portal's signed-in user when
+                     one exists; stays "UNIDENTIFIED" for guests and off-portal. -->
+                <div id="patient-identity" class="patient-identity">
+                    <img id="patient-avatar" alt="" style="display:none;">
+                    <span class="patient-identity-label">SUBJECT:</span>
+                    <span id="patient-name">UNIDENTIFIED</span>
+                </div>
                 <div id="patient-level-display" class="patient-stamp">PATIENT LVL 1</div>
             </div>
             
