@@ -17,6 +17,9 @@ const ctx = canvas.getContext('2d');
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+    // Refit the camera: on small viewports a fixed zoom showed far too little world.
+    // Guarded because resize() also runs once before the Renderer exists.
+    if (renderer) renderer.updateZoom();
 }
 window.addEventListener('resize', resize);
 resize();

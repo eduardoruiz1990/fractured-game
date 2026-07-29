@@ -11,7 +11,10 @@ export class Renderer {
         this.lightCanvas = document.createElement('canvas');
         this.lightCtx = this.lightCanvas.getContext('2d');
         
+        // Camera zoom. 1.3 is the desktop look and the MAXIMUM — updateZoom() only
+        // ever scales DOWN, on viewports too small to show a usable amount of world.
         this.zoom = 1.3;
+        this.updateZoom();
 
         // Offscreen sprite cache (see getSprite/drawGlow). Lazily populated rather
         // than built at init like cachedFloorPatterns, because entity sprites are
@@ -93,6 +96,37 @@ export class Renderer {
     // combined wave doesn't visibly loop the way a single sine does.
     // Range is roughly [-1.3, 1.3] — callers multiplying by an amplitude get a
     // slightly wider swing than a plain Math.sin() did.
+    /**
+     * Fits the camera zoom to the viewport. Call on init and on every resize.
+     *
+     * The world is drawn at `zoom`, so the visible world area is canvasSize / zoom.
+     * With a hardcoded 1.3 that meant a desktop saw 1477x831 world px while a phone
+     * in portrait (390x844 CSS px) saw only 300x649 — nearly 5x less world at the
+     * SAME sprite scale, which is why everything read as enormous and the HUD
+     * swallowed the play area on mobile.
+     *
+     * 1.3 stays the MAXIMUM, so the desktop look is unchanged; this only ever scales
+     * down, and only when the viewport cannot show TARGET_W x TARGET_H world units.
+     * MIN_ZOOM is a readability floor — past it, entities get too small to parse.
+     * The result is clamped and always finite, so it can never feed NaN into the
+     * canvas transform.
+     */
+    updateZoom() {
+        const MAX_ZOOM = 1.3;   // desktop, unchanged
+        const MIN_ZOOM = 0.70;  // readability floor for small screens
+        const TARGET_W = 900;   // world units we want visible horizontally
+        const TARGET_H = 620;   // and vertically
+
+        const w = this.canvas ? this.canvas.width : 0;
+        const h = this.canvas ? this.canvas.height : 0;
+        if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+            this.zoom = MAX_ZOOM;
+            return;
+        }
+        const fit = Math.min(w / TARGET_W, h / TARGET_H);
+        this.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fit));
+    }
+
     // Generic offscreen sprite cache, following the cachedFloorPatterns /
     // HubWorld.cachedFloor pattern. `key` MUST capture every input that changes the
     // drawing — a missed input means entities render with a stale sprite forever.
