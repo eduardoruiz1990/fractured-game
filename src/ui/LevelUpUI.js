@@ -8,16 +8,20 @@ export class LevelUpUI {
         this.audioEngine = audioEngine;
         this.saveManager = saveManager;
 
-        window.FRACTURED_DEV_MODE = false;
+        if (import.meta.env.DEV) window.FRACTURED_DEV_MODE = false;
         this.setupDevShortcuts();
         this.attachRerollEvent();
     }
 
     setupDevShortcuts() {
+        // Dev-build only. In production the listener is never registered, so pressing
+        // '0' does nothing and FRACTURED_DEV_MODE stays permanently false — which also
+        // keeps every `window.FRACTURED_DEV_MODE &&` guard elsewhere permanently closed.
+        if (!import.meta.env.DEV) return;
         window.addEventListener('keydown', (e) => {
             if (e.key === '0') {
                 window.FRACTURED_DEV_MODE = !window.FRACTURED_DEV_MODE;
-                console.log(`%c FRACTURED DEV MODE: ${window.FRACTURED_DEV_MODE ? 'ENABLED' : 'DISABLED'} `, 
+                console.log(`%c FRACTURED DEV MODE: ${window.FRACTURED_DEV_MODE ? 'ENABLED' : 'DISABLED'} `,
                             'background: #c5a059; color: #000; font-weight: bold;');
             }
         });

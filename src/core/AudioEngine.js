@@ -32,27 +32,34 @@ export class AudioEngine {
             flashlight: null
         };
 
+        // Paths are RELATIVE (no leading slash) on purpose. An absolute "/sounds/x.mp3"
+        // resolves against the DOMAIN ROOT, which breaks on any host that serves the
+        // game from a subdirectory — CrazyGames does, and every one of these 404'd in
+        // their QA preview while the relative-path JS/CSS bundle loaded fine. Patch 43
+        // set Vite's `base: './'`, but that only rewrites paths Vite itself emits into
+        // index.html; URLs built at runtime in JS like these are invisible to it.
+        // Never reintroduce a leading slash here.
         this.assetUrls = {
-            menu_theme: "/sounds/menu_theme.mp3", 
-            game_drone: "/sounds/game_drone.mp3", 
-            polaroid: "/sounds/polaroid.mp3",   
-            pipe_swing: "/sounds/pipe_swing.mp3", 
-            pipe_hit: "/sounds/pipe_hit.mp3",   
-            boss_intro: "/sounds/boss_intro.mp3", 
-            ui_hover: "/sounds/ui_hover.mp3",   
-            ui_click: "/sounds/ui_click.mp3",   
-            ui_upgrade: "/sounds/ui_upgrade.mp3", 
-            player_hurt: "/sounds/player_hurt.mp3",
-            dash: "/sounds/dash.mp3",
-            enemy_spawn: "/sounds/enemy_spawn.mp3",
-            scavenger_hurt: "/sounds/scavenger_hurt.mp3",
-            predator_hurt: "/sounds/predator_hurt.mp3",
-            parasite_hurt: "/sounds/parasite_hurt.mp3",
-            boss_hurt: "/sounds/boss_hurt.mp3",
-            enemy_ambient: "/sounds/enemy_ambient.mp3",
-            breaker_box: "/sounds/breaker_box.mp3",
-            backpack: "/sounds/backpack.mp3",
-            player_breath: "/sounds/player_breath.mp3" 
+            menu_theme: "sounds/menu_theme.mp3",
+            game_drone: "sounds/game_drone.mp3",
+            polaroid: "sounds/polaroid.mp3",
+            pipe_swing: "sounds/pipe_swing.mp3",
+            pipe_hit: "sounds/pipe_hit.mp3",
+            boss_intro: "sounds/boss_intro.mp3",
+            ui_hover: "sounds/ui_hover.mp3",
+            ui_click: "sounds/ui_click.mp3",
+            ui_upgrade: "sounds/ui_upgrade.mp3",
+            player_hurt: "sounds/player_hurt.mp3",
+            dash: "sounds/dash.mp3",
+            enemy_spawn: "sounds/enemy_spawn.mp3",
+            scavenger_hurt: "sounds/scavenger_hurt.mp3",
+            predator_hurt: "sounds/predator_hurt.mp3",
+            parasite_hurt: "sounds/parasite_hurt.mp3",
+            boss_hurt: "sounds/boss_hurt.mp3",
+            enemy_ambient: "sounds/enemy_ambient.mp3",
+            breaker_box: "sounds/breaker_box.mp3",
+            backpack: "sounds/backpack.mp3",
+            player_breath: "sounds/player_breath.mp3"
         };
 
         this.fallbackOscillators = {

@@ -168,18 +168,26 @@ function buildRunSummaryHtml(game) {
 }
 
 function initEngine() {
-    if (!document.getElementById('dev-floor-select')) {
+    // The ENTIRE dev toolkit (floor override, skip-to-boss, lucidity/patient-level
+    // grants, unlock forcing, build-log dump, visual test bench, telemetry overlay)
+    // is gated on import.meta.env.DEV. Vite substitutes that with a literal `false`
+    // in `npm run build`, so this whole block is dead-code-eliminated and never
+    // reaches players — while `npm run dev` keeps every tool intact.
+    // Gating at CREATION is what matters: the old code built these controls in all
+    // builds and merely hid them with CSS, which is how a hidden <select> defaulting
+    // to "5" silently started every player on Floor 5.
+    if (import.meta.env.DEV && !document.getElementById('dev-floor-select')) {
         const devUI = document.createElement('div');
         devUI.id = 'dev-mode-container';
         devUI.style.cssText = "position:absolute; bottom:10px; left:10px; z-index:9999; background:rgba(0,0,0,0.8); border:1px solid var(--ui-gold); padding:8px; color:var(--ui-gold); font-family:monospace; font-size:12px;";
         devUI.innerHTML = `
             DEV OVERRIDE - STARTING FLOOR: 
             <select id="dev-floor-select" style="background:#111; color:var(--ui-gold); border:1px solid #333; outline:none; font-family:inherit; margin-left:10px; padding:2px;">
-                <option value="1">1 - SPHERE HEAD</option>
+                <option value="1" selected>1 - SPHERE HEAD</option>
                 <option value="2">2 - RORSCHACH</option>
                 <option value="3">3 - PANOPTICON</option>
                 <option value="4">4 - AMALGAMATION</option>
-                <option value="5" selected>5 - ARCHITECT</option>
+                <option value="5">5 - ARCHITECT</option>
             </select>
             <label for="dev-skip-to-boss" style="display:block; margin-top:8px; cursor:pointer; user-select:none;">
                 <input type="checkbox" id="dev-skip-to-boss" style="vertical-align:middle; margin-right:6px;">
@@ -542,7 +550,14 @@ function initEngine() {
         document.getElementById('ui-layer').style.display = 'flex';
         gameState = 'PLAYING';
         
-        const devSelect = document.getElementById('dev-floor-select');
+        // SHIPPING BUG (fixed): this used to check only `value !== "1"`, with no dev-mode
+        // gate and no build gate. The dev panel is hidden for normal players but its
+        // <select> still existed in the DOM, defaulting to "5" — so EVERY player silently
+        // started on Floor 5 with bonus XP. Caught in CrazyGames QA preview. Now doubly
+        // guarded: stripped from production builds entirely, and dev-mode-gated within
+        // dev builds so a normal playtest is unaffected.
+        if (import.meta.env.DEV) {
+        const devSelect = window.FRACTURED_DEV_MODE ? document.getElementById('dev-floor-select') : null;
         if (devSelect && devSelect.value !== "1") {
             const chosenFloor = parseInt(devSelect.value);
             game.init(saveManager); // Re-initialize to lock in floor scalings properly
@@ -562,7 +577,7 @@ function initEngine() {
         // spawnRoom() on the first frame (enemyBudget is still undefined), so parking
         // roomNumber at the cap is enough — no separate "spawn boss now" path needed.
         // The announcement banner keys off state.bossSpawned, so it still plays.
-        const devSkipBoss = document.getElementById('dev-skip-to-boss');
+        const devSkipBoss = window.FRACTURED_DEV_MODE ? document.getElementById('dev-skip-to-boss') : null;
         if (devSkipBoss && devSkipBoss.checked) {
             game.state.roomNumber = game.state.maxRoomsPerFloor;
             // Compensate for the rooms' worth of XP that got skipped, otherwise the
@@ -570,6 +585,7 @@ function initEngine() {
             // look at it.
             game.state.xp += 1200;
             console.log(`%c DEV OVERRIDE: Skipping to boss room on Floor ${game.state.floor}. `, 'background: #c5a059; color: #000;');
+        }
         }
 
         // Re-center player for the actual run
@@ -830,7 +846,7 @@ function initEngine() {
         `;
         inputManager.hideJoysticks();
 
-        if (window.FRACTURED_DEV_MODE && game.state.devTelemetryEnabled && game.state.telemetry) {
+        if (import.meta.env.DEV && window.FRACTURED_DEV_MODE && game.state.devTelemetryEnabled && game.state.telemetry) {
             const tel = game.state.telemetry;
             console.log('%c DEV: RUN TELEMETRY (death) ', 'background: #c5a059; color: #000; font-weight: bold;');
             console.log({
@@ -882,6 +898,7 @@ function gameLoop(time) {
     try {
         syncPortalGameplayState();
 
+        if (import.meta.env.DEV) {
         const devModeContainer = document.getElementById('dev-mode-container');
         if (devModeContainer) {
             // PLAYING included so the visual test bench (spawn / freeze / scenario)
@@ -909,6 +926,7 @@ function gameLoop(time) {
                     `room clears (s): ${clears}\n` +
                     `dmg/room: ${dmg}`;
             }
+        }
         }
 
         if (gameState === 'MENU' || gameState === 'TITLE') {
