@@ -183,5 +183,12 @@ export class InputManager {
         this.joyLeft.style.display = 'none';
         this.joyRight.style.display = 'none';
         if (this.btnDash) this.btnDash.style.display = 'none';
+        // Clear the reveal latch too. handleTouch only shows the dash button while
+        // `!dashBtnShown`, so hiding it here without resetting the flag meant the
+        // button was gone PERMANENTLY after the first menu open — losing dash, and
+        // with it the i-frames it grants, for the rest of the session on touch.
+        // The next canvas touch now re-reveals it, matching how the floating
+        // joysticks already re-appear under the player's thumb.
+        this.dashBtnShown = false;
     }
 }

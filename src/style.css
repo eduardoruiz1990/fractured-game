@@ -14,11 +14,23 @@ body, html {
     margin: 0; padding: 0; width: 100%; height: 100%;
     overflow: hidden; background-color: var(--bg-color);
     color: white; font-family: var(--ui-font);
-    touch-action: none;
+    /* touch-action is deliberately NOT set here — see the gameplay-surface rule below.
+       It used to be `none` on body, which per the touch-action spec intersects down the
+       whole ancestor chain and CANNOT be re-enabled by a descendant. That silently made
+       every scrollable menu pane (.folder-content, the loadout panels, the guide and
+       roadmap) unscrollable by touch, putting any content below the fold out of reach on
+       a phone. Page-level panning is already prevented by `overflow: hidden` here, and
+       pinch-zoom by the viewport meta's user-scalable=no. */
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
     user-select: none;
+}
+
+/* Gameplay surface only: suppress browser gestures (pan/double-tap-zoom) exactly where
+   they'd fight the virtual joysticks, and nowhere else. Menus are DOM and must scroll. */
+#gameCanvas, .joystick-base, .action-btn {
+    touch-action: none;
 }
 
 * {
@@ -155,6 +167,13 @@ canvas { display: block; image-rendering: pixelated; }
 /* Patch 37: filed-paper margin rule. Positioned at 20px — inside this element's
    own 30px padding — so it can never collide with content. Left on the default
    background-attachment so it stays put while the pane scrolls. */
+/* Scrollable menu panes: opt in to vertical touch panning explicitly, and enable
+   iOS momentum scrolling so long lists (inventory, guide, roadmap) feel native. */
+.folder-content, .inventory-panel, .equipped-panel, #synapse-tree-grid {
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+}
+
 .folder-content {
     padding: 30px; flex: 1; overflow-y: auto; position: relative;
     background-image: linear-gradient(90deg, transparent 0 20px, rgba(139,0,0,0.16) 20px 21px, transparent 21px);
