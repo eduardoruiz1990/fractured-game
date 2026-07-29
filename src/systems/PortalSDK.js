@@ -241,6 +241,42 @@ class PortalSDK {
             complete();
         }
     }
+
+    // ---------------------------------------------------------------------
+    // Platform-forced mute (Patch 49)
+    //
+    // Separate from ad muting: `game.settings.muteAudio` reflects the PLAYER's
+    // own site-level mute choice on CrazyGames (e.g. a mute control in their
+    // chrome), independent of anything happening inside our game. The docs
+    // describe it as a settings object read via `game.settings` and pushed via
+    // `addSettingsChangeListener`; they explicitly say to prefer the listener
+    // over relying on a synchronous read being available immediately post-init.
+    // ---------------------------------------------------------------------
+
+    /**
+     * Subscribes to the platform's forced-mute setting. `onMuteChange(bool)` is
+     * called once immediately with whatever `game.settings` currently holds (so a
+     * game loading while the player already has CrazyGames muted doesn't play
+     * audio before the first change event arrives), and again on every change.
+     *
+     * No-ops when no live portal is present — `onMuteChange` is simply never
+     * invoked, which is correct: nothing external can force-mute an off-portal game.
+     */
+    onPlatformMuteChange(onMuteChange) {
+        if (!this.available || typeof onMuteChange !== 'function') return;
+        try {
+            const game = window.CrazyGames.SDK.game;
+            if (!game || typeof game.addSettingsChangeListener !== 'function') return;
+
+            game.addSettingsChangeListener((newSettings) => {
+                try { onMuteChange(!!(newSettings && newSettings.muteAudio)); } catch (e) {}
+            });
+
+            try { onMuteChange(!!(game.settings && game.settings.muteAudio)); } catch (e) {}
+        } catch (e) {
+            // A portal surface surprise here must never break audio init.
+        }
+    }
 }
 
 export const portalSDK = new PortalSDK();

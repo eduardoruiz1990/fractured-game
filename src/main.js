@@ -74,9 +74,9 @@ function showAdThen(next) {
     }
 
     portalSDK.showMidgameAd({
-        onStart: () => { if (audioEngine) audioEngine.setAdMute(true); },
+        onStart: () => { if (audioEngine) audioEngine.setMuted('ad', true); },
         onComplete: () => {
-            if (audioEngine) audioEngine.setAdMute(false);
+            if (audioEngine) audioEngine.setMuted('ad', false);
             try {
                 next();
             } catch (e) {
@@ -529,6 +529,12 @@ function initEngine() {
     levelUpUI = new LevelUpUI(audioEngine, saveManager);
 
     game.audioEngine = audioEngine;
+
+    // Patch 49: respect the platform's own mute setting (distinct from Patch 47's
+    // ad-muting — see AudioEngine.setMuted's reason-tracking). No-ops off-portal.
+    portalSDK.onPlatformMuteChange((muted) => {
+        audioEngine.setMuted('platform', muted);
+    });
 
     uiManager = new UIManager(saveManager, audioEngine, () => {
         // OVERRIDE: Instead of `game.init()`, we are ALREADY loaded. Just close menu and launch!

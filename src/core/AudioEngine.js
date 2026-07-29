@@ -345,43 +345,49 @@ export class AudioEngine {
     }
 
     /**
-     * Hard mute/unmute for video-ad playback (Patch 47). CrazyGames requires the
-     * game to be silent for an ad's full duration, and treats audio bleeding over
-     * an ad as a QA failure.
+     * Hard mute/unmute with independently-tracked reasons. Two portal-driven
+     * callers need this: video-ad playback (Patch 47, reason 'ad') and the
+     * platform's own forced-mute setting (Patch 49, reason 'platform', see
+     * PortalSDK.onPlatformMuteChange). Audio stays muted while ANY reason is
+     * still active, and is only restored once EVERY reason has cleared — a naive
+     * shared boolean would let an ad finishing unmute the game while the platform
+     * still has it muted, or the platform unmuting cut off a still-playing ad.
      *
-     * Deliberately NOT a safeFade: a fade is both audible over the start of the ad
+     * Deliberately NOT a safeFade: a fade is both audible over the start of a mute
      * and, more importantly, reversible by any other scheduled ramp — playMenuTheme,
      * triggerAudioDucking and stop() all write to masterGain.gain, and any of them
-     * landing mid-ad would un-mute us. So this cancels scheduled values, hard-sets
+     * landing mid-mute would un-mute us. So this cancels scheduled values, hard-sets
      * the gain, AND suspends the AudioContext, which no gain ramp can override.
      * Suspending has a useful side effect: playSFX/playFootstep already early-return
-     * while the context is suspended, so nothing can queue new sound during the ad.
+     * while the context is suspended, so nothing can queue new sound while muted.
      *
      * The pre-mute gain is captured and restored rather than assuming the 1.2
-     * nominal, so an ad during a duck or a death-fade restores what was actually there.
+     * nominal, so muting during a duck or a death-fade restores what was actually there.
      */
-    setAdMute(muted) {
+    setMuted(reason, muted) {
         if (!this.audioCtx || !this.masterGain) return;
+        if (!this._muteReasons) this._muteReasons = new Set();
+        const wasMuted = this._muteReasons.size > 0;
+        if (muted) this._muteReasons.add(reason);
+        else this._muteReasons.delete(reason);
+        const isMuted = this._muteReasons.size > 0;
+        if (isMuted === wasMuted) return;   // no reason-set transition, nothing to do
+
         try {
-            if (muted) {
-                if (this._adMuted) return;
-                this._adMuted = true;
-                this._preAdGain = this.masterGain.gain.value;
-                const now = this.audioCtx.currentTime;
+            const now = this.audioCtx.currentTime;
+            if (isMuted) {
+                this._preMuteGain = this.masterGain.gain.value;
                 this.masterGain.gain.cancelScheduledValues(now);
                 this.masterGain.gain.setValueAtTime(0, now);
                 if (this.audioCtx.state === 'running') this.audioCtx.suspend();
             } else {
-                if (!this._adMuted) return;
-                this._adMuted = false;
                 if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
-                const now = this.audioCtx.currentTime;
-                const restore = (typeof this._preAdGain === 'number') ? this._preAdGain : 1.2;
+                const restore = (typeof this._preMuteGain === 'number') ? this._preMuteGain : 1.2;
                 this.masterGain.gain.cancelScheduledValues(now);
                 this.masterGain.gain.setValueAtTime(restore, now);
             }
         } catch (e) {
-            // Never let an audio failure block the ad flow or the game resuming.
+            // Never let an audio failure block the ad/mute flow or the game resuming.
         }
     }
 
