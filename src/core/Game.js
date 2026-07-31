@@ -240,8 +240,7 @@ export class Game {
             inkPuddles: [],
             meleeSwings: [],
             interactables: [],
-            playerAfterimages: [],
-            decals: []
+            playerAfterimages: []
         };
         
         // Patch 31b: the insomniac 2pc flashlight bonus USED to be applied here as a

@@ -32,9 +32,7 @@ export class Director {
             inkPuddle: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, life: 0, damage: 0, active: false }), 200),
             meleeSwing: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, maxRadius: 0, life: 0, active: false }), 20),
             safeZone: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, life: 0, maxLife: 0, active: false }), 20),
-            projectile: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, radius: 0, damage: 0, color: '', life: 0, active: false }), 100),
-            // --- ADDED: DECAL POOL FOR PERSISTENT GORE ---
-            decal: new ObjectPool(() => ({ x: 0, y: 0, radius: 0, color: '', active: false }), 300)
+            projectile: new ObjectPool(() => ({ x: 0, y: 0, vx: 0, vy: 0, radius: 0, damage: 0, color: '', life: 0, active: false }), 100)
         };
     }
 
@@ -369,27 +367,6 @@ export class Director {
         p.radius = radius; p.damage = damage; p.color = color; 
         p.life = life; p.active = true;
         state.projectiles.push(p);
-    }
-
-    // --- ADDED: DECAL SPAWNING ---
-    spawnDecal(x, y, color, size) {
-        const state = this.game.state;
-        // Keep a rolling buffer of exactly 250 blood/ink splatters to prevent lag
-        if (state.decals.length > 250) {
-            let old = state.decals.shift();
-            this.pools.decal.release(old);
-        }
-        
-        // Spawn 3 overlapping shapes for a "splatter" look
-        for(let i=0; i<3; i++) {
-            let d = this.pools.decal.get();
-            d.x = x + (Math.random() - 0.5) * 30;
-            d.y = y + (Math.random() - 0.5) * 30;
-            d.radius = size * (0.5 + Math.random() * 0.8);
-            d.color = color;
-            d.active = true;
-            state.decals.push(d);
-        }
     }
 
     spawnXP(x, y, amount, isMassive = false) {

@@ -1534,18 +1534,6 @@ export class Renderer {
             this.ctx.restore();
         }
 
-        if (state.decals && state.decals.length > 0) {
-            this.ctx.save();
-            state.decals.forEach(d => {
-                this.ctx.fillStyle = d.color;
-                this.ctx.globalAlpha = 0.5;
-                this.ctx.beginPath();
-                this.ctx.arc(d.x, d.y, d.radius, 0, Math.PI * 2);
-                this.ctx.fill();
-            });
-            this.ctx.restore();
-        }
-
         if (state.mapOriginX !== null) {
             this.ctx.save();
             const mapCenterX = state.mapOriginX;

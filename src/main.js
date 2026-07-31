@@ -14,6 +14,15 @@ console.log("FRACTURED Engine Bootstrapping...");
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+// Declared ABOVE the resize() call below, not after it. These are `let` bindings,
+// so they sit in the temporal dead zone until this line is evaluated — and merely
+// READING one while it's in the TDZ throws a ReferenceError rather than yielding
+// undefined. That made the `if (renderer)` guard inside resize() throw on the
+// initial resize() call, which killed the rest of this module at load and meant
+// initEngine() never ran at all.
+let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager;
+let gameState = 'TITLE';
+
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -23,9 +32,6 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 resize();
-
-let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager;
-let gameState = 'TITLE';
 
 // --- PORTAL SDK (Patch 44) ---
 // Start probing as early as possible. init() never rejects, is memoized, and every

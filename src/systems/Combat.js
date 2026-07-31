@@ -114,9 +114,6 @@ export class Combat {
                                 if (state.frame % 30 === 0) {
                                     ent.takeDamage(20, game);
                                     game.spawnParticles(ent.x, ent.y, '#ffffaa', 5);
-                                    if (game.director && typeof game.director.spawnDecal === 'function') {
-                                        game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 6);
-                                    }
                                 }
                             }
                         }
@@ -281,10 +278,6 @@ export class Combat {
                             }
 
                             ent.x += (dx / dist) * 30;
-                            // Defensive check for decals
-                            if (game.director && typeof game.director.spawnDecal === 'function') {
-                                game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 8);
-                            }
                         }
                     }
                 }
@@ -320,9 +313,6 @@ export class Combat {
                          // the blade band and there's nothing to double-stack against.
                          state.cameraShake = Math.max(state.cameraShake, tagShake(spinner.tags, spinnerDmg));
                          game.spawnParticles(ent.x, ent.y, '#aaaaaa', 2);
-                         if (Math.random() < 0.3 && game.director && typeof game.director.spawnDecal === 'function') {
-                             game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 4);
-                         }
 
                          if (hasCentrifuge) {
                              // Kept below the ring's ~30px band (baseRadius +/-15) on
@@ -375,11 +365,7 @@ export class Combat {
                         ent.x += (ent.x - state.player.x) / d * 25; 
                         ent.y += (ent.y - state.player.y) / d * 25;
                         hitCount++;
-                        
-                        if (game.director && typeof game.director.spawnDecal === 'function') {
-                            game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 10);
-                        }
-                        
+
                         if (state.player.synergies && state.player.synergies.includes('industrial_bleed')) {
                             game.director.spawnInkPuddle(ent.x, ent.y, pipe.radius * 0.8, pipe.damage * 0.2);
                         }
@@ -573,9 +559,6 @@ export class Combat {
                                 ent.acidTime = batt.duration;
                                 ent.acidDmg = batt.damage;
                             }
-                            if (state.frame % 30 === 0 && game.director && typeof game.director.spawnDecal === 'function') {
-                                game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 4);
-                            }
                         }
                     }
                 }
@@ -619,21 +602,15 @@ export class Combat {
                     }
                     game.spawnParticles(ent.x, ent.y, '#ff7043', 40);
                     state.cameraShake = Math.max(state.cameraShake, 16);
-                    if (game.director && typeof game.director.spawnDecal === 'function') {
-                        game.director.spawnDecal(ent.x, ent.y, '#ff7043', 22);
-                    }
                 }
 
                 deathCount++;
                 ent.active = false;
-                
+
                 // --- ANTI-ZOMBIE FIX: Immediately extract from array ---
                 state.entities.splice(i, 1);
-                
+
                 try {
-                    if (game.director && typeof game.director.spawnDecal === 'function') {
-                        game.director.spawnDecal(ent.x, ent.y, ent.color || '#fff', 15);
-                    }
                     if (game.saveManager && typeof game.saveManager.recordKill === 'function') {
                         game.saveManager.recordKill(ent.type);
                     }

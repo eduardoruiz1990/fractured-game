@@ -131,8 +131,6 @@ export class UIManager {
         });
         this.attachEvents();
         this.updateMenuUI();
-        
-        this.initBloodRain();
 
         // Listen for EventBus achievements
         document.addEventListener('game_initialized', (e) => {
@@ -146,45 +144,6 @@ export class UIManager {
                 });
             }
         });
-    }
-
-    initBloodRain() {
-        // Create the container inside the medical folder so it's visually bounded
-        const container = document.createElement('div');
-        container.id = 'blood-container';
-        
-        const medicalFolder = document.querySelector('.medical-folder');
-        if (medicalFolder) {
-            medicalFolder.appendChild(container);
-        } else {
-            document.body.appendChild(container);
-        }
-
-        // Spawn a blood drop every 80 milliseconds
-        setInterval(() => {
-            // OPTIMIZATION: Only spawn blood if the menu is actually active and visible
-            if (!this.clinicalFolder || this.clinicalFolder.style.display === 'none' || this.clinicalFolder.style.display === '') {
-                return;
-            }
-
-            const drop = document.createElement('div');
-            drop.classList.add('blood-drop');
-            
-            // Randomize position, size, and speed for a natural look
-            drop.style.left = Math.random() * 100 + '%';
-            drop.style.height = (Math.random() * 15 + 5) + 'px';
-            drop.style.width = (Math.random() * 2 + 1) + 'px';
-            drop.style.animationDuration = (Math.random() * 1.5 + 0.8) + 's';
-            
-            container.appendChild(drop);
-
-            // Destroy the drop after it falls off screen to prevent memory leaks
-            setTimeout(() => {
-                if (drop.parentNode) {
-                    drop.remove();
-                }
-            }, 2500);
-        }, 80); 
     }
 
     showAchievement(text) {
