@@ -64,10 +64,24 @@ export class Predator extends Enemy {
                             targetX = other.x; 
                             targetY = other.y; 
                             distToTarget = d;
-                            if (d < 20) { 
-                                other.hp = 0; 
-                                this.hp += 20; 
-                                game.spawnParticles(this.x, this.y, '#8b0000', 10); 
+                            if (d < 20) {
+                                other.hp = 0;
+                                // Patch 62: feeding is CAPPED at 2x the pool this
+                                // predator spawned with. It used to be unbounded, and a
+                                // room the player cleared slowly turned into a feedback
+                                // loop — scavengers survive longer, predators eat them,
+                                // and the last enemies standing are 300-400hp sponges
+                                // on Floor 1. Verified from a live report; the mechanic
+                                // keeps its identity, it just stops running away.
+                                const feedCap = (this.spawnMaxHp || this.maxHp) * 2;
+                                if (this.hp < feedCap) {
+                                    this.hp = Math.min(this.hp + 20, feedCap);
+                                    // maxHp tracks the gain so the health bar stays a
+                                    // real ratio. Before this, hp climbed past maxHp and
+                                    // Renderer drew a bar reading well over 100%.
+                                    this.maxHp = Math.max(this.maxHp, this.hp);
+                                }
+                                game.spawnParticles(this.x, this.y, '#8b0000', 10);
                             }
                         }
                     }

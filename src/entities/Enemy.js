@@ -15,6 +15,13 @@ export class Enemy {
         this.vy = 0;
         this.hp = hp;
         this.maxHp = hp;
+        // Patch 62: the pool this entity STARTED with, kept separate from maxHp so
+        // mechanics that grow an enemy mid-life (Predator feeding, Scavenger
+        // vacuuming) can be capped against their origin rather than against a value
+        // their own growth keeps moving. Director.applyEnemyVariant re-stamps this
+        // after it scales a variant, so an ARMORED enemy's cap is based on its real
+        // inflated pool rather than the pre-variant number.
+        this.spawnMaxHp = hp;
         this.speed = speed;
         this.baseSpeed = speed;
         this.color = this.originalColor;
@@ -109,19 +116,33 @@ export class Enemy {
         // room. state.viewSafeRadius is published by Director.spawnWave from the
         // live canvas size; the fallback only matters if applyMovement somehow runs
         // before the first spawnWave tick.
+        // Patch 61: the thresholds are derived from what the player can actually SEE,
+        // not from fixed pixel constants. The old soft leash was a flat 520px, but the
+        // visible half-height at 1080p is only ~415px — so an enemy that stopped
+        // moving anywhere between those two numbers was off screen AND ignored by the
+        // leash, forever. A Scavenger in its 'vacuuming' state does exactly that.
+        // Worse, the pull's equilibrium WAS the threshold itself, so even a correctly
+        // leashed enemy came to rest at 520px — still invisible. Hence RECOVERED
+        // below: once help engages it keeps pulling until the enemy is genuinely back
+        // on screen, rather than releasing it the instant it crosses the line.
         const isTutorial = !!state.isTutorial;
         const safeR = Number.isFinite(state.viewSafeRadius) ? state.viewSafeRadius : 220;
+        const visible = Number.isFinite(state.viewHalfExtent) ? state.viewHalfExtent : 380;
 
-        const SOFT_LEASH = isTutorial ? safeR * 1.5 : 520;   // ~just outside the visible area
-        const HARD_LEASH = isTutorial ? safeR * 2.2 : 900;   // was 1500
-        const RETURN_RADIUS = isTutorial ? safeR : 700;
+        const SOFT_LEASH = isTutorial ? safeR * 1.5 : visible;
+        const RECOVERED = SOFT_LEASH * 0.6;                  // comfortably back in frame
+        const HARD_LEASH = isTutorial ? safeR * 2.2 : Math.max(600, visible * 2.2);
+        const RETURN_RADIUS = isTutorial ? safeR : visible * 0.8;
         const STRAY_GRACE = isTutorial ? 45 : 90;            // tutorial gets help twice as fast
         const isLeashable = !['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(this.type);
 
         if (isLeashable) {
             if (distToPlayer > SOFT_LEASH) {
                 this.strayTime = (this.strayTime || 0) + 1;
-            } else {
+            } else if (distToPlayer < RECOVERED) {
+                // Only a full return to view clears the debt. Between RECOVERED and
+                // SOFT_LEASH the counter HOLDS, so an enemy already being pulled keeps
+                // coming instead of stalling on the boundary.
                 this.strayTime = 0;
             }
 

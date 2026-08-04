@@ -168,6 +168,13 @@ export class Director {
         // the combatActive early-return so it is always current.
         if (Number.isFinite(canvasWidth) && Number.isFinite(canvasHeight)) {
             state.viewSafeRadius = Math.min(canvasWidth, canvasHeight) * 0.25;
+            // Patch 61: the smallest half-extent of world the player can possibly see.
+            // Divided by Renderer's MAX zoom (1.3) on purpose — that produces the
+            // TIGHTEST visible area, so anything past this radius is guaranteed to be
+            // off screen at any zoom level. Enemy.applyMovement leashes against this,
+            // which is what stops enemies parking in a band that is technically "near"
+            // but literally invisible. Keep 1.3 in sync with Renderer.updateZoom.
+            state.viewHalfExtent = (Math.min(canvasWidth, canvasHeight) / 2) / 1.3;
         }
 
         if (!state.combatActive) return;
@@ -301,6 +308,11 @@ export class Director {
         }
 
         ent.maxHp = ent.hp;
+        // Patch 62: re-stamped AFTER the variant multiplier, so growth caps derived
+        // from spawnMaxHp are measured against what this enemy actually spawned with.
+        // Without this an ARMORED predator (2.2x hp) would carry a cap computed from
+        // its pre-variant pool — already below its current hp, so it could never feed.
+        ent.spawnMaxHp = ent.maxHp;
         ent.baseSpeed = ent.speed;
         ent.variant = variant;
     }
