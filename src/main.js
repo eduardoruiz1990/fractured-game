@@ -8,6 +8,15 @@ import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
 import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies } from './data/Manifestations.js';
 import { portalSDK } from './systems/PortalSDK.js';
+import { errorLog } from './core/ErrorLog.js';
+
+// Patch 50: installed before ANYTHING else in this module runs, including the
+// canvas lookup below. A throw during boot is invisible to the log unless the
+// handlers are already attached, and boot-path throws are precisely what the
+// platform's load-time crash rate is made of. errorLog never throws and does no
+// per-frame work — see the module header for the rules it holds itself to.
+errorLog.install();
+window.FRACTURED_ERRORS = errorLog;
 
 console.log("FRACTURED Engine Bootstrapping...");
 
@@ -22,6 +31,18 @@ const ctx = canvas.getContext('2d');
 // initEngine() never ran at all.
 let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager;
 let gameState = 'TITLE';
+
+// Patch 50: registered HERE, immediately after the `let`s above, and deliberately
+// not next to errorLog.install(). The provider closes over `game`/`gameState`, and
+// per the TDZ note above, reading either before this line throws a ReferenceError
+// rather than yielding undefined — so a provider registered earlier would fail on
+// exactly the boot-path errors it exists to annotate. It is only ever CALLED at
+// capture time (i.e. after something already threw), never per frame.
+errorLog.setContext(() => ({
+    gameState,
+    floor: (game && game.state) ? game.state.floor : undefined,
+    room: (game && game.state) ? game.state.roomNumber : undefined
+}));
 
 function resize() {
     canvas.width = window.innerWidth;
@@ -208,6 +229,8 @@ function initEngine() {
                 <button id="dev-btn-force-escape" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE UNLOCK: FIRST ESCAPE</button>
                 <button id="dev-btn-force-boss-kill" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE UNLOCK: FIRST BOSS KILL</button>
                 <button id="dev-btn-dump-builds" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">DUMP BUILD LOG (CONSOLE)</button>
+                <button id="dev-btn-dump-errors" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">DUMP ERROR LOG (CONSOLE)</button>
+                <button id="dev-btn-force-error" style="background:#111; color:var(--ui-red); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE TEST ERROR (3 PATHS)</button>
             </div>
             <div style="margin-top:10px; border-top:1px solid #333; padding-top:8px; display:flex; flex-direction:column; gap:4px;">
                 LOADOUT TESTING (Patch 33)
@@ -281,6 +304,29 @@ function initEngine() {
                 curses: entry.curses.join(', '),
                 tokens: entry.tokens.join(', ')
             })));
+        });
+
+        // DEV: crash telemetry inspection (Patch 50). The log itself is live in
+        // production too — these are just the dev-side readers. In a shipped build
+        // the same data is reachable from any console via FRACTURED_ERRORS.dump()
+        // / .export(), which is the only way to get it off a real player's device.
+        document.getElementById('dev-btn-dump-errors').addEventListener('click', () => {
+            const count = errorLog.dump();
+            console.log(`%c DEV: ${count} error(s) recorded. FRACTURED_ERRORS.export() for JSON. `, 'background: #c5a059; color: #000; font-weight: bold;');
+        });
+
+        // DEV: fires all three capture paths at once so the handlers can be verified
+        // end-to-end. Each is deliberately raised the way a REAL one would be —
+        // an uncaught async throw, a rejected promise with no .catch, and a throw
+        // from inside the game loop's own try/catch — rather than by calling
+        // errorLog.capture() directly, which would test nothing but the logger.
+        document.getElementById('dev-btn-force-error').addEventListener('click', () => {
+            console.log('%c DEV: raising 3 test errors (window / promise / main-loop). ', 'background: #8b0000; color: #fff; font-weight: bold;');
+            setTimeout(() => { throw new Error('TEST: uncaught window error'); }, 0);
+            Promise.reject(new Error('TEST: unhandled promise rejection'));
+            // Consumed by the guard in gameLoop() on the next frame, then cleared,
+            // so this throws exactly once rather than wedging the loop.
+            window.FRACTURED_FORCE_LOOP_ERROR = true;
         });
 
         // DEV: loadout testing (Patch 33 follow-up). Reuses addTokenToInventory()
@@ -944,6 +990,14 @@ function gameLoop(time) {
         syncPortalGameplayState();
 
         if (import.meta.env.DEV) {
+        // Patch 50: one-shot in-loop throw for the FORCE TEST ERROR button. Cleared
+        // before throwing, so the loop's catch records it once and the next frame
+        // runs normally. Stripped entirely from production builds with this block.
+        if (window.FRACTURED_FORCE_LOOP_ERROR) {
+            window.FRACTURED_FORCE_LOOP_ERROR = false;
+            throw new Error('TEST: main-loop crash');
+        }
+
         const devModeContainer = document.getElementById('dev-mode-container');
         if (devModeContainer) {
             // PLAYING included so the visual test bench (spawn / freeze / scenario)
@@ -1124,6 +1178,13 @@ function gameLoop(time) {
         }
     } catch (e) {
         console.error("Main Loop Crash: " + e.message);
+        // Patch 50: this catch is why the platform's gameplay crash rate has been
+        // undiagnosable — it swallows every in-run throw and lets the loop keep
+        // running, so nothing ever reaches window.onerror. Recording it here is the
+        // single highest-value capture point in the codebase. Repeats of the same
+        // throw collapse into one counted entry (see ErrorLog.capture), so a
+        // per-frame failure logs once with a count rather than 60 times a second.
+        errorLog.capture(e, 'main-loop');
     }
     requestAnimationFrame(gameLoop);
 }
