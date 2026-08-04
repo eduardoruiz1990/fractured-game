@@ -59,6 +59,10 @@
              noise of the menu background. Now a stamped plate — dark backing, gold
              hairline, bone-coloured text — so it reads at a glance while staying
              visually subordinate to the two descent buttons above it. -->
+        <!-- Patch 60: returning-player case record. Hidden entirely for a first-time
+             player — "0 DESCENTS" is noise on an empty file, and the whole point of
+             the Patch 52 title screen is that it stays uncluttered. -->
+        <div id="title-case-record" style="display: none; margin-top: 18px; color: #7a7264; font-family: var(--ui-font); font-size: 0.78rem; letter-spacing: 3px; text-align: center; text-shadow: 0 1px 3px #000;"></div>
         <div id="title-suspended-note" style="display: none; margin-top: 24px; padding: 8px 22px; background: rgba(8, 8, 10, 0.85); border: 1px solid rgba(197, 160, 89, 0.5); color: #e8dcc8; font-family: var(--ui-font); font-size: 0.85rem; font-weight: bold; letter-spacing: 3px; text-align: center; text-shadow: 0 1px 3px #000; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);"></div>
     </div>
 
@@ -240,65 +244,14 @@
                         <p class="typewriter-text" style="color: #555; font-size: 0.9rem;">Physical manifestations of conquered trauma.</p>
                     </div>
                     
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; overflow-y: auto; padding-right: 10px; padding-bottom: 20px;">
-                        
-                        <div style="grid-column: 1 / -1; border-bottom: 1px dashed #ccc; padding-bottom: 5px; margin-top: 10px;">
-                            <strong style="color: var(--ink-black);">STANDARD NIGHTMARES (Bronze: 10, Silver: 1k, Gold: 10k)</strong>
-                        </div>
-
-                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
-                            <div id="sil-scavenger" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">♙</div>
-                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">JANITORS</div>
-                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-scavenger">0</span><span id="goal-scavenger"> / 10</span></div>
-                        </div>
-
-                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
-                            <div id="sil-predator" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">♘</div>
-                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">HALL MONITORS</div>
-                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-predator">0</span><span id="goal-predator"> / 10</span></div>
-                        </div>
-
-                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
-                            <div id="sil-parasite" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">♗</div>
-                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">SUBSTITUTES</div>
-                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-parasite">0</span><span id="goal-parasite"> / 10</span></div>
-                        </div>
-
-                        <div style="grid-column: 1 / -1; border-bottom: 1px dashed #ccc; padding-bottom: 5px; margin-top: 10px;">
-                            <strong style="color: var(--ink-black);">APEX PREDATORS (Boss Monuments)</strong>
-                        </div>
-
-                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
-                            <div id="sil-boss" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">🌑</div>
-                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">SPHERE HEAD</div>
-                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-boss">0</span> / 1</div>
-                        </div>
-                        
-                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
-                            <div id="sil-rorschach" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">🦋</div>
-                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">THE RORSCHACH</div>
-                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-rorschach">0</span> / 1</div>
-                        </div>
-
-                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
-                            <div id="sil-panopticon" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">👁️</div>
-                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">PANOPTICON</div>
-                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-panopticon">0</span> / 1</div>
-                        </div>
-
-                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
-                            <div id="sil-amalgamation" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">🦠</div>
-                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">AMALGAMATION</div>
-                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-amalgamation">0</span> / 1</div>
-                        </div>
-
-                        <div class="trophy-card" style="background: #fdfaf3; border: 2px solid #ccc; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 15px; text-align: center; position: relative;">
-                            <div id="sil-architect" style="font-size: 3.5rem; color: #111; opacity: 0.1; transition: all 0.5s ease; line-height: 1;">🕋</div>
-                            <div style="font-weight: bold; color: var(--ink-black); margin-top: 15px; font-size: 0.9rem;">THE ARCHITECT</div>
-                            <div style="font-size: 0.8rem; color: #555; margin-top: 5px; font-weight: bold;"><span id="stat-architect">0</span> / 1</div>
-                        </div>
-
-                    </div>
+                    <!-- Patch 59: the eight hardcoded trophy cards are gone. They are now
+                         rendered by UIManager.renderTrophies() from ENEMY_BESTIARY +
+                         metaState.killCounts, which is what lets an unencountered
+                         manifestation stay REDACTED rather than sitting on the shelf
+                         announcing its own name with a 0 beside it. This is deliberately
+                         the ONLY kill-count display in the game — the Manifestation Log
+                         covers instruments and traits, this covers bodies. -->
+                    <div id="trophy-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; overflow-y: auto; padding-right: 10px; padding-bottom: 20px;"></div>
                 </div>
 
                 <div id="tab-guide" class="tab-pane">
@@ -306,8 +259,16 @@
                         <h2 style="color: var(--ink-black); border-bottom: 2px solid var(--ink-black); padding-bottom: 10px; margin-top: 0; letter-spacing: 2px; font-family: var(--ui-font);">INDUCTION FLASHCARDS</h2>
                         <p class="typewriter-text" style="color: #555; font-size: 0.9rem;">Review survival protocols prior to descent.</p>
                     </div>
-                    
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; overflow-y: auto; padding-right: 10px; padding-bottom: 20px;">
+
+                    <!-- Patch 59: category selector. The guide grew to ~90 entries in
+                         Patch 56 and became a single wall of scroll nobody would read.
+                         GuideUI builds these buttons and toggles the panes below. -->
+                    <div id="guide-nav" style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 18px;"></div>
+
+                    <!-- The BASICS category: the nine hand-written prose flashcards.
+                         Left as markup (prose, not a catalogue) but now a pane like any
+                         other, shown/hidden by GuideUI. -->
+                    <div id="guide-cat-basics" class="guide-pane" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; overflow-y: auto; padding-right: 10px; padding-bottom: 20px;">
                         <div style="background: #fdfaf3; border: 2px solid #4466aa; box-shadow: 4px 4px 0 rgba(68, 102, 170, 0.2); padding: 15px; position: relative;">
                             <div style="font-size: 1.5rem; text-align: center; margin-bottom: 10px; color: #4466aa;">
                                 <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">W</span><br>
@@ -403,14 +364,15 @@
                             </p>
                         </div>
 
-                        <!-- Patches 55/56: everything past the nine prose flashcards above
-                             is a catalogue rendered from live game data by src/ui/GuideUI.js
-                             — door rewards, room conditions, the bestiary, strains, weapons,
-                             synergies, boons, tokens, sets and curses. Rendered rather than
-                             written out so it cannot drift from the values the game uses.
-                             Shares this grid, hence the container carrying no styles. -->
-                        <div id="guide-dynamic" style="display: contents;"></div>
                     </div>
+
+                    <!-- Patches 55/56: every other category is a catalogue rendered from
+                         live game data by src/ui/GuideUI.js — door rewards, room
+                         conditions, the bestiary, strains, weapons, synergies, boons,
+                         tokens, sets and curses. Rendered rather than written out so it
+                         cannot drift from the values the game actually uses. GuideUI
+                         appends one .guide-pane per category in here. -->
+                    <div id="guide-dynamic"></div>
                 </div>
 
                 <!-- --- MANIFESTATION LOG (Patch 57) --- -->

@@ -45,7 +45,14 @@ export class SaveManager {
             // boon or weapon id -> { timesChosen, highestLevelReached }. Purely a
             // record — nothing reads it back into gameplay — so it is safe for a save
             // to arrive without it (see the back-fill in loadGame AND importSave).
-            boonHistory: {}
+            boonHistory: {},
+            // Patch 59: lifetime case statistics. runsStarted counts descents begun,
+            // deaths counts minds broken, runsCompleted counts Floor 5 clears (the
+            // Architect falling). All three are records only — nothing reads them
+            // back into gameplay.
+            runsStarted: 0,
+            deaths: 0,
+            runsCompleted: 0
         };
         this.loadGame();
         // Runs even when loadGame() found nothing in localStorage (a truly fresh
@@ -99,6 +106,13 @@ export class SaveManager {
                 // Patch 57. Every save written before this patch lacks the key, and
                 // recordBoonPick() indexes into it directly.
                 if (!this.metaState.boonHistory) this.metaState.boonHistory = {};
+
+                // Patch 59. `|| 0` rather than an undefined check, so a corrupted
+                // non-numeric value is also repaired rather than propagated into the
+                // ++ that would turn it into NaN and display as "NaN DESCENTS".
+                if (!Number.isFinite(this.metaState.runsStarted)) this.metaState.runsStarted = 0;
+                if (!Number.isFinite(this.metaState.deaths)) this.metaState.deaths = 0;
+                if (!Number.isFinite(this.metaState.runsCompleted)) this.metaState.runsCompleted = 0;
             }
         } catch(e) {
             console.warn("Local storage disabled or blocked.");
@@ -202,6 +216,14 @@ export class SaveManager {
                 this.metaState.boonHistory =
                     (parsed.boonHistory && typeof parsed.boonHistory === 'object') ? parsed.boonHistory : {};
 
+                // Patch 59: same reasoning as boonHistory directly above — these must
+                // come from the IMPORTED file, not survive from whatever profile this
+                // instance was holding, or an imported save inherits a stranger's
+                // death count.
+                ['runsStarted', 'deaths', 'runsCompleted'].forEach(key => {
+                    this.metaState[key] = Number.isFinite(parsed[key]) ? parsed[key] : 0;
+                });
+
                 this._recomputeUpgradeMirror();
 
                 this.saveGame();
@@ -239,6 +261,32 @@ export class SaveManager {
         }
         this.metaState.boonHistory[id] = entry;
         this.saveGame();
+    }
+
+    /**
+     * Bumps one of the lifetime case counters (Patch 59).
+     *
+     * Guarded on Number.isFinite rather than trusting the field, because these are
+     * displayed directly: a single undefined survivor from an odd save path would
+     * render as "NaN" forever once ++ touched it.
+     *
+     * @param {'runsStarted'|'deaths'|'runsCompleted'} key
+     */
+    recordRunStat(key) {
+        if (!['runsStarted', 'deaths', 'runsCompleted'].includes(key)) return;
+        if (!Number.isFinite(this.metaState[key])) this.metaState[key] = 0;
+        this.metaState[key]++;
+        this.saveGame();
+    }
+
+    /** @returns {{runsStarted:number, deaths:number, runsCompleted:number}} safe to render. */
+    getRunStats() {
+        const m = this.metaState;
+        return {
+            runsStarted: Number.isFinite(m.runsStarted) ? m.runsStarted : 0,
+            deaths: Number.isFinite(m.deaths) ? m.deaths : 0,
+            runsCompleted: Number.isFinite(m.runsCompleted) ? m.runsCompleted : 0
+        };
     }
 
     recordKill(type) {
@@ -568,7 +616,8 @@ export class SaveManager {
             hasEscapedFloor1: false,
             selectedCurses: [],
             killCounts: { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 },
-            boonHistory: {}   // Patch 57: a wipe clears the record too.
+            boonHistory: {},   // Patch 57: a wipe clears the record too.
+            runsStarted: 0, deaths: 0, runsCompleted: 0   // Patch 59
         };
         this.saveGame();
         window.location.reload();

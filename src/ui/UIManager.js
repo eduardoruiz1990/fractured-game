@@ -1,5 +1,5 @@
 // src/ui/UIManager.js
-import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS, MANIFESTATIONS, PLAYER_WEAPON_IDS } from '../data/Manifestations.js';
+import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS, MANIFESTATIONS, PLAYER_WEAPON_IDS, ENEMY_BESTIARY } from '../data/Manifestations.js';
 import { SynapseTree } from './SynapseTree.js';
 import { GuideUI } from './GuideUI.js';
 import { BOONS } from './LevelUpUI.js';
@@ -477,6 +477,28 @@ export class UIManager {
 
         timeline.innerHTML = '';
 
+        // Patch 59: lifetime case statistics. Sits above the manifestation record
+        // because it frames it — how many attempts produced this much of a record.
+        const stats = this.saveManager.getRunStats();
+        const statBand = document.createElement('div');
+        statBand.className = 'roadmap-summary';
+        const stat = (label, value, color) => `
+            <div style="text-align:center; flex:1;">
+                <div style="font-family:var(--ui-font); font-size:1.6rem; font-weight:900; color:${color}; line-height:1;">${value}</div>
+                <div style="font-size:0.62rem; color:#6b6355; letter-spacing:2px; margin-top:4px;">${label}</div>
+            </div>`;
+        statBand.innerHTML = `
+            <div class="roadmap-summary-row">
+                <span class="section-label" style="margin:0;">CASE STATISTICS</span>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:10px;">
+                ${stat('DESCENTS', stats.runsStarted, 'var(--ink-black)')}
+                ${stat('MINDS BROKEN', stats.deaths, 'var(--ui-red)')}
+                ${stat('CONSTRUCTS ESCAPED', stats.runsCompleted, 'var(--ui-gold)')}
+            </div>
+        `;
+        timeline.appendChild(statBand);
+
         const summary = document.createElement('div');
         summary.className = 'roadmap-summary';
         summary.innerHTML = `
@@ -691,56 +713,69 @@ export class UIManager {
         });
     }
 
+    /**
+     * The Mind Palace (Patch 59: rebuilt data-driven, with redaction).
+     *
+     * This is the single home for kill counts in the game — the Manifestation Log
+     * deliberately does NOT repeat them. A second kill display would have meant two
+     * places to read the same number and two places to keep in sync.
+     *
+     * Redaction matches the Manifestation Log and the Descent Roadmap: a
+     * manifestation you have never killed does not announce its own name with a 0
+     * beside it, it reads as withheld. Bronze/Silver/Gold tiers are unchanged.
+     */
     renderTrophies() {
+        const grid = document.getElementById('trophy-grid');
+        if (!grid) return;
+
         const kills = this.saveManager.metaState.killCounts || {};
-        
-        const updateMobTrophy = (id, count) => {
-            const statEl = document.getElementById(`stat-${id}`);
-            const goalEl = document.getElementById(`goal-${id}`);
-            const silEl = document.getElementById(`sil-${id}`);
-            if (!statEl || !silEl || !goalEl) return;
-            
-            let nextGoal = 10;
-            let metalColor = '';
-            let opacity = 0.1;
-            let shadow = 'none';
+        const mobs = ENEMY_BESTIARY.filter(e => !e.boss);
+        const bosses = ENEMY_BESTIARY.filter(e => e.boss);
 
-            if (count >= 10000) { nextGoal = "MAX"; metalColor = '#ffd700'; opacity = 1.0; shadow = '0 0 15px #ffd700'; } // Gold
-            else if (count >= 1000) { nextGoal = 10000; metalColor = '#c0c0c0'; opacity = 1.0; shadow = '0 0 10px #c0c0c0'; } // Silver
-            else if (count >= 10) { nextGoal = 1000; metalColor = '#cd7f32'; opacity = 1.0; shadow = '0 0 10px #cd7f32'; } // Bronze
-            
-            statEl.innerText = count;
-            goalEl.innerText = nextGoal === "MAX" ? "" : ` / ${nextGoal}`;
-            
-            if (opacity > 0.1) {
-                silEl.style.opacity = opacity;
-                silEl.style.color = metalColor;
-                silEl.style.textShadow = shadow;
-            }
+        const heading = (text) => `
+            <div style="grid-column: 1 / -1; border-bottom: 1px dashed #ccc; padding-bottom: 5px; margin-top: 10px;">
+                <strong style="color: var(--ink-black);">${text}</strong>
+            </div>`;
+
+        // Tier thresholds are the pre-existing ones (10 / 1k / 10k) — only the
+        // presentation around them changed.
+        const mobTier = (count) => {
+            if (count >= 10000) return { goal: null, color: '#ffd700', shadow: '0 0 15px #ffd700' };
+            if (count >= 1000)  return { goal: 10000, color: '#c0c0c0', shadow: '0 0 10px #c0c0c0' };
+            if (count >= 10)    return { goal: 1000,  color: '#cd7f32', shadow: '0 0 10px #cd7f32' };
+            return { goal: 10, color: null, shadow: 'none' };
         };
 
-        const updateBossTrophy = (id, count, color) => {
-            const statEl = document.getElementById(`stat-${id}`);
-            const silEl = document.getElementById(`sil-${id}`);
-            if (!statEl || !silEl) return;
+        const sealedCard = () => `
+            <div class="trophy-card" style="background:#f4f1ea; border:2px dashed #c2b59b; box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
+                <div style="font-size:3.5rem; color:#111; opacity:0.07; line-height:1;">?</div>
+                <div class="redacted-text" style="font-weight:bold; margin-top:15px; font-size:0.8rem;">(UNENCOUNTERED)</div>
+                <div style="font-size:0.7rem; color:#9a917f; margin-top:5px; letter-spacing:2px;">SEALED</div>
+            </div>`;
 
-            statEl.innerText = count;
-            if (count > 0) {
-                silEl.style.opacity = 1.0;
-                silEl.style.color = color;
-                silEl.style.textShadow = `0 0 15px ${color}`;
-            }
-        };
+        const trophyCard = (entry, count, tier, goalText) => `
+            <div class="trophy-card" style="background:#fdfaf3; border:2px solid #ccc; box-shadow:4px 4px 0 rgba(0,0,0,0.1); padding:15px; text-align:center; position:relative;">
+                <div style="font-size:3.5rem; line-height:1; color:${tier.color || '#111'}; opacity:${tier.color ? 1 : 0.35}; text-shadow:${tier.shadow};">${entry.icon}</div>
+                <div style="font-weight:bold; color:var(--ink-black); margin-top:15px; font-size:0.9rem;">${entry.name}</div>
+                <div style="font-size:0.8rem; color:#555; margin-top:5px; font-weight:bold;">${count}${goalText}</div>
+            </div>`;
 
-        updateMobTrophy('scavenger', kills.SCAVENGER || 0);
-        updateMobTrophy('predator', kills.PREDATOR || 0);
-        updateMobTrophy('parasite', kills.PARASITE || 0);
+        let html = heading('STANDARD NIGHTMARES (Bronze: 10, Silver: 1k, Gold: 10k)');
+        mobs.forEach(entry => {
+            const count = kills[entry.id] || 0;
+            if (count <= 0) { html += sealedCard(); return; }
+            const tier = mobTier(count);
+            html += trophyCard(entry, count, tier, tier.goal ? ` / ${tier.goal}` : '');
+        });
 
-        updateBossTrophy('boss', kills.BOSS || 0, '#b87333');
-        updateBossTrophy('rorschach', kills.RORSCHACH || 0, '#800080');
-        updateBossTrophy('panopticon', kills.PANOPTICON || 0, '#ff0055');
-        updateBossTrophy('amalgamation', kills.AMALGAMATION || 0, '#55ff55');
-        updateBossTrophy('architect', kills.ARCHITECT || 0, '#c5a059');
+        html += heading('APEX PREDATORS (Boss Monuments)');
+        bosses.forEach(entry => {
+            const count = kills[entry.id] || 0;
+            if (count <= 0) { html += sealedCard(); return; }
+            html += trophyCard(entry, count, { color: entry.color, shadow: `0 0 15px ${entry.color}` }, '');
+        });
+
+        grid.innerHTML = html;
     }
 
     // Patch 31: pre-run 2/4 set progress. Reads setCounts straight off the token

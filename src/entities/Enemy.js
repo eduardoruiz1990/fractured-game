@@ -98,9 +98,24 @@ export class Enemy {
         // the hard teleport is pulled in to 900px as a last resort for the cases the
         // nudge cannot fix (an enemy stuck behind geometry, or a dashing player
         // simply outrunning it).
-        const SOFT_LEASH = 520;      // ~just outside the visible area
-        const HARD_LEASH = 900;      // was 1500
-        const STRAY_GRACE = 90;      // 1.5s of trailing before help kicks in
+        //
+        // The TUTORIAL is a special case (Patch 60). There is exactly one enemy in
+        // the room and the whole lesson depends on the player being able to see it,
+        // so it gets a much tighter leash — and critically, it is returned to the
+        // SAME on-screen radius Director uses to spawn it, rather than the 700px
+        // used for ordinary rooms. 700px is outside the visible area on most
+        // viewports, so the general-case teleport would have "rescued" the one
+        // enemy in the game by hiding it, leaving the player wandering an empty
+        // room. state.viewSafeRadius is published by Director.spawnWave from the
+        // live canvas size; the fallback only matters if applyMovement somehow runs
+        // before the first spawnWave tick.
+        const isTutorial = !!state.isTutorial;
+        const safeR = Number.isFinite(state.viewSafeRadius) ? state.viewSafeRadius : 220;
+
+        const SOFT_LEASH = isTutorial ? safeR * 1.5 : 520;   // ~just outside the visible area
+        const HARD_LEASH = isTutorial ? safeR * 2.2 : 900;   // was 1500
+        const RETURN_RADIUS = isTutorial ? safeR : 700;
+        const STRAY_GRACE = isTutorial ? 45 : 90;            // tutorial gets help twice as fast
         const isLeashable = !['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(this.type);
 
         if (isLeashable) {
@@ -121,11 +136,10 @@ export class Enemy {
             }
 
             if (distToPlayer > HARD_LEASH) {
-                let spawnRadius = 700;
                 // Teleport generally in the direction the player is aiming/moving
                 let aimAngle = state.player.angle + (Math.random() - 0.5) * Math.PI;
-                this.x = state.player.x + Math.cos(aimAngle) * spawnRadius;
-                this.y = state.player.y + Math.sin(aimAngle) * spawnRadius;
+                this.x = state.player.x + Math.cos(aimAngle) * RETURN_RADIUS;
+                this.y = state.player.y + Math.sin(aimAngle) * RETURN_RADIUS;
                 // Cleared with the teleport: the enemy is back in play, and leaving it
                 // set would keep the catch-up boost running on an enemy that no longer
                 // needs it.

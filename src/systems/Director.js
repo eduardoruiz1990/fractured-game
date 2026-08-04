@@ -160,7 +160,16 @@ export class Director {
 
     spawnWave(canvasWidth, canvasHeight) {
         const state = this.game.state;
-        
+
+        // Patch 60: the on-screen radius the tutorial spawn already uses (see the
+        // long note further down). Published on state so Enemy.applyMovement can
+        // leash the tutorial enemy to the same distance instead of hardcoding its
+        // own guess at what "visible" means on an unknown viewport. Written before
+        // the combatActive early-return so it is always current.
+        if (Number.isFinite(canvasWidth) && Number.isFinite(canvasHeight)) {
+            state.viewSafeRadius = Math.min(canvasWidth, canvasHeight) * 0.25;
+        }
+
         if (!state.combatActive) return;
         
         const bossAlive = !!state.activeBoss;

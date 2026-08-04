@@ -439,6 +439,12 @@ function enterPlayingState() {
 function startNewRun() {
     game.init(saveManager);
     applyDevOverrides();
+    // Patch 59: counted here rather than in enterPlayingState(), which RESUMING also
+    // goes through — picking a suspended run back up is the same descent continuing,
+    // not a new one.
+    if (saveManager && typeof saveManager.recordRunStat === 'function') {
+        saveManager.recordRunStat('runsStarted');
+    }
     enterPlayingState();
 }
 
@@ -505,6 +511,24 @@ function refreshTitleActions() {
     const resumeBtn = document.getElementById('btn-title-resume');
     const note = document.getElementById('title-suspended-note');
     const raw = readSuspendedRun();
+
+    // Patch 60: case record for a returning player. Shown only once there is a
+    // history to show — a brand-new player gets a clean title screen rather than a
+    // row of zeroes, and the line reads as something they earned when it does appear.
+    const record = document.getElementById('title-case-record');
+    if (record && saveManager && typeof saveManager.getRunStats === 'function') {
+        const stats = saveManager.getRunStats();
+        if (stats.runsStarted > 0) {
+            const parts = [`${stats.runsStarted} DESCENT${stats.runsStarted === 1 ? '' : 'S'}`];
+            if (stats.runsCompleted > 0) {
+                parts.push(`${stats.runsCompleted} ESCAPED`);
+            }
+            record.innerText = `CASE FILE — ${parts.join('  ·  ')}`;
+            record.style.display = 'block';
+        } else {
+            record.style.display = 'none';
+        }
+    }
 
     let summary = null;
     if (raw) {
@@ -1239,6 +1263,7 @@ function initEngine() {
         // behind would let a player die and then RESUME DESCENT straight back into
         // the run they just lost — death would cost nothing at all.
         clearSuspendedRun();
+        saveManager.recordRunStat('deaths');   // Patch 59
         document.getElementById('ui-layer').style.display = 'none';
         document.getElementById('death-screen').style.display = 'flex';
         document.getElementById('glitch-overlay').style.opacity = '0';
@@ -1319,6 +1344,15 @@ function initEngine() {
         pauseTitle.style.color = "var(--ui-red)";
         
         if (game.state.floor >= 5) {
+            // Patch 59: a full clear. Recorded the moment the Architect falls rather
+            // than at the Awaken that follows, because the run IS completed here —
+            // the player could close the tab on this screen and it would still be a
+            // finished run. Latched on state so a re-entry into EXIT_REACHED (the
+            // handler is a callback, not a one-shot) cannot count the same clear twice.
+            if (!game.state.runCompletionRecorded) {
+                game.state.runCompletionRecorded = true;
+                saveManager.recordRunStat('runsCompleted');
+            }
             document.getElementById('pause-desc').innerText = `You have conquered the nightmare. The Architect has fallen.`;
             btnDescend.style.display = 'none'; // No floor 6 yet!
         } else {
