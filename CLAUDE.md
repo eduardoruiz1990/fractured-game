@@ -31,8 +31,8 @@ Anything *visual* cannot be covered by these — `Renderer` needs a real canvas.
 
 ## Change history
 
-`EXECUTION_HANDOFF.md` covers patches 13–41. **`CHANGELOG.md` covers patches 49–62**
-(the CrazyGames Basic Launch remediation) and is the more important of the two for
+`EXECUTION_HANDOFF.md` covers patches 13–41. **`CHANGELOG.md` covers patches 49–63**
+(the CrazyGames Basic Launch remediation, shipped as v1.2) and is the more important of the two for
 current work — several of those changes are guards against failures that are
 invisible on a dev machine and only appear on a real player's device, so the diff
 alone does not explain them. Its **Keep clauses** and **Known issues** sections are

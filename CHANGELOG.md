@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–62)
+# FRACTURED — Change Log (Patches 49–63)
 
 *Written 2026-08-04. Covers the CrazyGames Basic Launch remediation work driven by
 `BASIC_LAUNCH_FIX_QUEUE.md`, plus the follow-ups that came out of live play. Picks
@@ -201,6 +201,44 @@ the last enemies are 300–400hp sponges on Floor 1. Capped at **2× `spawnMaxHp
 above 100%. `spawnMaxHp` is re-stamped in `applyEnemyVariant` **after** the variant
 multiplier, or an ARMORED predator's cap would sit below its own starting HP.
 
+### Patch 63 — Boss banner fit, flashlight cone falloff *(from live play)*
+
+**Banner truncation.** `drawBossAnnouncement` hardcoded `900 110px` and never
+measured. The title is left-aligned from `x = -100` with the panel centred, so the
+usable width is `canvas.width / 2 + 100`, and the longer names overran it.
+
+The reason it reproduced on one machine and not another: **`'Courier New'` is not
+installed on most Linux systems**, so it falls back to a wider monospace. Identical
+name, identical window, different glyph widths. Any fix based on assumed metrics
+would have been wrong on some platform — it now measures at runtime and scales to
+fit, and viewports under 720px centre the text and use the full width (the boss
+portrait is drawn around `x = -565..-235` and is entirely off screen on a phone, so
+the left-aligned layout was budgeting space that did not exist).
+
+**Flashlight cone falloff.** The cone was binary: anywhere inside it dealt identical
+damage and an identical shove, which made *sweeping* the beam strictly better than
+aiming it and removed any reason to prioritise a target.
+
+New pure exported `coneFalloff(angleDiff, hitAngle)` in `Combat.js`, with two
+deliberately different curve shapes:
+
+| | Centre | Edge |
+|---|---|---|
+| Damage | 1.00 | 0.55 — gentle, so clipping a target is still worth doing |
+| Recoil | 1.00 | 0.10 — steep (quadratic), so only a direct beam holds anything off |
+
+Layered on top is `LIGHT_RECOIL_RESIST` (`Manifestations.js`): Scavenger 1.0,
+Parasite 0.7, Predator 0.45, apex 0.10–0.25. Both the knockback and the positional
+flinch scale by `falloff × resistance`, so a Predator on the edge of the cone barely
+slows. This is also the "enemies are more aggressive" change — they now push through
+light that previously stopped everything equally.
+
+`ritual_focus`'s ward bypass is *not* the beam touching the target, so it keeps full
+damage and applies **no** push.
+
+Documented in-game in the guide's INSTRUMENTS category — the tension only works if
+the player understands it.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -233,6 +271,18 @@ multiplier, or an ARMORED predator's cap would sit below its own starting HP.
     rate went unexplained.
 11. **The Clinical Guide and Mind Palace are data-driven.** Do not add hardcoded
     cards to either.
+12. **Never size canvas text by assumption — measure it.** `'Courier New'` is absent
+    on most Linux systems and falls back to a wider monospace, so hardcoded font
+    sizes with fixed offsets fit on one machine and truncate on another. Anything
+    drawing player-facing text into the canvas needs `measureText` and a narrow-
+    viewport path.
+13. **`coneFalloff()` is the single source of the flashlight's damage/recoil
+    curves**, and `LIGHT_RECOIL_RESIST` needs an entry for every new enemy type
+    (asserted in `test_content.js`). If the curves are retuned, update the
+    AIMING THE BEAM cards in `GuideUI.js` — they state the behaviour in words.
+14. **`coneFalloff` runs every frame for every lit enemy.** It must stay total: it
+    feeds a positional flinch, so a `NaN` escaping it teleports entities. The
+    degenerate-input cases are asserted; keep them passing.
 
 ---
 
@@ -261,7 +311,7 @@ multiplier, or an ARMORED predator's cap would sit below its own starting HP.
 | File | Count | Covers |
 |---|---|---|
 | `test_bosses.js` | 28 | boss dispatch, `activeBoss` on spawn frame, entity `.phase` pooling, **predator feeding cap** |
-| `test_content.js` | 167 | synergy/token/set/curse data, XP curve, audio asset paths, **boon pool**, **`PLAYER_WEAPON_IDS` vs real loadout** |
+| `test_content.js` | 180 | synergy/token/set/curse data, XP curve, audio asset paths, **boon pool**, **`PLAYER_WEAPON_IDS` vs real loadout**, **cone falloff curves + light-recoil coverage** |
 | `test_synapse.js` | 255 | Synapse Tree costs, gates, resolver |
 | `test_leash.js` | 12 | **new** — off-screen dead zone, recall lands on screen, boss exclusion, tutorial cases |
 
