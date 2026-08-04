@@ -43,8 +43,23 @@
 
     <div id="title-screen" class="fullscreen-menu">
         <div class="title-glitch" style="font-size: 5rem; margin-bottom: 10px;">FRACTURED</div>
-        <div style="color: #888; font-size: 1.2rem; margin-bottom: 50px; letter-spacing: 8px; text-align: center;">PSYCHOLOGICAL EVALUATION ENGINE</div>
-        <button class="file-btn primary" id="btn-enter-system" style="width: auto; padding: 15px 50px; font-size: 1.5rem; border-color: var(--ui-gold); color: var(--ui-gold); background: transparent; text-shadow: 0 0 10px var(--ui-gold); box-shadow: 0 0 20px rgba(197, 160, 89, 0.1);">INITIALIZE</button>
+        <div style="color: #888; font-size: 1.2rem; margin-bottom: 40px; letter-spacing: 8px; text-align: center;">PSYCHOLOGICAL EVALUATION ENGINE</div>
+        <!-- Patch 52: the primary action now goes STRAIGHT into a run. The old single
+             INITIALIZE button led to the walkable hub, which meant a new player had to
+             cross a dark room and find the right desk before anything resembling
+             gameplay happened. RESUME DESCENT is revealed by main.js only when a
+             suspended run is on file; the hub and every folder tab now live behind
+             the secondary MIND HUB button. -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+            <button class="file-btn primary" id="btn-title-resume" style="display: none; width: auto; padding: 15px 50px; font-size: 1.5rem; border-color: var(--ui-gold); color: var(--ui-gold); background: transparent; text-shadow: 0 0 10px var(--ui-gold); box-shadow: 0 0 20px rgba(197, 160, 89, 0.1);">RESUME DESCENT</button>
+            <button class="file-btn primary" id="btn-title-begin" style="width: auto; padding: 15px 50px; font-size: 1.5rem; border-color: var(--ui-gold); color: var(--ui-gold); background: transparent; text-shadow: 0 0 10px var(--ui-gold); box-shadow: 0 0 20px rgba(197, 160, 89, 0.1);">BEGIN DESCENT</button>
+            <button class="file-btn" id="btn-title-hub" style="width: auto; margin-top: 6px; padding: 10px 34px; font-size: 0.95rem; opacity: 0.85;">MIND HUB</button>
+        </div>
+        <!-- Patch 52b: was bare #8b0000 text, which disappeared into the dark red
+             noise of the menu background. Now a stamped plate — dark backing, gold
+             hairline, bone-coloured text — so it reads at a glance while staying
+             visually subordinate to the two descent buttons above it. -->
+        <div id="title-suspended-note" style="display: none; margin-top: 24px; padding: 8px 22px; background: rgba(8, 8, 10, 0.85); border: 1px solid rgba(197, 160, 89, 0.5); color: #e8dcc8; font-family: var(--ui-font); font-size: 0.85rem; font-weight: bold; letter-spacing: 3px; text-align: center; text-shadow: 0 1px 3px #000; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);"></div>
     </div>
 
     <div id="clinical-folder-menu" class="fullscreen-menu" style="display:none;">
@@ -437,6 +452,29 @@
                     <button class="file-btn primary" id="btn-unpause">RESUME</button>
                     <button class="file-btn danger" id="btn-descend" style="display:none;">DESCEND DEEPER</button>
                     <button class="file-btn" id="btn-awaken">AWAKEN (SAVE & QUIT)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONFIRMATION DIALOG (Patch 52b) -->
+    <!-- Replaces window.confirm() for destructive choices. A browser dialog renders
+         in the OS chrome with the page's URL attached and reads as an error rather
+         than as something the game is asking. Same .medical-folder chrome as the
+         pause and death screens so it belongs to the same document.
+         `display:none` is inline because .fullscreen-menu itself is display:flex —
+         the other menus that start hidden do exactly this. -->
+    <div id="confirm-modal" class="fullscreen-menu" style="display: none; z-index: 1100; background: rgba(10, 0, 0, 0.88);">
+        <div class="medical-folder" style="height: auto; max-width: 580px; border-color: var(--ui-red);">
+            <div class="folder-header" style="justify-content: center; border-bottom-color: var(--ui-red);">
+                <div class="title-typewriter" id="confirm-title" style="color: var(--ui-red);">ABANDON PROTOCOL?</div>
+            </div>
+            <div class="folder-content" style="text-align: center;">
+                <p id="confirm-body" class="typewriter-text" style="font-size: 1.1rem; margin: 0 0 14px 0; color: #111;"></p>
+                <p id="confirm-note" class="typewriter-text" style="font-size: 0.85rem; color: #666; margin: 0 0 30px 0; line-height: 1.5;"></p>
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+                    <button class="file-btn danger" id="btn-confirm-accept">ABANDON &amp; BEGIN ANEW</button>
+                    <button class="file-btn primary" id="btn-confirm-cancel">RETURN</button>
                 </div>
             </div>
         </div>

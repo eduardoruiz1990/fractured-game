@@ -297,6 +297,212 @@ function showFatalBootError() {
     }
 }
 
+// --- RUN LAUNCH (Patch 52) ---------------------------------------------------
+//
+// Before this patch there was exactly one way into gameplay — the hub's AUTHORIZE
+// DESCENT button — and its logic lived inline in UIManager's callback. The title
+// screen can now launch a run directly, so that logic is extracted here and every
+// entry point routes through it. One code path, so the title and the hub can never
+// drift into launching runs that differ in setup.
+
+/**
+ * Dev-only floor/boss overrides. Body is unchanged from the inline version; the
+ * `import.meta.env.DEV` gate means Vite strips the whole thing from production,
+ * which is what stops a hidden <select> from silently starting players on Floor 5
+ * (see the shipping bug this guard was originally written for).
+ */
+function applyDevOverrides() {
+    if (import.meta.env.DEV) {
+        const devSelect = window.FRACTURED_DEV_MODE ? document.getElementById('dev-floor-select') : null;
+        if (devSelect && devSelect.value !== "1") {
+            const chosenFloor = parseInt(devSelect.value);
+            game.init(saveManager); // Re-initialize to lock in floor scalings properly
+            game.state.floor = chosenFloor;
+            game.state.maxConvergence = Math.floor(100 * Math.pow(1.3, chosenFloor - 1));
+            game.state.xp += (chosenFloor - 1) * 1500;
+            console.log(`%c DEV OVERRIDE: Starting on Floor ${chosenFloor}. Free XP granted. `, 'background: #c5a059; color: #000;');
+
+            if (chosenFloor > saveManager.metaState.maxFloorReached) {
+                saveManager.metaState.maxFloorReached = chosenFloor;
+                saveManager.saveGame();
+            }
+        }
+
+        // DEV: jump straight to the boss encounter. Director.spawnRoom() spawns the
+        // floor's boss whenever roomNumber >= maxRoomsPerFloor, and spawnWave() calls
+        // spawnRoom() on the first frame (enemyBudget is still undefined), so parking
+        // roomNumber at the cap is enough — no separate "spawn boss now" path needed.
+        // The announcement banner keys off state.bossSpawned, so it still plays.
+        const devSkipBoss = window.FRACTURED_DEV_MODE ? document.getElementById('dev-skip-to-boss') : null;
+        if (devSkipBoss && devSkipBoss.checked) {
+            game.state.roomNumber = game.state.maxRoomsPerFloor;
+            // Compensate for the rooms' worth of XP that got skipped, otherwise the
+            // boss is fought at level 1 with no weapons and kills you before you can
+            // look at it.
+            game.state.xp += 1200;
+            console.log(`%c DEV OVERRIDE: Skipping to boss room on Floor ${game.state.floor}. `, 'background: #c5a059; color: #000;');
+        }
+    }
+}
+
+/**
+ * Unlocks audio for a run launched straight from the title screen.
+ *
+ * Deliberately audioEngine.unlock() and NOT init(): init() ends by starting the
+ * menu theme, which would then have to be faded out over a full second on top of
+ * the opening room. Game.init() starts the gameplay drone on its own, and a source
+ * started while the context is still suspended simply begins when the resume
+ * lands — so the ordering here needs no coordination.
+ */
+function resumeAudioForGameplay() {
+    if (!audioEngine) return;
+    try {
+        const ready = audioEngine.unlock();
+        if (ready && typeof ready.catch === 'function') ready.catch(() => {});
+    } catch (e) {
+        errorLog.capture(e, 'audio-launch');
+    }
+}
+
+/**
+ * In-world confirmation dialog (Patch 52b), replacing window.confirm() for
+ * destructive choices. Callback-based rather than a returned promise, because the
+ * caller has to be able to simply do nothing on cancel.
+ *
+ * Falls back to the native confirm() if the markup is somehow absent — losing the
+ * dialog entirely would mean silently destroying a run without asking, which is
+ * far worse than an ugly prompt.
+ */
+function showConfirm({ title, body, note, confirmLabel, cancelLabel, onConfirm }) {
+    const modal = document.getElementById('confirm-modal');
+    const acceptBtn = document.getElementById('btn-confirm-accept');
+    const cancelBtn = document.getElementById('btn-confirm-cancel');
+
+    if (!modal || !acceptBtn || !cancelBtn) {
+        if (window.confirm(`${body}\n\n${note || ''}`)) onConfirm();
+        return;
+    }
+
+    document.getElementById('confirm-title').innerText = title;
+    document.getElementById('confirm-body').innerText = body;
+    document.getElementById('confirm-note').innerText = note || '';
+    acceptBtn.innerText = confirmLabel;
+    cancelBtn.innerText = cancelLabel;
+
+    const onKey = (e) => {
+        // Escape cancels. Safe to bind globally: main.js's own Escape handler only
+        // acts on PLAYING/PAUSED, and this dialog is only reachable from TITLE.
+        if (e.key === 'Escape') close();
+    };
+    function close() {
+        modal.style.display = 'none';
+        window.removeEventListener('keydown', onKey);
+    }
+
+    // Assigned with onclick rather than addEventListener so reopening the dialog
+    // replaces the handlers instead of stacking a second copy that would fire the
+    // destructive action twice. Click SFX comes free — UIManager wires every
+    // .file-btn on construction, and these buttons exist in the markup by then.
+    acceptBtn.onclick = () => { close(); onConfirm(); };
+    cancelBtn.onclick = () => { close(); };
+    window.addEventListener('keydown', onKey);
+
+    modal.style.display = 'flex';
+}
+
+/** Shared final step for every launch: show the HUD, place the player, start play. */
+function enterPlayingState() {
+    const titleScreen = document.getElementById('title-screen');
+    if (titleScreen) titleScreen.style.display = 'none';
+    document.getElementById('clinical-folder-menu').style.display = 'none';
+    document.getElementById('ui-layer').style.display = 'flex';
+
+    game.state.player.x = canvas.width / 2;
+    game.state.player.y = canvas.height / 2;
+    game.state.mapOriginX = game.state.player.x;
+    game.state.mapOriginY = game.state.player.y;
+
+    const resumeBtn = document.getElementById('btn-resume-run');
+    if (resumeBtn) resumeBtn.style.display = 'none';
+
+    gameState = 'PLAYING';
+}
+
+/**
+ * Starts a fresh run at floor 1, room 1.
+ *
+ * game.init() is called unconditionally, which also fixes a real bug in the old
+ * path: it re-read meta only when ENTERING the hub, so Synapse nodes or tokens
+ * bought during that hub visit were not applied to the run launched from it. A
+ * fresh run must be built from the meta state as it is at launch.
+ */
+function startNewRun() {
+    game.init(saveManager);
+    applyDevOverrides();
+    enterPlayingState();
+}
+
+/**
+ * Resumes the suspended run. Returns false (leaving the player where they are)
+ * when there is nothing to resume or the saved run was corrupt — loadSuspendedRun
+ * discards a corrupt one, so the UI is refreshed to match.
+ */
+function resumeSuspendedRun() {
+    const carried = loadSuspendedRun();
+    if (!carried) {
+        refreshTitleActions();
+        return false;
+    }
+    game.init(saveManager, carried);
+    // Consumed on resume, exactly as the pre-patch flow did: the run is live again,
+    // so the suspended copy must not linger and offer a second, stale resume.
+    clearSuspendedRun();
+    enterPlayingState();
+    return true;
+}
+
+/** The walkable Mind Hub — the old INITIALIZE destination, now opt-in. */
+function enterMindHub() {
+    const titleScreen = document.getElementById('title-screen');
+    if (titleScreen) titleScreen.style.display = 'none';
+    game.init(saveManager);
+    game.state.player.x = 0;
+    game.state.player.y = 0;
+    gameState = 'HUB';
+}
+
+/**
+ * Reveals RESUME DESCENT only when there is genuinely something to resume, and
+ * names the floor/room so the player knows what they would be returning to (and,
+ * on the BEGIN DESCENT confirm, what they would be giving up).
+ */
+function refreshTitleActions() {
+    const resumeBtn = document.getElementById('btn-title-resume');
+    const note = document.getElementById('title-suspended-note');
+    const raw = readSuspendedRun();
+
+    let summary = null;
+    if (raw) {
+        try {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                summary = `FLOOR ${parsed.floor || 1}, ROOM ${parsed.roomNumber || 1}`;
+            }
+        } catch (e) {
+            // Corrupt payload: treated as "no suspended run" here. It is cleared for
+            // real by loadSuspendedRun() if the player ever tries to resume it.
+            summary = null;
+        }
+    }
+
+    if (resumeBtn) resumeBtn.style.display = summary ? 'block' : 'none';
+    if (note) {
+        note.style.display = summary ? 'block' : 'none';
+        note.innerText = summary ? `SUSPENDED PROTOCOL ON FILE — ${summary}` : '';
+    }
+    return summary;
+}
+
 function initEngine() {
     // The ENTIRE dev toolkit (floor override, skip-to-boss, lucidity/patient-level
     // grants, unlock forcing, build-log dump, visual test bench, telemetry overlay)
@@ -738,87 +944,27 @@ function initEngine() {
         audioEngine.loadDeferredAssets();
     });
 
+    // Patch 52: the hub's AUTHORIZE DESCENT and the title screen's BEGIN DESCENT are
+    // now literally the same code path (see startNewRun). The menu theme is already
+    // running on this route, so it is stopped directly rather than through
+    // resumeAudioForGameplay's init-then-stop chain, which exists for the title
+    // screen's cold start where the AudioContext has never been resumed.
     uiManager = new UIManager(saveManager, audioEngine, () => {
-        // OVERRIDE: Instead of `game.init()`, we are ALREADY loaded. Just close menu and launch!
-        document.getElementById('clinical-folder-menu').style.display = 'none';
-        document.getElementById('ui-layer').style.display = 'flex';
-        gameState = 'PLAYING';
-        
-        // SHIPPING BUG (fixed): this used to check only `value !== "1"`, with no dev-mode
-        // gate and no build gate. The dev panel is hidden for normal players but its
-        // <select> still existed in the DOM, defaulting to "5" — so EVERY player silently
-        // started on Floor 5 with bonus XP. Caught in CrazyGames QA preview. Now doubly
-        // guarded: stripped from production builds entirely, and dev-mode-gated within
-        // dev builds so a normal playtest is unaffected.
-        if (import.meta.env.DEV) {
-        const devSelect = window.FRACTURED_DEV_MODE ? document.getElementById('dev-floor-select') : null;
-        if (devSelect && devSelect.value !== "1") {
-            const chosenFloor = parseInt(devSelect.value);
-            game.init(saveManager); // Re-initialize to lock in floor scalings properly
-            game.state.floor = chosenFloor;
-            game.state.maxConvergence = Math.floor(100 * Math.pow(1.3, chosenFloor - 1));
-            game.state.xp += (chosenFloor - 1) * 1500; 
-            console.log(`%c DEV OVERRIDE: Starting on Floor ${chosenFloor}. Free XP granted. `, 'background: #c5a059; color: #000;');
-            
-            if (chosenFloor > saveManager.metaState.maxFloorReached) {
-                saveManager.metaState.maxFloorReached = chosenFloor;
-                saveManager.saveGame();
-            }
-        }
-
-        // DEV: jump straight to the boss encounter. Director.spawnRoom() spawns the
-        // floor's boss whenever roomNumber >= maxRoomsPerFloor, and spawnWave() calls
-        // spawnRoom() on the first frame (enemyBudget is still undefined), so parking
-        // roomNumber at the cap is enough — no separate "spawn boss now" path needed.
-        // The announcement banner keys off state.bossSpawned, so it still plays.
-        const devSkipBoss = window.FRACTURED_DEV_MODE ? document.getElementById('dev-skip-to-boss') : null;
-        if (devSkipBoss && devSkipBoss.checked) {
-            game.state.roomNumber = game.state.maxRoomsPerFloor;
-            // Compensate for the rooms' worth of XP that got skipped, otherwise the
-            // boss is fought at level 1 with no weapons and kills you before you can
-            // look at it.
-            game.state.xp += 1200;
-            console.log(`%c DEV OVERRIDE: Skipping to boss room on Floor ${game.state.floor}. `, 'background: #c5a059; color: #000;');
-        }
-        }
-
-        // Re-center player for the actual run
-        game.state.player.x = canvas.width / 2;
-        game.state.player.y = canvas.height / 2;
-        game.state.mapOriginX = game.state.player.x;
-        game.state.mapOriginY = game.state.player.y;
-        
-        if (audioEngine) audioEngine.stopMenuTheme(); 
-        const resumeBtn = document.getElementById('btn-resume-run');
-        if (resumeBtn) resumeBtn.style.display = 'none'; 
+        if (audioEngine) audioEngine.stopMenuTheme();
+        startNewRun();
     });
 
     game.init(saveManager); // Initialize everything silently in the background
 
     const resumeBtn = document.getElementById('btn-resume-run');
     if (resumeBtn) {
+        // Patch 52: shares resumeSuspendedRun() with the title screen's RESUME
+        // DESCENT, so the two resume buttons cannot diverge. A false return means the
+        // saved run was missing or corrupt (and has been discarded), so the button
+        // hides rather than sitting there doing nothing when clicked.
         resumeBtn.addEventListener('click', () => {
-            const carriedData = loadSuspendedRun();
-            if (carriedData) {
-                game.init(saveManager, carriedData);
-                game.state.player.x = canvas.width / 2;
-                game.state.player.y = canvas.height / 2;
-                game.state.mapOriginX = game.state.player.x;
-                game.state.mapOriginY = game.state.player.y;
-                
-                if (audioEngine) audioEngine.stopMenuTheme();
-
-                document.getElementById('clinical-folder-menu').style.display = 'none';
-                document.getElementById('ui-layer').style.display = 'flex';
-                resumeBtn.style.display = 'none';
-                clearSuspendedRun();
-                gameState = 'PLAYING';
-            } else {
-                // loadSuspendedRun() returned null, which now also covers "the saved
-                // run was corrupt and has been discarded". Hide the button rather
-                // than leave it sitting there doing nothing.
-                resumeBtn.style.display = 'none';
-            }
+            if (audioEngine) audioEngine.stopMenuTheme();
+            if (!resumeSuspendedRun()) resumeBtn.style.display = 'none';
         });
     }
 
@@ -841,24 +987,64 @@ function initEngine() {
         });
     });
     
-    // --- PHASE 2: INITIALIZE BUTTON GOES TO HUB ---
-    const btnEnterSystem = document.getElementById('btn-enter-system');
-    if (btnEnterSystem) {
-        const newBtn = btnEnterSystem.cloneNode(true);
-        btnEnterSystem.parentNode.replaceChild(newBtn, btnEnterSystem);
-        newBtn.addEventListener('click', () => {
-            // Assets are already downloading/decoded from page load (see the preload
-            // call in initEngine). This only resumes the suspended AudioContext on a
-            // real user gesture and starts the menu theme — no loading happens here,
-            // so time spent sitting on the title screen is not counted as load time.
-            if (audioEngine) audioEngine.init();
-            document.getElementById('title-screen').style.display = 'none';
-            game.init(saveManager);
-            game.state.player.x = 0; 
-            game.state.player.y = 0;
-            gameState = 'HUB';
+    // --- TITLE SCREEN ACTIONS (Patch 52) ---
+    //
+    // Assets are already downloading/decoded from page load (see the preload call
+    // above), so these handlers only resume the suspended AudioContext on a real
+    // user gesture. No loading happens here, and time spent sitting on the title
+    // screen is not counted as load time.
+    const btnTitleBegin = document.getElementById('btn-title-begin');
+    const btnTitleResume = document.getElementById('btn-title-resume');
+    const btnTitleHub = document.getElementById('btn-title-hub');
+
+    if (btnTitleBegin) {
+        btnTitleBegin.addEventListener('click', () => {
+            // A suspended run is real progress, and on mobile this button sits directly
+            // under RESUME DESCENT — so starting fresh asks first, naming exactly what
+            // would be lost. Matches the existing WIPE CLINICAL FILE confirm convention.
+            // Meta-progression is never touched by either answer.
+            const suspended = refreshTitleActions();
+            if (suspended) {
+                showConfirm({
+                    title: 'ABANDON PROTOCOL?',
+                    body: `A suspended protocol is on file — ${suspended}.`,
+                    note: 'Beginning a new descent abandons that session permanently. Your banked Lucidity, tokens, Patient Level and Synapse records are NOT affected.',
+                    confirmLabel: 'ABANDON & BEGIN ANEW',
+                    cancelLabel: 'RETURN',
+                    onConfirm: () => {
+                        clearSuspendedRun();
+                        refreshTitleActions();
+                        resumeAudioForGameplay();
+                        startNewRun();
+                    }
+                });
+                return;
+            }
+            resumeAudioForGameplay();
+            startNewRun();
         });
     }
+
+    if (btnTitleResume) {
+        btnTitleResume.addEventListener('click', () => {
+            resumeAudioForGameplay();
+            // Returns false when the saved run turned out to be corrupt; it has been
+            // discarded and the title actions refreshed, so the player is left on a
+            // title screen that now honestly shows no resume option.
+            resumeSuspendedRun();
+        });
+    }
+
+    if (btnTitleHub) {
+        btnTitleHub.addEventListener('click', () => {
+            // The hub keeps the menu theme — it IS a menu, so unlike the two buttons
+            // above, init()'s own playMenuTheme() is exactly what is wanted here.
+            if (audioEngine) audioEngine.init();
+            enterMindHub();
+        });
+    }
+
+    refreshTitleActions();
 
     const pauseMenu = document.getElementById('pause-menu');
     const pauseTitle = document.getElementById('pause-title');
@@ -982,7 +1168,14 @@ function initEngine() {
 
     document.getElementById('btn-descend').addEventListener('click', () => {
         const carryData = game.getCarriedState();
-        carryData.floor += 1; 
+        carryData.floor += 1;
+        // Patch 53: a NEW floor always starts at room 1. getCarriedState() now
+        // carries the current roomNumber (so suspend/resume keeps your place), and
+        // you only ever reach this button by clearing the boss in the LAST room —
+        // so without this reset the next floor would inherit roomNumber 10, and
+        // Director.spawnRoom would see `roomNumber >= maxRoomsPerFloor` and drop its
+        // boss on the player in what should have been the opening room.
+        carryData.roomNumber = 1;
 
         if (carryData.floor > saveManager.metaState.maxFloorReached) {
             saveManager.metaState.maxFloorReached = carryData.floor;

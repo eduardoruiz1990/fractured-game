@@ -99,12 +99,27 @@ export class AudioEngine {
         return this._preloadPromise;
     }
 
-    async init() {
-        // Resume on a genuine user gesture, then start the menu bed.
+    /**
+     * Resumes the AudioContext on a genuine user gesture WITHOUT starting the menu
+     * bed (Patch 52).
+     *
+     * The title screen can now launch straight into a run, and on that route the
+     * menu theme must never be heard. Going through init() would start it and then
+     * need stopMenuTheme() to take it away — and that fades over a full second, so
+     * every run launched from the title would open with a second of menu music
+     * bleeding over the first room. Game.init() starts the gameplay drone itself,
+     * so unlocking the context is all a run actually needs.
+     */
+    async unlock() {
         await this.preload();
         try {
             if (this.audioCtx && this.audioCtx.state === 'suspended') await this.audioCtx.resume();
         } catch (e) { /* resume can reject if the gesture wasn't trusted; harmless */ }
+    }
+
+    async init() {
+        // Resume on a genuine user gesture, then start the menu bed.
+        await this.unlock();
         this.playMenuTheme();
     }
 

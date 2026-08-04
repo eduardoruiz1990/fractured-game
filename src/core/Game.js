@@ -125,7 +125,12 @@ export class Game {
             killCounts: meta.killCounts || {}, 
             hubWorld: this.hubWorld,           
             floor: startFloor,
-            roomNumber: 1,
+            // Patch 53: resumes on the room the run was suspended on. The `||` fallback
+            // is load-bearing, not decoration — a run suspended by a PREVIOUS build has
+            // no roomNumber in its carried state, and letting `undefined` through here
+            // would poison every `roomNumber` comparison in Director/Renderer with NaN
+            // on the first resume after this update.
+            roomNumber: (carriedState && carriedState.roomNumber) || 1,
             maxRoomsPerFloor: 10,
             combatActive: true,
             roomCleared: false,
@@ -278,6 +283,12 @@ export class Game {
     getCarriedState() {
         return {
             floor: this.state.floor,
+            // Patch 53: without this, suspending on floor 2 room 7 and resuming put
+            // the player back on room 1 of that floor — six rooms of progress lost
+            // every time, silently. NOTE for callers: this is the room the player is
+            // CURRENTLY in, so anything that carries state to a NEW floor (the
+            // descend path in main.js) must reset it to 1 itself.
+            roomNumber: this.state.roomNumber,
             sanity: this.state.sanity,
             weapons: this.state.player.weapons,
             xp: this.state.xp,

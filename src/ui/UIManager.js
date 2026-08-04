@@ -171,7 +171,11 @@ export class UIManager {
 
     bindElements() {
         this.titleScreen = document.getElementById('title-screen');
-        this.btnEnterSystem = document.getElementById('btn-enter-system');
+        // Patch 52: btn-enter-system (the old INITIALIZE) no longer exists — the title
+        // screen's three actions are wired directly in main.js, which owns the
+        // gameState machine. Kept pointing at the hub button so this binding refers to
+        // something real rather than silently holding null.
+        this.btnTitleHub = document.getElementById('btn-title-hub');
 
         this.clinicalFolder = document.getElementById('clinical-folder-menu');
         this.uiLayer = document.getElementById('ui-layer');
