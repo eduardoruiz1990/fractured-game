@@ -40,7 +40,12 @@ export class SaveManager {
             maxBossEncountered: 0,
             hasEscapedFloor1: false,
             selectedCurses: [],
-            killCounts: { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 }
+            killCounts: { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 },
+            // Patch 57: lifetime record of what the patient has manifested, keyed by
+            // boon or weapon id -> { timesChosen, highestLevelReached }. Purely a
+            // record — nothing reads it back into gameplay — so it is safe for a save
+            // to arrive without it (see the back-fill in loadGame AND importSave).
+            boonHistory: {}
         };
         this.loadGame();
         // Runs even when loadGame() found nothing in localStorage (a truly fresh
@@ -91,6 +96,9 @@ export class SaveManager {
                 if (!this.metaState.killCounts) {
                     this.metaState.killCounts = { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 };
                 }
+                // Patch 57. Every save written before this patch lacks the key, and
+                // recordBoonPick() indexes into it directly.
+                if (!this.metaState.boonHistory) this.metaState.boonHistory = {};
             }
         } catch(e) {
             console.warn("Local storage disabled or blocked.");
@@ -180,6 +188,20 @@ export class SaveManager {
                 if (parsed.legacyUpgrades === undefined) {
                     this.metaState.legacyUpgrades = { ...(parsed.upgrades || this.metaState.upgrades) };
                 }
+
+                // Patch 57: the SECOND entry path for the same field, and it needs the
+                // opposite treatment from loadGame's.
+                //
+                // A plain `if (!this.metaState.boonHistory)` guard is WRONG here, for
+                // the same reason spelled out for legacyUpgrades just above: when the
+                // imported file has no boonHistory, the spread leaves THIS instance's
+                // existing history in place, the guard sees a populated object and
+                // never fires — so the previous profile's record silently survives
+                // into the imported save. An import replaces the file wholesale, so
+                // this derives from the IMPORTED data specifically.
+                this.metaState.boonHistory =
+                    (parsed.boonHistory && typeof parsed.boonHistory === 'object') ? parsed.boonHistory : {};
+
                 this._recomputeUpgradeMirror();
 
                 this.saveGame();
@@ -190,6 +212,33 @@ export class SaveManager {
             console.warn("Failed to import save data.", e);
             return false;
         }
+    }
+
+    /**
+     * Records one manifestation pick (Patch 57).
+     *
+     * Called from two places that both hand out the same things: the level-up card
+     * selection, and the ROOM_DOOR weapon-upgrade reward. Both funnel here so a
+     * weapon levelled by a door is indistinguishable in the record from one levelled
+     * by a card — which is what the player experienced.
+     *
+     * @param {string} id      boon id or weapon key
+     * @param {number|null} level  weapon level just reached; omit/null for boons,
+     *                             which are one-shot and have no level.
+     */
+    recordBoonPick(id, level = null) {
+        if (!id) return;
+        // Defensive: a save that predates this field reaches gameplay through paths
+        // that do not all pass loadGame() (a fresh profile, a wipe, an import).
+        if (!this.metaState.boonHistory) this.metaState.boonHistory = {};
+
+        const entry = this.metaState.boonHistory[id] || { timesChosen: 0, highestLevelReached: 0 };
+        entry.timesChosen++;
+        if (Number.isFinite(level)) {
+            entry.highestLevelReached = Math.max(entry.highestLevelReached || 0, level);
+        }
+        this.metaState.boonHistory[id] = entry;
+        this.saveGame();
     }
 
     recordKill(type) {
@@ -518,7 +567,8 @@ export class SaveManager {
             tutorialCompleted: false,
             hasEscapedFloor1: false,
             selectedCurses: [],
-            killCounts: { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 }
+            killCounts: { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 },
+            boonHistory: {}   // Patch 57: a wipe clears the record too.
         };
         this.saveGame();
         window.location.reload();

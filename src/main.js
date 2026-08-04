@@ -461,6 +461,31 @@ function resumeSuspendedRun() {
     return true;
 }
 
+/**
+ * Persists the live run so a tab closed, backgrounded or killed mid-floor can be
+ * picked up again (Patch 54).
+ *
+ * DELIBERATELY DOES NOT BANK LUCIDITY, unlike the Awaken button. Awaken is a
+ * deliberate trade — you bank your Lucidity and the run ends. An unclean exit is
+ * not that trade, and paying it out here would be exploitable: the carried state
+ * keeps `lucidity`, so banking on every autosave would let a player background the
+ * tab repeatedly and be paid for the same Lucidity each time. Nothing is lost by
+ * holding it — it is still in the run when they resume.
+ *
+ * The gameState guard is what keeps this from clobbering a legitimate save: at
+ * EXIT_REACHED (floor cleared) and DEAD the run is already resolved, and writing a
+ * resumable copy then would hand the player a way to undo either outcome.
+ */
+function autoSaveRun() {
+    if (gameState !== 'PLAYING' && gameState !== 'PAUSED') return;
+    if (!game || !game.state || typeof game.getCarriedState !== 'function') return;
+    try {
+        writeSuspendedRun(JSON.stringify(game.getCarriedState()));
+    } catch (e) {
+        errorLog.capture(e, 'autosave');
+    }
+}
+
 /** The walkable Mind Hub — the old INITIALIZE destination, now opt-in. */
 function enterMindHub() {
     const titleScreen = document.getElementById('title-screen');
@@ -1046,6 +1071,23 @@ function initEngine() {
 
     refreshTitleActions();
 
+    // --- AUTO-SAVE ON UNCLEAN EXIT (Patch 54) ---
+    //
+    // Three listeners, because no single one is reliable where it matters. On mobile
+    // — the majority of this game's traffic — a tab is very often never "unloaded"
+    // at all: the OS backgrounds and later discards it, and `beforeunload` simply
+    // never fires. `pagehide` is the dependable signal there, and `visibilitychange`
+    // catches the earlier moment the player switches away, which is the last point
+    // we are guaranteed to still be running. beforeunload is kept for desktop.
+    //
+    // Re-firing is harmless: autoSaveRun() writes the same key with current state
+    // and is a no-op outside PLAYING/PAUSED, so there is no double-save to avoid.
+    window.addEventListener('pagehide', autoSaveRun);
+    window.addEventListener('beforeunload', autoSaveRun);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') autoSaveRun();
+    });
+
     const pauseMenu = document.getElementById('pause-menu');
     const pauseTitle = document.getElementById('pause-title');
     const btnDescend = document.getElementById('btn-descend');
@@ -1191,6 +1233,12 @@ function initEngine() {
 
     game.onDeath = () => {
         gameState = 'DEAD';
+        // Patch 54: the run is over, so its autosave must go with it. Before this
+        // patch nothing wrote a suspended run mid-floor, so death had nothing to
+        // clean up; now that autoSaveRun() persists one continuously, leaving it
+        // behind would let a player die and then RESUME DESCENT straight back into
+        // the run they just lost — death would cost nothing at all.
+        clearSuspendedRun();
         document.getElementById('ui-layer').style.display = 'none';
         document.getElementById('death-screen').style.display = 'flex';
         document.getElementById('glitch-overlay').style.opacity = '0';

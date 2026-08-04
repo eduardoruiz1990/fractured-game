@@ -168,10 +168,18 @@ export class Combat {
                             state.sanity = Math.min(state.player.maxHp, state.sanity + 50);
                             game.spawnDamageText(state.player.x, state.player.y - 20, "+50 GRIP", '#aaffaa', 1.5, 2.0);
                         } else if (obj.rewardType === 'WEAPON_UPGRADE') {
-                            const upgradeable = Object.values(state.player.weapons).filter(w => w.level < 5);
+                            // Patch 57: entries() rather than values() so the chosen
+                            // weapon's id survives for the history record below —
+                            // values() discards exactly the key the record is keyed on.
+                            const upgradeable = Object.entries(state.player.weapons).filter(([, w]) => w.level < 5);
                             if (upgradeable.length > 0) {
-                                const wep = upgradeable[Math.floor(Math.random() * upgradeable.length)];
+                                const [wepId, wep] = upgradeable[Math.floor(Math.random() * upgradeable.length)];
                                 wep.level++;
+                                // A door-granted level counts exactly like a card-granted
+                                // one — same reward, so the same record.
+                                if (game.saveManager && typeof game.saveManager.recordBoonPick === 'function') {
+                                    game.saveManager.recordBoonPick(wepId, wep.level);
+                                }
                                 // Generic stat bump rather than per-weapon branches — that
                                 // table lives in LevelUpUI.js's selectCard(), outside this
                                 // patch's file scope. Scales whichever fields this weapon

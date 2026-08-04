@@ -3,16 +3,13 @@
  *
  * Run with:  node test_content.js
  *
- * KNOWN GAP — boon pool size is NOT asserted here, on purpose:
- * The real level-up boon pool is the local `const BOONS = [...]` array defined
- * inside LevelUpUI.js's show() method. It is NOT exported from anywhere, so a
- * data-only test file has nothing importable to assert against. The `MANIFESTATIONS`
- * export in Manifestations.js looks like it should be the boon pool (it's imported
- * into LevelUpUI.js) but is in fact dead there — grep confirms it is never
- * referenced past the import line. Its only real consumer is getActiveSynergies()'s
- * maxLvl lookup. This means any future "expand the boon pool" patch must edit
- * LevelUpUI.js's BOONS array, not Manifestations.js — flagging here so that
- * doesn't get re-discovered the hard way.
+ * GAP NOW CLOSED (Patch 56/57): the boon pool used to be a `const BOONS` local to
+ * LevelUpUI.js's show(), unreachable from a data-only test. It is now exported, and
+ * asserted below. The `MANIFESTATIONS` export in Manifestations.js still looks like
+ * it should be the boon pool (it is imported into LevelUpUI.js) but remains dead
+ * there — its only real consumer is getActiveSynergies()'s maxLvl lookup. Any
+ * "expand the boon pool" patch must still edit LevelUpUI.js's BOONS array, not
+ * MANIFESTATIONS.
  */
 
 import { Game } from './src/core/Game.js';
@@ -285,6 +282,58 @@ console.log('\nSaveManager.getResolvedCurseBonus / toggleCurse gate (Patch 32)')
     const missing = paths.filter(p => !fs.existsSync(`./public/${p}`));
     check('every referenced sound file exists in public/',
           missing.length === 0, missing.length ? `missing: ${missing.join(', ')}` : '');
+}
+
+// ---------------------------------------------------------------------------
+// PLAYER_WEAPON_IDS must match the real loadout (Patch 56). The Clinical Guide and
+// the Manifestation Log both iterate it, so drift here either advertises a weapon
+// that cannot be obtained or silently omits a real one.
+console.log('\nPLAYER_WEAPON_IDS matches state.player.weapons');
+{
+    const { PLAYER_WEAPON_IDS, MANIFESTATIONS: MANI } = await import('./src/data/Manifestations.js');
+    const { SaveManager } = await import('./src/core/SaveManager.js');
+    const g = new Game();
+    g.init(new SaveManager());
+    const realKeys = Object.keys(g.state.player.weapons).sort();
+    const declared = [...PLAYER_WEAPON_IDS].sort();
+
+    check('declares exactly the weapons the player actually has',
+          JSON.stringify(realKeys) === JSON.stringify(declared),
+          `real: ${realKeys.join(',')} | declared: ${declared.join(',')}`);
+
+    const unnamed = PLAYER_WEAPON_IDS.filter(id => !MANI[id]);
+    check('every declared weapon has a MANIFESTATIONS entry to render from',
+          unnamed.length === 0, unnamed.join(', '));
+
+    // Guards the reason PLAYER_WEAPON_IDS exists at all: if `adrenaline` ever becomes
+    // a real weapon, this fails and the declared list should then include it.
+    check('`adrenaline` is still a phantom (not a real weapon)',
+          !realKeys.includes('adrenaline'));
+}
+
+// ---------------------------------------------------------------------------
+// Boon pool integrity (Patch 56/57 — see the GAP NOW CLOSED note in the header).
+// The Clinical Guide renders straight from this array and the history tracker keys
+// on its ids, so a duplicate or malformed entry silently corrupts both.
+console.log('\nBoon pool (LevelUpUI.BOONS)');
+{
+    const { BOONS } = await import('./src/ui/LevelUpUI.js');
+
+    check('boon pool is a non-empty array', Array.isArray(BOONS) && BOONS.length > 0, `${BOONS.length} boons`);
+
+    const ids = BOONS.map(b => b.id);
+    const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
+    check('every boon id is unique', dupes.length === 0, dupes.join(', '));
+
+    const malformed = BOONS.filter(b => !b.id || !b.name || !b.desc || !Array.isArray(b.tags) || b.tags.length === 0);
+    check('every boon has id, name, desc and at least one tag',
+          malformed.length === 0, malformed.map(b => b.id || '(no id)').join(', '));
+
+    // The guide groups boons by tag, so an unknown tag would render into a section
+    // that does not exist and quietly disappear from the glossary.
+    const KNOWN_TAGS = ['light', 'focus', 'aura', 'tech', 'melee', 'kinetic', 'hazard', 'dark', 'orbit', 'burst', 'utility', 'passive'];
+    const strayTags = [...new Set(BOONS.flatMap(b => b.tags))].filter(t => !KNOWN_TAGS.includes(t));
+    check('every boon tag is in the 12-tag vocabulary', strayTags.length === 0, strayTags.join(', '));
 }
 
 // ---------------------------------------------------------------------------

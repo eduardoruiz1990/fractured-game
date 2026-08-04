@@ -97,6 +97,8 @@
                 <!-- NEW: DEDICATED TROPHY TAB -->
                 <button class="tab-btn" data-target="tab-trophies">MIND PALACE</button>
                 <button class="tab-btn" data-target="tab-guide">CLINICAL GUIDE</button>
+                <!-- Patch 57: lifetime record of what has been manifested. -->
+                <button class="tab-btn" data-target="tab-history">MANIFESTATION LOG</button>
             </div>
 
             <div class="folder-content">
@@ -400,7 +402,24 @@
                                 Unlocked at Patient Level 5, after your first Boss kill. Adopt permanent, self-inflicted curses in exchange for Lucidity gain — the riskier the thought, the greater the payout. Stack as many as you can survive.
                             </p>
                         </div>
+
+                        <!-- Patches 55/56: everything past the nine prose flashcards above
+                             is a catalogue rendered from live game data by src/ui/GuideUI.js
+                             — door rewards, room conditions, the bestiary, strains, weapons,
+                             synergies, boons, tokens, sets and curses. Rendered rather than
+                             written out so it cannot drift from the values the game uses.
+                             Shares this grid, hence the container carrying no styles. -->
+                        <div id="guide-dynamic" style="display: contents;"></div>
                     </div>
+                </div>
+
+                <!-- --- MANIFESTATION LOG (Patch 57) --- -->
+                <div id="tab-history" class="tab-pane">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <h2 style="color: var(--ink-black); border-bottom: 2px solid var(--ink-black); padding-bottom: 10px; margin-top: 0; letter-spacing: 2px; font-family: var(--ui-font);">MANIFESTATION LOG</h2>
+                        <p class="typewriter-text" style="color: #555; font-size: 0.9rem;">Every instrument and trait this patient has ever manifested. Unmanifested entries remain sealed.</p>
+                    </div>
+                    <div class="roadmap-timeline" id="history-timeline"></div>
                 </div>
 
             </div>

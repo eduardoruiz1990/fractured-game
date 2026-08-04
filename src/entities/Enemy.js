@@ -30,6 +30,10 @@ export class Enemy {
         this.painCooldown = 0; // NEW: Audio throttle for individual enemy hits
         this.knockbackX = 0;
         this.knockbackY = 0;
+        // Patch 58: frames spent beyond the soft leash. MUST be reset here — these
+        // entities are pooled, and a recycled straggler that kept a high strayTime
+        // would spawn already sprinting at full catch-up boost.
+        this.strayTime = 0;
 
         return this;
     }
@@ -82,13 +86,51 @@ export class Enemy {
 
         let distToPlayer = Math.hypot(state.player.x - this.x, state.player.y - this.y);
         
-        // If the player outruns the enemies and leaves them far behind, teleport them ahead
-        if (distToPlayer > 1500 && !['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(this.type)) {
-            let spawnRadius = 900;
-            // Teleport generally in the direction the player is aiming/moving
-            let aimAngle = state.player.angle + (Math.random() - 0.5) * Math.PI; 
-            this.x = state.player.x + Math.cos(aimAngle) * spawnRadius;
-            this.y = state.player.y + Math.sin(aimAngle) * spawnRadius;
+        // --- LEASH (Patch 58) ---
+        //
+        // The old behaviour was a single hard rule: past 1500px, teleport. 1500px is
+        // roughly twice the visible half-width at this zoom, so a straggler spent a
+        // long time genuinely gone — the room felt empty — and then reappeared by
+        // snapping into existence, which reads as a glitch rather than as pursuit.
+        //
+        // Now there are two stages. A soft stage nudges an enemy that has been
+        // trailing for a while into closing the distance under its own power, and
+        // the hard teleport is pulled in to 900px as a last resort for the cases the
+        // nudge cannot fix (an enemy stuck behind geometry, or a dashing player
+        // simply outrunning it).
+        const SOFT_LEASH = 520;      // ~just outside the visible area
+        const HARD_LEASH = 900;      // was 1500
+        const STRAY_GRACE = 90;      // 1.5s of trailing before help kicks in
+        const isLeashable = !['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(this.type);
+
+        if (isLeashable) {
+            if (distToPlayer > SOFT_LEASH) {
+                this.strayTime = (this.strayTime || 0) + 1;
+            } else {
+                this.strayTime = 0;
+            }
+
+            // Ramped rather than a step change, so the correction arrives as an enemy
+            // gradually gaining ground instead of a visible lurch in speed.
+            if (this.strayTime > STRAY_GRACE) {
+                const ramp = Math.min(1, (this.strayTime - STRAY_GRACE) / 180);
+                const pull = this.speed * (0.3 + ramp * 0.7);
+                const inv = 1 / Math.max(distToPlayer, 0.001);
+                this.vx += (state.player.x - this.x) * inv * pull;
+                this.vy += (state.player.y - this.y) * inv * pull;
+            }
+
+            if (distToPlayer > HARD_LEASH) {
+                let spawnRadius = 700;
+                // Teleport generally in the direction the player is aiming/moving
+                let aimAngle = state.player.angle + (Math.random() - 0.5) * Math.PI;
+                this.x = state.player.x + Math.cos(aimAngle) * spawnRadius;
+                this.y = state.player.y + Math.sin(aimAngle) * spawnRadius;
+                // Cleared with the teleport: the enemy is back in play, and leaving it
+                // set would keep the catch-up boost running on an enemy that no longer
+                // needs it.
+                this.strayTime = 0;
+            }
         }
 
         if (this.confused > 0) {

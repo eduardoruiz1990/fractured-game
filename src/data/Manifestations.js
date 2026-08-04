@@ -15,6 +15,62 @@ export const MANIFESTATIONS = {
     fidget_spinner: { id: 'fidget_spinner', name: 'Weighted Spinner', desc: 'Blades orbit you. Deals shredding damage to enemies that get too close.', maxLvl: 5 }
 };
 
+/**
+ * The weapon ids that actually exist on `state.player.weapons` (Patch 56).
+ *
+ * MANIFESTATIONS above also contains `adrenaline`, which is NOT a real weapon —
+ * Game.init() never creates it and no combat code reads it. Any player-facing list
+ * built by iterating MANIFESTATIONS would therefore advertise a manifestation that
+ * can never be obtained, so the Clinical Guide and the Manifestation Log both use
+ * THIS array instead. test_content.js asserts it against a freshly constructed
+ * Game, so it cannot silently drift from the real loadout.
+ */
+export const PLAYER_WEAPON_IDS = [
+    'flashlight', 'static', 'polaroid_camera', 'fidget_spinner',
+    'lead_pipe', 'spilled_ink', 'broken_chalk', 'corrosive_battery'
+];
+
+/**
+ * Room-choice mechanics, documented for the Clinical Guide (Patch 55).
+ *
+ * These MIRROR literals that live inline in Combat.js's ROOM_DOOR branch and
+ * Director.spawnRoom()'s modifier roll — neither is exported, and pulling them out
+ * would mean restructuring live combat code to serve a documentation feature. The
+ * risk is that a tuning change there silently makes this text wrong, so the numbers
+ * are quoted exactly and this comment is the flag: CHANGE BOTH.
+ */
+export const DOOR_REWARDS = [
+    { id: 'LUCIDITY',       name: 'LUCIDITY',        effect: '+50 Lucidity and +50 XP, banked into this run.', color: '#ffddaa' },
+    { id: 'HEAL',           name: 'RECOVERY',        effect: '+50 Grip, capped at your maximum.', color: '#aaffaa' },
+    { id: 'WEAPON_UPGRADE', name: 'WEAPON UPGRADE',  effect: 'Levels one random weapon that is not yet at 5. If everything is maxed, pays +50 Lucidity instead.', color: '#c5a059' },
+    { id: 'TOKEN_DOOR',     name: 'CONFISCATED ITEM', effect: 'Drops a Token on the spot. Tokens are only kept if you survive or extract.', color: '#ff8c00' },
+    { id: 'RISK_REWARD',    name: 'RISK PROTOCOL',   effect: '+150 Lucidity, +150 XP and a Token — at a flat cost of 30 Grip. The cost cannot kill you (it floors at 1) and ignores shields and curses.', color: '#ff3333' }
+];
+
+export const ROOM_MODIFIERS = [
+    { id: 'ELITE',    name: 'ELITE',    chance: '15%', effect: 'Fewer enemies, but each is tougher. Roughly a third fewer spawns.', color: '#6f8fa8' },
+    { id: 'BLACKOUT', name: 'BLACKOUT', chance: '15%', effect: 'Enemies arrive noticeably faster, with more ambush pressure from Substitutes.', color: '#5a2a7a' },
+    { id: 'SWARM',    name: 'SWARM',    chance: '15%', effect: 'Nearly double the bodies, all Janitors, arriving twice as fast.', color: '#a0522d' },
+    { id: 'HAZARD',   name: 'HAZARD',   chance: '15%', effect: 'The room itself leaks ink. Toxic pools keep forming until it is cleared.', color: '#8822cc' }
+];
+
+export const ENEMY_VARIANTS = [
+    { id: 'ARMORED',  name: 'ARMORED',  effect: 'Far more Grip to chew through, but slower. Kill it last, or at range.', color: '#6f8fa8' },
+    { id: 'FAST',     name: 'FAST',     effect: 'Fragile, but closes distance quickly. Deal with it first.', color: '#f0e68c' },
+    { id: 'VOLATILE', name: 'VOLATILE', effect: 'Detonates on death, damaging you if you are within ~130px. Kill it at range.', color: '#ff7043' }
+];
+
+export const ENEMY_BESTIARY = [
+    { id: 'SCAVENGER', name: 'JANITORS',      icon: '♙', color: '#555555', desc: 'The baseline manifestation. Slow, numerous, and happy to swarm. They vacuum up Lucidity you leave lying around.' },
+    { id: 'PREDATOR',  name: 'HALL MONITORS', icon: '♘', color: '#8b0000', desc: 'Telegraphs, then lunges in a straight line. The tell is the pause — move sideways, not backwards.' },
+    { id: 'PARASITE',  name: 'SUBSTITUTES',   icon: '♗', color: '#a0522d', desc: 'Hangs back and lashes at range, and will buff other manifestations if left alone. Priority target.' },
+    { id: 'BOSS',        name: 'SPHERE HEAD',     icon: '🌑',  color: '#b87333', desc: 'Floor 1. Charges, then releases an expanding pulse. The safe place is behind it.', boss: true },
+    { id: 'RORSCHACH',   name: 'THE RORSCHACH',   icon: '🦋',  color: '#800080', desc: 'Floor 2. Splits into smaller copies of itself when killed, three generations deep.', boss: true },
+    { id: 'PANOPTICON',  name: 'THE PANOPTICON',  icon: '👁️', color: '#ff0055', desc: 'Floor 3. Sweeps a gaze beam across the arena. Break line of sight or outrun the sweep.', boss: true },
+    { id: 'AMALGAMATION',name: 'THE AMALGAMATION',icon: '🦠',  color: '#55ff55', desc: 'Floor 4. Pulls you toward it and spawns lesser manifestations continuously.', boss: true },
+    { id: 'ARCHITECT',   name: 'THE ARCHITECT',   icon: '🕋',  color: '#c5a059', desc: 'Floor 5. The source of the construct. Collapses the arena in phases.', boss: true }
+];
+
 export const SYNERGIES = {
     blinding_signal: {
         id: 'blinding_signal', name: 'The Blinding Signal',

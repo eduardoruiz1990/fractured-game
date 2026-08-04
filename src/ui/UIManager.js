@@ -1,6 +1,8 @@
 // src/ui/UIManager.js
-import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS } from '../data/Manifestations.js';
+import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS, MANIFESTATIONS, PLAYER_WEAPON_IDS } from '../data/Manifestations.js';
 import { SynapseTree } from './SynapseTree.js';
+import { GuideUI } from './GuideUI.js';
+import { BOONS } from './LevelUpUI.js';
 
 // Matches the hardcoded progression chain in SaveManager.upgradeToken() exactly —
 // that method does NOT derive the chain from TOKEN_RARITIES, it's a separate
@@ -129,6 +131,13 @@ export class UIManager {
             this.updateMenuUI();
             this.showXPToast();
         });
+        // Patches 55/56: the catalogue half of the Clinical Guide. Rendered ONCE here
+        // rather than from updateMenuUI() — it is built purely from static game data,
+        // so re-rendering it on every menu refresh would be pure waste (it is by far
+        // the largest block of markup in the folder).
+        this.guideUI = new GuideUI(document.getElementById('guide-dynamic'));
+        this.guideUI.render();
+
         this.attachEvents();
         this.updateMenuUI();
 
@@ -294,7 +303,10 @@ export class UIManager {
                     this.selectedInventoryItem = null;
                     this.selectedSlotType = null;
                     this.renderLoadoutUI();
-                } else if (targetId === 'tab-tree' || targetId === 'tab-main' || targetId === 'tab-trophies' || targetId === 'tab-curses') {
+                } else if (targetId === 'tab-tree' || targetId === 'tab-main' || targetId === 'tab-trophies' || targetId === 'tab-curses' || targetId === 'tab-history') {
+                    // tab-history added (Patch 57): the log changes mid-session as the
+                    // player picks things, so it has to re-read on open rather than
+                    // showing whatever was true when the folder was first built.
                     this.updateMenuUI();
                 }
             });
@@ -420,6 +432,104 @@ export class UIManager {
         this.renderRoadmap();
         this.renderTrophies();
         this.renderCurseSelection();
+        this.renderBoonHistory();
+    }
+
+    /**
+     * Lifetime manifestation record (Patch 57).
+     *
+     * Redacted-until-first-pick, deliberately reusing renderRoadmap()'s exact
+     * vocabulary — .roadmap-node + .locked, a "SEALED" status chip and
+     * .redacted-text for the name — so an unmanifested boon reads as withheld in
+     * the same way an unreached floor does, rather than as a second, unrelated
+     * "locked" idiom in the same folder.
+     *
+     * Weapons and boons share one list because the player experiences them as one
+     * choice: the level-up screen offers both on the same cards.
+     */
+    renderBoonHistory() {
+        const timeline = document.getElementById('history-timeline');
+        if (!timeline) return;
+
+        const history = (this.saveManager.metaState && this.saveManager.metaState.boonHistory) || {};
+
+        // PLAYER_WEAPON_IDS rather than Object.keys(MANIFESTATIONS): the latter
+        // includes `adrenaline`, which is not a real weapon and could never be
+        // manifested, so it would sit here sealed forever (see its note in
+        // Manifestations.js).
+        const weaponEntries = PLAYER_WEAPON_IDS
+            .filter(id => MANIFESTATIONS[id])
+            .map(id => ({
+                id,
+                name: MANIFESTATIONS[id].name,
+                desc: MANIFESTATIONS[id].desc,
+                kind: 'INSTRUMENT',
+                maxLvl: MANIFESTATIONS[id].maxLvl || 5
+            }));
+
+        const boonEntries = BOONS.map(b => ({
+            id: b.id, name: b.name, desc: b.desc, kind: 'TRAIT', maxLvl: null
+        }));
+
+        const all = [...weaponEntries, ...boonEntries];
+        const discovered = all.filter(e => (history[e.id] && history[e.id].timesChosen > 0)).length;
+        const pct = all.length ? Math.round((discovered / all.length) * 100) : 0;
+
+        timeline.innerHTML = '';
+
+        const summary = document.createElement('div');
+        summary.className = 'roadmap-summary';
+        summary.innerHTML = `
+            <div class="roadmap-summary-row">
+                <span class="section-label" style="margin:0;">MANIFESTATION RECORD</span>
+                <span class="roadmap-summary-figure">${discovered} / ${all.length} ON FILE</span>
+            </div>
+            <div class="roadmap-progress-track"><div class="roadmap-progress-fill" style="width:${pct}%;"></div></div>
+            <div class="roadmap-summary-row roadmap-summary-sub">
+                <span>INSTRUMENTS &amp; TRAITS EVER MANIFESTED</span>
+                <span>${pct}%</span>
+            </div>
+        `;
+        timeline.appendChild(summary);
+
+        all.forEach(entry => {
+            const rec = history[entry.id];
+            const seen = !!(rec && rec.timesChosen > 0);
+
+            const node = document.createElement('div');
+            node.className = 'roadmap-node';
+            if (seen) node.classList.add('completed');
+            else node.classList.add('locked');
+
+            if (!seen) {
+                node.innerHTML = `
+                    <div class="roadmap-node-head">
+                        <span class="roadmap-floor-tag">${entry.kind}</span>
+                        <span class="roadmap-status redacted">SEALED</span>
+                    </div>
+                    <div class="roadmap-area redacted-text">(UNMANIFESTED)</div>
+                `;
+                timeline.appendChild(node);
+                return;
+            }
+
+            // Only instruments carry a level; a boon is one-shot, so showing "peak
+            // level" for one would be meaningless noise.
+            const peak = (entry.maxLvl && rec.highestLevelReached)
+                ? `<div class="roadmap-boss">PEAK LEVEL: <strong>${rec.highestLevelReached} / ${entry.maxLvl}</strong></div>`
+                : '';
+
+            node.innerHTML = `
+                <div class="roadmap-node-head">
+                    <span class="roadmap-floor-tag">${entry.kind}</span>
+                    <span class="roadmap-status subdued">MANIFESTED ×${rec.timesChosen}</span>
+                </div>
+                <div class="roadmap-area">${entry.name}</div>
+                ${peak}
+                <div class="roadmap-note typewriter-text">${entry.desc}</div>
+            `;
+            timeline.appendChild(node);
+        });
     }
 
     // Patch 32b: weight -> tier label/colour, matching the static legend added to
