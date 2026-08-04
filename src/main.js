@@ -21,7 +21,12 @@ window.FRACTURED_ERRORS = errorLog;
 console.log("FRACTURED Engine Bootstrapping...");
 
 const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+// Patch 51b: getContext CAN return null — under memory pressure, or when a device
+// already has too many live contexts. `new Renderer(canvas, ctx)` then throws on
+// its very first line (createPattern), which takes the whole boot down and leaves
+// the player on a dead title screen with no explanation. Checked at the bootstrap
+// below instead, so the failure is reported rather than silent.
+const ctx = canvas ? canvas.getContext('2d') : null;
 
 // Declared ABOVE the resize() call below, not after it. These are `let` bindings,
 // so they sit in the temporal dead zone until this line is evaluated — and merely
@@ -45,8 +50,15 @@ errorLog.setContext(() => ({
 }));
 
 function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    if (!canvas) return;
+    // Patch 51d: clamped to >= 1. A canvas sized 0 in either axis — which happens
+    // when the portal's iframe is laid out at zero (hidden tab, mid-orientation
+    // change, some in-app webviews) — makes every drawImage(lightCanvas) throw
+    // InvalidStateError, once per frame, freezing the screen while the game keeps
+    // running. updateZoom() already guards the same zero case explicitly, so it is
+    // known to occur; the render path simply never got the same treatment.
+    canvas.width = Math.max(1, window.innerWidth);
+    canvas.height = Math.max(1, window.innerHeight);
     // Refit the camera: on small viewports a fixed zoom showed far too little world.
     // Guarded because resize() also runs once before the Renderer exists.
     if (renderer) renderer.updateZoom();
@@ -126,6 +138,69 @@ try {
     if (savedSettings) gameSettings = { ...gameSettings, ...JSON.parse(savedSettings) };
 } catch(e) { console.warn("Could not load settings."); }
 
+// --- SUSPENDED-RUN STORAGE (Patch 51a) ---------------------------------------
+//
+// Every read/write of the mid-floor save used to be a RAW `localStorage` call.
+// That is not safe here: this game runs inside the portal's iframe, and where
+// storage is partitioned or blocked (Safari ITP, third-party-cookie blocking,
+// in-app webviews) merely TOUCHING `window.localStorage` throws SecurityError.
+// One of those calls sat on the boot path inside initEngine(), so that throw
+// killed the entire launch — no game loop, no title button, dead screen. The
+// portal's own SDK ships a "SafeLocalStorage" wrapper for exactly this reason.
+//
+// portalSDK.getItem/setItem/removeItem are already fully try/caught and fall
+// back to plain localStorage off-portal, so routing through them is both the
+// fix and a free upgrade to cloud-synced suspension for signed-in players.
+const SUSPENDED_RUN_KEY = 'fractured_suspended_run';
+
+function readSuspendedRun() {
+    const viaPortal = portalSDK.getItem(SUSPENDED_RUN_KEY);
+    if (viaPortal) return viaPortal;
+    // Migration path: a run suspended BEFORE this patch lives in raw localStorage,
+    // which for a signed-in player is a different store than the one above. Without
+    // this fallback those players would silently lose an in-progress run exactly
+    // once, on the update that was supposed to make storage more reliable.
+    try {
+        return localStorage.getItem(SUSPENDED_RUN_KEY);
+    } catch (e) {
+        return null;
+    }
+}
+
+function writeSuspendedRun(value) {
+    portalSDK.setItem(SUSPENDED_RUN_KEY, value);
+}
+
+function clearSuspendedRun() {
+    portalSDK.removeItem(SUSPENDED_RUN_KEY);
+    // Clear the pre-patch copy too, or the migration read above would keep
+    // resurrecting a run the player already finished or abandoned.
+    try { localStorage.removeItem(SUSPENDED_RUN_KEY); } catch (e) {}
+}
+
+/**
+ * Parsed suspended run, or null when there isn't one.
+ *
+ * The JSON.parse this replaces was unguarded (Patch 51, finding F5): a value
+ * truncated by an interrupted write or an exhausted quota threw SyntaxError
+ * inside the RESUME click handler, leaving a button that silently did nothing
+ * forever with no way for the player to clear it. A corrupt run is now dropped
+ * on read, so the UI returns to the honest "no suspended run" state.
+ */
+function loadSuspendedRun() {
+    const raw = readSuspendedRun();
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+        throw new Error('suspended run was not an object');
+    } catch (e) {
+        errorLog.capture(e, 'suspended-run-parse');
+        clearSuspendedRun();
+        return null;
+    }
+}
+
 // DEV: build-diversity snapshot (Patch 14). Captures the shape of a completed
 // build so 10 runs can be diffed to see whether builds actually diverge.
 // synergies is recomputed here rather than trusted from state.player.synergies,
@@ -195,6 +270,31 @@ function buildRunSummaryHtml(game) {
             <span style="color:var(--ui-gold);">NEXT STEP:</span> Spend your Lucidity in SYNAPSE RECORDS to grow stronger before your next descent.
         </div>
     `;
+}
+
+/**
+ * Last-resort boot failure notice (Patch 51b). Built in JS rather than added to
+ * index.html because it must render when the canvas pipeline is the thing that
+ * failed, and because index.html is under the "small patches only" rule. Kept in
+ * the clinical-file voice the rest of the UI uses.
+ */
+function showFatalBootError() {
+    try {
+        const container = document.getElementById('game-container') || document.body;
+        const notice = document.createElement('div');
+        notice.className = 'fullscreen-menu';
+        notice.style.cssText = 'display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:30px; z-index:10001;';
+        notice.innerHTML = `
+            <div class="title-glitch" style="font-size:2.5rem; margin-bottom:20px;">SESSION REFUSED</div>
+            <p class="typewriter-text" style="color:#888; max-width:420px; line-height:1.5;">
+                This device would not open a rendering surface for the evaluation.<br><br>
+                Close some other tabs or applications and reload. If it persists, try a different browser.
+            </p>
+        `;
+        container.appendChild(notice);
+    } catch (e) {
+        // If even this fails there is nothing further to try.
+    }
 }
 
 function initEngine() {
@@ -698,9 +798,8 @@ function initEngine() {
     const resumeBtn = document.getElementById('btn-resume-run');
     if (resumeBtn) {
         resumeBtn.addEventListener('click', () => {
-            const savedRun = localStorage.getItem('fractured_suspended_run');
-            if (savedRun) {
-                const carriedData = JSON.parse(savedRun);
+            const carriedData = loadSuspendedRun();
+            if (carriedData) {
                 game.init(saveManager, carriedData);
                 game.state.player.x = canvas.width / 2;
                 game.state.player.y = canvas.height / 2;
@@ -712,13 +811,18 @@ function initEngine() {
                 document.getElementById('clinical-folder-menu').style.display = 'none';
                 document.getElementById('ui-layer').style.display = 'flex';
                 resumeBtn.style.display = 'none';
-                localStorage.removeItem('fractured_suspended_run'); 
+                clearSuspendedRun();
                 gameState = 'PLAYING';
+            } else {
+                // loadSuspendedRun() returned null, which now also covers "the saved
+                // run was corrupt and has been discarded". Hide the button rather
+                // than leave it sitting there doing nothing.
+                resumeBtn.style.display = 'none';
             }
         });
     }
 
-    if (localStorage.getItem('fractured_suspended_run') && resumeBtn) {
+    if (readSuspendedRun() && resumeBtn) {
         resumeBtn.style.display = 'block';
     }
 
@@ -808,7 +912,7 @@ function initEngine() {
         } else if (isMidFloor) {
             saveManager.addLucidity(Math.floor(game.state.lucidity * (game.state.lucidityBonusMultiplier || 1)));
             const stateToSave = game.getCarriedState();
-            localStorage.setItem('fractured_suspended_run', JSON.stringify(stateToSave));
+            writeSuspendedRun(JSON.stringify(stateToSave));
 
             const resumeBtn = document.getElementById('btn-resume-run');
             if (resumeBtn) resumeBtn.style.display = 'block';
@@ -821,7 +925,7 @@ function initEngine() {
         }
 
         if (isExitReached) {
-            localStorage.removeItem('fractured_suspended_run');
+            clearSuspendedRun();
             const resumeBtn = document.getElementById('btn-resume-run');
             if (resumeBtn) resumeBtn.style.display = 'none';
         }
@@ -1226,6 +1330,18 @@ function gameLoop(time) {
 // never rejects, and self-limits to INIT_TIMEOUT_MS, so an absent or hanging SDK
 // delays boot by at most that timeout and then runs exactly as before.
 portalSDK.init().then(() => {
+    // Patch 51b: without a 2D context there is no game to boot — Renderer's
+    // constructor would throw and every later symptom (dead title button, blank
+    // canvas) would look like an unexplained hang. Fail loudly and in-voice
+    // instead, and record it so the load-path crash rate has a name attached.
+    if (!canvas || !ctx) {
+        errorLog.capture(
+            { message: 'boot aborted: 2D canvas context unavailable' },
+            'boot'
+        );
+        showFatalBootError();
+        return;
+    }
     initEngine();
     console.log("FRACTURED Engine Online.");
 });

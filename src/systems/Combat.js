@@ -1,5 +1,9 @@
 // src/systems/Combat.js
 import { getActiveSynergies } from '../data/Manifestations.js';
+// Patch 51c: the enemy-death catch below swallows into console.warn only. It sits
+// on the hottest gameplay path there is, so anything failing there is exactly what
+// the crash telemetry needs to see. Only touched when something already threw.
+import { errorLog } from '../core/ErrorLog.js';
 
 // Patch 16: generic tag-scaled knockback, consumed by Enemy.takeDamage's
 // optional knockbackForce param. Only wired at call sites with no existing
@@ -616,6 +620,7 @@ export class Combat {
                     }
                 } catch(e) {
                     console.warn("Recovered from logic error on enemy death:", e);
+                    errorLog.capture(e, 'enemy-death');
                 }
                 
                 if (ent.type === 'RORSCHACH' && ent.generation < 3) {

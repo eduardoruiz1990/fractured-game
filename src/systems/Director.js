@@ -7,7 +7,9 @@ import { Boss } from '../entities/Boss.js';
 import { Rorschach } from '../entities/Rorschach.js'; 
 import { Panopticon } from '../entities/Panopticon.js'; 
 import { Amalgamation } from '../entities/Amalgamation.js';
-import { Architect } from '../entities/Architect.js'; 
+import { Architect } from '../entities/Architect.js';
+// Patch 51c: reports the swallowed boss-roadmap failure below into the crash log.
+import { errorLog } from '../core/ErrorLog.js';
 
 export class Director {
     constructor(game) {
@@ -116,6 +118,7 @@ export class Director {
                 }
             } catch(e) {
                 console.warn("Could not update boss roadmap encounter:", e);
+                errorLog.capture(e, 'boss-roadmap');
             }
         }
     }

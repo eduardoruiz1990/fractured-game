@@ -1,3 +1,11 @@
+// Patch 51c: the three catch blocks in this file swallow render exceptions and
+// log them to the console only. Because drawGame() is called from INSIDE
+// gameLoop's own try, those exceptions never reach main.js's handler either — so
+// the crash telemetry added in Patch 50 was blind to the most likely cause of a
+// "frozen game" report. Reporting into the same log closes that gap. This import
+// adds no per-frame cost: errorLog is only touched when something already threw.
+import { errorLog } from './ErrorLog.js';
+
 export class Renderer {
     constructor(canvas, ctx) {
         this.canvas = canvas;
@@ -620,8 +628,15 @@ export class Renderer {
 
     drawGame(state, audioEngine, gameState = 'PLAYING') {
         try {
-            this.renderFrame++; 
-            
+            // Patch 51d: second line of defence for a zero-area canvas (main.js's
+            // resize() clamps to >= 1, but any other path that sizes the canvas gets
+            // caught here too). There is nothing to draw into, and drawing INTO it
+            // throws InvalidStateError at the drawImage(lightCanvas) calls below —
+            // every frame, silently, until the viewport changes.
+            if (!this.canvas || !this.canvas.width || !this.canvas.height) return;
+
+            this.renderFrame++;
+
             if (!state.bossSpawned) {
                 this.hasAnnouncedBoss = false;
             }
@@ -800,6 +815,7 @@ export class Renderer {
                         this.drawBossAnnouncement(state);
                     } catch(e) {
                         console.warn("Recoverable Boss Intro error:", e);
+                        errorLog.capture(e, 'renderer-boss-intro');
                     }
                     this.bossAnnouncementTimer--; 
                 }
@@ -813,6 +829,7 @@ export class Renderer {
 
         } catch (e) {
             console.error("CRITICAL RENDERER CRASH PREVENTED:", e);
+            errorLog.capture(e, 'renderer');
         } finally {
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         }
@@ -2634,6 +2651,7 @@ export class Renderer {
                         }
                     } catch(bossError) {
                         console.warn("Recoverable boss rendering error:", bossError);
+                        errorLog.capture(bossError, 'renderer-boss-draw');
                     } finally {
                         // finally, not just a trailing restore() — the try above is there
                         // specifically so a mid-draw exception doesn't crash the render
