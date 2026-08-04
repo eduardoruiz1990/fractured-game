@@ -138,9 +138,18 @@ class ErrorLogger {
             if (existing) {
                 existing.n++;
                 existing.last = now;
-                // Context is refreshed on repeat so the record reflects where the
-                // error is still happening, not only where it first happened.
-                existing.state = this._readContext();
+                // `state` is the FIRST sighting's context and is never overwritten.
+                // An earlier version refreshed it on every repeat, which both
+                // destroyed the most diagnostic fact in the record (which floor/room
+                // it first broke on) and left the row self-contradictory — the
+                // timestamp said one occurrence, the state said another. The latest
+                // context is kept alongside instead, and only when it actually
+                // differs, so "started in HUB, still happening in PLAYING" is
+                // recorded without a redundant copy for the common same-place case.
+                const latest = this._readContext();
+                if (JSON.stringify(latest) !== JSON.stringify(existing.state)) {
+                    existing.lastState = latest;
+                }
                 this._schedulePersist();
                 return;
             }
@@ -187,14 +196,17 @@ class ErrorLogger {
                 console.log('(no errors recorded)');
                 return this.entries.length;
             }
+            // Columns are explicitly first-vs-last: a repeated crash's value is in
+            // knowing both where it started and whether it has moved since.
+            const place = (s) => s ? `${s.gameState} F${s.floor} R${s.room}` : '—';
             console.table(this.entries.map(entry => ({
-                when: entry.t,
+                firstSeen: entry.t,
                 src: entry.src,
                 message: entry.msg,
-                gameState: entry.state && entry.state.gameState,
-                floor: entry.state && entry.state.floor,
-                room: entry.state && entry.state.room,
-                count: entry.n
+                firstAt: place(entry.state),
+                count: entry.n,
+                lastSeen: entry.last || '—',
+                lastAt: entry.lastState ? place(entry.lastState) : '(same)'
             })));
             // Stacks are too long for console.table's columns, so they follow.
             this.entries.forEach((entry, i) => {
