@@ -123,7 +123,18 @@ export class GuideUI {
             }),
 
             cat('arsenal', 'INSTRUMENTS', () => {
-                let h = this.section('INSTRUMENTS',
+                let h = this.section('AIMING THE BEAM',
+                    'The flashlight is not a floodlight. Where in the cone a manifestation stands changes what the light does to it.');
+                h += this.card('#ffcc00', '🔦', 'CENTRE OF THE BEAM',
+                    'Full damage, and a hard shove backwards. A manifestation held in the centre of your light struggles to reach you at all.');
+                h += this.card('#8a8172', '🌗', 'EDGE OF THE BEAM',
+                    'Still hurts — a little over half damage — but barely pushes. Clipping something with the edge of the cone will not hold it off.');
+                h += this.card('#8b0000', '🪨', 'THE HEAVY ONES RESIST',
+                    'Janitors are shoved freely. Hall Monitors lean into the light and keep coming. Apex manifestations are effectively immovable — do not expect the beam to buy you distance from a boss.');
+                h += this.card('#c5a059', '🎯', 'CHOOSE YOUR TARGET',
+                    'With several closing at once you cannot hold them all. Pick the one that must be stopped, give it the centre, and accept that the rest keep walking.');
+
+                h += this.section('INSTRUMENTS',
                     'Weapons fire on their own. Every one caps at level 5, and reaching that cap is what unlocks synergies.');
                 PLAYER_WEAPON_IDS.forEach(id => {
                     const w = MANIFESTATIONS[id];

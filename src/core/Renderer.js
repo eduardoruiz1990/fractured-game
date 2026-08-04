@@ -3198,22 +3198,49 @@ export class Renderer {
                 subText = "Constructor of the Void";
             }
             
-            this.ctx.font = "900 110px 'Courier New', Courier, monospace";
+            // Patch 63: the banner used to hardcode "900 110px" and trust that it fit.
+            // It does not: the text is left-aligned from x=-100 with the panel centred,
+            // so the space available is (canvas.width / 2 + 100), and long names —
+            // THE AMALGAMATION, THE SPHERE HEAD — overrun it on narrower windows.
+            // Font metrics make it worse and platform-dependent: 'Courier New' is not
+            // present on most Linux systems, so it falls back to a wider monospace and
+            // the same name truncates there while fitting elsewhere. Measured at
+            // runtime instead of assumed, which is correct for every font and viewport.
+            // On a phone the boss portrait (drawn around x=-565..-235) is entirely off
+            // screen anyway, so the left-aligned layout wastes the only space there is
+            // and the longest names still clip even at the minimum size. Narrow
+            // viewports centre the text and use the full width instead.
+            const narrow = this.canvas.width < 720;
+            this.ctx.textAlign = narrow ? 'center' : 'left';
+            const TEXT_X = narrow ? 0 : -100;
+            const available = narrow
+                ? this.canvas.width - 40
+                : (this.canvas.width / 2) - TEXT_X - 40;   // 40px right margin
+
+            const fitFont = (text, basePx, spec, minPx) => {
+                this.ctx.font = `${spec} ${basePx}px 'Courier New', Courier, monospace`;
+                const w = this.ctx.measureText(text).width;
+                if (w <= available || w <= 0) return;
+                const scaled = Math.max(minPx, Math.floor(basePx * (available / w)));
+                this.ctx.font = `${spec} ${scaled}px 'Courier New', Courier, monospace`;
+            };
+
+            fitFont(titleText, 110, '900', 34);
             this.ctx.fillStyle = '#ffffff';
-            
+
             this.ctx.save();
             const textGlow = this.ctx.createRadialGradient(0, -50, 0, 0, -50, 400);
             textGlow.addColorStop(0, 'rgba(139, 0, 0, 0.3)');
             textGlow.addColorStop(1, 'rgba(139, 0, 0, 0)');
             this.ctx.fillStyle = textGlow;
-            this.ctx.fillText(titleText, -100 + textJitter, -50);
+            this.ctx.fillText(titleText, TEXT_X + textJitter, -50);
             this.ctx.restore();
 
-            this.ctx.fillText(titleText, -100 + textJitter, -50);
-            
-            this.ctx.font = "italic 45px 'Courier New', Courier, monospace";
+            this.ctx.fillText(titleText, TEXT_X + textJitter, -50);
+
+            fitFont(subText, 45, 'italic', 18);
             this.ctx.fillStyle = '#c5a059';
-            this.ctx.fillText(subText, -90 + textJitter, 60);
+            this.ctx.fillText(subText, TEXT_X + (narrow ? 0 : 10) + textJitter, 60);
             
         } finally {
             this.ctx.restore();

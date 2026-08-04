@@ -60,6 +60,30 @@ export const ENEMY_VARIANTS = [
     { id: 'VOLATILE', name: 'VOLATILE', effect: 'Detonates on death, damaging you if you are within ~130px. Kill it at range.', color: '#ff7043' }
 ];
 
+/**
+ * How much each manifestation resists being pushed back by the flashlight beam
+ * (Patch 63). 1.0 = shoved freely, 0.1 = barely notices.
+ *
+ * Before this, every enemy inside the cone took an identical flinch regardless of
+ * type or of where in the beam it was standing, which made the flashlight a
+ * universal crowd-control tool — sweep it around and nothing could ever reach you.
+ * Heavier things now push through the light, so choosing WHICH enemy gets the
+ * centre of the beam is a real decision.
+ *
+ * Keyed by entity `type`. Unknown types fall back to 1.0. test_content.js asserts
+ * every bestiary entry has a value here.
+ */
+export const LIGHT_RECOIL_RESIST = {
+    SCAVENGER: 1.0,      // shoved freely — the beam is genuine crowd control on these
+    PARASITE: 0.7,
+    PREDATOR: 0.45,      // leans into it; a direct beam slows a lunge but will not stop it
+    BOSS: 0.20,
+    RORSCHACH: 0.25,
+    PANOPTICON: 0.15,
+    AMALGAMATION: 0.15,
+    ARCHITECT: 0.10      // effectively immovable
+};
+
 export const ENEMY_BESTIARY = [
     { id: 'SCAVENGER', name: 'JANITORS',      icon: '♙', color: '#555555', desc: 'The baseline manifestation. Slow, numerous, and happy to swarm. They vacuum up Lucidity you leave lying around.' },
     { id: 'PREDATOR',  name: 'HALL MONITORS', icon: '♘', color: '#8b0000', desc: 'Telegraphs, then lunges in a straight line. The tell is the pause — move sideways, not backwards.' },

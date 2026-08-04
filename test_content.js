@@ -312,6 +312,58 @@ console.log('\nPLAYER_WEAPON_IDS matches state.player.weapons');
 }
 
 // ---------------------------------------------------------------------------
+// Flashlight cone falloff + light recoil resistance (Patch 63).
+console.log('\nFlashlight cone falloff');
+{
+    const { coneFalloff } = await import('./src/systems/Combat.js');
+    const { LIGHT_RECOIL_RESIST, ENEMY_BESTIARY } = await import('./src/data/Manifestations.js');
+
+    const HIT = 0.6;                       // the flashlight's default half-angle
+    const centre = coneFalloff(0, HIT);
+    const edge = coneFalloff(HIT * 0.999, HIT);
+    const mid = coneFalloff(HIT * 0.5, HIT);
+
+    check('dead centre takes full damage and full recoil',
+          Math.abs(centre.damageScale - 1) < 0.001 && Math.abs(centre.recoilScale - 1) < 0.001,
+          `dmg ${centre.damageScale}, recoil ${centre.recoilScale}`);
+
+    check('the edge still deals meaningful damage (gentle falloff)',
+          edge.damageScale > 0.5 && edge.damageScale < 0.65, `got ${edge.damageScale.toFixed(3)}`);
+
+    check('the edge barely pushes (steep falloff)',
+          edge.recoilScale < 0.15, `got ${edge.recoilScale.toFixed(3)}`);
+
+    check('recoil falls off faster than damage — the reason aiming matters',
+          (1 - mid.recoilScale) > (1 - mid.damageScale) * 2,
+          `mid dmg ${mid.damageScale.toFixed(3)}, mid recoil ${mid.recoilScale.toFixed(3)}`);
+
+    check('both curves are monotonic from centre to edge',
+          centre.damageScale > mid.damageScale && mid.damageScale > edge.damageScale &&
+          centre.recoilScale > mid.recoilScale && mid.recoilScale > edge.recoilScale);
+
+    // Called every frame for every lit enemy — a NaN here would silently teleport
+    // entities via the flinch, so degenerate input must be inert, not poisonous.
+    [[NaN, HIT], [0, NaN], [0, 0], [0, -1], [undefined, undefined]].forEach(([a, b]) => {
+        const r = coneFalloff(a, b);
+        check(`coneFalloff(${a}, ${b}) returns finite scales`,
+              Number.isFinite(r.damageScale) && Number.isFinite(r.recoilScale),
+              JSON.stringify(r));
+    });
+
+    const missing = ENEMY_BESTIARY.filter(e => !Number.isFinite(LIGHT_RECOIL_RESIST[e.id]));
+    check('every bestiary manifestation has a light-recoil resistance',
+          missing.length === 0, missing.map(e => e.id).join(', '));
+
+    const outOfRange = Object.entries(LIGHT_RECOIL_RESIST).filter(([, v]) => v < 0 || v > 1);
+    check('every resistance is within 0..1', outOfRange.length === 0,
+          outOfRange.map(([k, v]) => `${k}=${v}`).join(', '));
+
+    check('apex manifestations resist the beam far more than basic ones',
+          LIGHT_RECOIL_RESIST.ARCHITECT < LIGHT_RECOIL_RESIST.PREDATOR &&
+          LIGHT_RECOIL_RESIST.PREDATOR < LIGHT_RECOIL_RESIST.SCAVENGER);
+}
+
+// ---------------------------------------------------------------------------
 // Boon pool integrity (Patch 56/57 — see the GAP NOW CLOSED note in the header).
 // The Clinical Guide renders straight from this array and the history tracker keys
 // on its ids, so a duplicate or malformed entry silently corrupts both.

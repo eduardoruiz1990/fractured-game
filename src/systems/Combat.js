@@ -1,5 +1,37 @@
 // src/systems/Combat.js
-import { getActiveSynergies } from '../data/Manifestations.js';
+import { getActiveSynergies, LIGHT_RECOIL_RESIST } from '../data/Manifestations.js';
+
+/**
+ * Flashlight cone falloff (Patch 63).
+ *
+ * The cone used to be binary — anywhere inside it dealt identical damage and an
+ * identical shove. That made sweeping the beam strictly better than aiming it, and
+ * removed any reason to prioritise one target over another.
+ *
+ * The two curves are deliberately different shapes:
+ *   - damage falls off GENTLY (1.0 centre -> 0.55 edge), so clipping something with
+ *     the edge of the beam is still worth doing.
+ *   - recoil falls off STEEPLY (quadratic, 1.0 centre -> 0.10 edge), so only a
+ *     deliberate, direct beam actually holds something off. This is what creates the
+ *     "which one do I point at?" tension when several are closing at once.
+ *
+ * Pure and exported so the curve is testable without standing up a combat frame.
+ *
+ * @param {number} angleDiff  signed angle from beam centre to the target, radians
+ * @param {number} hitAngle   the cone's half-width, radians
+ * @returns {{centrality:number, damageScale:number, recoilScale:number}}
+ */
+export function coneFalloff(angleDiff, hitAngle) {
+    if (!Number.isFinite(angleDiff) || !Number.isFinite(hitAngle) || hitAngle <= 0) {
+        return { centrality: 1, damageScale: 1, recoilScale: 1 };
+    }
+    const centrality = Math.max(0, Math.min(1, 1 - Math.abs(angleDiff) / hitAngle));
+    return {
+        centrality,
+        damageScale: 0.55 + 0.45 * centrality,
+        recoilScale: 0.10 + 0.90 * centrality * centrality
+    };
+}
 // Patch 51c: the enemy-death catch below swallows into console.warn only. It sits
 // on the hottest gameplay path there is, so anything failing there is exactly what
 // the crash telemetry needs to see. Only touched when something already threw.
@@ -556,14 +588,29 @@ export class Combat {
                             && state.player.synergies
                             && state.player.synergies.includes('ritual_focus');
 
-                        if (Math.abs(angleDiff) < hitAngle || wardedBypass) {
-                            const flDmgDealt = (flDamage / 60) * dmgMult * tagDamageMultiplier(state.player.weapons.flashlight.tags, state.player.tagDamage);
+                        const inCone = Math.abs(angleDiff) < hitAngle;
+                        if (inCone || wardedBypass) {
+                            // Patch 63: where in the beam the target is standing now
+                            // matters. A ritual_focus bypass is NOT the beam touching
+                            // them — it reaches through the ward — so it keeps full
+                            // damage but applies no push at all.
+                            const falloff = inCone ? coneFalloff(angleDiff, hitAngle)
+                                                   : { damageScale: 1, recoilScale: 0 };
+                            const recoil = falloff.recoilScale * (LIGHT_RECOIL_RESIST[ent.type] ?? 1);
+
+                            const flDmgDealt = (flDamage / 60) * dmgMult * falloff.damageScale
+                                * tagDamageMultiplier(state.player.weapons.flashlight.tags, state.player.tagDamage);
                             // The always-on starter weapon had zero positional push before
                             // this patch (the vx/vy dampen below is a separate flinch effect,
                             // not knockback) — light tier, ticks every frame it's lit up.
-                            ent.takeDamage(flDmgDealt, game, tagKnockback(state.player.weapons.flashlight.tags, flDmgDealt));
+                            ent.takeDamage(flDmgDealt, game, tagKnockback(state.player.weapons.flashlight.tags, flDmgDealt) * recoil);
                             state.cameraShake = Math.max(state.cameraShake, tagShake(state.player.weapons.flashlight.tags, flDmgDealt));
-                            ent.x -= ent.vx * 0.5; ent.y -= ent.vy * 0.5;
+                            // The flinch — how much of this frame's advance the light
+                            // takes back off them. Scaled by both beam position and the
+                            // target's own resistance, so a Predator caught on the edge
+                            // of the cone barely slows at all.
+                            const flinch = 0.5 * recoil;
+                            ent.x -= ent.vx * flinch; ent.y -= ent.vy * flinch;
                             if (state.player.synergies && state.player.synergies.includes('blinding_signal')) ent.confused = 180; 
                             
                             const batt = state.player.weapons.corrosive_battery;

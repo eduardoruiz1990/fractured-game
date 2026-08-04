@@ -14,9 +14,30 @@ npm run build     # production build to dist/
 npm run preview   # preview the production build
 ```
 
-There is no test runner configured (no `test` script, no framework installed). `test_director.js`, `test_save.js` and `test_bosses.js` at the repo root are standalone Node scripts that mock `document`/`window`/`localStorage` and exercise `Game`/`SaveManager`/`Director` directly — run them with `node test_director.js` etc. `test_director.js` and `test_save.js` are exploratory (they print, they don't assert); **`test_bosses.js` is assertion-based and exits non-zero on failure**, so it's the one worth running after touching boss spawning, `state.activeBoss`, or entity `init()`.
+There is no test runner configured (no `test` script, no framework installed). The `test_*.js` scripts at the repo root are standalone Node scripts that mock `document`/`window`/`localStorage` and exercise the real modules directly — run them with `node test_bosses.js` etc.
+
+**Four are assertion-based and exit non-zero on failure — run the relevant ones after any change:**
+
+| File | Run it after touching |
+| --- | --- |
+| `test_bosses.js` | boss spawning, `state.activeBoss`, entity `init()`/pooling, predator feeding |
+| `test_content.js` | synergy/token/set/curse data, XP curve, audio asset paths, the boon pool, weapon lists |
+| `test_synapse.js` | Synapse Tree costs, gates or the upgrade resolver |
+| `test_leash.js` | `Enemy.applyMovement`, leash thresholds, tutorial spawn distances |
+
+`test_director.js` and `test_save.js` are exploratory only (they print, they don't assert).
 
 Anything *visual* cannot be covered by these — `Renderer` needs a real canvas. Use the in-game **VISUAL TEST BENCH** instead: press `0` at the title/hub to reveal the dev panel (now also visible during `PLAYING`), then use SPAWN ONE OF EACH ENEMY / SPAWN ALL 5 BOSSES, FREEZE ENEMY AI (sets `state.devFreezeEntities`, which halts `entity.update()` and further spawning in `Game.processGameLogic()` while rendering keeps animating), and the scenario dropdown (IDLE / TELEGRAPH / ATTACK / HIT FLASH) to pin every entity into a state that would otherwise tick past in well under a second. `patch_game.cjs` is a one-off migration script (regex-based source patcher), not part of any workflow — don't run it against current source without reading it first, it assumes an older shape of `Game.js`.
+
+## Change history
+
+`EXECUTION_HANDOFF.md` covers patches 13–41. **`CHANGELOG.md` covers patches 49–62**
+(the CrazyGames Basic Launch remediation) and is the more important of the two for
+current work — several of those changes are guards against failures that are
+invisible on a dev machine and only appear on a real player's device, so the diff
+alone does not explain them. Its **Keep clauses** and **Known issues** sections are
+the parts most likely to be broken by accident; read them before touching storage,
+the save schema, the run-launch path, or enemy movement.
 
 ## Architecture
 
