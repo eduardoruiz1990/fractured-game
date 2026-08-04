@@ -327,6 +327,10 @@ function initEngine() {
             // Consumed by the guard in gameLoop() on the next frame, then cleared,
             // so this throws exactly once rather than wedging the loop.
             window.FRACTURED_FORCE_LOOP_ERROR = true;
+            // Auto-dump once all three have landed (the loop throw needs a frame,
+            // the rejection a microtask turn), so one click gives a complete,
+            // self-contained verification instead of a manual second step.
+            setTimeout(() => errorLog.dump(), 500);
         });
 
         // DEV: loadout testing (Patch 33 follow-up). Reuses addTokenToInventory()
@@ -985,6 +989,13 @@ function initEngine() {
     requestAnimationFrame(gameLoop);
 }
 
+// Patch 50: distinct main-loop crash messages already printed to the console this
+// session. Bounded so a crash whose message embeds varying data (a coordinate, a
+// frame number) can't grow this without limit. Console-only — ErrorLog does its own
+// independent, capped bookkeeping.
+const loggedLoopCrashes = new Set();
+const MAX_LOGGED_LOOP_CRASHES = 20;
+
 function gameLoop(time) {
     try {
         syncPortalGameplayState();
@@ -1177,14 +1188,34 @@ function gameLoop(time) {
             renderer.drawGame(game.state, audioEngine, gameState);
         }
     } catch (e) {
-        console.error("Main Loop Crash: " + e.message);
         // Patch 50: this catch is why the platform's gameplay crash rate has been
         // undiagnosable — it swallows every in-run throw and lets the loop keep
         // running, so nothing ever reaches window.onerror. Recording it here is the
         // single highest-value capture point in the codebase. Repeats of the same
         // throw collapse into one counted entry (see ErrorLog.capture), so a
         // per-frame failure logs once with a count rather than 60 times a second.
+        // Recorded BEFORE anything is printed, so a failure in the console call
+        // itself can't cost us the record.
         errorLog.capture(e, 'main-loop');
+
+        // The console side is deliberately NOT console.error any more. Called from
+        // inside the rAF chain, console.error makes Chrome print its full async
+        // causality stack — hundreds of "requestAnimationFrame / gameLoop" frames
+        // for a SINGLE crash, and at 60fps that buries devtools completely (it
+        // also swamped the Patch 50 verification pass). console.log carries no
+        // async stack, so the real synchronous stack — where it actually threw —
+        // is printed explicitly instead, once per distinct message. Later repeats
+        // are silent here but still counted in the log; FRACTURED_ERRORS.dump()
+        // is the complete picture.
+        const key = (e && e.message) ? String(e.message) : String(e);
+        if (!loggedLoopCrashes.has(key) && loggedLoopCrashes.size < MAX_LOGGED_LOOP_CRASHES) {
+            loggedLoopCrashes.add(key);
+            console.log(
+                '%c MAIN LOOP CRASH %c ' + key + '\n' + ((e && e.stack) ? e.stack : '(no stack)') +
+                '\n(repeats of this one are silenced — FRACTURED_ERRORS.dump() for the full log)',
+                'background:#8b0000; color:#fff; font-weight:bold;', 'color:#ff8888;'
+            );
+        }
     }
     requestAnimationFrame(gameLoop);
 }
