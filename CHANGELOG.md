@@ -1,8 +1,9 @@
-# FRACTURED — Change Log (Patches 49–63)
+# FRACTURED — Change Log (Patches 49–71)
 
-*Written 2026-08-04. Covers the CrazyGames Basic Launch remediation work driven by
-`BASIC_LAUNCH_FIX_QUEUE.md`, plus the follow-ups that came out of live play. Picks
-up where `EXECUTION_HANDOFF.md` (patches 13–41) left off.*
+*Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
+remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
+`BASIC_LAUNCH_FIX_QUEUE_v2.md`, plus the follow-ups that came out of live play and
+the mobile review. Picks up where `EXECUTION_HANDOFF.md` (patches 13–41) left off.*
 
 **Read this before changing any of the systems below.** Like `EXECUTION_HANDOFF.md`,
 this file exists because the reasoning behind these changes is not recoverable from
@@ -10,7 +11,16 @@ the diff alone — several are guards against failures that are invisible locall
 only appear on a player's device. The **Keep clauses** at the end are the parts most
 likely to be broken by accident.
 
-Session commits: `a4b954c` → `d5c179a` (5 commits).
+Session commits: `a4b954c` → `d5c179a` (5 commits) for patches 49–63. Patches 64–71
+are the 2026-08-05 session and were uncommitted when this was written.
+
+**A numbering warning.** `BASIC_LAUNCH_FIX_QUEUE_v2.md` is v1 plus two new items,
+which it numbered **59** (tutorial directional cue) and **60** (mobile review) — but
+49–58 had already shipped and 59–63 in this document were spent on post-phase work
+from live play. So the queue's "Patch 59" is this document's **Patch 64**, and the
+queue's "Patch 60" is the mobile review recorded under **Patch 66b** below. When a
+queue item and a changelog patch number disagree, this file's numbers are the ones
+in the source comments.
 
 ---
 
@@ -241,6 +251,214 @@ the player understands it.
 
 ---
 
+## ONBOARDING — the tutorial rebuild (2026-08-05)
+
+Driven by `BASIC_LAUNCH_FIX_QUEUE_v2.md` and then by direct review of the tutorial as
+an onboarding funnel. The framing question was not "is the tutorial correct" but "why
+does the average session end at 1m36s", and the answer turned out to be mostly in
+what the first sixty seconds fail to deliver.
+
+### Patch 64 — Tutorial cue points at the enemy, not to the right
+
+The instruction *"Eliminate the manifestation to proceed"* was drawn at a **fixed**
+world position, `mapOriginX + 600` — always 600px to the right of the spawn point —
+while `Director.spawnWave` places the single tutorial enemy at
+`Math.random() * Math.PI * 2`. The only instruction in the game routinely pointed
+away from the only enemy in the game.
+
+New `Renderer.drawTutorialCue()`: an animated dashed runway and a chevron that track
+the enemy's live position, plus an upright `ELIMINATE` label. Deliberately world-space
+and deliberately not a screen-edge waypoint marker. It fades in over the band where
+the enemy stops being comfortably on screen (derived from `viewHalfExtent`), and its
+glyph sizes divide by the live zoom so it is a constant ~29 screen px on a 0.70-zoom
+phone and a 1.3-zoom desktop alike.
+
+The tutorial enemy also gets a pulsing highlight ring, inserted at the same
+one-code-path spot as the Patch 24 variant tell.
+
+### Patch 65 — The tutorial became a step machine
+
+**New: `src/systems/Tutorial.js`.** The old tutorial delivered six instructions on
+frame 1 across two competing surfaces — a DOM banner and world-space ground text —
+every one hardcoded to WASD/mouse/SPACE, while an enemy was already walking in.
+
+Now one instruction at a time, one surface, each advanced by the player
+*demonstrating* the previous one, with a time fallback on every step. The module is a
+stateless reducer over `game.state`, which is what makes it testable without a canvas.
+
+Three findings drove the rest of the patch:
+
+- **The core hook was a coin flip.** Level 1→2 costs 50 XP; the tutorial Scavenger
+  dropped **2**. The two tutorial doors are LUCIDITY (+50 XP) and HEAL (+0), so
+  whether a new player ever saw a boon card came down to which door they picked —
+  and taking HEAL put the first card ~25 kills away, well past the average session.
+  Half of all first sessions never reached "kill → level → choose", which *is* the
+  genre's hook. The tutorial kill now drops 3 massive orbs (75 XP), so the card fires
+  for everyone. Tutorial-only; the normal drop economy is untouched.
+- **Mobile was told the wrong thing and shown nothing.** `isTouchDevice` only becomes
+  true on the first canvas touch, and `#btn-dash` was `display:none` until then — so a
+  phone's first frame had keyboard instructions and zero visible controls
+  simultaneously. Added `InputManager.getInputMode()` (a `(pointer: coarse)` guess,
+  corrected by the first real keypress) and `revealTouchControls()`, called from
+  `enterPlayingState()`.
+- **Arrow keys were never bound at all.** A desktop player who reached for them got a
+  character that did not respond, on the first screen of the game.
+
+**Also fixed here, and worth its own line: `Game.spawnDamageText` rendered "NaN" for
+every non-numeric caller.** It did `Math.ceil(amount).toString()` unconditionally —
+correct for damage numbers, garbage for the nine callers that pass text: `"VOID"`,
+`"SUPPLIES RECOVERED!"`, `"TOKEN DROPPED!"`, `"WEAPON UPGRADED"`, and the
+`"+50 LUCIDITY"` that pops when a first-time player takes their first reward door.
+
+### Patch 66 — Pacing, the hold, and plainer words
+
+- **Both controls are now taught in an empty room.** The spawn gate moved from the
+  MOVE step to the DASH step, so the enemy does not exist until the player has moved
+  *and* dashed. Combat is the first thing that can punish inattention.
+- **The hold.** `tutorialFreeze` stops enemy AI while an instruction is pending — the
+  enemy stands there, unaware, until the player does the thing being asked — via the
+  same path as `devFreezeEntities`. Capped at 7s so it can never soft-lock, cleared on
+  the kill, and re-checked against `isTutorial` in `Game` so a stale flag can never
+  leave every enemy in a run inert. Contact damage rides on enemy `update()`, so the
+  held enemy cannot hurt a player who is reading — that falls out of the freeze rather
+  than needing its own rule.
+- **`MIN_READ` (1s).** No step advances before its line has been on screen a full
+  second. Without it a player already holding W never saw the MOVE line, and an
+  instant dash blew past the DASH line in ~5 frames.
+- **Copy rewritten for a twelve-year-old and a fifty-year-old** — short sentences,
+  common words, no lore in a line whose job is teaching a button. The Lucidity lesson
+  became its own `BANK` step rather than being crammed onto the level-up line.
+- **The banner became a quiet note**, moved out of inline styles into `#tutorial-banner`
+  in `style.css`: no border box, hairline rules, dimmed parchment instead of saturated
+  gold, and a fade re-triggered on every text change.
+
+### Patch 66b — Mobile experience review *(no code changes)*
+
+The queue's Patch 60, run as a diagnostic. Findings, which became patches 67–71:
+mobile conversion 26.98% vs desktop 48.95% on identical content, and the causes were
+mechanical rather than design — a level-up modal with no mobile CSS at all, a canvas
+upscaled with nearest-neighbour on every phone, a dash button sitting in the aim
+thumb's landing zone, viewport maths hardcoded to the desktop zoom, and a portrait
+layout nothing in the codebase acknowledged.
+
+---
+
+## MOBILE — the review's follow-ups (2026-08-05)
+
+### Patch 67 — Level-up modal on phones, and canvas smoothing
+
+**The level-up modal had no mobile rules whatsoever**, and Patch 65 had just made
+every new player reach it inside the first minute. Three fixed 160x240 cards plus 40px
+of padding measured ~914px tall on a 390px-wide phone (they wrap one per row) against
+an 844px viewport, with no overflow rule — the first and last card were clipped off
+screen with no way to scroll to them. Landscape clipped the same way at 375px tall.
+
+Cards now stay on **one row at every size** (three side-by-side options is what makes
+the choice read as a choice), sized `clamp(94px, 28vw, 152px)`. Two things that would
+have bitten: `.banish-btn` hangs outside the card at `-15px` and would have been
+clipped by the new scroll container, and `renderSurgeCard` sets an inline
+`width: 300px` that only `max-width` outranks. `.card:hover`'s `scale(1.15)` is now
+behind `@media (hover: hover)` — on touch it latched after a tap.
+
+**`image-rendering: pixelated` removed from the canvas.** The backing store is sized
+in CSS pixels, so on a DPR 2–3 phone the compositor upscales 2–3x, and `pixelated`
+made that nearest-neighbour — the worst possible filter for radial faux-glows, 1–2px
+strokes and canvas text, sitting beside a crisp DOM HUD. No effect on desktop.
+
+### Patch 68 — Touch ergonomics, and two latched-state bugs
+
+- **Dash button geometry.** The aim stick is a *floating* joystick: it materialises
+  wherever the right thumb lands. Anything the button covers is dead space for aiming.
+  At 80x80 with 40px offsets its centre sat ~80px in from each edge — exactly where a
+  thumb rests to aim. Now 64px at 14px, with `max(14px, env(safe-area-inset-*))` so a
+  notched phone in landscape pushes it clear of the rounded corner.
+- **`touchcancel` was never bound on the dash button** (the canvas has had it since
+  the joysticks were written). Any touch the *system* took away mid-press — call,
+  notification shade, edge-swipe, backgrounding — left `isDashing` latched true for
+  the rest of the session: continuous dashing, unfixable short of a reload.
+- **`hideJoysticks()` released the visuals but not the input.** It is called on every
+  menu open, which routinely happens *with a finger still down* (tapping PAUSE with
+  one thumb while the other is on the stick). The slot kept its touch identifier, and
+  `handleTouch` only adopts a new finger when the slot reads null — so if that
+  finger's `touchend` never reached the canvas, the stick stayed claimed by a finger
+  no longer on the glass, dead for the rest of the run. It now clears both slots and
+  zeroes `moveX/moveY/isMoving/isDashing`.
+
+### Patch 69 — The viewport maths stops assuming desktop
+
+`viewHalfExtent` divided by a hardcoded `1.3`, justified as "assume the tightest
+possible view". True on desktop, where the zoom really is 1.3. On a phone, where
+`updateZoom` clamps to 0.70, it modelled a **150px half-extent where the player could
+actually see 279px** — so every viewport-derived distance in the game was calibrated
+for a screen nobody was looking at.
+
+`main.js` now publishes `state.viewZoom` from the live camera each frame and Director
+divides by that. `viewSafeRadius` was folded into the same derivation
+(`viewHalfExtent * 0.65`) rather than keeping its own `min(w,h) * 0.25` formula — the
+factor is chosen so **1920x1080 is unchanged to the pixel**, which `test_leash.js`
+asserts.
+
+Also: `resize()` bails when the dimensions have not changed (assigning `canvas.width`
+reallocates the backing store and resets the 2D context *even for an identical value*,
+and `drawLightingMasks` then reallocates the light canvas to match — two full-screen
+buffers per spurious event, and mobile fires `resize` for things that change neither
+dimension). Bursts are coalesced to one call per animation frame with rAF, not a
+timeout: the canvas has no CSS size of its own, so any delay beyond a frame shows as
+the game not filling the window.
+
+### Patch 70 — The spawn ring must clear the corner of the view
+
+`spawnEntity` used `max(canvasWidth, canvasHeight) * 0.5 + 50` — canvas **pixels** as
+world units, against the larger canvas axis, with **no zoom term**.
+
+| Viewport | Corner of view | Old ring | |
+|---|---|---|---|
+| Desktop 1920x1080 | 847 | 1010 | ok |
+| Phone landscape 844x390 | 664 | 472 | **192px inside the view** |
+| Phone portrait 390x844 | 664 | 472 | **192px inside the view** |
+| Tall portrait 412x915 | 717 | 508 | **209px inside the view** |
+
+It works on a 1080p desktop by coincidence, which is why it lasted. On every phone,
+enemies **popped into existence in plain sight**, on every wave — which reads as the
+game cheating. The radius is now `hypot(halfW, halfH) + 80` at the real zoom, with the
+legacy value kept as a **floor** so desktop pacing is untouched.
+
+### Patch 71 — Portrait is a supported layout
+
+A 390x844 phone showed 557 x 1206 world units: a tall slot where horizontal threats
+appear at 278 units and vertical ones at 603, with the player's own thumbs on the
+bottom corners of the play area. Zoom alone cannot fix it — reaching the 900-unit
+design width on a 390px screen needs zoom 0.43, at which the player is ~10 screen px.
+
+So the bottom **26%** (clamped 140–300px, never >40%) is reserved as a control band,
+the world renders into what is left, and the camera centre moves up to the middle of
+the *world viewport* — the area under the thumbs becomes screen the world was never
+using. The portrait zoom floor is 0.58 rather than 0.70, widening a 390px phone from
+557 to 672 world units.
+
+**The desktop path is unreachable from here, by construction.** The whole layout hangs
+off one boolean, so `isPortraitLayout()` lives in its own pure module
+(`src/core/Layout.js`) and is driven directly by `test_viewport.js`: touch pointer AND
+taller than wide AND ≤820px, all three required. The touch term is what stops a mouse
+user who drags their window tall and narrow from being given a phone layout with no
+way out.
+
+The band is a DOM element sized from `Renderer.controlBandH` — never from CSS, so the
+band and the camera cannot disagree about where the world stops — and it is
+`pointer-events: none`, which is load-bearing: the floating joysticks materialise
+wherever a thumb lands, *including inside the band*, and they listen on the canvas.
+
+`game.update()` now receives the **world viewport** rather than the canvas, so the
+spawn ring and leash do not count the band as visible space. The vignette and the boss
+banner follow the camera centre too.
+
+**Correction to Patch 69 recorded here:** that patch fixed the *published*
+`viewSafeRadius`, but the tutorial's actual spawn distance still had its own copy of
+the old canvas-pixel formula. Both read the same value as of this patch — which was
+the stated intent when `viewSafeRadius` was introduced in Patch 60.
+
+---
+
 ## Keep clauses (things future patches break by accident)
 
 1. **Never touch `localStorage` directly in `main.js`.** Use
@@ -253,9 +471,14 @@ the player understands it.
 3. **`getCarriedState()` carries `roomNumber`.** Anything that carries state to a
    *new floor* must reset it to 1.
 4. **Autosave must never bank Lucidity, and must be cleared on death.**
-5. **Leash thresholds derive from `state.viewHalfExtent`** (`min(w,h)/2 ÷ 1.3`).
-   The 1.3 must stay in sync with `Renderer.updateZoom`'s `MAX_ZOOM`. Never
-   reintroduce fixed-pixel leash constants — they are wrong on every other viewport.
+5. **Leash thresholds derive from `state.viewHalfExtent`.** Never reintroduce
+   fixed-pixel leash constants — they are wrong on every other viewport.
+   *Superseded by Patch 69:* the divisor is now `state.viewZoom`, the camera's LIVE
+   zoom, published from `main.js` each frame — not the hardcoded `1.3` this clause
+   originally named. `1.3` is only ever correct on desktop; phones run at 0.70, so
+   the old maths modelled a view half the real size. `viewSafeRadius` is now
+   `viewHalfExtent * 0.65` for the same reason. Both are asserted unchanged at
+   1920x1080 in `test_leash.js` — keep that assertion.
 6. **`strayTime` and `spawnMaxHp` must be reset/stamped in `initBase`**, and
    `spawnMaxHp` re-stamped in `applyEnemyVariant`. Pooled entities inherit anything
    you forget.
@@ -283,6 +506,41 @@ the player understands it.
 14. **`coneFalloff` runs every frame for every lit enemy.** It must stay total: it
     feeds a positional flinch, so a `NaN` escaping it teleports entities. The
     degenerate-input cases are asserted; keep them passing.
+15. **`Game.spawnDamageText` must not coerce its text.** It rounds finite NUMBERS and
+    passes everything else through. Reinstating a blanket `Math.ceil()` puts the
+    literal string "NaN" on screen for nine player-facing callers.
+16. **Every control-teaching tutorial step needs a `touch` variant in
+    `TUTORIAL_COPY`.** A step with only `keyboard` copy silently tells a phone to
+    press SPACE. Asserted in `test_tutorial.js`, along with a line-length ceiling —
+    the copy is deliberately plain and short, and "improving" it is how that gets
+    undone.
+17. **Every tutorial step needs a working time fallback.** The gates are behavioural;
+    a player who never presses the taught key must still reach combat, the kill and
+    the exit. Asserted per step.
+18. **`tutorialFreeze` is re-checked against `isTutorial` in `Game.processGameLogic`.**
+    The tutorial can end on any frame, and a stale freeze leaves every enemy in the
+    run inert. Never consume the flag on its own.
+19. **Nothing derives a world distance from canvas pixels.** Spawn rings, leash
+    thresholds and the tutorial spawn all go through `state.viewZoom` /
+    `viewHalfExtent` / `viewSafeRadius`. Canvas pixels are only world units at zoom
+    1.0, which is a zoom the game never uses. This is what broke on every phone in
+    Patches 69–71, three separate times, in three separate formulas.
+20. **`game.update()` receives the WORLD viewport, not `canvas.width/height`.** In
+    portrait they differ by the control band, and counting the band as visible space
+    puts spawns inside the view again.
+21. **`isPortraitLayout()` in `src/core/Layout.js` is the ONLY gate for portrait
+    behaviour**, and it must keep requiring a touch pointer. Everything portrait —
+    the band, the raised camera, the lower zoom floor — hangs off that one boolean, so
+    if it can return true on a desktop, a desktop player gets a phone layout with no
+    setting to escape it. `test_viewport.js` asserts both directions, including that
+    the desktop branch of `updateZoom` is bit-identical to the pre-Patch-71 formula.
+22. **The three world transforms must share `cameraCenterX/Y`** — `drawGame` and both
+    `lightCtx` passes. If they disagree, the darkness mask slides off the world.
+23. **`#control-band` stays `pointer-events: none` and takes its height from
+    `Renderer.controlBandH`.** The floating joysticks materialise inside it and listen
+    on the canvas, so a band that swallowed touches would remove the controls exactly
+    where they are meant to be used. A CSS-set height would let the band and the
+    camera disagree about where the world stops.
 
 ---
 
@@ -303,6 +561,25 @@ the player understands it.
   aggregate. A remote sink (the queue names ByteBrew) is a separate decision.
 - **`GAME_STATE.md` does not exist** despite `BASIC_LAUNCH_FIX_QUEUE.md` citing it as
   authoritative. Closest equivalent is `PROJECT_STATE_SUMMARY.md`.
+- **On touch you cannot dash while aiming.** One thumb cannot hold the aim stick and
+  reach the dash button. Patch 68 fixed *accidental* dashing (the button no longer
+  sits in the thumb's landing zone) but not this. The real fix is a gesture —
+  double-tap the movement side to dash in the direction already being pushed, putting
+  dash on the hand that is not doing precision work. Not built; it adds an input mode
+  and needs a design call.
+- **Fog is 30 live `createRadialGradient` + `arc` + `fill` per frame**
+  (`generateFogClouds` / `drawFog`), with no scaling by device class — the largest
+  single per-frame cost, on top of ~40 other gradient sites. `drawGlow` already proves
+  the cached-sprite pattern works here. Identified in the Patch 66b review; not
+  green-lit.
+- **The canvas renders at CSS-pixel resolution, ignoring DPR.** Deliberate — it is a
+  large performance saving on phones — but it means the image is upscaled by the
+  compositor. Patch 67 made that upscale smooth; it did not make it sharp. If this is
+  ever revisited, `image-rendering` should be reconsidered in the same change.
+- **Portrait is playable, not equal.** Even with the Patch 71 band and the 0.58 zoom
+  floor, a phone held upright gets roughly half the desktop's horizontal warning
+  distance. Enemies spawn just off screen and the leash adapts, so it is fair, but the
+  reaction time is genuinely shorter than in landscape.
 
 ---
 
@@ -310,11 +587,19 @@ the player understands it.
 
 | File | Count | Covers |
 |---|---|---|
-| `test_bosses.js` | 28 | boss dispatch, `activeBoss` on spawn frame, entity `.phase` pooling, **predator feeding cap** |
-| `test_content.js` | 180 | synergy/token/set/curse data, XP curve, audio asset paths, **boon pool**, **`PLAYER_WEAPON_IDS` vs real loadout**, **cone falloff curves + light-recoil coverage** |
+| `test_bosses.js` | 34 | boss dispatch, `activeBoss` on spawn frame, entity `.phase` pooling, predator feeding cap, **spawn ring clears the view on 5 viewports + desktop ring unchanged** |
+| `test_content.js` | 180 | synergy/token/set/curse data, XP curve, audio asset paths, boon pool, `PLAYER_WEAPON_IDS` vs real loadout, cone falloff curves + light-recoil coverage |
 | `test_synapse.js` | 255 | Synapse Tree costs, gates, resolver |
-| `test_leash.js` | 12 | **new** — off-screen dead zone, recall lands on screen, boss exclusion, tutorial cases |
+| `test_leash.js` | 15 | off-screen dead zone, recall lands on screen, boss exclusion, tutorial cases, **desktop viewport derivation unchanged by the live-zoom refactor** |
+| `test_tutorial.js` | 51 | **new** — step gates and overrides, every step's timeout, the instruction hold and its cap, device-appropriate copy, copy length ceiling, degenerate state |
+| `test_viewport.js` | 42 | **new** — the desktop/portrait split in both directions, desktop `updateZoom` bit-identical to pre-Patch-71, band and camera geometry, zero-sized canvas |
 
 `test_director.js` and `test_save.js` remain exploratory (they print, they don't
-assert). All four assertion suites exit non-zero on failure and should be run after
-touching entities, save schema, or content data.
+assert). All six assertion suites exit non-zero on failure and should be run after
+touching entities, save schema, content data, the tutorial, or anything that reads
+viewport dimensions.
+
+`test_tutorial.js` and `test_viewport.js` are both driven against the real modules
+without a canvas — `Tutorial` is a pure reducer over state, and `updateZoom` is called
+through `Renderer.prototype` on a stub. Keep them that way; the moment either needs a
+live canvas it stops being runnable and stops being run.

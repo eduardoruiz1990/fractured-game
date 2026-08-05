@@ -22,6 +22,13 @@
     <div id="glitch-overlay"></div>
     <div id="debug-console"></div>
     
+    <!-- Patch 71: portrait control band. Sized and shown by main.js (applyControlBand)
+         ONLY on a touch device held taller than wide; hidden everywhere else, so it
+         cannot appear on desktop. Purely a visual floor for the thumbs — it is
+         pointer-events: none, so touches fall straight through to the canvas and the
+         floating joysticks still materialise inside it. -->
+    <div id="control-band"></div>
+
     <div id="joy-left" class="joystick-base"><div id="knob-left" class="joystick-knob"></div></div>
     <div id="joy-right" class="joystick-base"><div id="knob-right" class="joystick-knob"></div></div>
     
@@ -431,7 +438,7 @@
                 <div class="title-typewriter" id="pause-title">PROTOCOL SUSPENDED</div>
             </div>
             <div class="folder-content" style="text-align: center;">
-                <p id="pause-desc" class="typewriter-text" style="font-size: 1.2rem; margin-bottom: 30px;">The nightmare pauses, but it does not end.</p>
+                <p id="pause-desc" class="typewriter-text">The nightmare pauses, but it does not end.</p>
                 <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
                     <button class="file-btn primary" id="btn-unpause">RESUME</button>
                     <button class="file-btn danger" id="btn-descend" style="display:none;">DESCEND DEEPER</button>
@@ -471,7 +478,7 @@
                 <div class="title-typewriter" style="color: var(--ui-red);">MIND BROKEN</div>
             </div>
             <div class="folder-content" style="text-align: center;">
-                <div id="final-stats" class="typewriter-text" style="font-size: 1.2rem; margin-bottom: 30px; color: #111;"></div>
+                <div id="final-stats" class="typewriter-text" style="color: #111;"></div>
                 <button class="file-btn primary" id="btn-restart">RECONSTRUCT FILE</button>
             </div>
         </div>

@@ -252,5 +252,69 @@ console.log('\nPredator feeding is capped');
 }
 
 // ---------------------------------------------------------------------------
+console.log('\nSpawn ring clears the view (Patch 70)');
+{
+    // An enemy must never appear inside the visible area. The old radius used canvas
+    // pixels against the LARGER axis with no zoom term, which held on a 1080p desktop
+    // and failed on every phone — in portrait the ring sat well inside the top and
+    // bottom edges, so enemies popped into existence mid-screen.
+    //
+    // Driven through the real Director.spawnEntity rather than re-deriving the
+    // formula here, because the bug was in the formula.
+    const viewports = [
+        { name: 'desktop 1920x1080', w: 1920, h: 1080, zoom: 1.3 },
+        { name: 'desktop 1366x768',  w: 1366, h: 768,  zoom: 1.24 },
+        { name: 'phone landscape',   w: 844,  h: 390,  zoom: 0.70 },
+        { name: 'phone portrait',    w: 390,  h: 844,  zoom: 0.70 },
+        { name: 'tall portrait',     w: 412,  h: 915,  zoom: 0.70 }
+    ];
+
+    viewports.forEach(v => {
+        const game = new Game();
+        game.init(mockSave);
+        game.state.floor = 1;
+        game.state.stress = 1.0;
+        game.state.viewZoom = v.zoom;
+        game.state.player.x = 0;
+        game.state.player.y = 0;
+        // Well inside the room so the 1550px boundary clamp cannot pull a spawn in.
+        game.state.mapOriginX = 0;
+        game.state.mapOriginY = 0;
+
+        // The furthest point on screen from the player, in world units.
+        const cornerDist = Math.hypot((v.w / 2) / v.zoom, (v.h / 2) / v.zoom);
+
+        let worst = Infinity;
+        for (let i = 0; i < 200; i++) {
+            game.state.entities.length = 0;
+            game.director.spawnEntity('SCAVENGER', v.w, v.h);
+            const e = game.state.entities[0];
+            worst = Math.min(worst, Math.hypot(e.x, e.y));
+        }
+
+        check(`${v.name}: every spawn lands off screen`,
+              worst > cornerDist,
+              `closest spawn ${worst.toFixed(0)}px vs a ${cornerDist.toFixed(0)}px corner`);
+    });
+
+    // Desktop pacing must not move: the legacy radius is kept as a floor precisely so
+    // this refactor cannot retune the game for players who never had the bug.
+    const game = new Game();
+    game.init(mockSave);
+    game.state.viewZoom = 1.3;
+    game.state.player.x = 0; game.state.player.y = 0;
+    game.state.mapOriginX = 0; game.state.mapOriginY = 0;
+    game.state.stress = 1.0;
+    let maxSeen = 0;
+    for (let i = 0; i < 200; i++) {
+        game.state.entities.length = 0;
+        game.director.spawnEntity('SCAVENGER', 1920, 1080);
+        maxSeen = Math.max(maxSeen, Math.hypot(game.state.entities[0].x, game.state.entities[0].y));
+    }
+    check('1080p desktop still spawns on the legacy 1010px ring, unchanged',
+          Math.abs(maxSeen - 1010) < 1, `got ${maxSeen.toFixed(1)}px`);
+}
+
+// ---------------------------------------------------------------------------
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

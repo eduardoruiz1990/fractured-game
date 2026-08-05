@@ -22,6 +22,18 @@ export class Renderer {
         // Camera zoom. 1.3 is the desktop look and the MAXIMUM — updateZoom() only
         // ever scales DOWN, on viewports too small to show a usable amount of world.
         this.zoom = 1.3;
+
+        // Patch 71 — portrait layout. OFF unless main.js turns it on (touch device,
+        // taller than wide, phone-sized). Everything below is initialised to the
+        // desktop values updateZoom() will immediately recompute, so a renderer that
+        // is never told about portrait behaves exactly as it did before this patch.
+        this.portraitMode = false;
+        this.controlBandH = 0;                       // px of canvas reserved for thumbs
+        this.worldViewWidth = canvas ? canvas.width : 0;   // the part of the canvas the world uses
+        this.worldViewHeight = canvas ? canvas.height : 0;
+        this.cameraCenterX = this.worldViewWidth / 2;      // where the player is drawn
+        this.cameraCenterY = this.worldViewHeight / 2;
+
         this.updateZoom();
 
         // Offscreen sprite cache (see getSprite/drawGlow). Lazily populated rather
@@ -119,20 +131,58 @@ export class Renderer {
      * The result is clamped and always finite, so it can never feed NaN into the
      * canvas transform.
      */
+    /**
+     * Camera fit, and — in portrait only — the control band.
+     *
+     * TWO PATHS, DELIBERATELY DISJOINT. `portraitMode` is set by main.js and is false
+     * for every desktop, every landscape phone and every tablet in landscape. When it
+     * is false this method computes exactly what it computed before Patch 71: band 0,
+     * camera centred on the canvas, `fit` measured against the full canvas height,
+     * floor 0.70. No desktop viewport can reach a portrait branch, which is the point
+     * — the portrait layout is additive, not a reinterpretation of the existing one.
+     *
+     * WHY A BAND. A 390x844 phone shows a tall slot of world, and the player's own
+     * thumbs sit on the bottom corners of it. Zoom alone cannot fix that: reaching the
+     * 900-unit design width on a 390px screen needs zoom 0.43, at which the player is
+     * ~10 screen pixels. So the bottom ~26% is reserved for the hands instead, the
+     * world is rendered into what is left, and the player is centred in THAT — the
+     * camera centre moves up, so the area under the thumbs is screen the world was
+     * never using.
+     */
     updateZoom() {
-        const MAX_ZOOM = 1.3;   // desktop, unchanged
-        const MIN_ZOOM = 0.70;  // readability floor for small screens
-        const TARGET_W = 900;   // world units we want visible horizontally
-        const TARGET_H = 620;   // and vertically
+        const MAX_ZOOM = 1.3;            // desktop, unchanged
+        const MIN_ZOOM = 0.70;           // readability floor for small screens
+        const MIN_ZOOM_PORTRAIT = 0.58;  // portrait trades sprite size for warning distance
+        const TARGET_W = 900;            // world units we want visible horizontally
+        const TARGET_H = 620;            // and vertically
 
         const w = this.canvas ? this.canvas.width : 0;
         const h = this.canvas ? this.canvas.height : 0;
         if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
             this.zoom = MAX_ZOOM;
+            this.controlBandH = 0;
+            this.worldViewWidth = Math.max(1, w);
+            this.worldViewHeight = Math.max(1, h);
+            this.cameraCenterX = Math.max(1, w) / 2;
+            this.cameraCenterY = Math.max(1, h) / 2;
             return;
         }
-        const fit = Math.min(w / TARGET_W, h / TARGET_H);
-        this.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fit));
+
+        // Clamped at both ends: 140px is too little to rest a thumb in, and the band
+        // must never eat more than 40% of the screen however tall the device is.
+        const band = this.portraitMode
+            ? Math.min(h * 0.4, Math.min(300, Math.max(140, Math.round(h * 0.26))))
+            : 0;
+
+        this.controlBandH = band;
+        this.worldViewWidth = w;
+        this.worldViewHeight = Math.max(1, h - band);
+        this.cameraCenterX = w / 2;
+        this.cameraCenterY = this.worldViewHeight / 2;
+
+        const fit = Math.min(w / TARGET_W, this.worldViewHeight / TARGET_H);
+        const floor = this.portraitMode ? MIN_ZOOM_PORTRAIT : MIN_ZOOM;
+        this.zoom = Math.max(floor, Math.min(MAX_ZOOM, fit));
     }
 
     // Generic offscreen sprite cache, following the cachedFloorPatterns /
@@ -650,8 +700,14 @@ export class Renderer {
             this.ctx.fillStyle = '#000000'; 
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
+            // Patch 71: the camera centre, not the canvas centre. They are the same
+            // value on every layout except portrait, where the centre moves up by half
+            // the control band so the player is centred in the world viewport rather
+            // than behind the player's own thumbs. Kept in sync with the two lightCtx
+            // transforms below — all three must use the same origin or the darkness
+            // mask slides off the world.
             this.ctx.save();
-            this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+            this.ctx.translate(this.cameraCenterX, this.cameraCenterY);
             this.ctx.scale(this.zoom, this.zoom);
             this.ctx.translate(-state.player.x, -state.player.y);
             
@@ -676,7 +732,7 @@ export class Renderer {
                     }
 
                     this.lightCtx.save();
-                    this.lightCtx.translate(this.canvas.width / 2, this.canvas.height / 2);
+                    this.lightCtx.translate(this.cameraCenterX, this.cameraCenterY);
                     this.lightCtx.scale(this.zoom, this.zoom);
                     this.lightCtx.translate(-state.player.x, -state.player.y);
 
@@ -972,7 +1028,7 @@ export class Renderer {
         }
 
         this.lightCtx.save();
-        this.lightCtx.translate(this.canvas.width / 2, this.canvas.height / 2);
+        this.lightCtx.translate(this.cameraCenterX, this.cameraCenterY);
         this.lightCtx.scale(this.zoom, this.zoom);
         this.lightCtx.translate(-state.player.x, -state.player.y);
         if (state.cameraShake > 0) this.lightCtx.translate(curShakeX, curShakeY);
@@ -1473,9 +1529,14 @@ export class Renderer {
         let innerVig = (this.canvas.height / 4) * sanityRatio; 
         let outerVig = (this.canvas.height) * (0.2 + sanityRatio * 0.8); 
         
+        // Patch 71: centred on the CAMERA, not the canvas — the vignette's whole job is
+        // to frame the player, and in portrait the player is drawn above the canvas
+        // centre. Identical on every other layout, where the two are the same point.
+        const vigX = Number.isFinite(this.cameraCenterX) ? this.cameraCenterX : this.canvas.width / 2;
+        const vigY = Number.isFinite(this.cameraCenterY) ? this.cameraCenterY : this.canvas.height / 2;
         const vig = this.ctx.createRadialGradient(
-            this.canvas.width/2, this.canvas.height/2, innerVig,
-            this.canvas.width/2, this.canvas.height/2, outerVig
+            vigX, vigY, innerVig,
+            vigX, vigY, outerVig
         );
         
         let voidColor = 'rgba(0,0,0,0.98)';
@@ -2858,9 +2919,12 @@ export class Renderer {
             const activeBoss = state.activeBoss;
             const bossType = activeBoss ? activeBoss.type : 'BOSS';
             
+            // Patch 71: vertically on the camera centre, so in portrait the banner
+            // lands across the world view instead of half-buried in the control band.
+            // Same value as canvas.height / 2 on every other layout.
             const cx = this.canvas.width / 2;
-            const cy = this.canvas.height / 2;
-            
+            const cy = Number.isFinite(this.cameraCenterY) ? this.cameraCenterY : this.canvas.height / 2;
+
             let alpha = 1;
             if (this.bossAnnouncementTimer > 210) {
                 alpha = (240 - this.bossAnnouncementTimer) / 30; 

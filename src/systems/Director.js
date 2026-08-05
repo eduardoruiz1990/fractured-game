@@ -167,14 +167,30 @@ export class Director {
         // own guess at what "visible" means on an unknown viewport. Written before
         // the combatActive early-return so it is always current.
         if (Number.isFinite(canvasWidth) && Number.isFinite(canvasHeight)) {
-            state.viewSafeRadius = Math.min(canvasWidth, canvasHeight) * 0.25;
-            // Patch 61: the smallest half-extent of world the player can possibly see.
-            // Divided by Renderer's MAX zoom (1.3) on purpose — that produces the
-            // TIGHTEST visible area, so anything past this radius is guaranteed to be
-            // off screen at any zoom level. Enemy.applyMovement leashes against this,
-            // which is what stops enemies parking in a band that is technically "near"
-            // but literally invisible. Keep 1.3 in sync with Renderer.updateZoom.
-            state.viewHalfExtent = (Math.min(canvasWidth, canvasHeight) / 2) / 1.3;
+            // Patch 61: the smallest half-extent of world the player can see.
+            // Enemy.applyMovement leashes against this, which is what stops enemies
+            // parking in a band that is technically "near" but literally invisible.
+            //
+            // Patch 69: divided by the LIVE camera zoom, published each frame from
+            // main.js. It used to divide by a hardcoded 1.3 — Renderer's MAX_ZOOM —
+            // on the reasoning that the tightest possible view is the safe one to
+            // assume. That is true on desktop, where the zoom really is 1.3, and
+            // badly wrong on a phone, where updateZoom clamps to 0.70: it modelled a
+            // 154px half-extent where the player could actually see 279px, so every
+            // viewport-derived distance in the game was calibrated for a screen
+            // nobody was looking at. Falls back to 1.3 before the first frame
+            // publishes a real value.
+            const zoom = (Number.isFinite(state.viewZoom) && state.viewZoom > 0) ? state.viewZoom : 1.3;
+            state.viewHalfExtent = (Math.min(canvasWidth, canvasHeight) / 2) / zoom;
+
+            // The tutorial's on-screen spawn radius, and the distance the tutorial
+            // leash recalls to. Expressed as a FRACTION of what is really visible
+            // rather than as its own formula: the old `min(w,h) * 0.25` is exactly
+            // 0.65 of the half-extent at 1920x1080, so desktop is unchanged to the
+            // pixel, while a phone stops spawning the tutorial enemy at 97 world
+            // units — a third of the distance a desktop player gets, and close enough
+            // to be on top of them before they have read anything.
+            state.viewSafeRadius = state.viewHalfExtent * 0.65;
         }
 
         if (!state.combatActive) return;
@@ -259,17 +275,23 @@ export class Director {
                 }
 
                 // TUTORIAL: spawn the single enemy ON SCREEN, not on the usual
-                // off-screen ring. spawnEntity's default radius is
-                // max(w,h)*0.5+50 (~1010px at 1080p), which is correct when a room
-                // streams in 15+ enemies from every side — but the tutorial budget is
-                // exactly 1, so that put the only enemy in the game somewhere off
-                // screen at a random bearing and left the player wandering to find it.
-                // The world draws at zoom 1.3, so the visible half-extents are only
-                // ~738x415px at 1080p; a quarter of the SMALLER canvas dimension stays
-                // comfortably inside the viewport at any window size.
+                // off-screen ring. The default ring is correct when a room streams in
+                // 15+ enemies from every side — but the tutorial budget is exactly 1,
+                // so that put the only enemy in the game somewhere off screen at a
+                // random bearing and left the player wandering to find it.
+                //
+                // Patch 71: this now uses the SAME viewSafeRadius published above and
+                // used by Enemy.applyMovement's tutorial recall — which was always the
+                // stated intent, but the two had drifted into separate formulas. This
+                // one still read `min(canvasWidth, canvasHeight) * 0.25`, canvas pixels
+                // with no zoom term, so on a phone at zoom 0.70 it spawned the enemy 98
+                // world units away — a third of the desktop distance, close enough to
+                // be on the player before they had finished reading the instruction.
                 if (state.isTutorial) {
                     const tutAngle = Math.random() * Math.PI * 2;
-                    const tutDist = Math.min(canvasWidth, canvasHeight) * 0.25;
+                    const tutDist = Number.isFinite(state.viewSafeRadius)
+                        ? state.viewSafeRadius
+                        : Math.min(canvasWidth, canvasHeight) * 0.25;
                     this.spawnEntity(
                         spawnType, canvasWidth, canvasHeight,
                         state.player.x + Math.cos(tutAngle) * tutDist,
@@ -333,7 +355,29 @@ export class Director {
 
     spawnEntity(type, canvasWidth, canvasHeight, forceX = null, forceY = null, generation = 1) {
         const state = this.game.state;
-        const spawnRadius = Math.max(canvasWidth, canvasHeight) * 0.5 + 50;
+
+        // Patch 70 — the spawn ring must clear the CORNER of the view, at the real
+        // camera zoom.
+        //
+        // The old radius was `max(canvasWidth, canvasHeight) * 0.5 + 50`: canvas
+        // PIXELS used directly as world units, against the larger canvas axis, with
+        // no zoom term. On a 1920x1080 desktop at zoom 1.3 that happens to work — 1010
+        // units versus a 847-unit corner — which is why this survived this long. On
+        // every phone it does not. At zoom 0.70 a 844x390 view reaches 664 units to
+        // the corner while the ring sat at 472, and in portrait the ring was a full
+        // 130 units INSIDE the top and bottom edges: enemies popped into existence in
+        // plain sight, mid-screen, which reads as the game cheating.
+        //
+        // hypot(halfW, halfH) is the furthest point the player can see; +80 keeps the
+        // body and its glow clear of the edge. The legacy value is kept as a FLOOR so
+        // desktop pacing is untouched to the pixel — only viewports where the old
+        // maths was actually wrong move.
+        const w = Number.isFinite(canvasWidth) ? canvasWidth : 1920;
+        const h = Number.isFinite(canvasHeight) ? canvasHeight : 1080;
+        const zoom = (Number.isFinite(state.viewZoom) && state.viewZoom > 0) ? state.viewZoom : 1.3;
+        const offScreenRadius = Math.hypot((w / 2) / zoom, (h / 2) / zoom) + 80;
+        const spawnRadius = Math.max(Math.max(w, h) * 0.5 + 50, offScreenRadius);
+
         const angle = Math.random() * Math.PI * 2;
         
         let x = forceX !== null ? forceX : state.player.x + Math.cos(angle) * spawnRadius;

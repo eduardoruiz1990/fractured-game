@@ -75,11 +75,20 @@ export class InputManager {
                 e.preventDefault(); // Stop canvas from grabbing it
                 this.state.isDashing = true;
             }, { passive: false });
-            
-            this.btnDash.addEventListener('touchend', (e) => {
+
+            // Patch 68: touchcancel was missing here. The canvas has bound it since
+            // the joysticks were written (see above) — this button never did, so any
+            // touch the SYSTEM took away mid-press (an incoming call, a notification
+            // shade, an edge-swipe gesture, the app being backgrounded) left
+            // isDashing latched true for the rest of the session. The player would
+            // then dash continuously, burning every charge the instant it recharged,
+            // with no way to stop it short of a reload.
+            const releaseDash = (e) => {
                 e.preventDefault();
                 this.state.isDashing = false;
-            }, { passive: false });
+            };
+            this.btnDash.addEventListener('touchend', releaseDash, { passive: false });
+            this.btnDash.addEventListener('touchcancel', releaseDash, { passive: false });
         }
     }
 
@@ -249,6 +258,24 @@ export class InputManager {
         this.joyLeft.style.display = 'none';
         this.joyRight.style.display = 'none';
         if (this.btnDash) this.btnDash.style.display = 'none';
+
+        // Patch 68: release the input state too, not just the visuals. This is called
+        // when a menu opens, which routinely happens WITH A FINGER STILL DOWN — the
+        // player taps PAUSE with one thumb while the other is on the move stick. The
+        // held slot kept its touch identifier, and handleTouch only ever adopts a new
+        // finger when the slot reads null, so if that finger's touchend never reached
+        // the canvas (it is hidden behind the menu), the stick stayed claimed by a
+        // finger that was no longer on the glass — dead for the rest of the run.
+        // Zeroing the movement matters for the same reason: moveX/moveY persist, so a
+        // stale value would walk the player off on resume without any input.
+        this.leftTouch.id = null;
+        this.rightTouch.id = null;
+        this.state.moveX = 0;
+        this.state.moveY = 0;
+        this.state.isMoving = false;
+        this.state.isDashing = false;
+        if (this.knobLeft) this.knobLeft.style.transform = 'translate(-50%, -50%)';
+        if (this.knobRight) this.knobRight.style.transform = 'translate(-50%, -50%)';
         // Clear the reveal latch too. handleTouch only shows the dash button while
         // `!dashBtnShown`, so hiding it here without resetting the flag meant the
         // button was gone PERMANENTLY after the first menu open — losing dash, and

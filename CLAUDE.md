@@ -16,14 +16,16 @@ npm run preview   # preview the production build
 
 There is no test runner configured (no `test` script, no framework installed). The `test_*.js` scripts at the repo root are standalone Node scripts that mock `document`/`window`/`localStorage` and exercise the real modules directly — run them with `node test_bosses.js` etc.
 
-**Four are assertion-based and exit non-zero on failure — run the relevant ones after any change:**
+**Six are assertion-based and exit non-zero on failure — run the relevant ones after any change:**
 
 | File | Run it after touching |
 | --- | --- |
-| `test_bosses.js` | boss spawning, `state.activeBoss`, entity `init()`/pooling, predator feeding |
+| `test_bosses.js` | boss spawning, `state.activeBoss`, entity `init()`/pooling, predator feeding, `Director.spawnEntity`'s spawn ring |
 | `test_content.js` | synergy/token/set/curse data, XP curve, audio asset paths, the boon pool, weapon lists |
 | `test_synapse.js` | Synapse Tree costs, gates or the upgrade resolver |
 | `test_leash.js` | `Enemy.applyMovement`, leash thresholds, tutorial spawn distances |
+| `test_tutorial.js` | `src/systems/Tutorial.js`, tutorial copy, the step gates, the instruction hold |
+| `test_viewport.js` | `Renderer.updateZoom`, `src/core/Layout.js`, the portrait band, anything reading canvas dimensions |
 
 `test_director.js` and `test_save.js` are exploratory only (they print, they don't assert).
 
@@ -31,13 +33,19 @@ Anything *visual* cannot be covered by these — `Renderer` needs a real canvas.
 
 ## Change history
 
-`EXECUTION_HANDOFF.md` covers patches 13–41. **`CHANGELOG.md` covers patches 49–63**
-(the CrazyGames Basic Launch remediation, shipped as v1.2) and is the more important of the two for
+`EXECUTION_HANDOFF.md` covers patches 13–41. **`CHANGELOG.md` covers patches 49–71**
+(the CrazyGames Basic Launch remediation shipped as v1.2, then the tutorial rebuild
+and the mobile work) and is the more important of the two for
 current work — several of those changes are guards against failures that are
 invisible on a dev machine and only appear on a real player's device, so the diff
 alone does not explain them. Its **Keep clauses** and **Known issues** sections are
 the parts most likely to be broken by accident; read them before touching storage,
-the save schema, the run-launch path, or enemy movement.
+the save schema, the run-launch path, enemy movement, the tutorial, or anything that
+reads canvas dimensions.
+
+Note the numbering caveat at the top of `CHANGELOG.md`: `BASIC_LAUNCH_FIX_QUEUE_v2.md`
+numbers its two new items 59 and 60, which collide with different patches already
+recorded under those numbers. The changelog's numbers match the source comments.
 
 ## Architecture
 

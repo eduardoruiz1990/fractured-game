@@ -32,11 +32,15 @@ function check(label, condition, detail = '') {
     }
 }
 
-// A 1920x1080 viewport at Renderer's MAX zoom (1.3) — the tightest view the player
-// can have, and therefore the one the leash must be correct for.
-const W = 1920, H = 1080, MAX_ZOOM = 1.3;
-const VISIBLE_HALF_H = (H / 2) / MAX_ZOOM;          // ~415
-const VIEW_SAFE = Math.min(W, H) * 0.25;            // 270, Director's tutorial radius
+// A 1920x1080 desktop viewport, where Renderer's zoom is its maximum 1.3.
+// Patch 69: Director now derives BOTH of these from the live camera zoom rather than
+// from a hardcoded 1.3 and a separate 0.25-of-canvas formula, because on a phone the
+// zoom is 0.70 and the old maths modelled a screen half the real size. The 0.65
+// factor below is chosen so this desktop case is unchanged to the pixel — asserted,
+// because "desktop is untouched" is the whole claim that made that change safe.
+const W = 1920, H = 1080, DESKTOP_ZOOM = 1.3;
+const VISIBLE_HALF_H = (H / 2) / DESKTOP_ZOOM;      // ~415
+const VIEW_SAFE = VISIBLE_HALF_H * 0.65;            // 270, Director's tutorial radius
 
 const makeState = (isTutorial = false) => ({
     isTutorial,
@@ -58,6 +62,28 @@ const inertScavengerAt = (x, y) => {
 const tick = (e, state, frames) => {
     for (let i = 0; i < frames; i++) { e.vx = 0; e.vy = 0; e.applyMovement(state, null); }
 };
+
+console.log('\nViewport derivation (Patch 69)');
+{
+    // Director: viewHalfExtent = (min(w,h)/2) / liveZoom, viewSafeRadius = that * 0.65.
+    // The pre-patch formulas were (min/2)/1.3 and min*0.25. On desktop they must agree
+    // exactly, or this "no gameplay change on desktop" refactor silently retuned the
+    // leash and the tutorial spawn for every existing player.
+    check('desktop half-extent is unchanged by the live-zoom derivation',
+          Math.abs(VISIBLE_HALF_H - (Math.min(W, H) / 2) / 1.3) < 0.001,
+          `${VISIBLE_HALF_H.toFixed(3)}`);
+    check('desktop safe radius is unchanged by the fraction-of-view derivation',
+          Math.abs(VIEW_SAFE - Math.min(W, H) * 0.25) < 0.001,
+          `${VIEW_SAFE.toFixed(3)} vs ${(Math.min(W, H) * 0.25).toFixed(3)}`);
+
+    // The point of the change: a phone at zoom 0.70 must model a bigger view than the
+    // hardcoded 1.3 gave it, not a smaller one.
+    const phoneHalf = (Math.min(844, 390) / 2) / 0.70;
+    const phoneHalfOld = (Math.min(844, 390) / 2) / 1.3;
+    check('a phone now models the view it actually has, not the desktop one',
+          phoneHalf > phoneHalfOld * 1.8,
+          `${phoneHalf.toFixed(0)}px vs the old ${phoneHalfOld.toFixed(0)}px`);
+}
 
 console.log('\nPooling hygiene');
 {

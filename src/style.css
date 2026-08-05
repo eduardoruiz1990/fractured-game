@@ -38,7 +38,16 @@ body, html {
 }
 
 #game-container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-canvas { display: block; image-rendering: pixelated; }
+/* Patch 67: `image-rendering: pixelated` removed.
+   The canvas backing store is sized in CSS pixels (main.js resize()), so on a phone
+   at DPR 2-3 the browser composites it upscaled 2-3x. `pixelated` made that upscale
+   nearest-neighbour, which is the worst possible filter for what this game actually
+   draws — radial faux-glows, 1-2px strokes, and canvas text (boss banner, damage
+   numbers, the tutorial cue) — and it sat directly beside a crisp DOM HUD. Default
+   smoothing costs nothing and is strictly better here.
+   No effect on desktop, where the canvas is already 1:1. If the game ever renders at
+   device resolution, revisit this together with that change, not before. */
+canvas { display: block; }
 
 /* EPIC 6: Global CRT Scanlines */
 #crt-scanlines {
@@ -147,6 +156,45 @@ canvas { display: block; image-rendering: pixelated; }
 }
 .tab-pane { display: none; height: 100%; flex-direction: column; }
 .tab-pane.active { display: flex; }
+
+/* Content-hugging dialogs — pause, confirm, death (Patch 72).
+   These three override .medical-folder's `height: 80vh` with an inline `height: auto`
+   so they wrap their content, and NOTHING bounded the result. The death screen
+   appends a full run summary (weapons, boons, synergies, curses, next step), which
+   wrapped on a phone is taller than a 390px landscape viewport. .fullscreen-menu
+   centres its child with flexbox, so the overflow went off BOTH ends at once and the
+   RECONSTRUCT FILE button sat below the screen edge with nothing to scroll — the end
+   of a run could not be dismissed at all in landscape.
+   Bounding the height is the whole fix: .folder-content is already
+   `flex: 1; overflow-y: auto`, so once the folder stops growing the stats scroll
+   inside it and the header stays put. dvh first for mobile browser chrome, vh as the
+   fallback for engines without it. */
+#pause-menu .medical-folder,
+#confirm-modal .medical-folder,
+#death-screen .medical-folder {
+    max-height: 92vh;
+    max-height: 92dvh;
+}
+
+/* The way off this screen must never be the thing that scrolls out of reach. The
+   button sticks to the bottom of the scrolling area, with a paper-coloured fade above
+   it so the stats dissolve rather than collide as they pass behind. */
+#death-screen .folder-content,
+#confirm-modal .folder-content {
+    display: flex; flex-direction: column;
+}
+#death-screen #btn-restart,
+#confirm-modal .folder-content > div:last-child {
+    position: sticky; bottom: 0;
+    align-self: center;
+    margin-top: auto;
+    background: var(--paper-bg);
+    box-shadow: 0 -16px 16px -8px var(--paper-bg), 2px 2px 5px rgba(0,0,0,0.2);
+}
+
+/* Sized here rather than inline so the media queries below can actually shrink them —
+   an inline font-size wins over every stylesheet rule that is not !important. */
+#final-stats, #pause-desc { font-size: 1.2rem; margin-bottom: 30px; }
 
 /* Buttons inside the folder */
 .file-btn {
@@ -488,11 +536,25 @@ canvas { display: block; image-rendering: pixelated; }
 .hud-icon-btn:hover { border-color: white; color: white; background: rgba(255,255,255,0.1); }
 .hud-icon-btn:active { transform: translateY(1px); }
 
-/* Action Buttons */
+/* Action Buttons
+   Patch 68 — geometry. The aim joystick is a FLOATING stick: it materialises
+   wherever the right thumb lands in the right half of the screen (Input.js
+   handleTouch). Anything the button covers is therefore dead space for aiming — a
+   press there dashes instead of starting the stick. At 80x80 with 40px offsets the
+   button's centre sat ~80px in from each edge, which is exactly where a thumb rests
+   to aim, so the two competed for the same pixels.
+   64px tucked to 14px pushes the button's centre to ~46px from each edge — deeper
+   into the corner than the natural aiming arc — and shrinks the dead zone from
+   40-120px out to 14-78px, while staying well above a 44px tap target.
+   Insets are max()'d with that 14px so a notched phone in landscape (a ~44px right
+   inset) pushes the button clear of the rounded corner instead of under it. */
 .action-btn {
-    position: absolute; bottom: 40px; right: 40px; width: 80px; height: 80px;
+    position: absolute;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    right: max(14px, env(safe-area-inset-right));
+    width: 64px; height: 64px;
     border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(136, 170, 255, 0.4);
-    display: none; justify-content: center; align-items: center; font-weight: bold; color: #88aaff;
+    display: none; justify-content: center; align-items: center; font-weight: bold; font-size: 0.8rem; color: #88aaff;
     z-index: 50; user-select: none; pointer-events: auto; backdrop-filter: blur(2px);
     box-shadow: 0 0 15px rgba(136, 170, 255, 0.2);
 }
@@ -552,7 +614,12 @@ canvas { display: block; image-rendering: pixelated; }
     box-shadow: 5px 10px 20px rgba(0,0,0,0.8); cursor: pointer; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); text-align: center;
     display: flex; flex-direction: column; justify-content: flex-start; border-radius: 2px;
 }
-.card:hover { transform: scale(1.15) translateY(-10px) !important; background: #fff; box-shadow: 0 15px 30px rgba(197, 160, 89, 0.4); z-index: 10; }
+/* Patch 67: gated on a real hover-capable pointer. On touch, :hover latches after a
+   tap — the card the player just chose stayed blown up 15% until something else was
+   touched, on the one screen where they are trying to read three options. */
+@media (hover: hover) {
+    .card:hover { transform: scale(1.15) translateY(-10px) !important; background: #fff; box-shadow: 0 15px 30px rgba(197, 160, 89, 0.4); z-index: 10; }
+}
 .banish-btn {
     position: absolute; top: -15px; right: -15px; background: var(--ui-red); color: white; border: 2px solid #000;
     width: 35px; height: 35px; border-radius: 50%; font-weight: bold; cursor: pointer; z-index: 20; box-shadow: 0 0 10px #000;
@@ -568,6 +635,74 @@ canvas { display: block; image-rendering: pixelated; }
 .card h3 { margin: 0; font-size: 1rem; border-bottom: 1px solid #ccc; padding-bottom: 5px; font-weight: 900; }
 .card p { font-size: 0.75rem; flex-grow: 1; display: flex; align-items: center; justify-content: center; font-family: sans-serif; line-height: 1.2; margin: 5px 0;}
 .card .lvl { font-weight: bold; font-size: 0.9rem; }
+
+/* Level-up modal on phones (Patch 67).
+   This screen had NO mobile rules at all. Three fixed 160x240 cards plus 40px of
+   modal padding measured ~914px tall on a 390px-wide phone (they wrap to one per
+   row) against an 844px viewport, with no overflow rule — so the first and last
+   card were clipped off screen with no way to scroll to them. In landscape, the
+   ~384px stack overflowed a 375px-tall phone the same way. Patch 65 made every new
+   player reach this screen inside the first minute, so a clipped card is now a
+   first-session failure rather than an edge case.
+
+   The cards stay on ONE row at every size (nowrap + viewport-relative width) rather
+   than wrapping into a column: three side-by-side options is what makes the choice
+   read as a choice. Sizes are clamped so they never fall below a tappable target.
+   max-height + overflow-y is the belt-and-braces floor for a viewport smaller than
+   anything anticipated here. */
+@media (max-width: 900px), (max-height: 500px) {
+    .level-up-modal {
+        padding: 14px 10px;
+        gap: 12px;
+        max-width: calc(100vw - 12px);
+        max-height: 100vh;
+        max-height: 100dvh;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        touch-action: pan-y;
+    }
+    .level-up-modal h2 { font-size: 1.05rem; }
+    .cards-container { gap: 8px; flex-wrap: nowrap; }
+    .card {
+        width: clamp(94px, 28vw, 152px);
+        /* Also caps renderSurgeCard's inline width:300px, which max-width outranks. */
+        max-width: calc(100vw - 40px);
+        height: auto;
+        padding: 8px 7px 12px 7px;
+    }
+    .polaroid-photo {
+        height: clamp(54px, 15vw, 108px);
+        font-size: clamp(1.5rem, 7vw, 3rem);
+        margin-bottom: 6px;
+    }
+    .card h3 { font-size: 0.72rem; padding-bottom: 3px; }
+    .card p { font-size: 0.62rem; margin: 4px 0; }
+    .card .lvl { font-size: 0.7rem; }
+    /* Pulled in from -15px: the modal is a scroll container now, and a child hanging
+       outside its padding box gets clipped by it. */
+    .banish-btn { top: -6px; right: -6px; width: 28px; height: 28px; font-size: 0.85rem; border-width: 1px; }
+    #btn-reroll { margin-top: 10px !important; font-size: 0.75rem; padding: 8px 12px; }
+}
+
+/* Portrait control band (Patch 71).
+   The strip at the bottom of a portrait phone that the camera deliberately does not
+   render world into, so the player's thumbs rest on it instead of on top of the game.
+   Height comes from Renderer.controlBandH via main.js — never from CSS — so the band
+   and the camera offset can never disagree about where the world stops.
+   pointer-events: none is load-bearing: the joysticks are floating and materialise
+   wherever a thumb lands, including in here, and they listen on the CANVAS. A band
+   that swallowed touches would take the controls away exactly where they are meant to
+   be used. Fades in from transparent so there is no hard line across the screen. */
+#control-band {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: 0; display: none;
+    pointer-events: none; z-index: 15;
+    background: linear-gradient(to bottom,
+        rgba(3, 4, 6, 0) 0%,
+        rgba(3, 4, 6, 0.72) 22%,
+        rgba(3, 4, 6, 0.92) 100%);
+    border-top: 1px solid rgba(197, 160, 89, 0.18);
+}
 
 /* Joysticks */
 .joystick-base {
@@ -612,7 +747,20 @@ canvas { display: block; image-rendering: pixelated; }
 
 @keyframes glitch { 0% { opacity: 1; } 50% { opacity: 0.9; } 100% { opacity: 1; } }
 
-@media (max-width: 768px) {
+/* SMALL-SCREEN MENU LAYOUT.
+   Patch 72: the `(max-height: 560px)` clause is new, and it is the reported
+   "menus look weird on mobile, things get truncated a lot".
+   Everything structural in this block — the full-bleed folder, the close button
+   pulled inside, the horizontally scrolling tab strip, the stacked loadout — was
+   gated on WIDTH alone. A phone in landscape is 844-932px WIDE, so it matched none
+   of it, and landscape is the orientation this game is built for. What those players
+   actually got was `.medical-folder`'s desktop `height: 80vh` — a 312px-tall box on a
+   390px screen — holding a seven-tab strip that does not wrap and content panes laid
+   out for a desktop. Truncation everywhere, in every tab.
+   Height is what is actually scarce here, so it is now a condition. 560px catches
+   every phone in landscape and the smallest tablets, and leaves any normally-sized
+   desktop window untouched. */
+@media (max-width: 768px), (max-height: 560px) {
     /* 100dvh tracks the viewport as mobile browser chrome hides/shows; the plain
        100vh above it is the fallback for engines without dvh. */
     .medical-folder { width: 100%; height: 100vh; height: 100dvh; border: none; border-radius: 0; }
@@ -644,7 +792,10 @@ canvas { display: block; image-rendering: pixelated; }
     .loadout-container { flex-direction: column; min-height: auto; }
     .equipped-panel { border-right: none; border-bottom: 2px dashed #a89d85; padding-right: 0; padding-bottom: 20px; flex-direction: row; }
     .item-details-panel { flex-direction: column; }
-    .detail-actions { width: 100%; flex-direction: row; }
+    /* Patch 72: min-width: 280px survives from the desktop rule otherwise, and on a
+       360-390px phone that alone is wider than the space left after the folder's
+       padding — it forced its siblings to overflow rather than wrap. */
+    .detail-actions { width: 100%; flex-direction: row; min-width: 0; }
 
     /* HUD: this previously STACKED the three clusters (order 1/2/3, convergence
        full-width) which made the bar three rows tall and swallowed the top of the
@@ -662,12 +813,27 @@ canvas { display: block; image-rendering: pixelated; }
     .sanity-bar-container { height: 9px; }
     .hud-icon-btn { font-size: 0.68rem; padding: 3px 7px; margin-top: 4px; }
     #enemy-counter { font-size: 0.62rem; margin-top: 3px; }
+
+    /* Patch 72: end-of-run and pause dialogs. The run summary is a lot of text on a
+       narrow screen, and .file-btn's desktop size (1.2rem, 12px/30px padding) eats
+       height that the summary needs more. */
+    #final-stats, #pause-desc { font-size: 0.95rem; margin-bottom: 16px; }
+    .run-summary { font-size: 0.82rem; line-height: 1.5; margin-top: 14px; padding-top: 10px; }
+    #pause-menu .file-btn, #confirm-modal .file-btn, #death-screen .file-btn {
+        font-size: 1rem; padding: 10px 22px;
+    }
 }
 
 /* Phone LANDSCAPE — the orientation this game is actually built for (dual
    joysticks left/right). Vertical space is the scarce resource here, so the HUD
-   is trimmed harder than in portrait to keep the play area clear. */
-@media (max-width: 900px) and (orientation: landscape) {
+   is trimmed harder than in portrait to keep the play area clear.
+   Patch 72: gated on HEIGHT, not width. This was `max-width: 900px`, which misses
+   every phone wider than that in landscape — a 932x430 iPhone Pro Max, most large
+   Androids — leaving them with the portrait treatment on a 430px-tall screen. The
+   condition that actually describes this shape is "short and wider than it is tall",
+   and that is what it now says. 560px matches the small-screen block above so the
+   two can never disagree about which devices they are talking about. */
+@media (max-height: 560px) and (orientation: landscape) {
     #ui-layer { padding: 4px 8px; padding-top: max(4px, env(safe-area-inset-top)); }
     .hud-top { padding: 2px 4px; gap: 5px; }
     .sanity-section, .convergence-section, .score-section { padding: 4px 6px; }
@@ -679,6 +845,33 @@ canvas { display: block; image-rendering: pixelated; }
     .folder-header .title-typewriter { font-size: 0.85rem; }
     .folder-content { padding: 10px 14px; }
     .tab-btn { padding: 7px 12px; }
+
+    /* Patch 72: the reported bug lived here. A phone in landscape is ~390px tall, and
+       the death screen's header + stats + run summary + button was taller than that
+       with no scroll and no bound, so the only button off the screen was off the
+       screen. Height is the scarce resource; everything shrinks. */
+    #final-stats, #pause-desc { font-size: 0.85rem; margin-bottom: 10px; }
+    .run-summary { font-size: 0.75rem; line-height: 1.4; margin-top: 10px; padding-top: 8px; }
+    #pause-menu .file-btn, #confirm-modal .file-btn, #death-screen .file-btn {
+        font-size: 0.85rem; padding: 7px 18px;
+    }
+    #pause-menu .folder-content > div, #confirm-modal .folder-content > div { gap: 8px !important; }
+
+    /* Patch 72 — landscape corrections to the small-screen block above.
+       That block is shared with portrait, where stacking is right. A landscape phone
+       is the opposite shape: ~840px of width and ~390px of height, so stacking the
+       loadout turns a comfortable side-by-side into a long vertical scroll through
+       the scarcest axis. Put the panes back beside each other and spend the width. */
+    .loadout-container { flex-direction: row; min-height: 0; }
+    .equipped-panel {
+        border-right: 2px dashed #a89d85; border-bottom: none;
+        padding-right: 14px; padding-bottom: 0;
+    }
+    .item-details-panel { flex-direction: row; padding: 10px; margin-top: 10px; gap: 12px; }
+    .detail-actions { flex-direction: column; min-width: 0; gap: 6px; }
+    .synapse-node-file { padding: 8px 12px; margin-bottom: 6px; }
+    .roadmap-timeline { gap: 8px; }
+    .roadmap-node { padding: 8px 12px; }
 }
 @keyframes glitch { 0% { opacity: 1; filter: contrast(1); } 50% { opacity: 0.95; filter: contrast(1.2); } 51% { opacity: 1; filter: contrast(1); } 100% { opacity: 1; } }
 

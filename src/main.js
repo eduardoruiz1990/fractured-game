@@ -10,6 +10,7 @@ import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies } from './data/Ma
 import { portalSDK } from './systems/PortalSDK.js';
 import { errorLog } from './core/ErrorLog.js';
 import { Tutorial } from './systems/Tutorial.js';
+import { isPortraitLayout } from './core/Layout.js';
 
 // Patch 50: installed before ANYTHING else in this module runs, including the
 // canvas lookup below. A throw during boot is invisible to the log unless the
@@ -50,6 +51,44 @@ errorLog.setContext(() => ({
     room: (game && game.state) ? game.state.roomNumber : undefined
 }));
 
+// Patch 71 — portrait layout gate.
+//
+// Read once at load rather than per call: this is a device property, and matchMedia
+// is wrapped because it is absent under the test scripts' mocks. inputManager's own
+// live isTouchDevice is folded in when it exists, so a device that only reveals
+// itself by touching still gets the layout.
+let coarsePointerHint = false;
+try {
+    coarsePointerHint =
+        (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) ||
+        (navigator.maxTouchPoints || 0) > 0;
+} catch (e) { coarsePointerHint = false; }
+
+/**
+ * Reads the live viewport into the pure predicate in core/Layout.js, which is where
+ * the desktop/portrait rule itself lives (and where it is tested).
+ */
+function shouldUsePortraitLayout() {
+    return isPortraitLayout({
+        touch: coarsePointerHint || !!(inputManager && inputManager.isTouchDevice),
+        width: window.innerWidth,
+        height: window.innerHeight
+    });
+}
+
+/** Sizes the DOM control band to whatever the renderer reserved (0 = hidden). */
+function applyControlBand() {
+    const band = document.getElementById('control-band');
+    if (!band) return;
+    const bandH = (renderer && Number.isFinite(renderer.controlBandH)) ? renderer.controlBandH : 0;
+    if (bandH > 0) {
+        band.style.height = `${bandH}px`;
+        band.style.display = 'block';
+    } else {
+        band.style.display = 'none';
+    }
+}
+
 function resize() {
     if (!canvas) return;
     // Patch 51d: clamped to >= 1. A canvas sized 0 in either axis — which happens
@@ -58,13 +97,46 @@ function resize() {
     // InvalidStateError, once per frame, freezing the screen while the game keeps
     // running. updateZoom() already guards the same zero case explicitly, so it is
     // known to occur; the render path simply never got the same treatment.
-    canvas.width = Math.max(1, window.innerWidth);
-    canvas.height = Math.max(1, window.innerHeight);
+    const w = Math.max(1, window.innerWidth);
+    const h = Math.max(1, window.innerHeight);
+
+    // Patch 69: bail when nothing actually changed. Mobile fires `resize` for things
+    // that do not alter innerWidth/innerHeight at all (visualViewport shifts, the
+    // keyboard, some in-app webview chrome), and ASSIGNING canvas.width reallocates
+    // the backing store and resets the 2D context even when the value is identical —
+    // then drawLightingMasks reallocates the light canvas to match on the next frame.
+    // Two full-screen buffer allocations per spurious event, mid-run, on the devices
+    // least able to absorb them.
+    if (canvas.width === w && canvas.height === h) return;
+
+    canvas.width = w;
+    canvas.height = h;
     // Refit the camera: on small viewports a fixed zoom showed far too little world.
     // Guarded because resize() also runs once before the Renderer exists.
-    if (renderer) renderer.updateZoom();
+    if (renderer) {
+        // Set BEFORE updateZoom — it reads this to decide whether to reserve a band.
+        renderer.portraitMode = shouldUsePortraitLayout();
+        renderer.updateZoom();
+        applyControlBand();
+    }
 }
-window.addEventListener('resize', resize);
+
+// Coalesced to one resize per animation frame. A phone hiding or showing its URL bar
+// emits a burst of events across a single frame; without this each one paid the full
+// reallocation above. rAF rather than a timeout deliberately — the canvas element has
+// no CSS size of its own, so it is exactly as large as its backing store, and any
+// delay longer than a frame would show as the game visibly not filling the window.
+let resizePending = false;
+function scheduleResize() {
+    if (resizePending) return;
+    resizePending = true;
+    requestAnimationFrame(() => {
+        resizePending = false;
+        resize();
+    });
+}
+window.addEventListener('resize', scheduleResize);
+window.addEventListener('orientationchange', scheduleResize);
 resize();
 
 // --- PORTAL SDK (Patch 44) ---
@@ -1432,7 +1504,24 @@ function gameLoop(time) {
         else if (gameState === 'PLAYING' || gameState === 'LEVEL_UP' || gameState === 'PAUSED' || gameState === 'EXIT_REACHED' || gameState === 'HUB') {
             
             inputManager.updateAimAngle(game.state.player.x, game.state.player.y);
-            const isBreakdown = game.update(inputManager.state, canvas.width, canvas.height, gameState);
+
+            // Patch 69: hand the simulation the camera's real zoom before it runs.
+            // Director derives viewHalfExtent/viewSafeRadius from it, and those drive
+            // the enemy leash and the tutorial's spawn distance — all of which were
+            // computing against a hardcoded 1.3 that only desktop ever uses. Written
+            // here rather than inside Renderer because the renderer does not own
+            // simulation state, and re-written every frame because Game.init rebuilds
+            // state from scratch on every run and floor descent.
+            game.state.viewZoom = renderer.zoom;
+
+            // Patch 71: the WORLD viewport, not the canvas. Identical to canvas
+            // width/height on every layout except portrait, where the bottom band is
+            // reserved for the player's thumbs and shows no world — so spawn rings and
+            // leash thresholds must not count it as visible space.
+            const viewW = Number.isFinite(renderer.worldViewWidth) ? renderer.worldViewWidth : canvas.width;
+            const viewH = Number.isFinite(renderer.worldViewHeight) ? renderer.worldViewHeight : canvas.height;
+
+            const isBreakdown = game.update(inputManager.state, viewW, viewH, gameState);
             
             // --- PHASE 2: HUB INTERACTION & PLAYER ROTATION ---
             if (gameState === 'HUB') {
