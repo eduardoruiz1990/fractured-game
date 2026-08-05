@@ -481,21 +481,61 @@ export class Game {
         if (isBoss) this.state.cameraShake = 15;
     }
 
-    spawnTokenDrop(x, y) {
+    /** The single source of the token rarity table. Used by both grant paths below. */
+    rollTokenRarity() {
         const rand = Math.random();
-        let rarity = 'common';
-        let color = '#cd7f32';
-        
-        if (rand > 0.95) { rarity = 'legendary'; color = '#ff8c00'; }
-        else if (rand > 0.80) { rarity = 'epic'; color = '#800080'; }
-        else if (rand > 0.50) { rarity = 'rare'; color = '#4169e1'; }
+        if (rand > 0.95) return { rarity: 'legendary', color: '#ff8c00' };
+        if (rand > 0.80) return { rarity: 'epic', color: '#800080' };
+        if (rand > 0.50) return { rarity: 'rare', color: '#4169e1' };
+        return { rarity: 'common', color: '#cd7f32' };
+    }
+
+    /**
+     * Drops a token as a physical pickup the player has to walk over. Correct for
+     * enemy drops, which happen mid-room.
+     *
+     * NOT usable from the ROOM_DOOR handler — see grantToken().
+     */
+    spawnTokenDrop(x, y) {
+        const { rarity, color } = this.rollTokenRarity();
 
         if (this.director && typeof this.director.spawnToken === 'function') {
             this.director.spawnToken(x, y, { type: rarity, color: color });
         }
-        
+
         this.spawnParticles(x, y, color, 30);
         this.spawnDamageText(x, y - 20, "TOKEN DROPPED!", color, 1.2, 2.0);
+    }
+
+    /**
+     * Patch 75 — awards a token STRAIGHT into the run inventory, with no pickup to
+     * collect.
+     *
+     * The token doors were calling spawnTokenDrop(), which pushes a pickup into
+     * `state.tokenDrops`. Eighteen lines further down its own handler, the room
+     * transition does `state.tokenDrops = []` and teleports the player to 0,0 — so the
+     * token was created and destroyed in the same frame, at a position in a room that
+     * no longer existed. It could never be collected, never reached `runInventory`,
+     * and so was never banked at the end of the run. The "TOKEN DROPPED!" text
+     * survived only because damage texts live in an array the transition does not
+     * clear, which is exactly why this looked like it was working.
+     *
+     * Anything awarded during a room transition must land in run state directly.
+     * Nothing that lives in a pooled array survives that handler.
+     */
+    grantToken(x, y) {
+        const { rarity, color } = this.rollTokenRarity();
+
+        if (!Array.isArray(this.state.runInventory)) this.state.runInventory = [];
+        // Stored as the rarity string: main.js decrypts these into concrete TOKENS
+        // entries at the end of the run, matching what the pickup path pushes.
+        this.state.runInventory.push(rarity);
+
+        this.spawnParticles(x, y, color, 30);
+        this.spawnDamageText(x, y - 40, `${rarity.toUpperCase()} TOKEN SECURED`, color, 1.4, 2.2);
+        if (this.audioEngine) this.audioEngine.playSFX('ui_upgrade', 0.8);
+
+        return rarity;
     }
 
     update(inputState, canvasWidth, canvasHeight, currentGameState) {

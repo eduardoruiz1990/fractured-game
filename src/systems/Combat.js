@@ -233,8 +233,11 @@ export class Combat {
                             }
                             state.player.synergies = getActiveSynergies(state.player.weapons);
                         } else if (obj.rewardType === 'TOKEN_DOOR') {
-                            game.spawnTokenDrop(state.player.x, state.player.y);
-                            game.spawnDamageText(state.player.x, state.player.y - 20, "TOKEN DROPPED!", '#ff8c00', 1.5, 2.0);
+                            // Patch 75: grantToken, NOT spawnTokenDrop. A pickup spawned
+                            // here is wiped by `state.tokenDrops = []` a few lines below,
+                            // in this same handler, before the player can ever touch it —
+                            // the door paid out nothing at all. See Game.grantToken.
+                            game.grantToken(state.player.x, state.player.y);
                         } else if (obj.rewardType === 'RISK_REWARD') {
                             // Direct sanity cost rather than game.takeDamage(): takeDamage
                             // can trigger onDeath(), and this fires mid-room-transition
@@ -247,7 +250,10 @@ export class Combat {
                             // negatable by defenses meant for combat.
                             state.lucidity += 150;
                             state.xp += 150;
-                            game.spawnTokenDrop(state.player.x, state.player.y);
+                            // Patch 75: same fix as TOKEN_DOOR above, and it mattered more
+                            // here — this door charges 30 Grip for a token that was being
+                            // destroyed on the same frame it was created.
+                            game.grantToken(state.player.x, state.player.y);
                             state.sanity = Math.max(1, state.sanity - 30);
                             game.spawnDamageText(state.player.x, state.player.y - 20, "+150 LUCIDITY -30 GRIP", '#ff3333', 1.5, 2.0);
                         }
