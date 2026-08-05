@@ -33,12 +33,15 @@
         <span style="font-size: 0.8rem; color: #aaa;">Press [E] or Tap Here</span>
     </div>
 
-    <!-- Patch 25: first-run tutorial banner. Screen-fixed (unlike Renderer.js's
-         world-space WASD/dash hints, which scroll off screen once the player
-         moves away from the room's origin), so its text stays readable for the
-         whole tutorial room regardless of camera position. -->
-    <div id="tutorial-banner" style="position: absolute; top: 90px; left: 50%; transform: translateX(-50%); background: rgba(10, 10, 10, 0.9); border: 2px solid var(--ui-gold); color: var(--ui-gold); padding: 12px 28px; font-weight: bold; font-size: 1rem; display: none; z-index: 150; pointer-events: none; text-align: center; font-family: var(--ui-font); box-shadow: 0 0 20px rgba(197, 160, 89, 0.2); max-width: 460px; text-shadow: 0 0 8px var(--ui-gold);">
-        <span id="tutorial-banner-text">Move with WASD. Aim with your mouse.</span>
+    <!-- Patch 25: first-run tutorial banner. Screen-fixed, so its text stays readable
+         for the whole tutorial room regardless of camera position.
+         Patch 65: this is now the ONLY surface carrying tutorial words — the
+         world-space copy in Renderer.js is gone, and the text is written every frame
+         by src/systems/Tutorial.js in the player's actual control scheme.
+         Patch 66: styling moved to #tutorial-banner in style.css. It reads as a quiet
+         note over the game rather than a second HUD panel — see the rule there. -->
+    <div id="tutorial-banner">
+        <span id="tutorial-banner-text"></span>
     </div>
 
     <div id="title-screen" class="fullscreen-menu">

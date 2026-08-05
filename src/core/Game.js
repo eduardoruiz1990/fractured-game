@@ -3,6 +3,7 @@ import { Combat } from '../systems/Combat.js';
 import { Director } from '../systems/Director.js';
 import { TOKENS, getActiveSynergies } from '../data/Manifestations.js'; 
 import { HubWorld } from '../systems/HubWorld.js';
+import { Tutorial } from '../systems/Tutorial.js';
 import { EventBus } from './EventBus.js';
 import { getXPRequiredForLevel } from '../data/Config.js';
 
@@ -150,6 +151,23 @@ export class Game {
             activeBoss: null,
             mapOriginX: null,
             mapOriginY: null,
+
+            // Patch 65 — tutorial step machine (src/systems/Tutorial.js). Declared
+            // here rather than lazily so a run always starts the sequence from the
+            // top and no field can survive a run boundary. isTutorial itself is set
+            // by Director.spawnRoom, which only raises it for floor 1 room 1 of a
+            // profile that has never finished it.
+            tutorialStep: 'MOVE',
+            tutorialTimer: 0,
+            tutorialMoved: 0,
+            tutorialLastX: null,
+            tutorialLastY: null,
+            tutorialCombatReady: false,
+            tutorialEnemySeen: false,
+            tutorialDashed: false,
+            tutorialAscendShown: false,
+            tutorialFreeze: false,
+
             runInventory: carriedState ? carriedState.runInventory : [],
             telemetry: (carriedState && carriedState.telemetry) ? carriedState.telemetry : this.createFreshTelemetry(startSanity),
 
@@ -437,9 +455,22 @@ export class Game {
         }
     }
 
+    /**
+     * Patch 65 — this used to be an unconditional `Math.ceil(amount).toString()`,
+     * which is correct for the damage numbers it was written for and produces the
+     * literal string "NaN" for every other caller. There are nine of them, all
+     * player-facing, several on the onboarding path: "VOID", "SUPPLIES RECOVERED!",
+     * "TOKEN DROPPED!", "WEAPON UPGRADED" and — the worst one — the "+50 LUCIDITY"
+     * that pops when a first-time player takes their first reward door. Every one of
+     * those was rendering as NaN on screen.
+     *
+     * Finite numbers still round exactly as before; anything else is passed through
+     * as its own text.
+     */
     spawnDamageText(x, y, amount, color, scale = 1.0, life = 1.0) {
         if (this.director && typeof this.director.spawnDamageText === 'function') {
-            this.director.spawnDamageText(x, y, Math.ceil(amount).toString(), color, scale, life);
+            const text = Number.isFinite(amount) ? Math.ceil(amount).toString() : String(amount);
+            this.director.spawnDamageText(x, y, text, color, scale, life);
         }
     }
 
@@ -705,11 +736,21 @@ export class Game {
         // held still and inspected. Rendering keeps ticking, so animations still play.
         const devFrozen = !!this.state.devFreezeEntities;
 
+        // Patch 66: the tutorial's instruction hold uses the same mechanism. While an
+        // instruction is pending the enemy stands still, so a first-time player can
+        // read a line without something closing on them, and it wakes the instant they
+        // act (Tutorial.js caps it either way). Re-checks isTutorial rather than
+        // trusting the flag alone: the tutorial can end on any frame, and a stale
+        // freeze would leave every enemy in the run inert.
+        const frozen = devFrozen || (!!this.state.isTutorial && !!this.state.tutorialFreeze);
+
+        // Spawning stays on the dev flag only. spawnWave publishes the viewport
+        // metrics the leash depends on, so it must keep running through the hold.
         if (this.director && typeof this.director.spawnWave === 'function' && !devFrozen) {
             this.director.spawnWave(canvasWidth, canvasHeight);
         }
 
-        if (!devFrozen) {
+        if (!frozen) {
             for (let i = this.state.entities.length - 1; i >= 0; i--) {
                 let ent = this.state.entities[i];
                 if (typeof ent.update === 'function') {
@@ -720,7 +761,12 @@ export class Game {
 
         Combat.resolveWeapons(this);
         Combat.collectXP(this);
-        
+
+        // Patch 65: after combat has resolved, so the step machine sees this frame's
+        // damage, kills and pickups rather than last frame's. isHub can never be true
+        // here (the hub returns earlier), but the guard keeps the intent explicit.
+        if (!isHub && this.state.isTutorial) Tutorial.update(this);
+
         const requiredXP = getXPRequiredForLevel(this.state.level);
         if (this.state.xp >= requiredXP && this.onLevelUp) {
             this.state.level++;

@@ -178,7 +178,21 @@ export class Director {
         }
 
         if (!state.combatActive) return;
-        
+
+        // Patch 65/66: the tutorial holds its single spawn until the player has moved
+        // AND dashed (Tutorial.js raises tutorialCombatReady on leaving the DASH step).
+        // Both controls are therefore taught in an empty room. The instructions used to
+        // compete with an enemy already closing in, which is the one moment a first-time
+        // player has nothing else in their head yet.
+        //
+        // budgetTimer is parked at -1 rather than left alone so the spawn lands on the
+        // FIRST frame after the gate opens: the ++ below makes it 0, and 0 % spawnRate
+        // is 0. Leaving it at 0 would have cost up to a second of empty room.
+        if (state.isTutorial && !state.tutorialCombatReady) {
+            state.budgetTimer = -1;
+            return;
+        }
+
         const bossAlive = !!state.activeBoss;
         
         if (state.bossSpawned && !bossAlive) {

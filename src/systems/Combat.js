@@ -723,8 +723,26 @@ export class Combat {
                         dropAmount += 3; 
                     }
                     
-                    game.spawnXP(ent.x, ent.y, dropAmount);
-                    
+                    if (state.isTutorial) {
+                        // Patch 65 — the tutorial kill is GUARANTEED to level the player.
+                        //
+                        // It previously dropped 2 XP against a 50 XP requirement
+                        // (Config.getXPRequiredForLevel), so whether a new player ever
+                        // saw a boon card came down to which tutorial door they picked:
+                        // LUCIDITY grants +50 XP, HEAL grants none. Take HEAL and the
+                        // first card was ~25 more kills away — well past the average
+                        // session length. The whole reason to keep playing a
+                        // survivors-like is kill -> level -> choose, and half of all
+                        // first sessions never reached it.
+                        //
+                        // 3 massive orbs (25 each) rather than exactly 50, so the card
+                        // still fires if one orb is left behind out of vacuum range.
+                        game.spawnXP(ent.x, ent.y, 3, true);
+                        game.spawnDamageText(ent.x, ent.y - 40, "MANIFESTATION DISPERSED", '#c5a059', 1.6, 2.2);
+                    } else {
+                        game.spawnXP(ent.x, ent.y, dropAmount);
+                    }
+
                     if (!state.bossSpawned) {
                         state.convergence += (ent.type === 'PREDATOR' ? 3 : 1);
                     }

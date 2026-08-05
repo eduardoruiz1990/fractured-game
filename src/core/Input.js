@@ -10,6 +10,21 @@ export class InputManager {
         
         this.isTouchDevice = false;
         this.dashBtnShown = false;
+
+        // Patch 65. isTouchDevice only becomes true on the FIRST canvas touch, which is
+        // too late for anything that has to be right on frame 1 — the tutorial copy and
+        // the dash button both were. coarsePointer is the up-front guess; usedKeyboard
+        // is the correction for a touchscreen laptop. Neither replaces isTouchDevice,
+        // which still governs actual input routing. matchMedia is wrapped because it is
+        // absent in the jsdom-less mocks the test_*.js scripts run under.
+        this.coarsePointer = false;
+        try {
+            this.coarsePointer =
+                (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) ||
+                (navigator.maxTouchPoints || 0) > 0;
+        } catch (e) { this.coarsePointer = false; }
+        this.usedKeyboard = false;
+
         // Track spacebar for dash
         this.keys = { w: false, a: false, s: false, d: false, space: false };
         this.leftTouch = { id: null, ox: 0, oy: 0, cx: 0, cy: 0 };
@@ -27,15 +42,16 @@ export class InputManager {
     bindEvents() {
         // Keyboard
         window.addEventListener('keydown', (e) => {
-            const key = e.key.toLowerCase();
+            const key = this.normalizeKey(e);
+            if (key) { this.usedKeyboard = true; }
             if (['w', 'a', 's', 'd'].includes(key)) { this.keys[key] = true; this.updateKeyboardInput(); }
-            if (e.code === 'Space') { this.keys.space = true; this.updateKeyboardInput(); }
+            if (key === 'space') { this.keys.space = true; this.updateKeyboardInput(); }
         });
-        
+
         window.addEventListener('keyup', (e) => {
-            const key = e.key.toLowerCase();
+            const key = this.normalizeKey(e);
             if (['w', 'a', 's', 'd'].includes(key)) { this.keys[key] = false; this.updateKeyboardInput(); }
-            if (e.code === 'Space') { this.keys.space = false; this.updateKeyboardInput(); }
+            if (key === 'space') { this.keys.space = false; this.updateKeyboardInput(); }
         });
 
         // Mouse Aiming
@@ -64,6 +80,56 @@ export class InputManager {
                 e.preventDefault();
                 this.state.isDashing = false;
             }, { passive: false });
+        }
+    }
+
+    /**
+     * Maps a keydown/keyup to one of 'w'|'a'|'s'|'d'|'space', or '' for keys this
+     * manager does not own.
+     *
+     * Patch 65 adds the arrow keys, which were simply never bound — a desktop player
+     * who reached for them got a character that does not respond, on the very first
+     * screen of the game. No preventDefault: the window listener is live inside the
+     * folder menus too, and swallowing arrows there would break scrolling the guide.
+     */
+    normalizeKey(e) {
+        if (!e) return '';
+        if (e.code === 'Space') return 'space';
+        switch (e.key) {
+            case 'ArrowUp': return 'w';
+            case 'ArrowDown': return 's';
+            case 'ArrowLeft': return 'a';
+            case 'ArrowRight': return 'd';
+            default: break;
+        }
+        const key = (e.key || '').toLowerCase();
+        return ['w', 'a', 's', 'd'].includes(key) ? key : '';
+    }
+
+    /**
+     * 'touch' | 'keyboard' — which control scheme to SPEAK to the player about.
+     * Deliberately distinct from isTouchDevice (which routes input and can only be
+     * known after a touch has happened): this has to be answerable on frame 1.
+     */
+    getInputMode() {
+        if (this.isTouchDevice) return 'touch';
+        if (this.coarsePointer && !this.usedKeyboard) return 'touch';
+        return 'keyboard';
+    }
+
+    /**
+     * Show the touch controls BEFORE the first touch on a touch device. Previously
+     * the dash button appeared only once the player had already touched the canvas,
+     * so a new mobile player's first frame had wrong instructions and no visible
+     * controls at the same time. The joysticks stay floating — they materialise under
+     * the thumb, and parking a fake one somewhere arbitrary would teach the wrong
+     * gesture.
+     */
+    revealTouchControls() {
+        if (!this.coarsePointer && !this.isTouchDevice) return;
+        if (this.btnDash && !this.dashBtnShown) {
+            this.btnDash.style.display = 'flex';
+            this.dashBtnShown = true;
         }
     }
 

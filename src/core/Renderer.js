@@ -1518,6 +1518,107 @@ export class Renderer {
         this.ctx.restore();
     }
 
+    // Patch 64 — live directional cue for the tutorial's single enemy.
+    //
+    // Drawn in WORLD space (this runs inside drawWorldItems, under the fog and the
+    // lighting masks) on purpose: it is a position, so it belongs in the world next
+    // to the thing it points at. Deliberately NOT a screen-edge waypoint marker.
+    // Since Patch 65 this is the only tutorial element left in the canvas — every
+    // WORD moved to the DOM banner, which is legible at any zoom and any language
+    // length; the arrow stays here because the banner cannot say "over there".
+    //
+    // Shape is the objective-pointer chevron from drawObjectivePointers() — the
+    // player already reads that shape as "the thing you want is that way" from the
+    // exit/door pointers — but keyed to the tutorial text's green rather than a
+    // door colour, and fading out once the enemy is close enough to be its own
+    // signpost (by then the ring drawn on it in the entity loop is doing the work).
+    drawTutorialCue(state) {
+        if (!state.entities || !state.entities.length) return;
+
+        const px = state.player.x;
+        const py = state.player.y;
+        if (!Number.isFinite(px) || !Number.isFinite(py)) return;
+
+        // Nearest living entity rather than entities[0]: the tutorial budget is 1, so
+        // in practice these are the same, but this cannot point at a corpse mid-splice
+        // or at the wrong body if anything ever adds a second spawn.
+        let target = null;
+        let bestDist = Infinity;
+        for (let i = 0; i < state.entities.length; i++) {
+            const e = state.entities[i];
+            if (!e || e.hp <= 0) continue;
+            if (!Number.isFinite(e.x) || !Number.isFinite(e.y)) continue;
+            const d = Math.hypot(e.x - px, e.y - py);
+            if (d < bestDist) { bestDist = d; target = e; }
+        }
+        if (!target) return;
+
+        // Ramp in over the band between "clearly on screen" and "off the edge", so the
+        // cue is absent while the player is already looking at the enemy and unmissable
+        // once it is not. viewHalfExtent is the guaranteed-visible half-extent published
+        // by Director.spawnWave; the fallback matches Enemy.applyMovement's.
+        const visible = Number.isFinite(state.viewHalfExtent) ? state.viewHalfExtent : 380;
+        const fade = Math.min(1, Math.max(0, (bestDist - visible * 0.45) / (visible * 0.35)));
+        if (fade <= 0.02) return;
+
+        const angle = Math.atan2(target.y - py, target.x - px);
+        if (!Number.isFinite(angle)) return;
+
+        const pulse = Math.sin(this.renderFrame * 0.12) * 0.5 + 0.5;
+
+        // This is world space, so a fixed world size shrinks on screen exactly where it
+        // can least afford to — updateZoom drops to 0.70 on phones. Dividing the glyph
+        // sizes by the live zoom keeps the cue a constant SCREEN size on every device.
+        const s = Math.max(1, 1.3 / (this.zoom || 1.3));
+
+        // Sit the head between the player and the enemy, never past it (which would put
+        // an arrow on the far side of the thing it is pointing at), and never so far out
+        // that it leaves the viewport on a narrow screen.
+        const headMax = Math.max(70 * s, visible * 0.5);
+        const headDist = Math.min(headMax, Math.max(45, bestDist * 0.5));
+
+        this.ctx.save();
+        this.ctx.translate(px, py);
+        this.ctx.rotate(angle);
+
+        // Dashed runway from the player toward the enemy. lineDashOffset scrolls
+        // negative so the dashes travel outward, away from the player.
+        this.ctx.strokeStyle = `rgba(170, 255, 170, ${(0.18 + pulse * 0.22) * fade})`;
+        this.ctx.lineWidth = 3 * s;
+        this.ctx.setLineDash([14 * s, 12 * s]);
+        this.ctx.lineDashOffset = -this.renderFrame * 0.6;
+        this.ctx.beginPath();
+        this.ctx.moveTo(headDist * 0.35, 0);
+        this.ctx.lineTo(headDist * 0.82, 0);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]);
+
+        this.ctx.translate(headDist + pulse * 5 * s, 0);
+        this.ctx.scale(s, s);
+
+        // Faux-glow behind the head so it reads through the floor pattern. No shadowBlur.
+        this.drawGlow(0, 0, 34, '#aaffaa', 0.22 * fade);
+
+        this.ctx.fillStyle = `rgba(170, 255, 170, ${(0.55 + pulse * 0.45) * fade})`;
+        this.ctx.beginPath();
+        this.ctx.moveTo(22, 0);
+        this.ctx.lineTo(-16, 16);
+        this.ctx.lineTo(-10, 0);
+        this.ctx.lineTo(-16, -16);
+        this.ctx.closePath();
+        this.ctx.fill();
+
+        // Counter-rotate the label so it stays upright whatever bearing the enemy is on.
+        this.ctx.rotate(-angle);
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.font = "bold 16px 'Courier New', Courier, monospace";
+        this.ctx.fillStyle = `rgba(170, 255, 170, ${(0.5 + pulse * 0.4) * fade})`;
+        this.ctx.fillText("ELIMINATE", 0, 32);
+
+        this.ctx.restore();
+    }
+
     drawWorldItems(state) {
         this.ctx.save();
         const patternIndex = Math.max(0, Math.min((state.floor || 1) - 1, 4));
@@ -1526,29 +1627,16 @@ export class Renderer {
         this.ctx.fillRect(state.player.x - 4000, state.player.y - 4000, 8000, 8000);
         this.ctx.restore();
 
+        // Patch 65: the world-space tutorial text is gone. Three lines of WASD/mouse/
+        // SPACE copy were drawn here at the spawn point, duplicating (and contradicting)
+        // the DOM banner, scrolling off the moment the player moved, and dimming under
+        // the lighting masks. All tutorial WORDS now live on the banner, in the control
+        // scheme the player is actually using — see src/systems/Tutorial.js.
+        //
+        // What stays in world space is the one thing the banner cannot express: where
+        // the enemy is.
         if (state.isTutorial && state.mapOriginX !== null) {
-            this.ctx.save();
-            const px = state.mapOriginX;
-            const py = state.mapOriginY;
-            this.ctx.textAlign = 'center';
-            this.ctx.textBaseline = 'middle';
-            this.ctx.font = "bold 24px 'Courier New', Courier, monospace";
-            this.ctx.fillStyle = '#aaffaa';
-            
-            const glowText = (text, x, y) => {
-                this.ctx.globalAlpha = 0.3;
-                this.ctx.fillText(text, x - 2, y);
-                this.ctx.fillText(text, x + 2, y);
-                this.ctx.fillText(text, x, y - 2);
-                this.ctx.fillText(text, x, y + 2);
-                this.ctx.globalAlpha = 1.0;
-                this.ctx.fillText(text, x, y);
-            };
-
-            glowText("WASD to Move | Mouse to Aim", px, py - 100);
-            glowText("SPACE to Dash", px, py + 100);
-            glowText("The Void drains your Grip on reality. Eliminate the manifestation to proceed.", px + 600, py);
-            this.ctx.restore();
+            this.drawTutorialCue(state);
         }
 
         if (state.mapOriginX !== null) {
@@ -1846,6 +1934,24 @@ export class Renderer {
                 
                 const twitch = state.sanity < 20 ? (Math.random()-0.5)*4 : 0;
                 this.ctx.translate(twitch, twitch);
+
+                // Tutorial highlight (Patch 64). Same placement logic as the variant
+                // tell below — one code path before the per-type dispatch — but gated on
+                // state.isTutorial, which Director sets only for floor 1 room 1 and
+                // Combat clears on the first kill, so this can never leak into a normal
+                // room. Purpose is legibility, not information: the moment the one
+                // enemy in the game is on screen it should read as the thing that
+                // matters. Faux-glow via drawGlow, never shadowBlur.
+                if (state.isTutorial && ent.hp > 0) {
+                    const tutPulse = Math.sin(this.renderFrame * 0.1) * 0.5 + 0.5;
+                    const tr = (ent.radius || 15) + 12 + tutPulse * 3;
+                    this.drawGlow(0, 0, tr + 24, '#aaffaa', 0.2);
+                    this.ctx.strokeStyle = `rgba(170, 255, 170, ${0.35 + tutPulse * 0.3})`;
+                    this.ctx.lineWidth = 2;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, tr, 0, Math.PI * 2);
+                    this.ctx.stroke();
+                }
 
                 // Enemy variant tell (Patch 24). Drawn once here, before the per-type
                 // dispatch, so all three enemy types get it from one code path. A ring

@@ -9,6 +9,7 @@ import { LevelUpUI } from './ui/LevelUpUI.js';
 import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies } from './data/Manifestations.js';
 import { portalSDK } from './systems/PortalSDK.js';
 import { errorLog } from './core/ErrorLog.js';
+import { Tutorial } from './systems/Tutorial.js';
 
 // Patch 50: installed before ANYTHING else in this module runs, including the
 // canvas lookup below. A throw during boot is invisible to the log unless the
@@ -424,6 +425,13 @@ function enterPlayingState() {
 
     const resumeBtn = document.getElementById('btn-resume-run');
     if (resumeBtn) resumeBtn.style.display = 'none';
+
+    // Patch 65: on a touch device the controls are now visible from the first frame of
+    // play rather than from the first touch. Called here, after every menu close, so it
+    // also undoes hideJoysticks()' latch reset on the way back into a run.
+    if (inputManager && typeof inputManager.revealTouchControls === 'function') {
+        inputManager.revealTouchControls();
+    }
 
     gameState = 'PLAYING';
 }
@@ -1545,18 +1553,28 @@ function gameLoop(time) {
                 // Patch 25: screen-fixed tutorial banner, driven off the same
                 // state.isTutorial gate Director.spawnRoom/Combat.js already use.
                 // Purely presentational — doesn't touch the tutorialCompleted flow.
+                //
+                // Patch 65: the three inline strings (all of them WASD/mouse/SPACE, all
+                // shown by inspecting state here) are gone. The banner now renders one
+                // line chosen by the Tutorial step machine, in the control scheme the
+                // player is actually using — resolved every frame, so a laptop with a
+                // touchscreen follows whichever input was last touched.
                 const tutorialBanner = document.getElementById('tutorial-banner');
                 const tutorialBannerText = document.getElementById('tutorial-banner-text');
                 if (tutorialBanner && tutorialBannerText) {
-                    if (game.state.isTutorial) {
-                        tutorialBanner.style.display = 'block';
-                        if (game.state.roomCleared) {
-                            tutorialBannerText.innerText = 'Manifestation eliminated. Step through a door to descend — each door tells you what it holds before you enter.';
-                        } else if (game.state.entities && game.state.entities.length > 0) {
-                            tutorialBannerText.innerText = 'A Manifestation, given form by your own mind. Defeat it to proceed.';
-                        } else {
-                            tutorialBannerText.innerText = 'Move with WASD. Aim with your mouse. Press SPACE to dash.';
+                    const tutorialLine = Tutorial.bannerCopy(game.state, inputManager.getInputMode());
+                    if (tutorialLine) {
+                        // Patch 66: restart the fade whenever the line changes, so a new
+                        // instruction is visibly new. The class has to be removed and a
+                        // reflow forced before re-adding, or the animation never
+                        // re-triggers. It runs at most once per tutorial step.
+                        if (tutorialBannerText.innerText !== tutorialLine) {
+                            tutorialBannerText.innerText = tutorialLine;
+                            tutorialBanner.classList.remove('tut-in');
+                            void tutorialBanner.offsetWidth;
+                            tutorialBanner.classList.add('tut-in');
                         }
+                        tutorialBanner.style.display = 'block';
                     } else {
                         tutorialBanner.style.display = 'none';
                     }

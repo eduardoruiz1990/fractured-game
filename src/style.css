@@ -498,6 +498,46 @@ canvas { display: block; image-rendering: pixelated; }
 }
 .action-btn:active { background: rgba(136, 170, 255, 0.4); transform: scale(0.9); }
 
+/* Tutorial banner (Patch 66)
+   Was a bordered, glowing gold plate — i.e. a second HUD panel competing with the
+   real HUD for attention, on a screen where the thing that matters is the enemy.
+   Now a quiet note: no border box, hairline rules top and bottom, dimmed parchment
+   text instead of saturated gold, normal weight. It has to be readable at a glance
+   and then forgettable.
+   The width is capped against the VIEWPORT as well as at 440px — a fixed width
+   overflowed a 360-400px phone, which is exactly the audience it exists for. No
+   backdrop-filter: it would sit over a canvas that repaints every frame, and this is
+   on screen during the one minute where low-end mobile framerate matters most. */
+#tutorial-banner {
+    position: absolute;
+    top: 76px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: min(440px, calc(100vw - 32px));
+    padding: 9px 20px;
+    display: none;
+    z-index: 150;
+    pointer-events: none;
+    text-align: center;
+    font-family: var(--ui-font);
+    font-size: clamp(0.78rem, 2.4vw, 0.92rem);
+    font-weight: 400;
+    letter-spacing: 0.03em;
+    line-height: 1.5;
+    color: rgba(228, 219, 200, 0.9);
+    background: rgba(6, 6, 8, 0.62);
+    border-top: 1px solid rgba(197, 160, 89, 0.3);
+    border-bottom: 1px solid rgba(197, 160, 89, 0.3);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+}
+/* Re-triggered by main.js on every text change, so a new instruction announces
+   itself with a fade rather than swapping silently mid-sentence. */
+#tutorial-banner.tut-in { animation: tutorialNoteIn 400ms ease-out; }
+@keyframes tutorialNoteIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(-5px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* Level Up Modal */
 .level-up-modal {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
