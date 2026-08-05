@@ -252,6 +252,101 @@ console.log('\nPredator feeding is capped');
 }
 
 // ---------------------------------------------------------------------------
+console.log('\nEnemy variants (Patch 78)');
+{
+    const game = new Game();
+    game.init(mockSave);
+    game.state.floor = 3;
+    game.state.stress = 1.0;
+
+    // applyEnemyVariant draws TWICE: once against the per-floor chance gate (20% on
+    // floor 3) and once to pick which variant. A single fixed Math.random cannot do
+    // both — anything above 0.20 fails the gate and returns before selecting — so the
+    // draws are queued. Spawning happens with real randomness first, because
+    // spawnEntity applies its own variant roll and would otherwise contaminate the
+    // pre-variant baseline this compares against.
+    const forceVariant = (variantRoll) => {
+        game.state.entities.length = 0;
+        game.director.spawnEntity('SCAVENGER', 1920, 1080, 0, 0);
+        const e = game.state.entities[game.state.entities.length - 1];
+        // Undo whatever spawnEntity's own roll may have applied, so `base` is a plain
+        // enemy in every run of this test rather than in 80% of them.
+        e.init(Math.random(), 0, 0, 1.0);
+        const base = { hp: e.hp, speed: e.speed, damage: e.damage };
+
+        const realRandom = Math.random;
+        const queue = [0, variantRoll];        // [passes the gate, selects the variant]
+        Math.random = () => (queue.length ? queue.shift() : 0.5);
+        try {
+            game.director.applyEnemyVariant(e, game.state);
+        } finally { Math.random = realRandom; }
+        return { e, base };
+    };
+
+    // roll 0 -> ARMORED, 0.5 -> FAST, 0.9 -> VOLATILE (and all pass the chance gate).
+    const armored = forceVariant(0);
+    check('ARMORED is a genuine wall, not a stat nudge',
+          armored.e.variant === 'ARMORED' && armored.e.hp >= armored.base.hp * 3,
+          `${armored.base.hp} -> ${armored.e.hp}`);
+    check('ARMORED hits harder than its plain counterpart',
+          armored.e.damage > armored.base.damage,
+          `${armored.base.damage} -> ${armored.e.damage}`);
+
+    const fast = forceVariant(0.5);
+    check('FAST is meaningfully faster', fast.e.variant === 'FAST' && fast.e.speed >= fast.base.speed * 2,
+          `${fast.base.speed.toFixed(2)} -> ${fast.e.speed.toFixed(2)}`);
+
+    const volatile_ = forceVariant(0.9);
+    check('VOLATILE hits hardest of the three',
+          volatile_.e.variant === 'VOLATILE' &&
+          volatile_.e.damage / volatile_.base.damage > armored.e.damage / armored.base.damage,
+          `x${(volatile_.e.damage / volatile_.base.damage).toFixed(2)}`);
+
+    // The pooling trap. `damage` is scaled by the variant, so without initBase
+    // restoring baseDamage first, every reuse of a recycled body would multiply an
+    // already-multiplied number and enemies would quietly get deadlier all run.
+    const ent = armored.e;
+    const scaled = ent.damage;
+    ent.init(Math.random(), 0, 0, 1.0);
+    check('damage resets to base on pool reuse (no compounding across lives)',
+          ent.damage === ent.baseDamage && ent.damage < scaled,
+          `base ${ent.baseDamage}, after reuse ${ent.damage}, was ${scaled}`);
+    check('variant motion timers reset on pool reuse too',
+          ent.variantSurge === 0 && Number.isFinite(ent.variantTimer),
+          `surge ${ent.variantSurge}, timer ${ent.variantTimer}`);
+
+    // applyVariantMotion runs for every enemy every frame and feeds position directly.
+    const state = {
+        player: { x: 0, y: 0, angle: 0, radius: 12 },
+        entities: [], xpDrops: [], viewHalfExtent: 415, viewSafeRadius: 270
+    };
+    const moved = forceVariant(0.5).e;
+    moved.x = 300; moved.y = 0;
+    let finite = true;
+    for (let i = 0; i < 600; i++) {
+        moved.update(state, null);
+        if (!Number.isFinite(moved.x) || !Number.isFinite(moved.y)) { finite = false; break; }
+    }
+    check('600 frames of variant motion never produces NaN coordinates', finite,
+          `${moved.x}, ${moved.y}`);
+    check('and it still ends up hunting the player rather than wandering off',
+          Math.hypot(moved.x, moved.y) < 300,
+          `${Math.hypot(moved.x, moved.y).toFixed(0)}px away`);
+
+    // A plain enemy must be untouched by any of this. Spawned on FLOOR 1, where the
+    // variant chance is 0 — spawning on floor 3 gave this a real 20% chance of
+    // handing back a variant and failing at random.
+    game.state.floor = 1;
+    game.state.entities.length = 0;
+    game.director.spawnEntity('SCAVENGER', 1920, 1080, 200, 0);
+    const plain = game.state.entities[0];
+    const beforeV = { x: plain.x, y: plain.y };
+    plain.applyVariantMotion();
+    check('a non-variant enemy is not perturbed at all',
+          !plain.variant && plain.x === beforeV.x && plain.y === beforeV.y);
+}
+
+// ---------------------------------------------------------------------------
 console.log('\nSpawn ring clears the view (Patch 70)');
 {
     // An enemy must never appear inside the visible area. The old radius used canvas

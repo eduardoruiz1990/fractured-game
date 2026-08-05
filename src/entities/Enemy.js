@@ -3,6 +3,11 @@ export class Enemy {
     constructor(type, damage, color, painSound = 'damage') {
         this.type = type;
         this.damage = damage;
+        // Patch 78: the unmodified contact damage for this type. Variants scale
+        // `damage`, and these entities are POOLED — without a pristine value to
+        // restore from, a recycled body would multiply an already-multiplied number
+        // and every reuse would hit harder than the last.
+        this.baseDamage = damage;
         this.originalColor = color;
         this.painSound = painSound;
     }
@@ -41,6 +46,14 @@ export class Enemy {
         // entities are pooled, and a recycled straggler that kept a high strayTime
         // would spawn already sprinting at full catch-up boost.
         this.strayTime = 0;
+
+        // Patch 78 — variant motion state. Same pooling rule as strayTime: a recycled
+        // body must not inherit the previous occupant's charge timer, and `damage`
+        // must return to its pristine value before applyEnemyVariant scales it again.
+        this.damage = this.baseDamage;
+        this.variantTimer = 40 + Math.random() * 120;
+        this.variantPhase = Math.random() * Math.PI * 2;
+        this.variantSurge = 0;
 
         return this;
     }
@@ -85,6 +98,84 @@ export class Enemy {
             this.damageAccumulator = 0;
             this.damageTick = 0;
         }
+    }
+
+    /**
+     * Patch 78 — variant movement. Variants used to differ only in a stat multiplier,
+     * so an ARMORED scavenger walked at a plain enemy's cadence with more hp and read
+     * as the same thing wearing a coloured ring. These make each one move like what it
+     * claims to be, and — the point of the change — unpredictably, so a variant cannot
+     * be handled with the timing that works on its ordinary counterpart:
+     *
+     *   ARMORED   slow and relentless, then CHARGES without warning. Erratic in
+     *             timing rather than in direction — you cannot learn its rhythm.
+     *   FAST      weaves hard across its own approach line and darts, so leading it
+     *             with a beam or a swing does not work the way it does on a straight
+     *             runner.
+     *   VOLATILE  barely in control: constant jitter, fluttering speed, occasional
+     *             lunges. It already detonates on death; now it looks like it might.
+     *
+     * Perturbs the heading the AI just produced rather than replacing it, so chase,
+     * flee, orbit and confusion all still work. Skipped entirely when the entity is
+     * holding still on purpose (a Scavenger vacuuming, a fleeing Predator at rest) —
+     * shoving a deliberately stationary enemy would break its state, not spice it up.
+     */
+    applyVariantMotion() {
+        if (!this.variant) return;
+
+        const vx = this.vx || 0;
+        const vy = this.vy || 0;
+        const speed = Math.hypot(vx, vy);
+        if (!Number.isFinite(speed) || speed < 0.01) return;
+
+        this.variantTimer = (this.variantTimer || 0) - 1;
+        this.variantPhase = (this.variantPhase || 0) + 0.1;
+
+        let boost = 1;
+        let lateral = 0;   // fraction of current speed pushed sideways
+
+        if (this.variant === 'ARMORED') {
+            if (this.variantTimer <= 0) {
+                this.variantSurge = 26;
+                this.variantTimer = 150 + Math.random() * 160;
+            }
+            if (this.variantSurge > 0) {
+                this.variantSurge--;
+                boost = 2.6;
+            }
+        } else if (this.variant === 'FAST') {
+            this.variantPhase += 0.18;
+            lateral = Math.sin(this.variantPhase) * 0.6;
+            if (this.variantTimer <= 0) {
+                this.variantSurge = 10;
+                this.variantTimer = 55 + Math.random() * 90;
+            }
+            if (this.variantSurge > 0) {
+                this.variantSurge--;
+                boost = 2.1;
+            }
+        } else if (this.variant === 'VOLATILE') {
+            this.variantPhase += 0.4;
+            lateral = Math.sin(this.variantPhase * 1.7) * 0.42 + (Math.random() - 0.5) * 0.5;
+            boost = 1 + (Math.random() - 0.5) * 0.45;
+            if (this.variantTimer <= 0) {
+                this.variantSurge = 8;
+                this.variantTimer = 70 + Math.random() * 110;
+            }
+            if (this.variantSurge > 0) {
+                this.variantSurge--;
+                boost += 1.5;
+            }
+        }
+
+        // Perpendicular to the current heading, so "sideways" means sideways relative
+        // to where this enemy is actually going, not to the world axes.
+        const inv = 1 / speed;
+        const perpX = -vy * inv;
+        const perpY = vx * inv;
+
+        this.vx = vx * boost + perpX * lateral * speed;
+        this.vy = vy * boost + perpY * lateral * speed;
     }
 
     applyMovement(state, game) {
@@ -196,6 +287,11 @@ export class Enemy {
         if (Math.random() < 0.0005 && game && game.audioEngine) {
             game.audioEngine.playSFX('enemy_ambient', 0.15);
         }
+
+        // Patch 78: applied to whatever heading the subclass's AI just decided, and
+        // immediately before integration, so it perturbs every enemy type through one
+        // code path without any of them knowing about variants.
+        this.applyVariantMotion();
 
         this.x += (this.vx || 0) * this.speedModifier;
         this.y += (this.vy || 0) * this.speedModifier;

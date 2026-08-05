@@ -188,8 +188,23 @@ canvas { display: block; }
     position: sticky; bottom: 0;
     align-self: center;
     margin-top: auto;
+}
+
+/* Patch 76 — regression fix. The rule above used to also set
+   `background: var(--paper-bg)` on both selectors. On the confirm modal that is a
+   plain wrapper div and correct. On #btn-restart it is not: that button is
+   `.file-btn.primary`, i.e. an INK-BLACK button with PAPER-COLOURED text, and an id +
+   id selector outranks the class — so it repainted the background to paper and left
+   paper-coloured letters on it. Light on light, only on that one button, exactly
+   where the player has to read RETURN TO WARD.
+   The button already has its own opaque fill, so it needs no backing of its own; the
+   paper-coloured shadow above it is what makes the scrolling stats dissolve before
+   they reach it. */
+#confirm-modal .folder-content > div:last-child {
     background: var(--paper-bg);
-    box-shadow: 0 -16px 16px -8px var(--paper-bg), 2px 2px 5px rgba(0,0,0,0.2);
+}
+#death-screen #btn-restart {
+    box-shadow: 0 -18px 18px -8px var(--paper-bg), 2px 2px 5px rgba(0, 0, 0, 0.2);
 }
 
 /* Sized here rather than inline so the media queries below can actually shrink them —

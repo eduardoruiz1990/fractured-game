@@ -2946,27 +2946,76 @@ export class Renderer {
             this.ctx.globalAlpha = alpha;
             this.ctx.translate(cx, cy);
 
+            // Patch 77 — the whole banner is laid out from the viewport now.
+            //
+            // Everything here was fixed: a 600px-tall panel and a portrait drawn at
+            // x = -400 at scale 5.5, so the art (local radius ~40) spanned roughly
+            // x = -620..-180. That needs ~1240px of width to sit on screen, and the
+            // panel needs 600px of height. Below either, the boss's own portrait — the
+            // one moment the game shows you what is about to fight you — was cut off by
+            // the screen edge, and on a phone in landscape the panel was taller than
+            // the display.
+            //
+            // Two layouts. Wide keeps the desktop composition (portrait left, name
+            // right) and only shrinks/pulls in the portrait when the width demands it —
+            // at 1920 and 1366 the numbers come out identical to before. Narrow stacks
+            // them, because below ~720px there is no room for two columns and Patch 63
+            // already centres the text there; a side-by-side portrait would land under
+            // the name.
+            const PANEL_H = Math.min(300, Math.max(150, this.canvas.height * 0.42));
+            const ART_R = 40;               // local-space radius the boss art occupies
+            const narrowBanner = this.canvas.width < 720;
+
             this.ctx.fillStyle = 'rgba(10, 0, 0, 0.95)';
-            this.ctx.fillRect(-this.canvas.width/2, -300, this.canvas.width, 600); 
-            
+            this.ctx.fillRect(-this.canvas.width/2, -PANEL_H, this.canvas.width, PANEL_H * 2);
+
             if (this.renderFrame % 3 === 0) {
                 this.ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
                 for (let i=0; i<15; i++) {
-                    this.ctx.fillRect(-this.canvas.width/2, -300 + Math.random() * 600, this.canvas.width, 5 + Math.random() * 15);
+                    this.ctx.fillRect(-this.canvas.width/2, -PANEL_H + Math.random() * PANEL_H * 2, this.canvas.width, 5 + Math.random() * 15);
                 }
             }
-            
+
             this.ctx.strokeStyle = '#c5a059';
             this.ctx.lineWidth = 6;
             this.ctx.beginPath();
-            this.ctx.moveTo(-this.canvas.width/2, -300); this.ctx.lineTo(this.canvas.width/2, -300);
-            this.ctx.moveTo(-this.canvas.width/2, 300); this.ctx.lineTo(this.canvas.width/2, 300);
+            this.ctx.moveTo(-this.canvas.width/2, -PANEL_H); this.ctx.lineTo(this.canvas.width/2, -PANEL_H);
+            this.ctx.moveTo(-this.canvas.width/2, PANEL_H); this.ctx.lineTo(this.canvas.width/2, PANEL_H);
             this.ctx.stroke();
 
+            // Title/subtitle sizes are capped by the panel as well as by the width, so a
+            // short panel cannot stack three items that do not fit in it.
+            const titleBase = Math.min(110, PANEL_H * 0.38);
+            const subBase = Math.min(45, PANEL_H * 0.17);
+
+            let portraitScale, portraitX, portraitY, titleY, subY;
+            if (narrowBanner) {
+                // Stacked and centred as one block.
+                const r = Math.min(220, PANEL_H * 0.5, this.canvas.width * 0.18);
+                const blockH = r * 2 + 10 + titleBase + 6 + subBase;
+                const top = -blockH / 2;
+                portraitScale = r / ART_R;
+                portraitX = 0;
+                portraitY = top + r;
+                titleY = top + r * 2 + 10 + titleBase / 2;
+                subY = titleY + titleBase / 2 + 6 + subBase / 2;
+            } else {
+                // Side by side. The portrait's band is everything left of the text,
+                // which Patch 63 anchors at x = -100.
+                const r = Math.min(220, (this.canvas.width / 2 - 132) / 2, PANEL_H * 0.75);
+                portraitScale = Math.max(1.5, r / ART_R);
+                const rr = ART_R * portraitScale;
+                // Preferred -400, but never overlapping the name and never off screen.
+                portraitX = Math.max(-this.canvas.width / 2 + 12 + rr, Math.min(-120 - rr, -400));
+                portraitY = 0;
+                titleY = -50;
+                subY = 60;
+            }
+
             this.ctx.save();
-            this.ctx.translate(-400, 0); 
-            this.ctx.scale(5.5, 5.5); 
-            
+            this.ctx.translate(portraitX, portraitY);
+            this.ctx.scale(portraitScale, portraitScale);
+
             const simulatedPhase = this.renderFrame * 0.05;
             this.ctx.rotate(Math.sin(simulatedPhase * 0.5) * 0.1); 
 
@@ -3391,7 +3440,10 @@ export class Renderer {
             // screen anyway, so the left-aligned layout wastes the only space there is
             // and the longest names still clip even at the minimum size. Narrow
             // viewports centre the text and use the full width instead.
-            const narrow = this.canvas.width < 720;
+            // Patch 77: `narrowBanner` is decided once, further up, so the portrait
+            // layout and the text layout can never disagree about which composition
+            // this is.
+            const narrow = narrowBanner;
             this.ctx.textAlign = narrow ? 'center' : 'left';
             const TEXT_X = narrow ? 0 : -100;
             const available = narrow
@@ -3406,22 +3458,22 @@ export class Renderer {
                 this.ctx.font = `${spec} ${scaled}px 'Courier New', Courier, monospace`;
             };
 
-            fitFont(titleText, 110, '900', 34);
+            fitFont(titleText, titleBase, '900', 28);
             this.ctx.fillStyle = '#ffffff';
 
             this.ctx.save();
-            const textGlow = this.ctx.createRadialGradient(0, -50, 0, 0, -50, 400);
+            const textGlow = this.ctx.createRadialGradient(0, titleY, 0, 0, titleY, 400);
             textGlow.addColorStop(0, 'rgba(139, 0, 0, 0.3)');
             textGlow.addColorStop(1, 'rgba(139, 0, 0, 0)');
             this.ctx.fillStyle = textGlow;
-            this.ctx.fillText(titleText, TEXT_X + textJitter, -50);
+            this.ctx.fillText(titleText, TEXT_X + textJitter, titleY);
             this.ctx.restore();
 
-            this.ctx.fillText(titleText, TEXT_X + textJitter, -50);
+            this.ctx.fillText(titleText, TEXT_X + textJitter, titleY);
 
-            fitFont(subText, 45, 'italic', 18);
+            fitFont(subText, subBase, 'italic', 14);
             this.ctx.fillStyle = '#c5a059';
-            this.ctx.fillText(subText, TEXT_X + (narrow ? 0 : 10) + textJitter, 60);
+            this.ctx.fillText(subText, TEXT_X + (narrow ? 0 : 10) + textJitter, subY);
             
         } finally {
             this.ctx.restore();

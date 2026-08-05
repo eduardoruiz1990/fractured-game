@@ -330,16 +330,29 @@ export class Director {
         else if (roll < 0.76) variant = 'FAST';
         else variant = 'VOLATILE';
 
-        // hp/speed are multiplied off the values initBase() just set. maxHp is kept in
-        // sync so the health bar in Renderer reads a correct ratio.
+        // hp/speed/damage are multiplied off the values initBase() just set. maxHp is
+        // kept in sync so the health bar in Renderer reads a correct ratio, and damage
+        // is restored to baseDamage by initBase first so pooled reuse cannot compound.
+        //
+        // Patch 78: all three were sharpened. A variant is a rarer, named, ringed enemy
+        // and it should be a genuinely different problem, not the same enemy with a
+        // stat nudge — ARMORED in particular was 2.2x hp and SLOWER, which reads as a
+        // longer fight rather than a harder one. Damage is now part of every variant's
+        // profile, and Enemy.applyVariantMotion gives each one a movement signature to
+        // match (charges / weaving darts / unstable lunges).
         if (variant === 'ARMORED') {
-            ent.hp *= 2.2; ent.speed *= 0.7;
+            // A wall that occasionally runs you down. See applyVariantMotion's charge.
+            ent.hp *= 3.2; ent.speed *= 0.72; ent.damage *= 1.45;
             ent.variantTint = '#6f8fa8';
         } else if (variant === 'FAST') {
-            ent.hp *= 0.5; ent.speed *= 1.7;
+            // Fragile, but it closes distance in a way you cannot lead.
+            ent.hp *= 0.6; ent.speed *= 2.05; ent.damage *= 1.2;
             ent.variantTint = '#f0e68c';
         } else {
-            ent.hp *= 0.8;
+            // VOLATILE: detonates on death (Combat.js), so the threat is the corpse as
+            // much as the body. Fast and hard-hitting enough to force the choice
+            // between killing it close and letting it reach you.
+            ent.hp *= 0.9; ent.speed *= 1.35; ent.damage *= 1.6;
             ent.variantTint = '#ff7043';
         }
 

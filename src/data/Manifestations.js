@@ -54,10 +54,13 @@ export const ROOM_MODIFIERS = [
     { id: 'HAZARD',   name: 'HAZARD',   chance: '15%', effect: 'The room itself leaks ink. Toxic pools keep forming until it is cleared.', color: '#8822cc' }
 ];
 
+// Patch 78: these describe behaviour, and the behaviour changed — variants now hit
+// harder AND move differently (Enemy.applyVariantMotion). Keep these sentences true;
+// the guide is the only place the player is told any of it.
 export const ENEMY_VARIANTS = [
-    { id: 'ARMORED',  name: 'ARMORED',  effect: 'Far more Grip to chew through, but slower. Kill it last, or at range.', color: '#6f8fa8' },
-    { id: 'FAST',     name: 'FAST',     effect: 'Fragile, but closes distance quickly. Deal with it first.', color: '#f0e68c' },
-    { id: 'VOLATILE', name: 'VOLATILE', effect: 'Detonates on death, damaging you if you are within ~130px. Kill it at range.', color: '#ff7043' }
+    { id: 'ARMORED',  name: 'ARMORED',  effect: 'Three times the Grip and slower — until it charges you without warning. Do not let it pick the moment.', color: '#6f8fa8' },
+    { id: 'FAST',     name: 'FAST',     effect: 'Fragile, but it weaves across its own approach and darts. You cannot lead it like a straight runner.', color: '#f0e68c' },
+    { id: 'VOLATILE', name: 'VOLATILE', effect: 'Unstable — it lurches, hits hardest of the three, and detonates on death within ~130px. Kill it at range.', color: '#ff7043' }
 ];
 
 /**
