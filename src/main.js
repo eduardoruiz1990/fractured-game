@@ -11,6 +11,7 @@ import { portalSDK } from './systems/PortalSDK.js';
 import { errorLog } from './core/ErrorLog.js';
 import { Tutorial } from './systems/Tutorial.js';
 import { isPortraitLayout } from './core/Layout.js';
+import { Pacing } from './core/Pacing.js';
 
 // Patch 50: installed before ANYTHING else in this module runs, including the
 // canvas lookup below. A throw during boot is invisible to the log unless the
@@ -504,6 +505,12 @@ function enterPlayingState() {
     if (inputManager && typeof inputManager.revealTouchControls === 'function') {
         inputManager.revealTouchControls();
     }
+
+    // Patch 74: start the run's clock clean. Menu frames accumulate without ever
+    // stepping, and a stale breakdown flag would leave the glitch overlay from the
+    // previous death sitting over the first frame of the new run.
+    pacing.reset();
+    lastBreakdown = false;
 
     gameState = 'PLAYING';
 }
@@ -1455,8 +1462,24 @@ function initEngine() {
 const loggedLoopCrashes = new Set();
 const MAX_LOGGED_LOOP_CRASHES = 20;
 
+/**
+ * Patch 74 — fixed timestep. The rules live in src/core/Pacing.js (and are tested in
+ * test_pacing.js); this is just the instance the loop drives.
+ *
+ * Simulation runs at a fixed 60Hz while rendering stays at the display's rate, so
+ * every existing per-frame constant in the game remains valid and nothing needed
+ * retuning. Before this, the whole simulation ran at whatever rate the panel
+ * refreshed — double speed on a 120Hz phone, and varying with the framerate whenever
+ * such a device could not hold it.
+ */
+const pacing = new Pacing();
+let lastBreakdown = false;
+
 function gameLoop(time) {
     try {
+        // Accumulate before anything else, so a slow branch below cannot lose time.
+        pacing.addFrame(time);
+
         syncPortalGameplayState();
 
         if (import.meta.env.DEV) {
@@ -1521,7 +1544,18 @@ function gameLoop(time) {
             const viewW = Number.isFinite(renderer.worldViewWidth) ? renderer.worldViewWidth : canvas.width;
             const viewH = Number.isFinite(renderer.worldViewHeight) ? renderer.worldViewHeight : canvas.height;
 
-            const isBreakdown = game.update(inputManager.state, viewW, viewH, gameState);
+            // Patch 74 — fixed timestep. Rules and rationale in src/core/Pacing.js.
+            const simSteps = pacing.takeSteps();
+            renderer.simStepsThisFrame = simSteps;
+
+            for (let s = 0; s < simSteps; s++) {
+                // gameState is READ FRESH each iteration on purpose: onLevelUp and
+                // onDeath fire from inside update() and change it, and Game.update
+                // early-returns for any state that is not PLAYING or HUB. Capturing it
+                // once would run a second step of a run that has already ended.
+                lastBreakdown = game.update(inputManager.state, viewW, viewH, gameState);
+            }
+            const isBreakdown = lastBreakdown;
             
             // --- PHASE 2: HUB INTERACTION & PLAYER ROTATION ---
             if (gameState === 'HUB') {

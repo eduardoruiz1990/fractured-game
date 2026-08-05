@@ -718,14 +718,36 @@ canvas { display: block; }
 
 .title-glitch { animation: glitch 2s infinite alternate; text-align: center; }
 
-/* --- NEW: MASSIVE AGGRESSIVE TITLE TEXT --- */
+/* --- MASSIVE AGGRESSIVE TITLE TEXT ---
+   Patch 73: the clamp had a 6rem FLOOR — 96px — so on a phone the preferred 15vw was
+   never used and the title rendered at 96px with 15px of tracking. "FRACTURED" is
+   nine glyphs: ~595px of text on a 360-430px screen, a 38-65% overflow, clipped at
+   both edges because .fullscreen-menu centres a flex column with no overflow
+   handling. A clamp whose minimum exceeds the viewport is not a responsive rule, it
+   is a fixed size with extra steps.
+   The floor is now genuinely small and the tracking scales with the font, so the
+   title fills the width at every size rather than only above ~800px. */
 #title-screen .title-glitch {
-    font-size: clamp(6rem, 15vw, 15rem) !important;
-    letter-spacing: 15px;
-    text-shadow: 10px 0 var(--ui-red), -10px 0 var(--ui-gold);
+    font-size: clamp(2rem, 11.5vw, 15rem) !important;
+    letter-spacing: clamp(2px, 1.5vw, 15px);
+    /* Sized in em so the offsets shrink with the text — at 96px on a phone these
+       were a fixed 10px each side, i.e. part of the overflow. */
+    text-shadow: 0.09em 0 var(--ui-red), -0.09em 0 var(--ui-gold);
     animation: aggressive-glitch 1.5s infinite alternate;
     margin-bottom: 2vh !important;
     line-height: 1;
+    max-width: 100%;
+}
+
+/* Same failure, smaller: 31 characters at a fixed 1.2rem with 8px of tracking is
+   ~567px wide, so the subtitle wrapped mid-phrase on every phone. */
+#title-screen .title-subtitle {
+    color: #888;
+    font-size: clamp(0.55rem, 2.4vw, 1.2rem);
+    letter-spacing: clamp(2px, 0.85vw, 8px);
+    margin-bottom: clamp(16px, 4vh, 40px);
+    text-align: center;
+    max-width: 100%;
 }
 
 @keyframes aggressive-glitch {
@@ -884,33 +906,11 @@ canvas { display: block; }
     box-shadow: 0 0 10px rgba(0,0,0,0.5);
 }
 
-.title-glitch { animation: glitch 2s infinite alternate; text-align: center; }
-
-/* --- NEW: MASSIVE AGGRESSIVE TITLE TEXT --- */
-#title-screen .title-glitch {
-    font-size: clamp(6rem, 15vw, 15rem) !important;
-    letter-spacing: 15px;
-    text-shadow: 10px 0 var(--ui-red), -10px 0 var(--ui-gold);
-    animation: aggressive-glitch 1.5s infinite alternate;
-    margin-bottom: 2vh !important;
-    line-height: 1;
-}
-
-@keyframes aggressive-glitch {
-    0% { text-shadow: 6px 0 0 #fff, -6px 0 0 #000; transform: skewX(0deg); }
-    20% { text-shadow: -8px 0 0 var(--ui-red), 8px 0 0 var(--ui-gold); transform: skewX(3deg); }
-    40% { text-shadow: 6px 0 0 #fff, -6px 0 0 var(--ui-red); transform: skewX(-3deg); }
-    60% { text-shadow: -12px 3px 0 var(--ui-gold), 12px -3px 0 #000; transform: skewX(5deg); }
-    80% { text-shadow: 4px 0 0 var(--ui-red), -4px 0 0 #fff; transform: skewX(-2deg); }
-    100% { text-shadow: -6px 0 0 var(--ui-gold), 6px 0 0 #000; transform: skewX(0deg); }
-}
-
-#glitch-overlay {
-    position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
-    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 1px, transparent 1px, transparent 2px);
-    opacity: 0; transition: opacity 0.2s; z-index: 10;
-}
-
+/* Patch 73: a byte-identical SECOND copy of `.title-glitch`, the aggressive title
+   rule and @keyframes aggressive-glitch sat here, duplicating the pair ~170 lines
+   above — the same class of leftover Patch 38 removed once already. Deleted; the
+   surviving definitions are the ones above, and there is now exactly one place to
+   change the title. */
 #debug-console { display: none; }
 
 /* Patch 38: a byte-identical copy of the two @keyframes glitch definitions and

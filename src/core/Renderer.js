@@ -54,6 +54,10 @@ export class Renderer {
         this.hasAnnouncedBoss = false;
         
         this.renderFrame = 0;
+        // Patch 74: how many fixed 60Hz simulation steps the frame being drawn covers.
+        // Written by main.js's loop each frame; 1 keeps the pre-patch behaviour for any
+        // path that never sets it.
+        this.simStepsThisFrame = 1;
 
         this.rain = [];
         for(let i = 0; i < 150; i++) {
@@ -685,7 +689,14 @@ export class Renderer {
             // every frame, silently, until the viewport changes.
             if (!this.canvas || !this.canvas.width || !this.canvas.height) return;
 
-            this.renderFrame++;
+            // Patch 74: advanced by however many SIMULATION steps this frame covered,
+            // not by 1 per rendered frame. 84 read sites drive pulses, flickers and
+            // orbit angles off this counter, so incrementing it per rendered frame ran
+            // every one of those animations at the display's refresh rate — twice as
+            // fast on a 120Hz phone as on the 60Hz screen they were tuned against.
+            // main.js sets simStepsThisFrame; it defaults to 1 so any caller that does
+            // not set it (or a paused frame) behaves exactly as before.
+            this.renderFrame += Number.isFinite(this.simStepsThisFrame) ? this.simStepsThisFrame : 1;
 
             if (!state.bossSpawned) {
                 this.hasAnnouncedBoss = false;
