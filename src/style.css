@@ -37,7 +37,18 @@ body, html {
     box-sizing: border-box; 
 }
 
-#game-container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+/* Patch 79: the height was a plain 100vh, and every bottom-anchored control lives
+   inside this element. On Android Chrome 100vh is the URL-bar-HIDDEN height — the
+   largest the viewport can ever be — while the canvas is sized from
+   window.innerHeight, the CURRENT height. With the URL bar showing on a 832px-tall
+   phone that is a 56px difference, so the dash button (anchored 14px from this
+   container's bottom) had 34% of itself on screen and vanished completely on any
+   further shift. The canvas was also being centred inside a container taller than
+   the screen, leaving dead strips above and below the game.
+   dvh tracks the dynamic viewport, and main.js's resize() additionally pins the
+   height in px from the same innerHeight the canvas uses — belt and braces, because
+   dvh is unreliable in some in-app webviews and the CrazyGames app is one. */
+#game-container { position: relative; width: 100vw; height: 100vh; height: 100dvh; display: flex; justify-content: center; align-items: center; }
 /* Patch 67: `image-rendering: pixelated` removed.
    The canvas backing store is sized in CSS pixels (main.js resize()), so on a phone
    at DPR 2-3 the browser composites it upscaled 2-3x. `pixelated` made that upscale
@@ -565,13 +576,28 @@ canvas { display: block; }
    inset) pushes the button clear of the rounded corner instead of under it. */
 .action-btn {
     position: absolute;
-    bottom: max(14px, env(safe-area-inset-bottom));
-    right: max(14px, env(safe-area-inset-right));
-    width: 64px; height: 64px;
-    border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(136, 170, 255, 0.4);
-    display: none; justify-content: center; align-items: center; font-weight: bold; font-size: 0.8rem; color: #88aaff;
-    z-index: 50; user-select: none; pointer-events: auto; backdrop-filter: blur(2px);
-    box-shadow: 0 0 15px rgba(136, 170, 255, 0.2);
+    bottom: max(18px, env(safe-area-inset-bottom));
+    right: max(18px, env(safe-area-inset-right));
+    /* Patch 79: 72px, back up from the 64px Patch 68 set. That patch shrank it to
+       clear the aim thumb's landing zone, which was the right problem to solve and
+       the wrong lever — it made a control that was already hard to see smaller. The
+       zone conflict is handled by the corner offset; the size is for the eye. */
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    /* Was rgba(255,255,255,0.1) with a 0.4-alpha border and #88aaff text: about 10%
+       fill against a near-black game, sitting on the darkest part of the portrait
+       control band. Legible only if you already knew it was there. */
+    background: rgba(136, 170, 255, 0.22);
+    border: 3px solid rgba(160, 190, 255, 0.85);
+    color: #dce8ff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    display: none; justify-content: center; align-items: center;
+    font-weight: bold; font-size: 0.82rem; letter-spacing: 1px;
+    z-index: 50; user-select: none; pointer-events: auto;
+    /* backdrop-filter removed: this sits over a canvas that repaints every frame, so
+       it forced a fresh backdrop snapshot per frame for the whole run — on the phones
+       least able to afford it. The stylesheet says as much at .medical-toast. */
+    box-shadow: 0 0 18px rgba(136, 170, 255, 0.35), inset 0 0 12px rgba(136, 170, 255, 0.15);
 }
 .action-btn:active { background: rgba(136, 170, 255, 0.4); transform: scale(0.9); }
 

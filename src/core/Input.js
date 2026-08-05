@@ -171,31 +171,49 @@ export class InputManager {
             this.dashBtnShown = true;
         }
 
-        const halfWidth = window.innerWidth / 2;
+        // Patch 79: the joystick rings are absolutely positioned inside
+        // #game-container, but were placed using raw clientX/clientY — which are
+        // VISUAL-viewport coordinates. The two spaces are identical only while the
+        // page is unzoomed and unscrolled; pinch-zoom or a URL bar appearing shifts
+        // them apart, and the ring then draws offset from the thumb that summoned it.
+        // Subtracting the container's own client rect converts to its coordinate
+        // space, which is what an absolutely positioned child needs, and costs one
+        // rect read per touchstart.
+        const parent = this.joyLeft && this.joyLeft.offsetParent;
+        const originRect = parent && typeof parent.getBoundingClientRect === 'function'
+            ? parent.getBoundingClientRect()
+            : { left: 0, top: 0, width: window.innerWidth };
+        const localX = (clientX) => clientX - originRect.left;
+        const localY = (clientY) => clientY - originRect.top;
+
+        // Split the control zones down the middle of the PLAY AREA, not of the window.
+        // Same reason: with the container correctly sized these agree, but deriving
+        // both from the same box means they cannot drift apart again.
+        const halfWidth = originRect.left + (originRect.width || window.innerWidth) / 2;
 
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
             if (t.clientX < halfWidth) {
                 if (this.leftTouch.id === null) {
-                    this.leftTouch.id = t.identifier; 
+                    this.leftTouch.id = t.identifier;
                     this.leftTouch.ox = t.clientX; this.leftTouch.oy = t.clientY;
-                    this.joyLeft.style.display = 'block'; 
-                    this.joyLeft.style.left = (t.clientX - 60) + 'px'; 
-                    this.joyLeft.style.top = (t.clientY - 60) + 'px';
+                    this.joyLeft.style.display = 'block';
+                    this.joyLeft.style.left = (localX(t.clientX) - 60) + 'px';
+                    this.joyLeft.style.top = (localY(t.clientY) - 60) + 'px';
                 }
-                if (this.leftTouch.id === t.identifier) { 
-                    this.leftTouch.cx = t.clientX; this.leftTouch.cy = t.clientY; 
+                if (this.leftTouch.id === t.identifier) {
+                    this.leftTouch.cx = t.clientX; this.leftTouch.cy = t.clientY;
                 }
             } else {
                 if (this.rightTouch.id === null) {
-                    this.rightTouch.id = t.identifier; 
+                    this.rightTouch.id = t.identifier;
                     this.rightTouch.ox = t.clientX; this.rightTouch.oy = t.clientY;
-                    this.joyRight.style.display = 'block'; 
-                    this.joyRight.style.left = (t.clientX - 60) + 'px'; 
-                    this.joyRight.style.top = (t.clientY - 60) + 'px';
+                    this.joyRight.style.display = 'block';
+                    this.joyRight.style.left = (localX(t.clientX) - 60) + 'px';
+                    this.joyRight.style.top = (localY(t.clientY) - 60) + 'px';
                 }
-                if (this.rightTouch.id === t.identifier) { 
-                    this.rightTouch.cx = t.clientX; this.rightTouch.cy = t.clientY; 
+                if (this.rightTouch.id === t.identifier) {
+                    this.rightTouch.cx = t.clientX; this.rightTouch.cy = t.clientY;
                 }
             }
         }

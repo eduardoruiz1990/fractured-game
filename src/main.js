@@ -112,6 +112,14 @@ function resize() {
 
     canvas.width = w;
     canvas.height = h;
+
+    // Patch 79: pin the container to the SAME height the canvas just took. It is
+    // `100dvh` in CSS, but dvh is not honoured everywhere the game runs, and every
+    // bottom-anchored control (the dash button, and the joysticks' offset parent) is
+    // positioned against this box — if it is taller than the visible viewport those
+    // controls sit below the screen edge. Measured, not assumed.
+    const container = document.getElementById('game-container');
+    if (container) container.style.height = `${h}px`;
     // Refit the camera: on small viewports a fixed zoom showed far too little world.
     // Guarded because resize() also runs once before the Renderer exists.
     if (renderer) {
