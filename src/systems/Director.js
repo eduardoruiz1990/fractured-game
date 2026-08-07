@@ -10,6 +10,9 @@ import { Amalgamation } from '../entities/Amalgamation.js';
 import { Architect } from '../entities/Architect.js';
 // Patch 51c: reports the swallowed boss-roadmap failure below into the crash log.
 import { errorLog } from '../core/ErrorLog.js';
+// The spawn clamp is derived from the arena's void radius rather than repeated as a
+// literal — see the note on ARENA_VOID_RADIUS in Config.js for why the two must agree.
+import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE } from '../data/Config.js';
 
 export class Director {
     constructor(game) {
@@ -88,17 +91,19 @@ export class Director {
                 this.game.audioEngine.playSFX('boss_static', 0.8);
             }
             
-            if (state.floor === 1) {
-                this.spawnEntity('BOSS', 2000, 2000);
-            } else if (state.floor === 2) {
-                this.spawnEntity('RORSCHACH', 2000, 2000);
-            } else if (state.floor === 3) {
-                this.spawnEntity('PANOPTICON', 2000, 2000);
-            } else if (state.floor === 4) {
-                this.spawnEntity('AMALGAMATION', 2000, 2000);
-            } else {
-                this.spawnEntity('ARCHITECT', 2000, 2000); 
-            }
+            // The real viewport, plus an explicit minimum distance. These used to be a
+            // hardcoded 2000x2000 pseudo-viewport standing in for "spawn the boss far
+            // away", which sized the off-screen ring for a display nobody had — too
+            // small on ultrawide/4K (the boss appeared on screen) and merely redundant
+            // on phones. See BOSS_MIN_SPAWN_DISTANCE in Config.js.
+            const bw = Number.isFinite(this.lastViewW) ? this.lastViewW : 1920;
+            const bh = Number.isFinite(this.lastViewH) ? this.lastViewH : 1080;
+            const bossType = state.floor === 1 ? 'BOSS'
+                           : state.floor === 2 ? 'RORSCHACH'
+                           : state.floor === 3 ? 'PANOPTICON'
+                           : state.floor === 4 ? 'AMALGAMATION'
+                           : 'ARCHITECT';
+            this.spawnEntity(bossType, bw, bh, null, null, 1, BOSS_MIN_SPAWN_DISTANCE);
             state.bossSpawned = true;
             // Resolve activeBoss immediately. processGameLogic() normally computes this,
             // but it does so *before* spawnWave() runs, and the announcement sets a
@@ -167,6 +172,14 @@ export class Director {
         // own guess at what "visible" means on an unknown viewport. Written before
         // the combatActive early-return so it is always current.
         if (Number.isFinite(canvasWidth) && Number.isFinite(canvasHeight)) {
+            // Patch: remembered so spawnRoom can size the boss spawn against the REAL
+            // screen. spawnRoom is called from the room-door handler in Combat.js and
+            // from main.js, neither of which has canvas dimensions to pass, and this
+            // runs every frame combat is live — so by the time any room after the
+            // first is entered, these are current.
+            this.lastViewW = canvasWidth;
+            this.lastViewH = canvasHeight;
+
             // Patch 61: the smallest half-extent of world the player can see.
             // Enemy.applyMovement leashes against this, which is what stops enemies
             // parking in a band that is technically "near" but literally invisible.
@@ -182,6 +195,17 @@ export class Director {
             // publishes a real value.
             const zoom = (Number.isFinite(state.viewZoom) && state.viewZoom > 0) ? state.viewZoom : 1.3;
             state.viewHalfExtent = (Math.min(canvasWidth, canvasHeight) / 2) / zoom;
+
+            // Per-axis half-extents, published for the same reason viewHalfExtent is:
+            // so anything that needs to know what the player can actually see reads it
+            // from one place instead of re-deriving it from whatever dimensions it
+            // happens to hold. spawnEntity prefers these over its own arguments, which
+            // makes an off-screen spawn correct even when a caller passes stand-in
+            // dimensions — the failure mode the boss's old 2000x2000 pseudo-viewport
+            // was. viewHalfExtent stays min-axis for the leash, which wants the
+            // tightest bound; these are the true rectangle.
+            state.viewHalfW = (canvasWidth / 2) / zoom;
+            state.viewHalfH = (canvasHeight / 2) / zoom;
 
             // The tutorial's on-screen spawn radius, and the distance the tutorial
             // leash recalls to. Expressed as a FRACTION of what is really visible
@@ -366,7 +390,7 @@ export class Director {
         ent.variant = variant;
     }
 
-    spawnEntity(type, canvasWidth, canvasHeight, forceX = null, forceY = null, generation = 1) {
+    spawnEntity(type, canvasWidth, canvasHeight, forceX = null, forceY = null, generation = 1, minSpawnRadius = 0) {
         const state = this.game.state;
 
         // Patch 70 — the spawn ring must clear the CORNER of the view, at the real
@@ -389,21 +413,103 @@ export class Director {
         const h = Number.isFinite(canvasHeight) ? canvasHeight : 1080;
         const zoom = (Number.isFinite(state.viewZoom) && state.viewZoom > 0) ? state.viewZoom : 1.3;
         const offScreenRadius = Math.hypot((w / 2) / zoom, (h / 2) / zoom) + 80;
-        const spawnRadius = Math.max(Math.max(w, h) * 0.5 + 50, offScreenRadius);
-
-        const angle = Math.random() * Math.PI * 2;
-        
-        let x = forceX !== null ? forceX : state.player.x + Math.cos(angle) * spawnRadius;
-        let y = forceY !== null ? forceY : state.player.y + Math.sin(angle) * spawnRadius;
+        // minSpawnRadius is how callers ask for "further out than merely off screen"
+        // without lying about the viewport to get it — see BOSS_MIN_SPAWN_DISTANCE.
+        const spawnRadius = Math.max(Math.max(w, h) * 0.5 + 50, offScreenRadius, minSpawnRadius);
 
         const mapOriginX = state.mapOriginX || 0;
         const mapOriginY = state.mapOriginY || 0;
-        const distFromCenter = Math.hypot(x - mapOriginX, y - mapOriginY);
-        
-        if (distFromCenter > 1550) {
-            const angleToCenter = Math.atan2(y - mapOriginY, x - mapOriginX);
-            x = mapOriginX + Math.cos(angleToCenter) * 1550;
-            y = mapOriginY + Math.sin(angleToCenter) * 1550;
+
+        let x, y;
+
+        if (forceX !== null || forceY !== null) {
+            // Caller-positioned spawn (the tutorial's on-screen placement, a Rorschach
+            // split landing beside its parent). Those have their own contracts and are
+            // deliberately allowed to be on screen, so only the arena bound applies.
+            x = forceX !== null ? forceX : state.player.x;
+            y = forceY !== null ? forceY : state.player.y;
+            const dist = Math.hypot(x - mapOriginX, y - mapOriginY);
+            if (dist > SPAWN_CLAMP_RADIUS) {
+                const toCenter = Math.atan2(y - mapOriginY, x - mapOriginX);
+                x = mapOriginX + Math.cos(toCenter) * SPAWN_CLAMP_RADIUS;
+                y = mapOriginY + Math.sin(toCenter) * SPAWN_CLAMP_RADIUS;
+            }
+        } else {
+            // --- Organic spawn: satisfy BOTH constraints, don't project between them.
+            //
+            // This block used to pick one random angle at spawnRadius and then, if the
+            // result fell outside the arena, radially PROJECT it onto the boundary
+            // circle. That projection is what put enemies on top of the player. The
+            // clamp is centred on the map origin and the player stands inside it at
+            // distance d, so the nearest point the projection can produce is
+            // (SPAWN_CLAMP_RADIUS - d) away from them: harmless 1550px at the room's
+            // centre, 50px once the player has drifted 1500px, ~0 at the boundary.
+            // Nothing prevents that drift — the Void at 1600px is a Sanity drain, not
+            // a wall, and the player is never position-clamped during PLAYING. So
+            // enemies materialised in plain sight on every viewport, including 1080p.
+            //
+            // It was invisible at d=0 on every device, which is exactly why the
+            // origin-pinned spawn-ring test in test_bosses.js never caught it.
+            //
+            // Now the angle is CHOSEN to satisfy both requirements at once: inside the
+            // arena, and outside the rectangle the player can actually see. The
+            // rectangle (not the corner radius) is the honest test — the view is wide
+            // but short, which is also why a valid angle always exists: the vertical
+            // direction has room even on a 4K canvas, where the visible half-height
+            // (~831px) is far inside the 1550px arena.
+            //
+            // The live published view wins over this call's own arguments. A caller
+            // passing stand-in dimensions (as the boss spawn did for years) can then
+            // still ask for a longer spawn distance without also redefining, wrongly,
+            // what counts as visible.
+            const halfW = Number.isFinite(state.viewHalfW) ? state.viewHalfW : (w / 2) / zoom;
+            const halfH = Number.isFinite(state.viewHalfH) ? state.viewHalfH : (h / 2) / zoom;
+            const offScreen = (px, py) =>
+                Math.abs(px - state.player.x) > halfW || Math.abs(py - state.player.y) > halfH;
+            const inArena = (px, py) =>
+                Math.hypot(px - mapOriginX, py - mapOriginY) <= SPAWN_CLAMP_RADIUS;
+
+            const playerDist = Math.hypot(state.player.x - mapOriginX, state.player.y - mapOriginY);
+
+            // A point at exactly spawnRadius from the player can only be inside the
+            // arena when spawnRadius <= SPAWN_CLAMP_RADIUS + playerDist. On very large
+            // canvases (ultrawide, 4K) that fails at the centre of the room, so the
+            // sampling loop below could never succeed — skip straight to the rim walk
+            // rather than burning a dozen rejected candidates on every spawn.
+            const ringReachable = spawnRadius <= SPAWN_CLAMP_RADIUS + playerDist;
+
+            if (ringReachable) {
+                for (let i = 0; i < 12; i++) {
+                    const a = Math.random() * Math.PI * 2;
+                    const cx = state.player.x + Math.cos(a) * spawnRadius;
+                    const cy = state.player.y + Math.sin(a) * spawnRadius;
+                    if (inArena(cx, cy) && offScreen(cx, cy)) { x = cx; y = cy; break; }
+                }
+            }
+
+            if (x === undefined) {
+                // Fall back to the arena rim, starting directly opposite the player's
+                // own bearing from the origin — the farthest point available — and
+                // fanning outward in alternating steps until something clears the view.
+                const bearing = Math.atan2(state.player.y - mapOriginY, state.player.x - mapOriginX);
+                for (let k = 0; k < 24; k++) {
+                    const step = (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 12);
+                    const a = bearing + Math.PI + step;
+                    const cx = mapOriginX + Math.cos(a) * SPAWN_CLAMP_RADIUS;
+                    const cy = mapOriginY + Math.sin(a) * SPAWN_CLAMP_RADIUS;
+                    if (offScreen(cx, cy)) { x = cx; y = cy; break; }
+                }
+            }
+
+            if (x === undefined) {
+                // Unreachable for every real viewport (verified across desktop, ultrawide,
+                // 4K, tablet and phone profiles at every player displacement). Kept so a
+                // future viewport that somehow contains the whole arena still spawns
+                // something rather than an entity at undefined coordinates.
+                const bearing = Math.atan2(state.player.y - mapOriginY, state.player.x - mapOriginX);
+                x = mapOriginX + Math.cos(bearing + Math.PI) * SPAWN_CLAMP_RADIUS;
+                y = mapOriginY + Math.sin(bearing + Math.PI) * SPAWN_CLAMP_RADIUS;
+            }
         }
 
         let ent;

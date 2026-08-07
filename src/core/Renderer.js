@@ -5,6 +5,9 @@
 // "frozen game" report. Reporting into the same log closes that gap. This import
 // adds no per-frame cost: errorLog is only touched when something already threw.
 import { errorLog } from './ErrorLog.js';
+// The arena wall drawn below is the same boundary Game.js drains Sanity past and
+// Director.js clamps spawns inside — see the note on ARENA_VOID_RADIUS in Config.js.
+import { ARENA_VOID_RADIUS } from '../data/Config.js';
 
 export class Renderer {
     constructor(canvas, ctx) {
@@ -1715,7 +1718,7 @@ export class Renderer {
             this.ctx.save();
             const mapCenterX = state.mapOriginX;
             const mapCenterY = state.mapOriginY;
-            const mapRadius = 1600;
+            const mapRadius = ARENA_VOID_RADIUS;
             const phase = state.frame * 0.02;
 
             this.ctx.fillStyle = '#030105'; 

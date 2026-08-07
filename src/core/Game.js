@@ -5,7 +5,7 @@ import { TOKENS, getActiveSynergies } from '../data/Manifestations.js';
 import { HubWorld } from '../systems/HubWorld.js';
 import { Tutorial } from '../systems/Tutorial.js';
 import { EventBus } from './EventBus.js';
-import { getXPRequiredForLevel } from '../data/Config.js';
+import { getXPRequiredForLevel, ARENA_VOID_RADIUS } from '../data/Config.js';
 
 export class Game {
     constructor() {
@@ -718,7 +718,7 @@ export class Game {
         const mapCenterY = this.state.mapOriginY;
         const distFromCenter = Math.hypot(this.state.player.x - mapCenterX, this.state.player.y - mapCenterY);
         
-        let voidRadius = 1600;
+        let voidRadius = ARENA_VOID_RADIUS;
         let isInsideSafeZone = false;
 
         for (let sz of this.state.safeZones) {
