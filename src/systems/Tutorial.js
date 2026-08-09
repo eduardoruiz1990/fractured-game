@@ -31,7 +31,7 @@
 //
 // COPY. Written for a twelve-year-old and a fifty-year-old to read once, at a
 // glance, while playing. Short sentences, common words, no lore in the instruction
-// itself — the game's vocabulary (Manifestation, Grip, the Void) is introduced by
+// itself — the game's vocabulary (Manifestation, Sanity, the Void) is introduced by
 // the world and the guide, not by the line that has to teach a button. `keyboard` is
 // required; `touch` is optional and falls back to `keyboard`. A step with no entry
 // here renders NO banner — that is deliberate for FIGHT, which is the deliberate

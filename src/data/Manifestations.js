@@ -41,10 +41,10 @@ export const PLAYER_WEAPON_IDS = [
  */
 export const DOOR_REWARDS = [
     { id: 'LUCIDITY',       name: 'LUCIDITY',        effect: '+50 Lucidity and +50 XP, banked into this run.', color: '#ffddaa' },
-    { id: 'HEAL',           name: 'RECOVERY',        effect: '+50 Grip, capped at your maximum.', color: '#aaffaa' },
+    { id: 'HEAL',           name: 'RECOVERY',        effect: 'Restores 50 Sanity you have already lost. Does NOT raise your maximum, and cannot take you above it.', color: '#aaffaa' },
     { id: 'WEAPON_UPGRADE', name: 'WEAPON UPGRADE',  effect: 'Levels one random weapon that is not yet at 5. If everything is maxed, pays +50 Lucidity instead.', color: '#c5a059' },
     { id: 'TOKEN_DOOR',     name: 'CONFISCATED ITEM', effect: 'Drops a Token on the spot. Tokens are only kept if you survive or extract.', color: '#ff8c00' },
-    { id: 'RISK_REWARD',    name: 'RISK PROTOCOL',   effect: '+150 Lucidity, +150 XP and a Token — at a flat cost of 30 Grip. The cost cannot kill you (it floors at 1) and ignores shields and curses.', color: '#ff3333' }
+    { id: 'RISK_REWARD',    name: 'RISK PROTOCOL',   effect: '+150 Lucidity, +150 XP and a Token — at a flat cost of 30 current Sanity. The cost cannot kill you (it floors at 1) and ignores shields and curses.', color: '#ff3333' }
 ];
 
 export const ROOM_MODIFIERS = [
@@ -58,7 +58,7 @@ export const ROOM_MODIFIERS = [
 // harder AND move differently (Enemy.applyVariantMotion). Keep these sentences true;
 // the guide is the only place the player is told any of it.
 export const ENEMY_VARIANTS = [
-    { id: 'ARMORED',  name: 'ARMORED',  effect: 'Three times the Grip and slower — until it charges you without warning. Do not let it pick the moment.', color: '#6f8fa8' },
+    { id: 'ARMORED',  name: 'ARMORED',  effect: 'Three times the health and slower — until it charges you without warning. Do not let it pick the moment.', color: '#6f8fa8' },
     { id: 'FAST',     name: 'FAST',     effect: 'Fragile, but it weaves across its own approach and darts. You cannot lead it like a straight runner.', color: '#f0e68c' },
     { id: 'VOLATILE', name: 'VOLATILE', effect: 'Unstable — it lurches, hits hardest of the three, and detonates on death within ~130px. Kill it at range.', color: '#ff7043' }
 ];
@@ -232,7 +232,7 @@ export const INTRUSIVE_THOUGHTS = {
     },
     fragile_mind: {
         id: 'fragile_mind', name: 'Fragile Mind',
-        desc: 'Your maximum Grip is halved for the entire descent.',
+        desc: 'Your maximum Sanity is halved for the entire descent.',
         lucidityWeight: 30
     }
 };
@@ -262,20 +262,20 @@ export const TOKEN_SETS = {
     },
     institutionalized: {
         name: "Institutionalized",
-        2: "Max Grip +50",
+        2: "Max Sanity +50",
         4: "Taking damage triggers an AoE shockwave, but you cannot dash.",
         bonuses: { 2: { sanity: 50 }, 4: { grant: 'shockwave_no_dash' } }
     },
     medicated: {
         name: "Medicated",
         2: "Damage taken -20%",
-        4: "Max Grip +80",
+        4: "Max Sanity +80",
         bonuses: { 2: { grant: 'medicated_mitigation' }, 4: { sanity: 80 } }
     },
     relapse: {
         name: "The Relapse",
         2: "Lucidity gain +20%",
-        4: "Melee and kinetic damage +30%, but max Grip -40.",
+        4: "Melee and kinetic damage +30%, but max Sanity -40.",
         bonuses: { 2: { lucidityGain: 20 }, 4: { tagDamage: { melee: 30, kinetic: 30 }, sanity: -40 } }
     }
 };
@@ -301,7 +301,7 @@ export const TOKENS = {
     },
     hands_twitch: {
         id: 'hands_twitch', type: 'hands', set: 'insomniac',
-        name: 'Twitching Fingers', desc: 'Weapon cooldowns accelerate as Grip drops.',
+        name: 'Twitching Fingers', desc: 'Weapon cooldowns accelerate as Sanity drops.',
         effects: { grant: 'twitch_cooldown' }
     },
     legs_pacing: {
@@ -311,7 +311,7 @@ export const TOKENS = {
     },
     presc_stimulant: {
         id: 'presc_stimulant', type: 'prescription', set: 'insomniac',
-        name: 'Amphetamine Script', desc: 'Move speed +5%, but max Grip -20.',
+        name: 'Amphetamine Script', desc: 'Move speed +5%, but max Sanity -20.',
         effects: { speed: 5, sanity: -20 }
     },
 
@@ -328,7 +328,7 @@ export const TOKENS = {
     },
     head_compliance: {
         id: 'head_compliance', type: 'head', set: 'institutionalized',
-        name: 'Compliance Cap', desc: 'Max Grip +40, flashlight range -10%.',
+        name: 'Compliance Cap', desc: 'Max Sanity +40, flashlight range -10%.',
         effects: { sanity: 40, light: -10 }
     },
     presc_sedative: {
@@ -345,7 +345,7 @@ export const TOKENS = {
     },
     body_regimen: {
         id: 'body_regimen', type: 'body', set: 'medicated',
-        name: 'Dosage Regimen', desc: 'Max Grip +30.',
+        name: 'Dosage Regimen', desc: 'Max Sanity +30.',
         effects: { sanity: 30 }
     },
     hands_tremor: {
@@ -355,14 +355,14 @@ export const TOKENS = {
     },
     presc_antipsychotic: {
         id: 'presc_antipsychotic', type: 'prescription', set: 'medicated',
-        name: 'Antipsychotic Script', desc: 'Max Grip +40, but Lucidity gain -10%.',
+        name: 'Antipsychotic Script', desc: 'Max Sanity +40, but Lucidity gain -10%.',
         effects: { sanity: 40, lucidityGain: -10 }
     },
 
-    // --- THE RELAPSE: raw damage and greed, paid for in Grip. ---
+    // --- THE RELAPSE: raw damage and greed, paid for in Sanity. ---
     body_scars: {
         id: 'body_scars', type: 'body', set: 'relapse',
-        name: 'Old Scars', desc: 'Melee and kinetic damage +20%, but max Grip -20.',
+        name: 'Old Scars', desc: 'Melee and kinetic damage +20%, but max Sanity -20.',
         effects: { tagDamage: { melee: 20, kinetic: 20 }, sanity: -20 }
     },
     hands_grip: {
@@ -377,7 +377,7 @@ export const TOKENS = {
     },
     presc_withdrawal: {
         id: 'presc_withdrawal', type: 'prescription', set: 'relapse',
-        name: 'Withdrawal', desc: 'Lucidity gain +25%, but max Grip -30.',
+        name: 'Withdrawal', desc: 'Lucidity gain +25%, but max Sanity -30.',
         effects: { lucidityGain: 25, sanity: -30 }
     }
 };

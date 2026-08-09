@@ -14,7 +14,7 @@ const RARITY_UPGRADE_ORDER = ['common', 'rare', 'epic', 'legendary', 'mythic'];
 // adding a stat there without a label here just means the hover preview silently
 // skips it, never throws.
 const TOKEN_EFFECT_LABELS = {
-    sanity: v => `${v > 0 ? '+' : ''}${v} Max Grip`,
+    sanity: v => `${v > 0 ? '+' : ''}${v} Max Sanity`,
     speed: v => `${v > 0 ? '+' : ''}${v}% Move Speed`,
     light: v => `${v > 0 ? '+' : ''}${v}% Flashlight Range`,
     magnet: v => `${v > 0 ? '+' : ''}${v}px Vacuum Radius`,
@@ -30,7 +30,7 @@ const TOKEN_EFFECT_LABELS = {
 const TOKEN_GRANT_LABELS = {
     denial_shield: 'Shield ignores 1st hit per floor',
     panic_dash: 'Dash: faster recharge, shorter range',
-    twitch_cooldown: 'Cooldowns shrink as Grip drops',
+    twitch_cooldown: 'Cooldowns shrink as Sanity drops',
     insomniac_burn_zone: '(Insomniac 4pc) Outer burn zone',
     shockwave_no_dash: '(Institutionalized 4pc) Hit shockwave, no dash',
     medicated_mitigation: '(Medicated 2pc) Damage taken -20%'

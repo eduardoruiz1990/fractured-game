@@ -3,7 +3,7 @@
 // Patches 55 + 56: the data-driven half of the Clinical Guide.
 //
 // The nine hand-written flashcards in index.html cover the core verbs (move, aim,
-// Grip, Lucidity, the Void, synergies, tokens, Patient Level, Intrusive Thoughts)
+// Sanity, Lucidity, the Void, synergies, tokens, Patient Level, Intrusive Thoughts)
 // and are deliberately left alone — they are prose, and prose is fine hardcoded.
 // Everything BELOW them is a catalogue: every enemy, every variant, every door
 // reward, every room modifier, every weapon, every boon, every token, every curse.

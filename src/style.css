@@ -237,6 +237,47 @@ canvas { display: block; }
 .file-btn.danger:hover:not(:disabled) { background: var(--ui-red); color: white; }
 .file-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
+/* --- SETTINGS VOLUME SLIDERS (Patch 80) ------------------------------------
+   Styled to the folder's clinical language rather than left as a native range
+   input: the settings modal is chrome-for-chrome a medical file, and a stock
+   blue OS slider is the one control that would break it. Track reads as a ruled
+   line on the paper, thumb as a stamped ink block.
+   The thumb is deliberately 26px tall — this is the accessibility panel, and it
+   is reached on phones, where a 16px thumb is not reliably grabbable. */
+.setting-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; max-width: 320px; height: 26px;
+    background: transparent; cursor: pointer; margin: 0;
+}
+.setting-slider::-webkit-slider-runnable-track {
+    height: 6px; background: rgba(17,17,17,0.18);
+    border: 1px solid var(--ink-black); border-radius: 0;
+}
+.setting-slider::-moz-range-track {
+    height: 6px; background: rgba(17,17,17,0.18);
+    border: 1px solid var(--ink-black); border-radius: 0;
+}
+.setting-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 26px; margin-top: -11px;
+    background: var(--ink-black); border: none; border-radius: 1px;
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.35);
+}
+.setting-slider::-moz-range-thumb {
+    width: 14px; height: 26px;
+    background: var(--ink-black); border: none; border-radius: 1px;
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.35);
+}
+.setting-slider:focus-visible { outline: 2px solid var(--blood-red); outline-offset: 4px; }
+.setting-row { display: flex; align-items: center; gap: 14px; width: 100%; }
+/* Fixed width + tabular figures so the track does not shuffle sideways as the
+   readout goes 9% -> 10% -> 100% while the player is dragging. */
+.setting-value {
+    font-family: var(--ui-font); font-weight: bold; color: var(--ink-black);
+    font-size: 1rem; min-width: 3.5em; text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
 /* Patch 37: these buttons had no :active state and the stylesheet had NO focus
    styling anywhere at all — a click gave no physical feedback, and a keyboard
    user had no way to see where they were in the menu. :active presses the

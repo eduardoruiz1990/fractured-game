@@ -7,9 +7,18 @@ export class AudioEngine {
         this.audioCtx = null;
         
         this.masterGain = null;
-        this.masterFilter = null; 
-        this.compressor = null; 
-        
+        this.masterFilter = null;
+        this.compressor = null;
+
+        // PLAYER VOLUME BUSES (Patch 80). Sit BELOW masterGain, which stays the sole
+        // property of ducking / stop() / setMuted(). See the class comment on
+        // setMusicVolume for why these must not share a node with any of those.
+        this.musicGain = null;
+        this.sfxGain = null;
+        // Normalised 0..1 player settings. 1 = the pre-patch mix, exactly.
+        this._musicVolume = 1;
+        this._sfxVolume = 1;
+
         this.lastFootstepTime = 0;
         this.lastHeartbeatTime = 0;
         
@@ -144,28 +153,44 @@ export class AudioEngine {
             this.masterGain = this.audioCtx.createGain();
             this.masterGain.gain.value = 1.2; 
             
-            // ROUTING: Filter -> Compressor -> Speakers
+            // ROUTING: (music|sfx) -> Master -> Filter -> Compressor -> Speakers
             this.masterGain.connect(this.masterFilter);
             this.masterFilter.connect(this.compressor);
             this.compressor.connect(this.audioCtx.destination);
 
+            // The two player-controlled buses. Everything audible goes through one of
+            // them, so a player setting either to 0 gets actual silence on that layer —
+            // before this patch every source connected straight to masterGain and there
+            // was no seam to put a volume control on.
+            this.musicGain = this.audioCtx.createGain();
+            this.musicGain.gain.value = this._volumeToGain(this._musicVolume);
+            this.musicGain.connect(this.masterGain);
+
+            this.sfxGain = this.audioCtx.createGain();
+            this.sfxGain.gain.value = this._volumeToGain(this._sfxVolume);
+            this.sfxGain.connect(this.masterGain);
+
+            // MUSIC / AMBIENCE bus: the menu bed, the gameplay drone, and the
+            // flashlight hum. The hum belongs here rather than on SFX because it is a
+            // continuous tone with no trigger — it is exactly the "noise all the time"
+            // a player asked to be able to turn off.
             this.gains.menuTheme = this.audioCtx.createGain();
             this.gains.menuTheme.gain.value = 0;
-            this.gains.menuTheme.connect(this.masterGain);
-            
+            this.gains.menuTheme.connect(this.musicGain);
+
             this.gains.drone = this.audioCtx.createGain();
             this.gains.drone.gain.value = 0;
-            this.gains.drone.connect(this.masterGain);
-            
+            this.gains.drone.connect(this.musicGain);
+
             this.gains.flashlight = this.audioCtx.createGain();
             this.gains.flashlight.gain.value = 0;
-            this.gains.flashlight.connect(this.masterGain);
+            this.gains.flashlight.connect(this.musicGain);
 
             // <--- ADDED: HEARTBEAT ROUTING FIX --->
-            // Pushing the heartbeat into the masterGain now triggers the compressor!
+            // Still reaches masterGain (and therefore the compressor) via the SFX bus.
             this.gains.heartbeat = this.audioCtx.createGain();
             this.gains.heartbeat.gain.value = 0;
-            this.gains.heartbeat.connect(this.masterGain);
+            this.gains.heartbeat.connect(this.sfxGain);
 
             this.isInitialized = true;
 
@@ -223,6 +248,65 @@ export class AudioEngine {
             this.loadOneAsset(key, url);
         });
     }
+
+    /**
+     * Maps a 0..1 player setting onto a linear gain multiplier.
+     *
+     * Squared, not linear: loudness is roughly logarithmic, so a linear slider spends
+     * most of its travel in a range that all sounds "loud" and gives almost no useful
+     * resolution at the quiet end — which is the end the players who asked for this
+     * are trying to reach. v^2 puts the halfway point at -12dB.
+     *
+     * Total by contract: this feeds a GainNode, and a NaN there poisons the bus for
+     * the rest of the session with no error and no way back short of a reload.
+     */
+    _volumeToGain(v) {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return 1;
+        const clamped = Math.max(0, Math.min(1, n));
+        return clamped * clamped;
+    }
+
+    /**
+     * The bus every one-shot sound belongs on. Falls back to masterGain if called
+     * before the graph exists, so a mis-ordered call degrades to the old behaviour
+     * rather than connecting to null and throwing inside the render path.
+     */
+    _sfxBus() {
+        return this.sfxGain || this.masterGain;
+    }
+
+    /**
+     * Player-facing volume, 0..1, for the music/ambience layer and the SFX layer.
+     *
+     * DELIBERATELY NOT setMuted(). That is a reason-based binary owned by the portal
+     * ('ad' during video playback, 'platform' for the platform's own mute switch), it
+     * hard-sets masterGain AND suspends the context, and it restores a captured
+     * pre-mute value on release. Folding a player volume into it would mean an ad
+     * ending stamps its restore value over whatever the player chose, and a player
+     * sliding music to 0 clears an ad-mute that is still meant to be in force.
+     *
+     * These write to their own nodes further down the graph instead, so the two
+     * systems multiply rather than fight: muted-during-ad AND music-at-30% is a
+     * representable state, and each is restored independently.
+     *
+     * Ramped over 60ms rather than set: a step change on a running bus is an audible
+     * click, and these are driven from a slider that fires continuously while dragged.
+     */
+    setMusicVolume(v) {
+        const n = Number(v);
+        this._musicVolume = Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 1;
+        if (this.musicGain) this.safeFade(this.musicGain, this._volumeToGain(this._musicVolume), 0.06);
+    }
+
+    setSfxVolume(v) {
+        const n = Number(v);
+        this._sfxVolume = Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 1;
+        if (this.sfxGain) this.safeFade(this.sfxGain, this._volumeToGain(this._sfxVolume), 0.06);
+    }
+
+    getMusicVolume() { return this._musicVolume; }
+    getSfxVolume() { return this._sfxVolume; }
 
     safeFade(gainNode, targetValue, duration) {
         if (!gainNode || !this.audioCtx) return;
@@ -359,7 +443,7 @@ export class AudioEngine {
                     source.playbackRate.value = randomizePitch ? 0.5 + Math.random() * 0.1 : 0.5; 
                     gainNode.gain.value = Math.max(0, Math.min(finalVolume * 1.5, 2.0));
                     
-                    source.connect(gainNode).connect(this.masterGain);
+                    source.connect(gainNode).connect(this._sfxBus());
                     source.start();
                 } catch(e) {}
             } else {
@@ -381,7 +465,7 @@ export class AudioEngine {
                 }
                 
                 gainNode.gain.value = Math.max(0, Math.min(finalVolume, 2.0));
-                source.connect(gainNode).connect(this.masterGain);
+                source.connect(gainNode).connect(this._sfxBus());
                 source.start();
             } catch (e) { console.warn(`Failed to play buffer ${key}:`, e); }
         } else {
@@ -422,7 +506,7 @@ export class AudioEngine {
             gain.gain.setValueAtTime(0.12, now); 
             gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
 
-            noise.connect(filter).connect(gain).connect(this.masterGain);
+            noise.connect(filter).connect(gain).connect(this._sfxBus());
             noise.start(now);
         } catch(e) {}
     }
@@ -550,8 +634,13 @@ export class AudioEngine {
         const now = this.audioCtx.currentTime;
         const osc = this.audioCtx.createOscillator();
         
-        const targetGainNode = this.masterGain;
-        
+        // Every voice below — including the sub-oscillators that used to name
+        // this.masterGain directly — goes through this one bus. The routing was
+        // previously split between the two names for no reason (they resolved to the
+        // same node), which is how the SFX layer ended up with nowhere to attach a
+        // volume control.
+        const targetGainNode = this._sfxBus();
+
         const gain = this.audioCtx.createGain();
         osc.connect(gain).connect(targetGainNode);
 
@@ -573,11 +662,11 @@ export class AudioEngine {
             let gulpOsc = this.audioCtx.createOscillator(); let gulpGain = this.audioCtx.createGain();
             gulpOsc.type = 'sine'; gulpOsc.frequency.setValueAtTime(150, now); gulpOsc.frequency.exponentialRampToValueAtTime(40, now + 0.4);
             gulpGain.gain.setValueAtTime(0, now); gulpGain.gain.linearRampToValueAtTime(0.5 * volumeMult, now + 0.1); gulpGain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
-            gulpOsc.connect(gulpGain).connect(this.masterGain); gulpOsc.start(now); gulpOsc.stop(now + 0.6);
+            gulpOsc.connect(gulpGain).connect(targetGainNode); gulpOsc.start(now); gulpOsc.stop(now + 0.6);
             
             let humOsc = this.audioCtx.createOscillator(); let humGain = this.audioCtx.createGain();
             humOsc.type = 'sine'; humOsc.frequency.setValueAtTime(80, now + 0.1); humGain.gain.setValueAtTime(0, now); humGain.gain.linearRampToValueAtTime(0.3 * volumeMult, now + 0.3); humGain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
-            humOsc.connect(humGain).connect(this.masterGain); humOsc.start(now); humOsc.stop(now + 1.2);
+            humOsc.connect(humGain).connect(targetGainNode); humOsc.start(now); humOsc.stop(now + 1.2);
         }
         else if (key === 'polaroid') {
             osc.type = 'square'; osc.frequency.setValueAtTime(1000, now); osc.frequency.exponentialRampToValueAtTime(100, now + 0.05);
@@ -587,7 +676,7 @@ export class AudioEngine {
             let whineOsc = this.audioCtx.createOscillator(); let whineGain = this.audioCtx.createGain();
             whineOsc.type = 'sine'; whineOsc.frequency.setValueAtTime(400, now + 0.05); whineOsc.frequency.exponentialRampToValueAtTime(4000, now + 0.6);
             whineGain.gain.setValueAtTime(0, now); whineGain.gain.setValueAtTime(0.1 * volumeMult, now + 0.05); whineGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-            whineOsc.connect(whineGain).connect(this.masterGain); whineOsc.start(now + 0.05); whineOsc.stop(now + 0.6);
+            whineOsc.connect(whineGain).connect(targetGainNode); whineOsc.start(now + 0.05); whineOsc.stop(now + 0.6);
         }
         else if (key === 'pipe_swing') {
             osc.type = 'sine'; osc.frequency.setValueAtTime(200, now); osc.frequency.exponentialRampToValueAtTime(50, now + 0.2);
@@ -617,7 +706,7 @@ export class AudioEngine {
             noiseGain.gain.setValueAtTime(0.3 * volumeMult, now); 
             noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 4.0);
 
-            noise.connect(filter).connect(noiseGain).connect(this.masterGain); 
+            noise.connect(filter).connect(noiseGain).connect(targetGainNode);
             noise.start(now);
         }
         else if (key === 'heartbeat') {

@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71)
+# FRACTURED — Change Log (Patches 49–71, 80–81)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -459,6 +459,97 @@ the stated intent when `viewSafeRadius` was introduced in Patch 60.
 
 ---
 
+## PLAYER FEEDBACK — audio and vocabulary (2026-08-09)
+
+Two unrelated items shipped together because the second is strictly text.
+
+### Patch 80 — Music and SFX volume
+
+**Driver:** two separate players in two days via the CrazyGames feedback portal.
+*"Noise effects are cool, but not good for my ears. Please don't play noise all the
+time and make an optional setting."* and *"the music is very painful, this could
+seriously cause someone damage, its giving me a headache."* The second asked to
+**adjust**, not mute — so this is a slider, not a toggle.
+
+**What the graph actually was.** One bus. Everything — the menu bed, the drone, the
+flashlight hum, every buffered SFX, every procedural voice, footsteps, the heartbeat —
+terminated at `masterGain`. `playProceduralSFX` appeared to have a routing split
+(`targetGainNode` vs `this.masterGain`) but line 553 assigned `targetGainNode =
+this.masterGain`, so both names were the same node. `gains.heartbeat` was built and
+connected and then never used by anything; `gains.spinner` / `gains.static` are
+declared `null` and never created at all. There was no music/SFX seam to hang a
+control on, and `masterGain` could not become one: it is simultaneously the ducking
+node (`triggerAudioDucking`), the fade node (`stop()`) and the mute node (`setMuted`).
+
+**So two new buses sit BELOW masterGain**: `musicGain` (menuTheme, drone, flashlight
+hum) and `sfxGain` (everything else). The hum is on the music side deliberately — it
+is a continuous tone with no trigger, i.e. exactly the "noise all the time" the first
+player described. Every stray `this.masterGain` inside `playProceduralSFX` now goes
+through `targetGainNode`, which resolves to the SFX bus.
+
+**Volume is NOT `setMuted`.** That is a reason-tracked binary owned by the portal
+(`'ad'`, `'platform'`) which hard-sets `masterGain`, suspends the context, and
+restores a captured pre-mute value. Folding a player float into it would mean an ad
+ending stamps its restore value over the player's choice, and a player sliding music
+to 0 clears an ad-mute that is still meant to be in force. Living on separate nodes
+makes the two multiply instead of fight: *muted-during-ad AND music-at-30%* is a
+representable state.
+
+Other decisions worth their line:
+- **Gain is `v²`, not `v`.** Loudness is roughly logarithmic; a linear slider gives
+  almost no resolution at the quiet end, which is the end these players are trying to
+  reach. Halfway is now −12dB.
+- **Defaults are 1.0 — bit-identical to the pre-patch mix.** Opt-out, not opt-in. A
+  settings blob written before this patch simply lacks the keys and the spread leaves
+  the defaults standing.
+- **Applied and persisted on `input`, not on APPLY & CLOSE** like the two toggles
+  beside them. A player who is in pain needs the change while they are still dragging,
+  and closing the tab from that screen must not restore full volume next session.
+- **`applyAudioSettings()` runs before `preload()`**, so the buses are *created* at the
+  player's level rather than opening every session at full volume for a few frames.
+- The settings modal gained `max-height: 90vh` and a scrolling `folder-content`. Two
+  more rows push it past a landscape phone's height and `.medical-folder` has no
+  overflow rule of its own — the same shape as the Patch 67 level-up clipping.
+
+`fractured_settings` is still **raw `localStorage`**, unlike the suspended-run storage
+which goes through `portalSDK` (Patch 51a). Noted, not changed here: it is try/caught
+in both directions so a `SecurityError` degrades to default settings rather than
+killing boot, and migrating it is its own change.
+
+### Patch 81 — "Grip" and "Sanity" were the same number
+
+**Confirmed bug, display-only fix.** Internally the field is `sanity` everywhere. The
+display split down the middle: `Manifestations.js` (TOKENS, TOKEN_SETS,
+INTRUSIVE_THOUGHTS) said **Grip** — "Max Grip +40", "Your maximum Grip is halved" —
+while `LevelUpUI.js`'s BOONS said **Sanity** — "Max Sanity increased by 50", "Lead
+Shoes: Max Sanity +200". The Clinical Guide hedged as "THE GRIP (SANITY)". A player
+reading a token and a boon in the same run had no way to know they were one stat.
+
+Standardised on **Sanity**: already the internal field, the HUD label and the guide's
+primary term. Only `name`/`desc`/`effect`/label strings and the guide copy changed —
+no `effects: { sanity: N }` key, no `bonuses` key, and no token/boon/curse `id`, since
+ids are referenced by `uid → id` in live inventories and renaming one orphans every
+save that owns it.
+
+Two judgement calls inside the sweep:
+- **`ARMORED` became "Three times the health", not "Sanity".** That string describes an
+  *enemy's* HP. Enemies have no sanity, so the mechanical rename would have been
+  actively wrong there.
+- **The token named "White-Knuckle Grip" keeps its name.** It grants kinetic damage and
+  never touched the stat; with "Grip" gone as a stat name everywhere else, the word is
+  just English again.
+
+**The reward door, verified before rewriting.** `Combat.js`'s `ROOM_DOOR` HEAL branch
+is `state.sanity = Math.min(state.player.maxHp, state.sanity + 50)` — it **restores**
+lost Sanity and never raises the maximum. Unambiguous and consistent, so the text was
+safe to fix without touching behaviour. A player had explicitly reported being unable
+to tell which it was, so all three surfaces now say so: the door label reads
+`HEAL +50 SANITY`, the pickup pops `+50 SANITY RESTORED`, and the guide entry reads
+"Restores 50 Sanity you have already lost. Does NOT raise your maximum." RISK
+PROTOCOL's cost is likewise stated as "30 **current** Sanity".
+
+---
+
 ## Keep clauses (things future patches break by accident)
 
 1. **Never touch `localStorage` directly in `main.js`.** Use
@@ -536,7 +627,26 @@ the stated intent when `viewSafeRadius` was introduced in Patch 60.
     the desktop branch of `updateZoom` is bit-identical to the pre-Patch-71 formula.
 22. **The three world transforms must share `cameraCenterX/Y`** — `drawGame` and both
     `lightCtx` passes. If they disagree, the darkness mask slides off the world.
-23. **`#control-band` stays `pointer-events: none` and takes its height from
+23. **Player volume never goes through `setMuted()`, and `setMuted()` never writes
+    `musicGain`/`sfxGain`.** They are different concepts on different nodes on
+    purpose: `setMuted` is a reason-tracked binary owned by the portal that hard-sets
+    `masterGain` and suspends the context, and it restores a *captured* value on
+    release. Put a player float anywhere near it and an ad ending overwrites the
+    player's choice, or a player muting the music clears a still-active ad-mute.
+24. **Everything audible must connect to `musicGain` or `sfxGain`, never to
+    `masterGain` directly.** A new sound wired straight to `masterGain` is silently
+    exempt from the volume sliders — which is the accessibility bug this existed to
+    fix. `playProceduralSFX`'s `targetGainNode` local is the SFX bus; use it for every
+    sub-voice too, including the ones that used to name `this.masterGain`.
+25. **The audio settings default to 1.0 and must stay opt-out.** Lowering the defaults
+    changes the mix for every existing player who never opened the panel.
+26. **The player-facing name of the `sanity` stat is "Sanity" everywhere.** It was
+    split between "Grip" and "Sanity" across two data files for long enough that a
+    player could not tell one number from two. When adding a token, boon, curse or
+    door reward, the display string says Sanity — and never rename an `id`,
+    `effects` key or `bonuses` key while editing that text, since saves reference
+    ids by `uid → id`.
+27. **`#control-band` stays `pointer-events: none` and takes its height from
     `Renderer.controlBandH`.** The floating joysticks materialise inside it and listen
     on the canvas, so a band that swallowed touches would remove the controls exactly
     where they are meant to be used. A CSS-set height would let the band and the

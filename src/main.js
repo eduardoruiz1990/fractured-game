@@ -214,11 +214,42 @@ function showAdThen(next) {
 }
 
 // --- NEW: GLOBAL ACCESSIBILITY SETTINGS ---
-let gameSettings = { screenShake: true, photosensitive: false };
+//
+// musicVolume / sfxVolume (Patch 80) default to 1 — the exact pre-patch mix. This
+// has to be opt-OUT: an existing player who has never opened this panel must hear
+// what they heard yesterday, and a saved settings blob written before this patch
+// simply lacks the keys, so the spread below leaves the defaults in place.
+//
+// NOTE: this store is RAW localStorage, unlike the suspended-run storage below,
+// which goes through portalSDK for the blocked-iframe reasons documented there.
+// It is at least try/caught in both directions, so a SecurityError degrades to
+// default settings rather than killing boot. Left as-is deliberately — migrating
+// it is a separate change with its own save-compatibility question.
+let gameSettings = { screenShake: true, photosensitive: false, musicVolume: 1, sfxVolume: 1 };
 try {
     const savedSettings = localStorage.getItem('fractured_settings');
     if (savedSettings) gameSettings = { ...gameSettings, ...JSON.parse(savedSettings) };
 } catch(e) { console.warn("Could not load settings."); }
+
+/** Clamp a persisted volume back into 0..1. Old/hand-edited/corrupt saves reach
+ *  a GainNode from here, and a NaN there silences the bus for the session. */
+function safeVolume(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 1;
+}
+
+function saveSettings() {
+    try { localStorage.setItem('fractured_settings', JSON.stringify(gameSettings)); } catch(e) {}
+}
+
+/** Pushes the persisted volumes into the audio graph. Safe to call before the
+ *  AudioContext exists — AudioEngine stores the value and applies it when the
+ *  graph is built, which is the normal case on a cold load. */
+function applyAudioSettings() {
+    if (!audioEngine) return;
+    audioEngine.setMusicVolume(safeVolume(gameSettings.musicVolume));
+    audioEngine.setSfxVolume(safeVolume(gameSettings.sfxVolume));
+}
 
 // --- SUSPENDED-RUN STORAGE (Patch 51a) ---------------------------------------
 //
@@ -344,7 +375,7 @@ function buildRunSummaryHtml(game) {
     return `
         <div class="run-summary">
             <span style="color:var(--ui-gold);">PATIENT FILE — THIS ATTEMPT</span><br>
-            Character Level: <strong>${snap.levels}</strong> &nbsp; Rooms Cleared: <strong>${roomsCleared}</strong> &nbsp; Lowest Grip: <strong>${sanityLow}</strong><br><br>
+            Character Level: <strong>${snap.levels}</strong> &nbsp; Rooms Cleared: <strong>${roomsCleared}</strong> &nbsp; Lowest Sanity: <strong>${sanityLow}</strong><br><br>
             <span style="color:var(--ui-gold);">WEAPONS:</span> ${weaponList}<br>
             <span style="color:var(--ui-gold);">BOONS:</span> ${boonList}<br>
             <span style="color:var(--ui-gold);">SYNERGIES:</span> ${synergyList}<br>
@@ -928,13 +959,31 @@ function initEngine() {
         settingsUI.style.display = 'none';
         settingsUI.style.zIndex = '10000';
         settingsUI.innerHTML = `
-            <div class="medical-folder" style="height: auto; max-width: 500px; border-color: var(--ink-black);">
+            <!-- max-height + the scrolling folder-content below: the two volume rows
+                 added in Patch 80 push this panel past a landscape phone's 390px of
+                 height, and .medical-folder has no overflow rule of its own — the same
+                 way the level-up modal clipped its cards off screen before Patch 67. -->
+            <div class="medical-folder" style="height: auto; max-height: 90vh; max-width: 500px; border-color: var(--ink-black);">
                 <div class="folder-header" style="justify-content: center; border-bottom-color: var(--ink-black);">
                     <div class="title-typewriter" style="font-size: 2rem;">SYSTEM SETTINGS</div>
                 </div>
-                <div class="folder-content" style="display: flex; flex-direction: column; gap: 20px; align-items: flex-start;">
+                <div class="folder-content" style="display: flex; flex-direction: column; gap: 20px; align-items: flex-start; overflow-y: auto;">
+                    <label for="slider-music" style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem;">Music &amp; Ambience Volume</label>
+                    <div class="setting-row" style="margin-top: -12px;">
+                        <input type="range" class="setting-slider" id="slider-music" min="0" max="100" step="1" value="100">
+                        <span class="setting-value" id="value-music">100%</span>
+                    </div>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px;">The menu theme, the room drone, and the constant hum. Set to 0% for silence.</p>
+
+                    <label for="slider-sfx" style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem;">Sound Effects Volume</label>
+                    <div class="setting-row" style="margin-top: -12px;">
+                        <input type="range" class="setting-slider" id="slider-sfx" min="0" max="100" step="1" value="100">
+                        <span class="setting-value" id="value-sfx">100%</span>
+                    </div>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px;">Impacts, footsteps, screams, and the heartbeat. Set to 0% for silence.</p>
+
                     <label style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; gap: 10px;">
-                        <input type="checkbox" id="toggle-shake" style="width: 20px; height: 20px; cursor: pointer;"> 
+                        <input type="checkbox" id="toggle-shake" style="width: 20px; height: 20px; cursor: pointer;">
                         Enable Screen Shake
                     </label>
                     <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Toggle visual impact vibrations.</p>
@@ -981,14 +1030,57 @@ function initEngine() {
 
         const toggleShake = document.getElementById('toggle-shake');
         const togglePhoto = document.getElementById('toggle-photo');
-        
+
         toggleShake.checked = gameSettings.screenShake;
         togglePhoto.checked = gameSettings.photosensitive;
+
+        // --- VOLUME SLIDERS (Patch 80) ---
+        // Applied and persisted on 'input', not on APPLY & CLOSE like the toggles.
+        // Both are deliberate. A player reaching this panel because the audio is
+        // hurting them needs the change to take effect while they are still dragging,
+        // otherwise they cannot tell what they are choosing; and persisting live means
+        // closing the tab from a painful screen still keeps the setting, rather than
+        // greeting them with full volume next session.
+        const sliderMusic = document.getElementById('slider-music');
+        const sliderSfx = document.getElementById('slider-sfx');
+        const valueMusic = document.getElementById('value-music');
+        const valueSfx = document.getElementById('value-sfx');
+
+        if (sliderMusic && sliderSfx) {
+            const paint = () => {
+                valueMusic.innerText = `${Math.round(safeVolume(gameSettings.musicVolume) * 100)}%`;
+                valueSfx.innerText = `${Math.round(safeVolume(gameSettings.sfxVolume) * 100)}%`;
+            };
+            sliderMusic.value = String(Math.round(safeVolume(gameSettings.musicVolume) * 100));
+            sliderSfx.value = String(Math.round(safeVolume(gameSettings.sfxVolume) * 100));
+            paint();
+
+            sliderMusic.addEventListener('input', () => {
+                gameSettings.musicVolume = safeVolume(Number(sliderMusic.value) / 100);
+                applyAudioSettings();
+                paint();
+                saveSettings();
+            });
+
+            sliderSfx.addEventListener('input', () => {
+                gameSettings.sfxVolume = safeVolume(Number(sliderSfx.value) / 100);
+                applyAudioSettings();
+                paint();
+                saveSettings();
+            });
+
+            // An audible reference for the SFX slider once the drag ends. On 'change'
+            // rather than 'input' so dragging does not machine-gun the sample, and
+            // skipped at 0 where the point is that nothing plays.
+            sliderSfx.addEventListener('change', () => {
+                if (audioEngine && gameSettings.sfxVolume > 0) audioEngine.playSFX('ui_click');
+            });
+        }
 
         document.getElementById('btn-close-settings').addEventListener('click', () => {
             gameSettings.screenShake = toggleShake.checked;
             gameSettings.photosensitive = togglePhoto.checked;
-            try { localStorage.setItem('fractured_settings', JSON.stringify(gameSettings)); } catch(e) {}
+            saveSettings();
             settingsUI.style.display = 'none';
         });
 
@@ -1042,6 +1134,11 @@ function initEngine() {
     inputManager = new InputManager(canvas);
     renderer = new Renderer(canvas, ctx);
     audioEngine = new AudioEngine();
+    // Push the persisted volumes in BEFORE preload() builds the graph, so the buses
+    // are created at the player's level. Doing it after would open every session at
+    // full volume for the moments until this ran — which for the players this patch
+    // is for is the entire problem.
+    applyAudioSettings();
     game = new Game();
     levelUpUI = new LevelUpUI(audioEngine, saveManager);
 

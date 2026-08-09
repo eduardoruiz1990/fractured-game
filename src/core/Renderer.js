@@ -110,7 +110,10 @@ export class Renderer {
     roomDoorVisual(rewardType) {
         const table = {
             LUCIDITY: { color: '#ffaa00', glowRgb: '255, 200, 100', label: 'LUCIDITY +50' },
-            HEAL: { color: '#33ff55', glowRgb: '100, 255, 100', label: 'GRIP +50' },
+            // "HEAL", not a bare "+50": a player reported not being able to tell
+            // whether this door raised max Sanity or restored lost Sanity. It restores
+            // (Combat.js ROOM_DOOR: min(maxHp, sanity + 50)), so the label says so.
+            HEAL: { color: '#33ff55', glowRgb: '100, 255, 100', label: 'HEAL +50 SANITY' },
             WEAPON_UPGRADE: { color: '#4499ff', glowRgb: '80, 160, 255', label: 'WEAPON UP' },
             TOKEN_DOOR: { color: '#ff8c00', glowRgb: '255, 140, 0', label: 'TOKEN' },
             RISK_REWARD: { color: '#ff3333', glowRgb: '255, 60, 60', label: 'RISK / REWARD' }

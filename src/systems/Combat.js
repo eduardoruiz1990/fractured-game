@@ -198,7 +198,11 @@ export class Combat {
                             game.spawnDamageText(state.player.x, state.player.y - 20, "+50 LUCIDITY", '#ffddaa', 1.5, 2.0);
                         } else if (obj.rewardType === 'HEAL') {
                             state.sanity = Math.min(state.player.maxHp, state.sanity + 50);
-                            game.spawnDamageText(state.player.x, state.player.y - 20, "+50 GRIP", '#aaffaa', 1.5, 2.0);
+                            // "RESTORED" is load-bearing wording, not flavour: this line
+                            // is min(maxHp, sanity + 50) — it refills lost Sanity and
+                            // never raises the maximum. A player reported not being able
+                            // to tell which of the two it was.
+                            game.spawnDamageText(state.player.x, state.player.y - 20, "+50 SANITY RESTORED", '#aaffaa', 1.5, 2.0);
                         } else if (obj.rewardType === 'WEAPON_UPGRADE') {
                             // Patch 57: entries() rather than values() so the chosen
                             // weapon's id survives for the history record below —
@@ -251,11 +255,11 @@ export class Combat {
                             state.lucidity += 150;
                             state.xp += 150;
                             // Patch 75: same fix as TOKEN_DOOR above, and it mattered more
-                            // here — this door charges 30 Grip for a token that was being
+                            // here — this door charges 30 Sanity for a token that was being
                             // destroyed on the same frame it was created.
                             game.grantToken(state.player.x, state.player.y);
                             state.sanity = Math.max(1, state.sanity - 30);
-                            game.spawnDamageText(state.player.x, state.player.y - 20, "+150 LUCIDITY -30 GRIP", '#ff3333', 1.5, 2.0);
+                            game.spawnDamageText(state.player.x, state.player.y - 20, "+150 LUCIDITY -30 SANITY", '#ff3333', 1.5, 2.0);
                         }
 
                         if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 0.8);

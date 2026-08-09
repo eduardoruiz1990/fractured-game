@@ -13,7 +13,7 @@
  * The reason nobody caught it: the "TOKEN DROPPED!" text DID appear, because damage
  * texts live in one of the few arrays that transition does not clear. The reward
  * looked like it worked and did nothing. RISK_REWARD had the same bug while charging
- * 30 Grip for the privilege.
+ * 30 Sanity for the privilege.
  *
  * So this file asserts the property that was missing, for every door type: after the
  * transition has run, is the player actually holding what the door promised? Anything
