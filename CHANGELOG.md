@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–89)
+# FRACTURED — Change Log (Patches 49–71, 80–90)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -962,6 +962,48 @@ pane-hiding rules sit *inside* the media query are all asserted.
 
 Still open on that screen: **"LUCIDITY RESERVES" renders twice** — once from
 `#tree-lucidity` in `index.html`, again from `_buildHeader()`.
+
+### Patch 90 — The Synapse Tree's mobile view, finished
+
+Third and last patch on this screen, completing the approved design draft. **Mobile
+only** — every rule lives inside the breakpoint and the JS hides nothing.
+
+**The gate now catches landscape.** Patch 89 keyed on width alone, so a landscape phone
+(844px wide) fell through to the desktop four-column tree inside a **308px-tall**
+window — the orientation it was least usable in. Now
+`(max-width: 660px), (pointer: coarse) and (max-height: 560px)`. The `pointer: coarse`
+on the height arm is load-bearing: without it a desktop user who drags their window
+short is handed a phone layout, the same failure Keep clause 21 guards against for
+portrait mode. **Both orientations now render the same mobile view**, which was the
+whole point of the draft.
+
+**The tier rail.** With the four-column grid gone, nothing carried the fact that a
+branch is a **1→7 climb** where each node requires the one below it. The rail draws it:
+numbered dots down the left, connector line between, three states (owned / open /
+locked). Numbered because the sequence is genuinely ordered information — the only
+thing that justifies numbering. The old per-card connector stub is switched off on
+mobile, since the rail says the same thing continuously and better.
+
+Paired tiers (3/4 and 5/6) now **stack** on mobile rather than sitting side by side.
+Patch 89 kept them paired because they fit, but the rail only reads as a climb if every
+tier is its own row with its own number. Seven rows is a longer pillar; that is what
+scrolling is for.
+
+**One reserves line, not two.** `index.html` rendered `LUCIDITY RESERVES` and
+`SynapseTree._buildHeader()` rendered it again a few pixels below, with Patient Level
+attached. The markup copy is now `.tree-reserves-line`, hidden on mobile. **Hidden, not
+deleted** — `UIManager.js:425` writes to `#tree-lucidity` inside it with no null check,
+so removing the element would throw on every folder open.
+
+The two breakpoints — `style.css`'s hide rule and `SynapseTree`'s own query — are
+byte-identical on purpose. If they ever disagree a phone shows either two reserves
+lines or none.
+
+Probe extended: rails numbered 1–7 in climb order, state tracking ownership and
+prerequisites (a node with an unmet requirement reads **locked**, not merely
+unaffordable), all 28 branch nodes wrapped in a tier, the 3 capstones deliberately
+**not** tiered (they belong to no single climb), the rail hidden by default so desktop
+is untouched, and the height arm asserted to require a coarse pointer.
 
 ---
 

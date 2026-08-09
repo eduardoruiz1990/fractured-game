@@ -1037,6 +1037,15 @@ canvas { display: block; }
     }
 }
 
+/* Patch 90: the Synapse tab's own reserves line, hidden on phones because
+   SynapseTree._buildHeader() renders the same number plus Patient Level in a sticky
+   bar a few pixels below it. Kept in the DOM — UIManager writes to #tree-lucidity
+   inside it without a null check. Gate matches SynapseTree's own breakpoint exactly:
+   if these two ever disagree, a phone shows either two reserves lines or none. */
+@media (max-width: 660px), (pointer: coarse) and (max-height: 560px) {
+    .tree-reserves-line { display: none; }
+}
+
 /* --- Device-correct instructional copy (Patch 87) ---------------------------
    Several bits of UI text name a control the player does not have. `TUTORIAL_COPY`
    already solved this for the tutorial (Patch 65) by shipping keyboard/touch variants

@@ -226,7 +226,13 @@
                 </div>
 
                 <div id="tab-tree" class="tab-pane">
-                    <div style="text-align: center; margin-bottom: 20px;">
+                    <!-- Patch 90: this duplicates SynapseTree._buildHeader(), which renders
+                         the same reserves figure AND the Patient Level, in a sticky bar.
+                         Two lines of the same number above the fold is expensive on a phone,
+                         so .tree-reserves-line is hidden on mobile in style.css. It is HIDDEN
+                         rather than deleted because UIManager.js:425 writes to #tree-lucidity
+                         unguarded — removing the element would throw on every folder open. -->
+                    <div class="tree-reserves-line" style="text-align: center; margin-bottom: 20px;">
                         <span class="section-label">LUCIDITY RESERVES: <span id="tree-lucidity" style="color: #8b0000;">0</span> L</span>
                     </div>
                     

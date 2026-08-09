@@ -102,6 +102,14 @@ export class SynapseTree {
             }
             .synapse-capstone-row > .synapse-node-file { flex: 1; }
 
+            /* Patch 90 - tier wrapper. Above the breakpoint the rail is hidden and this
+               is a transparent pass-through, so a column is the same sequence of rows
+               it has always been. .synapse-tier-row.split targets these now rather than
+               the cards, so the card has to grow inside its own wrapper. */
+            .synapse-tier { display: flex; gap: 8px; align-items: stretch; }
+            .synapse-tier > .synapse-node-file { flex: 1 1 auto; min-width: 0; }
+            .synapse-rail { display: none; }
+
             /* Patch 89 - narrow-screen branch selector. Hidden by default; the media
                query below turns it on. Living in the DOM at every width keeps render()
                unconditional - nothing here has to know the viewport. */
@@ -146,7 +154,13 @@ export class SynapseTree {
                layout for a selector would be a downgrade. Phones in portrait
                (360-430px) get the selector; phones in landscape (844px+) and tablets in
                portrait (768px) keep the full tree. */
-            @media (max-width: 660px) {
+            /* Patch 90 widens the gate. Patch 89 keyed only on width, so a LANDSCAPE
+               phone (844px wide) fell through to the desktop four-column tree inside a
+               308px-tall window - the orientation the tree was least usable in. The
+               height arm catches it. Requiring pointer:coarse on that arm keeps a
+               desktop user who drags their window short from being handed a phone
+               layout, which is the same guard Layout.js applies to portrait mode. */
+            @media (max-width: 660px), (pointer: coarse) and (max-height: 560px) {
                 #synapse-tree-grid {
                     grid-template-columns: 1fr;
                     min-width: 0;
@@ -188,11 +202,46 @@ export class SynapseTree {
                 #synapse-tree-grid > [data-branch] { display: none; }
                 #synapse-tree-grid > [data-branch].synapse-pane--active { display: flex; }
 
-                /* At full column width the paired tiers (3/4 and 5/6) fit side by side
-                   at ~177px each, so they stay paired; the basis only makes them stack
-                   on a genuinely tiny screen. */
-                .synapse-tier-row.split { flex-wrap: wrap; }
-                .synapse-tier-row.split > * { flex: 1 1 130px; }
+                /* Patch 90: the paired tiers (3/4 and 5/6) STACK here rather than
+                   sitting side by side. Patch 89 kept them paired because they fit -
+                   but the rail only reads as a climb if every tier is its own row with
+                   its own number. Seven rows is a longer pillar; that is what scrolling
+                   is for, and it is the shape the draft was approved in. */
+                .synapse-tier-row.split { flex-direction: column; gap: 12px; }
+                .synapse-tier-row.split > * { flex: 0 0 auto; }
+
+                /* THE TIER RAIL. Tier order is gated information - each node requires
+                   the one below it - and the four-column grid used to carry that
+                   implicitly. On one pillar it has to be drawn. */
+                .synapse-rail {
+                    display: flex;
+                    flex: 0 0 22px;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 2px;
+                    color: var(--rail-color, #999);
+                }
+                .synapse-rail-dot {
+                    width: 20px; height: 20px; border-radius: 50%;
+                    border: 2px solid currentColor; background: rgba(253, 250, 243, 0.9);
+                    display: flex; align-items: center; justify-content: center;
+                    font-size: 0.62rem; font-weight: bold; line-height: 1;
+                    flex: 0 0 auto;
+                }
+                .synapse-rail-line { flex: 1 1 auto; width: 2px; background: currentColor; opacity: .3; min-height: 6px; }
+                .synapse-rail--owned .synapse-rail-dot { background: var(--rail-color, #999); color: var(--paper-bg); }
+                .synapse-rail--owned .synapse-rail-line { opacity: .75; }
+                .synapse-rail--locked { color: #9c948a; }
+                .synapse-rail--locked .synapse-rail-line { opacity: .18; }
+
+                /* The connector stub was a desktop affordance drawn above each card. The
+                   rail now says the same thing continuously and better. */
+                #synapse-tree-grid .synapse-node-file.synapse-connected::before { display: none; }
+
+                /* One reserves line, not two: index.html renders its own above this
+                   component (see .tree-reserves-line in style.css, hidden there) and
+                   this sticky header is the one that also carries Patient Level. */
+                #synapse-tree-header { position: sticky; top: 0; }
 
                 /* When the capstones ARE the pane, the divider they hang off is not
                    there any more, and three cards of long cross-branch text want the
@@ -318,34 +367,77 @@ export class SynapseTree {
 
         // Tier 1: no connector (root). Tiers 2-6: single-parent connector.
         // Tier 7: two-parent (AND) — text badge instead, per the layout spec.
+        // Patch 90: each node is now wrapped in a .synapse-tier carrying a rail. The
+        // rail is display:none above the breakpoint, so the desktop column is the same
+        // sequence of rows it has always been.
+        const tier = (n, opts) => this._buildTier(byTier(n), n, ownedSet, patientLevel, opts);
+
         const tier1Row = document.createElement('div');
         tier1Row.className = 'synapse-tier-row';
-        tier1Row.appendChild(this._buildNodeCard(byTier(1), ownedSet, patientLevel));
+        tier1Row.appendChild(tier(1));
         col.appendChild(tier1Row);
 
         const tier2Row = document.createElement('div');
         tier2Row.className = 'synapse-tier-row';
-        tier2Row.appendChild(this._buildNodeCard(byTier(2), ownedSet, patientLevel, { showConnector: true }));
+        tier2Row.appendChild(tier(2, { showConnector: true }));
         col.appendChild(tier2Row);
 
         const tier34Row = document.createElement('div');
         tier34Row.className = 'synapse-tier-row split';
-        tier34Row.appendChild(this._buildNodeCard(byTier(3), ownedSet, patientLevel, { showConnector: true }));
-        tier34Row.appendChild(this._buildNodeCard(byTier(4), ownedSet, patientLevel, { showConnector: true }));
+        tier34Row.appendChild(tier(3, { showConnector: true }));
+        tier34Row.appendChild(tier(4, { showConnector: true }));
         col.appendChild(tier34Row);
 
         const tier56Row = document.createElement('div');
         tier56Row.className = 'synapse-tier-row split';
-        tier56Row.appendChild(this._buildNodeCard(byTier(5), ownedSet, patientLevel, { showConnector: true }));
-        tier56Row.appendChild(this._buildNodeCard(byTier(6), ownedSet, patientLevel, { showConnector: true }));
+        tier56Row.appendChild(tier(5, { showConnector: true }));
+        tier56Row.appendChild(tier(6, { showConnector: true }));
         col.appendChild(tier56Row);
 
         const tier7Row = document.createElement('div');
         tier7Row.className = 'synapse-tier-row';
-        tier7Row.appendChild(this._buildNodeCard(byTier(7), ownedSet, patientLevel));
+        tier7Row.appendChild(tier(7));
         col.appendChild(tier7Row);
 
         return col;
+    }
+
+    /**
+     * A node plus its tier rail (Patch 90).
+     *
+     * The rail is NOT decoration. Tier order is gated information — every node requires
+     * the one below it — so on mobile, where the four-column grid that used to convey
+     * "this is a 1 to 7 climb" is gone, the rail is what carries it. Numbered because
+     * the sequence is real, which is the only thing that justifies numbering.
+     *
+     * Built at every width and hidden by CSS above the breakpoint, for the same reason
+     * as the Patch 89 selector: render() never has to know how wide the viewport is.
+     */
+    _buildTier(node, tierNumber, ownedSet, patientLevel, opts = {}) {
+        const wrap = document.createElement('div');
+        wrap.className = 'synapse-tier';
+
+        const state = this._nodeState(node, ownedSet, patientLevel);
+        const rail = document.createElement('div');
+        // Three visual states, not four: 'unaffordable' and 'available' are both
+        // "not yours yet, and not blocked" as far as the climb is concerned. The card
+        // itself already distinguishes them by disabling its own button.
+        const railState = state === 'purchased' ? 'owned' : (state === 'locked' ? 'locked' : 'open');
+        rail.className = `synapse-rail synapse-rail--${railState}`;
+        rail.style.setProperty('--rail-color', node.color);
+
+        const dot = document.createElement('span');
+        dot.className = 'synapse-rail-dot';
+        dot.textContent = String(tierNumber);
+        rail.appendChild(dot);
+
+        const line = document.createElement('span');
+        line.className = 'synapse-rail-line';
+        rail.appendChild(line);
+
+        wrap.appendChild(rail);
+        wrap.appendChild(this._buildNodeCard(node, ownedSet, patientLevel, opts));
+        return wrap;
     }
 
     _buildCapstoneRow(ownedSet, patientLevel) {
