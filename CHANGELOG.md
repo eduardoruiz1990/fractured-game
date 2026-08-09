@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–88)
+# FRACTURED — Change Log (Patches 49–71, 80–89)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -858,6 +858,12 @@ case the scaling did not merely degrade, it put content out of reach entirely.
 
 **A bug, not a polish item. Shipped alone, ahead of the redesign work.**
 
+> **The diagnosis below stands; its LAYOUT was superseded within the hour by Patch 89.**
+> Patch 88 reflowed to a 2×2 grid, which made everything reachable but read wrong —
+> two pillars above two pillars destroys the one thing the layout exists to say. Read
+> this entry for *why the content was unreachable*; read Patch 89 for what it looks
+> like now.
+
 `SynapseTree._injectStyles()` emits an unconditional `min-width: 620px` on
 `#synapse-tree-grid`, `repeat(4, 1fr)` columns and `min-width: 140px` per branch. On a
 390px phone `.folder-content` leaves **362px**, so the grid rendered **620px** wide and
@@ -906,6 +912,56 @@ text; this patch's brace/comment balance was verified that way.
 Still open on that screen, deliberately not bundled: **"LUCIDITY RESERVES" renders
 twice** — once from `#tree-lucidity` in `index.html` and again from
 `_buildHeader()` — two lines of the same number above the fold.
+
+### Patch 89 — One pillar at a time (the Synapse Tree's mobile rendering)
+
+**Supersedes Patch 88's 2×2 stopgap.** Same bug, proper answer.
+
+Patch 88 made the tree reachable by reflowing four columns into 2×2. Reported back as
+looking odd, and it was: **two pillars above two pillars destroys the only thing that
+layout exists to say** — that these are four *parallel lanes* you choose between. A
+grid that wraps is a grid that has stopped meaning anything.
+
+Below **660px** the tree now shows **one pillar at a time**, chosen from a five-tab
+selector (the four branches plus CAPSTONES, which belong to no single branch and so
+cannot live under any of them). That keeps the tree's actual semantics — pick a lane,
+climb it tier by tier — gives every node the full 362px instead of 140px, and removes
+the horizontal overflow rather than trying to make it scrollable. The selector also
+does a job the old layout actively prevented: it *tells* the player four branches
+exist, where the clipped grid hid three of them.
+
+**Breakpoint corrected from Patch 88's 700px to 660px.** 700px was too aggressive — the
+4-column layout genuinely fits down to ~648px (below 768px the folder is full-bleed
+with 14px padding, so content is `viewport − 28`), and swapping a working layout for a
+selector would have been a downgrade. Phones in portrait (360–430px) get the selector;
+phones in landscape (844px+) and tablets in portrait (768px) keep the whole tree.
+
+**Desktop is untouched by construction.** Every rule that hides a pane lives inside the
+media query, and the JS hides nothing — it only toggles classes. So above 660px all
+four columns and the capstone row render exactly as before, the selector stays
+`display: none`, and the pane attributes are inert. Verified: all 31 nodes are in the
+DOM at every width.
+
+**The state bug this had to avoid.** `render()` rebuilds all 31 cards on every
+purchase. Naively, buying a node in FORTUNE would drop the player back to RESILIENCE
+mid-decision — so the active pane is **instance state**, re-asserted after each
+rebuild, and tab switching toggles classes rather than re-rendering (a full rebuild
+would also throw away scroll position on every tap). Both paths are asserted.
+
+Tab colours are read from each branch's own nodes rather than copied, so they cannot
+drift from the data. Tabs get the 44px floor for the same reason as Patches 85 and 87 —
+they are the only way to reach four-fifths of this screen on a phone.
+
+**Test coverage for a file nothing could test before.** `SynapseTree` is DOM-only, so a
+scratch probe drives it against an element mock: every pane selectable, exactly one
+active at a time, selection surviving both a bare `render()` and a real purchase, all
+31 nodes present at every width, and — the part nothing else can do — **validation of
+the injected CSS**, which is a JS template literal that Vite never parses, so a syntax
+error there would ship. Braces, comment balance, backtick-freedom, and that the
+pane-hiding rules sit *inside* the media query are all asserted.
+
+Still open on that screen: **"LUCIDITY RESERVES" renders twice** — once from
+`#tree-lucidity` in `index.html`, again from `_buildHeader()`.
 
 ---
 
@@ -1018,6 +1074,21 @@ twice** — once from `#tree-lucidity` in `index.html` and again from
     door reward, the display string says Sanity — and never rename an `id`,
     `effects` key or `bonuses` key while editing that text, since saves reference
     ids by `uid → id`.
+26b. **`SynapseTree._injectStyles()`'s CSS is a JS TEMPLATE LITERAL that Vite never
+    parses.** Two consequences, both hit during Patches 88–89: a backtick anywhere in
+    it — including inside a comment — silently ends the string and breaks the module
+    (caught by `node -c`), and a CSS syntax error there **ships**, because it is a
+    string as far as the build is concerned. Validate by constructing the class
+    against a DOM mock and checking the emitted text. The rules live there rather than
+    in `style.css` because the `<style>` is appended to `document.head` at
+    construction, i.e. *after* the stylesheet — a same-specificity `#synapse-tree-grid`
+    rule in `style.css` loses the cascade.
+26c. **The Synapse Tree's narrow-screen layout hides panes in CSS ONLY.** The JS
+    toggles classes and never sets `display`, so desktop keeps all four columns by
+    construction. If a future patch hides a pane from JS, desktop loses three branches.
+    The active pane must also stay INSTANCE state re-asserted after `render()` — that
+    method rebuilds every card on each purchase, and a DOM-only flag would drop the
+    player back to RESILIENCE every time they bought something.
 27. **`PORTAL_GAMEPLAY_STATES` changes are METRIC changes — ship them alone, dated.**
     Editing that Set silently redefines what the CrazyGames dashboard's conversion
     and playtime figures mean, and the discontinuity is invisible in the numbers

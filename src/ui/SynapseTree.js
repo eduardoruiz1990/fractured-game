@@ -12,6 +12,20 @@ const BRANCH_ORDER = ['RESILIENCE', 'FOCUS', 'MOTOR', 'FORTUNE'];
 const BRANCH_LABELS = { RESILIENCE: 'RESILIENCE', FOCUS: 'FOCUS', MOTOR: 'MOTOR', FORTUNE: 'FORTUNE' };
 const STYLE_TAG_ID = 'synapse-tree-structural-styles';
 
+// Patch 89 — the narrow-screen panes. Four branches plus the cross-branch capstones,
+// which are their own pane because they belong to no single branch.
+const CAPSTONE_PANE = 'CAPSTONES';
+const PANE_ORDER = [...BRANCH_ORDER, CAPSTONE_PANE];
+const PANE_LABELS = { ...BRANCH_LABELS, [CAPSTONE_PANE]: 'CAPSTONES' };
+const CAPSTONE_COLOR = '#c5a059';
+
+/** A branch's colour, taken from its own nodes so this cannot drift from the data. */
+function branchColor(branchName) {
+    if (branchName === CAPSTONE_PANE) return CAPSTONE_COLOR;
+    const node = SYNAPSE_NODES.find(n => n.branch === branchName);
+    return (node && node.color) || '#999';
+}
+
 export class SynapseTree {
     // onPurchase(nodeId) is optional — called after a successful buyNode, before
     // this class's own render(). Lets a host (UIManager) react to a purchase that
@@ -22,6 +36,11 @@ export class SynapseTree {
         this.container = container;
         this.saveManager = saveManager;
         this.onPurchase = onPurchase;
+        // Patch 89: which pane the narrow-screen selector is showing. Instance state,
+        // not DOM state, so it survives render() — which rebuilds everything on every
+        // purchase and would otherwise throw the player back to RESILIENCE each time
+        // they bought a node.
+        this.activeBranch = BRANCH_ORDER[0];
         this._injectStyles();
     }
 
@@ -83,64 +102,109 @@ export class SynapseTree {
             }
             .synapse-capstone-row > .synapse-node-file { flex: 1; }
 
-            /* --- PORTRAIT: 2 columns, because 4 did not fit and could not be reached.
-               PATCH 88 — a real bug, not a polish item. The rules above are
-               unconditional: a 4-column grid with min-width 620px and 140px columns.
-               On a 390px phone .folder-content leaves 362px, so the grid rendered
-               620px wide and 258px of it sat outside the pane — MOTOR and FORTUNE,
-               14 of the 31 nodes, plus capstones C2 and C3.
+            /* Patch 89 - narrow-screen branch selector. Hidden by default; the media
+               query below turns it on. Living in the DOM at every width keeps render()
+               unconditional - nothing here has to know the viewport. */
+            #synapse-branch-nav { display: none; }
 
-               It could not be scrolled to. .folder-content is the horizontal scroller
-               (overflow-y:auto forces overflow-x to compute to auto), but style.css
-               sets touch-action: pan-y on it — correctly, so the guide and the
-               inventory pan natively — which means a finger CANNOT pan it sideways,
-               and a phone has no scrollbar. The overflow-x: auto on the grid itself
-               does nothing: an element cannot scroll away its own min-width.
+            /* --- NARROW SCREENS: ONE PILLAR AT A TIME ---------------------------
+               PATCH 88 found the bug: the rules above are unconditional, and a
+               4-column grid with min-width 620px and 140px columns does not fit a
+               390px phone, where .folder-content leaves 362px. 258px of the tree sat
+               outside the pane - MOTOR and FORTUNE, 14 of the 31 nodes, plus capstones
+               C2 and C3 - and it could not be scrolled to, because .folder-content
+               carries touch-action: pan-y (correctly, for the guide and inventory) so a
+               finger cannot pan it sideways and a phone has no scrollbar. The
+               overflow-x: auto on the grid itself does nothing: an element cannot
+               scroll away its own min-width. Confirmed on device, and the confirmation
+               was the proof - reachable in landscape (844px leaves 816px, so 620px
+               fits), unreachable in portrait. A bug that reverses with orientation is a
+               width bug.
 
-               Confirmed on device: reachable in landscape, unreachable in portrait —
-               exactly as the widths predict. An 844px landscape phone leaves 816px,
-               so 620px fits and there is no overflow to reach in the first place.
+               PATCH 89 replaces Patch 88s stopgap. That patch reflowed to a 2x2 grid,
+               which made everything reachable but read wrong: two pillars above two
+               pillars destroys the one thing the layout exists to say, which is that
+               these are FOUR PARALLEL LANES you choose between. Reported as looking
+               odd, and it did.
 
-               FIXED BY FITTING, NOT BY SCROLLING. Enabling a horizontal pan nested
-               inside a vertical scroller is a known touch trap, and it would leave the
-               columns at 140px of 0.68rem text. Two columns give (362-12)/2 = 175px
-               per branch — wider than the 146px the 4-column minimum allows — and the
-               whole tree becomes reachable by ordinary vertical scrolling.
+               Now one pillar at a time, chosen from a selector. That keeps the trees
+               actual semantics - pick a lane, climb it tier by tier - gives each node
+               the full 362px instead of 140px, and removes horizontal overflow rather
+               than trying to make it scrollable. The selector doubles as the thing that
+               TELLS a player four branches exist, which the clipped layout actively hid.
 
-               THRESHOLD: the grid needs 620px plus the folder's padding. Below 768px
+               Desktop is untouched: every rule that hides a pane lives inside this
+               query, so above the breakpoint all four columns and the capstone row
+               render exactly as before, and the selector stays display:none.
+
+               BREAKPOINT. The grid needs 620px plus the folders padding. Below 768px
                .medical-folder is full-bleed with 14px padding, so the content box is
-               viewport - 28 and 620px stops fitting at ~648px. Above 768px the
-               folder is 90%/max-1000px with 30px padding, and the narrowest case there
-               (769px -> 632px of content) still fits. 700px is the round number that
-               covers the failing range with margin and touches nothing that works.
-
-               These live HERE rather than in style.css because this <style> is
-               appended to document.head at construction, i.e. AFTER the stylesheet, so
-               a same-specificity #synapse-tree-grid rule over there would lose the
-               cascade. Structural layout is this method's job (see its header comment);
-               node STATE visuals stay in style.css. */
-            @media (max-width: 700px) {
+               viewport minus 28 and 620px stops fitting at ~648px; above 768px the
+               folder is 90%/max-1000px with 30px padding and the narrowest case there
+               (769px -> 632px) still fits. So 660px, not the 700px Patch 88 used: the
+               4-column layout genuinely works down to ~648px, and swapping a working
+               layout for a selector would be a downgrade. Phones in portrait
+               (360-430px) get the selector; phones in landscape (844px+) and tablets in
+               portrait (768px) keep the full tree. */
+            @media (max-width: 660px) {
                 #synapse-tree-grid {
-                    grid-template-columns: repeat(2, 1fr);
+                    grid-template-columns: 1fr;
                     min-width: 0;
                 }
                 .synapse-branch-col { min-width: 0; }
 
-                /* Tiers 3/4 and 5/6 sit side by side. Inside a 175px column that is
-                   ~83px each, too narrow for a card carrying a button. flex-wrap
-                   with a 130px basis lets them stack only when they actually have to,
-                   so a 640px tablet in portrait keeps them paired and a phone does
-                   not — no second breakpoint to keep in sync. */
+                #synapse-branch-nav {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px;
+                    margin-bottom: 14px;
+                }
+                /* 44px floor for the same reason as Patches 85 and 87: these are the
+                   only way to reach 4/5 of this screen on a phone. flex:1 1 auto lets
+                   five labels of different lengths share the row and wrap when they
+                   must, rather than being clipped like the folder tab strip was. */
+                .synapse-branch-tab {
+                    flex: 1 1 auto;
+                    width: auto;
+                    min-height: 44px;
+                    padding: 6px 8px;
+                    font-size: 0.68rem;
+                    letter-spacing: 0;
+                    border-color: var(--branch-color, #555);
+                    color: var(--branch-color, #555);
+                }
+                /* Active reads as filled, matching how .tab-btn.active already signals
+                   the open folder tab - same vocabulary, not a new one. */
+                .synapse-branch-tab.synapse-branch-tab--active {
+                    background: var(--branch-color, #555);
+                    color: var(--paper-bg);
+                    font-weight: 900;
+                    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25);
+                }
+
+                /* One pane visible. Both pane types are flex containers already - the
+                   branch columns column-wise, the capstone row row-wise - so a single
+                   display:flex restores whichever one is active. */
+                #synapse-tree-grid > [data-branch] { display: none; }
+                #synapse-tree-grid > [data-branch].synapse-pane--active { display: flex; }
+
+                /* At full column width the paired tiers (3/4 and 5/6) fit side by side
+                   at ~177px each, so they stay paired; the basis only makes them stack
+                   on a genuinely tiny screen. */
                 .synapse-tier-row.split { flex-wrap: wrap; }
                 .synapse-tier-row.split > * { flex: 1 1 130px; }
 
-                /* Same treatment for the three capstones, which are one flex row
-                   spanning the full grid width: 3 x 113px on a phone otherwise. */
-                .synapse-capstone-row { flex-wrap: wrap; }
-                .synapse-capstone-row > .synapse-node-file { flex: 1 1 150px; }
+                /* When the capstones ARE the pane, the divider they hang off is not
+                   there any more, and three cards of long cross-branch text want the
+                   full width each. */
+                .synapse-capstone-row {
+                    flex-wrap: wrap;
+                    margin-top: 0;
+                    padding-top: 0;
+                    border-top: none;
+                }
+                .synapse-capstone-row > .synapse-node-file { flex: 1 1 100%; }
 
-                /* The header is two items with space-between; at this width they
-                   collide rather than sit apart. */
                 #synapse-tree-header { flex-wrap: wrap; gap: 6px; }
             }
         `;
@@ -242,6 +306,9 @@ export class SynapseTree {
 
         const col = document.createElement('div');
         col.className = 'synapse-branch-col';
+        // Patch 89: marks this as a selectable pane. The CSS only acts on it inside
+        // the narrow-screen media query, so on desktop the attribute is inert.
+        col.dataset.branch = branchName;
         col.style.color = (nodes[0] || {}).color || '#999';
 
         const header = document.createElement('div');
@@ -284,10 +351,64 @@ export class SynapseTree {
     _buildCapstoneRow(ownedSet, patientLevel) {
         const row = document.createElement('div');
         row.className = 'synapse-capstone-row';
+        // Patch 89: the capstones are their own pane — they belong to no single branch,
+        // so they cannot live under one of the four tabs.
+        row.dataset.branch = CAPSTONE_PANE;
         ['C1', 'C2', 'C3'].forEach(id => {
             row.appendChild(this._buildNodeCard(SYNAPSE_NODES_BY_ID[id], ownedSet, patientLevel));
         });
         return row;
+    }
+
+    /**
+     * The narrow-screen pane selector (Patch 89).
+     *
+     * Built at EVERY width and hidden by CSS on desktop, so render() never has to ask
+     * how wide the viewport is — the one boolean that decides the layout stays in the
+     * media query, and there is no JS copy of it to drift.
+     */
+    _buildBranchNav() {
+        const nav = document.createElement('div');
+        nav.id = 'synapse-branch-nav';
+
+        PANE_ORDER.forEach(paneId => {
+            const btn = document.createElement('button');
+            btn.className = 'file-btn small synapse-branch-tab';
+            btn.dataset.branch = paneId;
+            btn.textContent = PANE_LABELS[paneId];
+            btn.style.setProperty('--branch-color', branchColor(paneId));
+            // Switches panes by toggling classes rather than re-rendering: rebuilding
+            // all 31 cards to change a tab would also reset the pane's scroll position,
+            // and this runs on every tap.
+            btn.onclick = () => {
+                this.activeBranch = paneId;
+                this._applyActivePane();
+            };
+            nav.appendChild(btn);
+        });
+
+        return nav;
+    }
+
+    /**
+     * Shows exactly one pane and marks its tab.
+     *
+     * Purely additive to the DOM: on desktop the media query never hides anything, so
+     * these classes sit there doing nothing and all four columns render as always.
+     */
+    _applyActivePane() {
+        if (!this.grid) return;
+        // Direct children only — a node card inside a column must never be mistaken
+        // for a pane.
+        Array.from(this.grid.children).forEach(el => {
+            if (!el.dataset || !el.dataset.branch) return;
+            el.classList.toggle('synapse-pane--active', el.dataset.branch === this.activeBranch);
+        });
+        if (this.nav) {
+            Array.from(this.nav.children).forEach(btn => {
+                btn.classList.toggle('synapse-branch-tab--active', btn.dataset.branch === this.activeBranch);
+            });
+        }
     }
 
     _buildHeader() {
@@ -323,6 +444,11 @@ export class SynapseTree {
 
         this.container.appendChild(this._buildHeader());
 
+        // Patch 89: the pane selector sits between the header and the grid, so on a
+        // phone the first thing under the reserves line is the choice of pillar.
+        this.nav = this._buildBranchNav();
+        this.container.appendChild(this.nav);
+
         const grid = document.createElement('div');
         grid.id = 'synapse-tree-grid';
 
@@ -333,5 +459,11 @@ export class SynapseTree {
         grid.appendChild(this._buildCapstoneRow(ownedSet, patientLevel));
 
         this.container.appendChild(grid);
+        this.grid = grid;
+
+        // Re-assert the selection AFTER the rebuild. render() runs on every purchase,
+        // and without this a player buying a node in FORTUNE would be dropped back to
+        // RESILIENCE mid-decision.
+        this._applyActivePane();
     }
 }
