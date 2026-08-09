@@ -1711,6 +1711,19 @@ function gameLoop(time) {
             // state from scratch on every run and floor descent.
             game.state.viewZoom = renderer.zoom;
 
+            // Patch 84: published the same way and for the same reason as viewZoom
+            // above — Tutorial.js is a pure reducer over game.state with no
+            // InputManager reference, which is what lets test_tutorial.js drive the
+            // real module without a canvas. Its MOVE/DASH give-up budgets are
+            // device-aware, so it needs the mode on state.
+            //
+            // Written every frame, not once: getInputMode() is itself live (a
+            // touchscreen laptop flips to 'keyboard' the moment a real key is pressed),
+            // and Game.init rebuilds state from scratch on every run and floor descent.
+            // It must land BEFORE the simulation steps below, which is where
+            // Tutorial.update runs.
+            game.state.inputMode = inputManager.getInputMode();
+
             // Patch 71: the WORLD viewport, not the canvas. Identical to canvas
             // width/height on every layout except portrait, where the bottom band is
             // reserved for the player's thumbs and shows no world — so spawn rings and

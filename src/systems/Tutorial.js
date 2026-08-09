@@ -68,12 +68,38 @@ export const TUTORIAL_COPY = {
 // Frame budgets (60fps). These are FALLBACKS, not pacing — every step normally ends
 // on the player's own action. They exist so a player who never presses the taught
 // key still reaches combat, the kill and the exit.
-const MOVE_FALLBACK = 900;    // 15s
-const DASH_FALLBACK = 900;    // 15s — longer than the others: the enemy waits on it
+//
+// PATCH 84 — MOVE and DASH are device-aware. Those two are the EMPTY-ROOM phase:
+// Patch 66 deliberately withholds the enemy until both controls are taught
+// (Director.spawnWave refuses to spawn while !tutorialCombatReady), so nothing at all
+// is on screen until DASH clears. At a flat 900+900 a player who never finds the
+// controls waits 30 seconds in an empty room, then meets an enemy held still for up
+// to FREEZE_CAP — first kill around 40s, against a 60s conversion threshold.
+//
+// The player who takes those fallbacks in full IS the player who cannot find the
+// controls, and on touch that is the entire failing cohort: a desktop player clears
+// both in about four seconds on WASD muscle memory, while a phone player has no
+// muscle memory to draw on and, before Patch 65's copy split, was being told to press
+// keys that do not exist. So the budget is spent where it helps — long on keyboard,
+// where taking it means genuine hesitation, short on touch, where taking it means
+// stuck.
+//
+// This changes NO gate semantics. Every gate is still behavioural and still fires
+// the instant the player demonstrates the control; only the give-up budget moves. A
+// touch player who moves at second 2 sees exactly what they saw before.
+const MOVE_FALLBACK = 900;          // 15s — keyboard
+const DASH_FALLBACK = 900;          // 15s — keyboard; the enemy waits on this one
+const MOVE_FALLBACK_TOUCH = 360;    // 6s
+const DASH_FALLBACK_TOUCH = 360;    // 6s  → 12s of empty room at the absolute worst
 const ENGAGE_FALLBACK = 1200; // 20s
 const COLLECT_FALLBACK = 900; // 15s
 const ASCEND_HOLD = 360;      // 6s
 const BANK_HOLD = 480;        // 8s — two sentences, and the more important one
+
+// The ceiling this patch exists to enforce, asserted in test_tutorial.js. Stated as a
+// budget rather than as two magic numbers so retuning either step cannot quietly
+// re-open the 30-second hole: the assertion is on the SUM.
+export const EMPTY_ROOM_BUDGET_TOUCH = 720;   // 12s
 
 // Minimum time any instruction stays up before its gate is allowed to fire. Without
 // it, a player already holding W never sees the MOVE line at all.
@@ -103,6 +129,49 @@ export class Tutorial {
     static go(state, step) {
         state.tutorialStep = step;
         state.tutorialTimer = 0;
+    }
+
+    /**
+     * 'touch' | 'keyboard' for a given state, defaulting to KEYBOARD.
+     *
+     * `state.inputMode` is published each frame by main.js from
+     * InputManager.getInputMode(), the same way `state.viewZoom` is published from the
+     * live camera (Patch 69) — this module stays a pure reducer over game.state with
+     * no InputManager reference, which is what lets test_tutorial.js drive the real
+     * thing without a canvas or an input layer.
+     *
+     * Defaulting to keyboard is deliberate and is the safe direction: an unpublished
+     * or unrecognised value yields exactly the pre-Patch-84 budgets, so a state built
+     * before this patch, or a caller that forgets to publish, degrades to the old
+     * behaviour rather than to a 6-second timeout on a desktop.
+     */
+    static modeOf(state) {
+        return (state && state.inputMode === 'touch') ? 'touch' : 'keyboard';
+    }
+
+    /**
+     * Frame budget after which `step` gives up and advances on its own, or null for
+     * the steps that have no timer.
+     *
+     * Exported as its own function so the budgets are assertable per step and per
+     * device without replaying the machine (Keep clause 17 asks for exactly that), and
+     * so there is one place a future retune has to touch.
+     *
+     * FIGHT and DOOR return null on purpose. FIGHT is the deliberate silence during
+     * combat — it is left by the kill override, and a player still fighting is not
+     * stuck. DOOR is terminal: the tutorial ends when the player walks through it.
+     */
+    static fallbackFor(step, mode) {
+        const touch = mode === 'touch';
+        switch (step) {
+            case 'MOVE':    return touch ? MOVE_FALLBACK_TOUCH : MOVE_FALLBACK;
+            case 'DASH':    return touch ? DASH_FALLBACK_TOUCH : DASH_FALLBACK;
+            case 'ENGAGE':  return ENGAGE_FALLBACK;
+            case 'COLLECT': return COLLECT_FALLBACK;
+            case 'ASCEND':  return ASCEND_HOLD;
+            case 'BANK':    return BANK_HOLD;
+            default:        return null;
+        }
     }
 
     /**
@@ -163,35 +232,40 @@ export class Tutorial {
         const t = s.tutorialTimer;
         if (t < MIN_READ) return;   // every instruction gets read before it can pass
 
+        // Resolved once per tick, and every branch below reads it rather than a bare
+        // constant — so a step can never be given the wrong device's budget by being
+        // edited in isolation.
+        const budget = Tutorial.fallbackFor(step, Tutorial.modeOf(s));
+
         switch (step) {
             case 'MOVE':
-                if (s.tutorialMoved >= MOVE_REQUIRED_PX || t > MOVE_FALLBACK) Tutorial.go(s, 'DASH');
+                if (s.tutorialMoved >= MOVE_REQUIRED_PX || t > budget) Tutorial.go(s, 'DASH');
                 break;
 
             case 'DASH':
                 // Leaving this step is what lets Director.spawnWave place the enemy.
                 // Both controls are learned before anything is on screen to punish
                 // the player for reading.
-                if (s.tutorialDashed || t > DASH_FALLBACK) {
+                if (s.tutorialDashed || t > budget) {
                     s.tutorialCombatReady = true;
                     Tutorial.go(s, 'ENGAGE');
                 }
                 break;
 
             case 'ENGAGE':
-                if (damaged || t > ENGAGE_FALLBACK) Tutorial.go(s, 'FIGHT');
+                if (damaged || t > budget) Tutorial.go(s, 'FIGHT');
                 break;
 
             case 'COLLECT':
-                if (t > COLLECT_FALLBACK) Tutorial.go(s, 'DOOR');
+                if (t > budget) Tutorial.go(s, 'DOOR');
                 break;
 
             case 'ASCEND':
-                if (t > ASCEND_HOLD) Tutorial.go(s, 'BANK');
+                if (t > budget) Tutorial.go(s, 'BANK');
                 break;
 
             case 'BANK':
-                if (t > BANK_HOLD) Tutorial.go(s, 'DOOR');
+                if (t > budget) Tutorial.go(s, 'DOOR');
                 break;
 
             default:

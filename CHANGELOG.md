@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–83)
+# FRACTURED — Change Log (Patches 49–71, 80–84)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -671,6 +671,61 @@ measurements**, and per Keep clause 12 font-derived heights differ by machine
 `overflow-y: auto` alone — a centred flex container makes its top overflow unreachable
 by scrolling — so it is its own patch.
 
+### Patch 84 — The empty room is 12 seconds on touch, not 30
+
+**Budgets only. No gate semantics changed, no copy changed.**
+
+Three individually-correct decisions composed into the worst possible first thirty
+seconds for exactly the players who were failing:
+
+- `MOVE_FALLBACK` and `DASH_FALLBACK` were both **900 frames (15s)**.
+- Leaving DASH is what sets `tutorialCombatReady` (Patch 66).
+- `Director.spawnWave` returns early while `!tutorialCombatReady`, so **nothing spawns
+  at all** until DASH clears.
+
+Patch 66's reasoning still holds — teach both controls in an empty room so combat
+cannot punish a player who is reading. But the fallbacks are the branch taken by a
+player who **cannot find the controls**, and on touch that is the entire failing
+cohort. Measured on the real reducer: a stuck player waited **1802 frames (30.0s)** for
+the room to stop being empty, then met an enemy held still for up to `FREEZE_CAP`, so
+a first kill landed around **40s against a 60-second conversion threshold**. A desktop
+player clears both steps in about four seconds on WASD muscle memory and never sees
+any of it.
+
+So the budget is spent where it helps: long on keyboard, where taking it means genuine
+hesitation; short on touch, where taking it means stuck. Touch MOVE and DASH are
+**360 frames (6s)** each — **722 frames (12.0s)** to the spawn gate, worst-case first
+kill ~19s. Keyboard is **bit-identical at 1802 frames**, asserted.
+
+**Only the give-up budget moved.** Every gate is still behavioural and still fires the
+instant the player demonstrates the control; `MIN_READ` still holds, so an instant
+dash on touch still cannot skip the DASH line. A touch player who moves at second two
+sees exactly what they saw before.
+
+**How the mode reaches a module with no input layer.** `Tutorial.js` is a *pure
+reducer over `game.state`* — that is what lets `test_tutorial.js` drive the real module
+with no canvas and no `InputManager`, and the test inventory says to keep it that way.
+So `main.js` **publishes `state.inputMode`** each frame from `InputManager.getInputMode()`,
+exactly as it publishes `state.viewZoom` from the live camera (Patch 69), written
+before the simulation steps because that is where `Tutorial.update` runs. Rewritten
+per frame rather than latched: `getInputMode()` is itself live (a touchscreen laptop
+flips to `keyboard` on the first real keypress), and `Game.init` rebuilds state from
+scratch every run and floor descent.
+
+**`Tutorial.modeOf()` defaults to KEYBOARD** for an unset or unrecognised value. That
+is the safe direction — a state built before this patch, or a caller that forgets to
+publish, degrades to the old long budgets rather than handing a desktop player a
+6-second timeout. Asserted in both directions.
+
+New `Tutorial.fallbackFor(step, mode)` is the single place a budget is decided, and the
+switch reads it rather than bare constants so a step cannot be given the wrong device's
+budget by being edited alone. `test_tutorial.js` grew from 51 to 86 assertions: the
+ceiling is asserted **on the sum** (`EMPTY_ROOM_BUDGET_TOUCH`) rather than on two magic
+numbers, so retuning either step cannot quietly re-open the hole; every parkable step
+is asserted finite in both modes; `FIGHT`/`DOOR` are asserted to be the only untimed
+ones; and the stuck-player path is replayed end to end in both modes to prove the
+constants actually drive the machine.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -730,7 +785,14 @@ by scrolling — so it is its own patch.
     undone.
 17. **Every tutorial step needs a working time fallback.** The gates are behavioural;
     a player who never presses the taught key must still reach combat, the kill and
-    the exit. Asserted per step.
+    the exit. Asserted per step — and since Patch 84, **per step AND per device**.
+    `Tutorial.fallbackFor(step, mode)` is the only place a budget is decided; never
+    compare `tutorialTimer` against a bare constant in the step switch, or that step
+    silently gets the wrong device's budget. `MOVE + DASH` on touch must stay under
+    `EMPTY_ROOM_BUDGET_TOUCH` — those two are the phase where `Director` refuses to
+    spawn anything, so their sum is literally how long a stuck player stares at an
+    empty room. `modeOf()` must keep defaulting to `keyboard`, and `main.js` must keep
+    publishing `state.inputMode` before the simulation steps.
 18. **`tutorialFreeze` is re-checked against `isTutorial` in `Game.processGameLogic`.**
     The tutorial can end on any frame, and a stale freeze leaves every enemy in the
     run inert. Never consume the flag on its own.
@@ -833,7 +895,7 @@ by scrolling — so it is its own patch.
 | `test_content.js` | 180 | synergy/token/set/curse data, XP curve, audio asset paths, boon pool, `PLAYER_WEAPON_IDS` vs real loadout, cone falloff curves + light-recoil coverage |
 | `test_synapse.js` | 255 | Synapse Tree costs, gates, resolver |
 | `test_leash.js` | 15 | off-screen dead zone, recall lands on screen, boss exclusion, tutorial cases, **desktop viewport derivation unchanged by the live-zoom refactor** |
-| `test_tutorial.js` | 51 | **new** — step gates and overrides, every step's timeout, the instruction hold and its cap, device-appropriate copy, copy length ceiling, degenerate state |
+| `test_tutorial.js` | 86 | **new** — step gates and overrides, every step's timeout, the instruction hold and its cap, device-appropriate copy, copy length ceiling, degenerate state |
 | `test_viewport.js` | 42 | **new** — the desktop/portrait split in both directions, desktop `updateZoom` bit-identical to pre-Patch-71, band and camera geometry, zero-sized canvas |
 
 `test_director.js` and `test_save.js` remain exploratory (they print, they don't

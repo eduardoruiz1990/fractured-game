@@ -21,7 +21,7 @@
  * Tutorial.js is deliberately DOM-free so this can drive the real module.
  */
 
-import { Tutorial, TUTORIAL_COPY } from './src/systems/Tutorial.js';
+import { Tutorial, TUTORIAL_COPY, EMPTY_ROOM_BUDGET_TOUCH } from './src/systems/Tutorial.js';
 
 let passed = 0;
 let failed = 0;
@@ -256,6 +256,99 @@ console.log('\nDevice-appropriate copy');
     }
     check('no line runs long enough to be skipped', longest.text.length <= 110,
           `${longest.id} is ${longest.text.length} chars`);
+}
+
+console.log('\nDevice-aware give-up budgets (Patch 84)');
+{
+    // WHY: MOVE and DASH are the EMPTY-ROOM phase — Director refuses to spawn while
+    // !tutorialCombatReady, so nothing is on screen until DASH clears. At the old flat
+    // 900+900 a player who never found the controls sat in an empty room for 30
+    // seconds against a 60-second conversion threshold, and on touch that is the whole
+    // failing cohort. These assert the budget, not the machine, so a retune of either
+    // step cannot quietly re-open the hole.
+
+    const kbMove = Tutorial.fallbackFor('MOVE', 'keyboard');
+    const kbDash = Tutorial.fallbackFor('DASH', 'keyboard');
+    const tMove = Tutorial.fallbackFor('MOVE', 'touch');
+    const tDash = Tutorial.fallbackFor('DASH', 'touch');
+
+    check('touch MOVE is shorter than keyboard MOVE', tMove < kbMove, `${tMove} vs ${kbMove}`);
+    check('touch DASH is shorter than keyboard DASH', tDash < kbDash, `${tDash} vs ${kbDash}`);
+    check(`the touch empty-room phase fits the ${EMPTY_ROOM_BUDGET_TOUCH}-frame ceiling`,
+          tMove + tDash <= EMPTY_ROOM_BUDGET_TOUCH, `${tMove} + ${tDash} = ${tMove + tDash}`);
+    check('the keyboard budget is UNCHANGED — desktop pacing is not retuned here',
+          kbMove === 900 && kbDash === 900, `${kbMove}, ${kbDash}`);
+
+    // Keep clause 17, restated as a property: every step the player can be PARKED on
+    // has a finite budget, in both modes. FIGHT and DOOR are excluded by design —
+    // FIGHT is the silence during combat and is left by the kill override, DOOR is
+    // terminal — and those are asserted to be the only two.
+    for (const mode of ['keyboard', 'touch']) {
+        for (const step of ['MOVE', 'DASH', 'ENGAGE', 'COLLECT', 'ASCEND', 'BANK']) {
+            const b = Tutorial.fallbackFor(step, mode);
+            check(`${mode}/${step} has a finite budget`,
+                  Number.isFinite(b) && b > 0, `${b}`);
+        }
+        check(`${mode}: FIGHT is deliberately untimed`, Tutorial.fallbackFor('FIGHT', mode) === null);
+        check(`${mode}: DOOR is deliberately untimed`, Tutorial.fallbackFor('DOOR', mode) === null);
+    }
+
+    // Only MOVE and DASH may differ by device. If a future patch makes ENGAGE or
+    // COLLECT device-aware it should be a deliberate decision, not a side effect.
+    for (const step of ['ENGAGE', 'COLLECT', 'ASCEND', 'BANK']) {
+        check(`${step} is the same on both devices`,
+              Tutorial.fallbackFor(step, 'keyboard') === Tutorial.fallbackFor(step, 'touch'));
+    }
+
+    // An unpublished or junk inputMode must yield the KEYBOARD budget — the safe
+    // direction. The failure this guards is a desktop player being given a 6-second
+    // timeout because main.js stopped publishing the field.
+    check('unset inputMode reads as keyboard', Tutorial.modeOf({}) === 'keyboard');
+    check('undefined state reads as keyboard', Tutorial.modeOf(undefined) === 'keyboard');
+    check('junk inputMode reads as keyboard', Tutorial.modeOf({ inputMode: 'gamepad' }) === 'keyboard');
+    check('touch inputMode reads as touch', Tutorial.modeOf({ inputMode: 'touch' }) === 'touch');
+}
+
+console.log('\nThe budgets actually drive the machine, in both modes');
+{
+    // The constants above are only worth asserting if update() reads them. Replays the
+    // stuck-player path end to end and checks WHEN the room stops being empty.
+    const framesToSpawnGate = (mode) => {
+        const g = makeGame();
+        if (mode) g.state.inputMode = mode;
+        for (let f = 1; f <= 3000; f++) {
+            Tutorial.update(g);                       // never moves, never dashes
+            if (g.state.tutorialCombatReady) return f;
+        }
+        return Infinity;
+    };
+
+    const touchFrames = framesToSpawnGate('touch');
+    const kbFrames = framesToSpawnGate('keyboard');
+    const defaultFrames = framesToSpawnGate(undefined);
+
+    check('a stuck TOUCH player reaches the spawn gate inside the budget',
+          touchFrames <= EMPTY_ROOM_BUDGET_TOUCH + 4, `${touchFrames} frames`);
+    check('a stuck KEYBOARD player keeps the original long budget',
+          kbFrames > 1700 && kbFrames < 1830, `${kbFrames} frames`);
+    check('an unpublished inputMode behaves exactly like keyboard',
+          defaultFrames === kbFrames, `${defaultFrames} vs ${kbFrames}`);
+
+    // Gate SEMANTICS are untouched: a touch player who demonstrates both controls
+    // still advances on the action, not on the clock, and still cannot open the gate
+    // by moving alone.
+    const g = makeGame();
+    g.state.inputMode = 'touch';
+    walk(g, 60);
+    check('touch: walking still advances MOVE on the action', g.state.tutorialStep === 'DASH');
+    check('touch: and the gate is still closed until the dash is taught',
+          g.state.tutorialCombatReady === false);
+    dash(g);
+    check('touch: an instant dash still cannot skip the DASH line — MIN_READ holds',
+          g.state.tutorialCombatReady === false);
+    idle(g, 60);
+    check('touch: the recorded dash opens the gate as soon as the line has been read',
+          g.state.tutorialCombatReady === true);
 }
 
 console.log('\nGuards');
