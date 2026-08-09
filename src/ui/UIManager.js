@@ -116,6 +116,11 @@ export class UIManager {
         // Patch 34: inventory sort/filter state, read by renderLoadoutUI().
         this.loadoutSort = 'rarity-desc';
         this.loadoutFilterRarity = 'all';
+        // Patch 91: which slot the mobile chip strip is filtering to, or 'all'.
+        // Defaults to 'all' so the screen OPENS showing the whole collection — nothing
+        // is hidden until the player asks for it — and so the desktop path, where the
+        // chips are display:none and can never be clicked, is bit-identical to before.
+        this.loadoutSlotFilter = 'all';
 
         this.bindElements();
         // Patch 29.7: constructed once here; render() is called from updateMenuUI()
@@ -852,6 +857,92 @@ export class UIManager {
         };
     }
 
+    /**
+     * The mobile slot strip (Patch 91) — one chip per equip slot, plus ALL.
+     *
+     * This is the phone's replacement for the whole `.equipped-panel`, which is a
+     * two-column grid of `aspect-ratio: 1` squares: on a 362px screen those are 176px
+     * each, so five slots plus their two section labels ran to ~550px before the
+     * inventory even started, and in landscape the panel needed ~398px inside 308px of
+     * available height — it structurally could not fit. A chip carries the same two
+     * facts (which slot, what is in it) in 44px.
+     *
+     * Each chip does BOTH jobs, which is why the strip can replace the panel outright:
+     * it filters the list to that slot, and — when the slot is filled — selects the
+     * equipped token so the sticky action bar offers REVOKE. Without that second
+     * behaviour, hiding the panel would take away the only way to unequip on a phone.
+     *
+     * Built at every width and hidden by CSS on desktop, matching how the Synapse
+     * selector works: no render path has to know the viewport, and there is no JS copy
+     * of the breakpoint to drift.
+     *
+     * Rebuilt on every renderLoadoutUI() rather than patched, because the chips display
+     * live equipped state and this method already rebuilds the whole inventory grid;
+     * six buttons alongside that is free.
+     */
+    renderSlotChips() {
+        if (!this.inventoryGrid || !this.inventoryGrid.parentNode) return;
+        const meta = this.saveManager.metaState;
+
+        let bar = document.getElementById('loadout-slot-chips');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'loadout-slot-chips';
+            this.inventoryGrid.parentNode.insertBefore(bar, this.inventoryGrid);
+        }
+        bar.innerHTML = '';
+
+        // 'all' first so the default state is the leftmost chip and the strip reads
+        // left-to-right as "everything, then narrow it down".
+        const entries = ['all', ...TOKEN_SLOT_TYPES];
+
+        entries.forEach(slot => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'loadout-slot-chip';
+            chip.dataset.slot = slot;
+            if (this.loadoutSlotFilter === slot) chip.classList.add('loadout-slot-chip--active');
+
+            const name = document.createElement('span');
+            name.className = 'loadout-slot-chip-name';
+            // 'prescription' is 12 characters and would set the width of the whole
+            // strip; SCRIPT is what the token itself is called in-fiction anyway.
+            name.textContent = slot === 'all' ? 'ALL'
+                : (slot === 'prescription' ? 'SCRIPT' : slot.toUpperCase());
+            chip.appendChild(name);
+
+            const sub = document.createElement('span');
+            sub.className = 'loadout-slot-chip-sub';
+
+            let equippedItem = null;
+            if (slot !== 'all') {
+                const uid = meta.equippedTokens[slot];
+                equippedItem = uid ? meta.inventory.find(i => i.uid === uid) : null;
+                const tokenData = equippedItem ? TOKENS[equippedItem.id] : null;
+                sub.textContent = tokenData ? tokenData.name : '— empty —';
+                if (tokenData) chip.classList.add('loadout-slot-chip--filled');
+            } else {
+                const filled = TOKEN_SLOT_TYPES.filter(s => meta.equippedTokens[s]).length;
+                sub.textContent = `${filled}/${TOKEN_SLOT_TYPES.length} worn`;
+            }
+            chip.appendChild(sub);
+
+            chip.onclick = () => {
+                this.loadoutSlotFilter = slot;
+                // Selecting the worn token is what keeps REVOKE reachable once the
+                // equipped panel is hidden. renderLoadoutUI() runs after, so the chip's
+                // own active state is redrawn from the filter we just set.
+                if (equippedItem) {
+                    const tokenData = TOKENS[equippedItem.id];
+                    if (tokenData) this.selectEquippedSlot(slot, equippedItem);
+                }
+                this.renderLoadoutUI();
+            };
+
+            bar.appendChild(chip);
+        });
+    }
+
     renderLoadoutUI() {
         const meta = this.saveManager.metaState;
 
@@ -894,6 +985,7 @@ export class UIManager {
         });
 
         this.renderSetProgress();
+        this.renderSlotChips();
 
         this.inventoryGrid.innerHTML = '';
         // Patch 33: dropping an equipped item's drag here unequips it — the click
@@ -917,6 +1009,17 @@ export class UIManager {
 
         if (this.loadoutFilterRarity && this.loadoutFilterRarity !== 'all') {
             unequippedItems = unequippedItems.filter(invItem => invItem.rarity === this.loadoutFilterRarity);
+        }
+
+        // Patch 91: slot filter, driven by the mobile chip strip. Inert on desktop —
+        // the chips are display:none there, so this stays 'all' and the list is exactly
+        // what it was. Applied alongside the rarity filter rather than replacing it, so
+        // the two compose ("epic head tokens") instead of fighting.
+        if (this.loadoutSlotFilter && this.loadoutSlotFilter !== 'all') {
+            unequippedItems = unequippedItems.filter(invItem => {
+                const t = TOKENS[invItem.id];
+                return t && t.type === this.loadoutSlotFilter;
+            });
         }
 
         unequippedItems.sort((a, b) => {

@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–90)
+# FRACTURED — Change Log (Patches 49–71, 80–91)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1005,6 +1005,58 @@ unaffordable), all 28 branch nodes wrapped in a tier, the 3 capstones deliberate
 **not** tiered (they belong to no single climb), the rail hidden by default so desktop
 is untouched, and the height arm asserted to require a coarse pointer.
 
+### Patch 91 — The Therapy Regimen's mobile view
+
+The second half of the approved draft. **Mobile only**: every rule sits inside the
+breakpoint, and the JS behind it is inert while the chips are hidden. Strictly
+additive — 231 insertions, 0 deletions.
+
+**Why a second layout rather than another reflow.** Measured: portrait gives
+`.folder-content` **362 × 737**, landscape **816 × 308** — 2.4× the height and 2.25×
+the width, *in opposite directions*. Any layout derived from the desktop one favours
+one orientation and breaks the other, and it broke landscape hardest: the equipped
+panel alone needs **~398px** of content (five `aspect-ratio: 1` slots in a two-column
+grid) inside **308px** of available height, in a nested scroller. Not "hard to see" —
+structurally impossible.
+
+**The equipped panel is replaced, not restyled.** A new `#loadout-slot-chips` strip
+carries both things that panel displayed — which slot, what is worn — in 44px instead
+of ~550px. Each chip does two jobs, which is what lets the panel go entirely: it
+filters the list to that slot, **and**, when the slot is filled, selects the worn token
+so the action bar offers REVOKE. Without that second behaviour, hiding the panel would
+have removed the only way to unequip on a phone. Asserted in both directions.
+
+**The details panel becomes a sticky action bar.** This is the fix for *"tapping a
+token does nothing visible"* — it was the last child of a ~1100px pane, so selecting an
+item updated something ~700px below the fold. Stuck to the bottom of the scroller, the
+selection and its `PRESCRIBE` button are always on screen.
+
+**Cards become rows**, in a `minmax(260px, 1fr)` grid — one column at 362px, two at
+816px. The orientation difference is absorbed by the grid instead of by a second
+breakpoint.
+
+Chrome budget against landscape's 308px: chip strip 48 + sort row 48 + action bar 60 =
+**156px fixed**, leaving ~152px of list (two rows) in landscape and ~581px (nine rows)
+in portrait. Same layout, usable in both — which was the point of the draft.
+
+Also gone on mobile: the three nested scrollers (`.folder-content` is now the only one,
+so touch drags cannot be captured by an inner pane), and the hover tooltip, which has
+no touch equivalent — the action bar shows the same effects on tap.
+
+**The three open questions, answered as built:** two columns in landscape (via the
+grid, not a branch); chips filter, with **ALL as the default** so the screen opens
+showing the whole collection and no deselect gesture is ever needed; set progress folds
+into the action bar's existing `#detail-set` for the selected token, and the desktop
+four-set panel is hidden on phones.
+
+The breakpoint is byte-identical to the Synapse view's, so both screens agree on what
+"a phone" is.
+
+**Known, pre-existing, not touched:** viewports 661–768px (portrait tablets) fall in a
+gap — the older `(max-width: 768px)` block stacks the loadout there but this block does
+not apply, so they keep the two-column equipped grid with very large slots. Unchanged
+by this patch, and out of scope for a mobile-only change.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -1131,6 +1183,19 @@ is untouched, and the height arm asserted to require a coarse pointer.
     The active pane must also stay INSTANCE state re-asserted after `render()` — that
     method rebuilds every card on each purchase, and a DOM-only flag would drop the
     player back to RESILIENCE every time they bought something.
+26d. **The mobile menu breakpoint is `(max-width: 660px), (pointer: coarse) and
+    (max-height: 560px)` and must stay identical everywhere it appears** — currently
+    `SynapseTree._injectStyles()`, the `.tree-reserves-line` hide rule, and the Therapy
+    Regimen block. The width arm catches portrait phones, the height arm catches
+    landscape ones, and `pointer: coarse` on the height arm is what stops a desktop
+    user who drags their window short from being handed a phone layout. If two copies
+    drift, a phone gets half of one layout and half of another — e.g. two Lucidity
+    reserves lines, or none.
+26e. **On mobile the loadout's equipped panel is HIDDEN and `#loadout-slot-chips`
+    replaces it.** Each chip must keep selecting the worn token when its slot is
+    filled: that is the only remaining way to unequip on a phone. `loadoutSlotFilter`
+    must also keep defaulting to `'all'`, or the desktop list — where the chips are
+    `display: none` and can never be clicked — would silently render filtered.
 27. **`PORTAL_GAMEPLAY_STATES` changes are METRIC changes — ship them alone, dated.**
     Editing that Set silently redefines what the CrazyGames dashboard's conversion
     and playtime figures mean, and the discontinuity is invisible in the numbers
