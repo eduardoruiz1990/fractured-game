@@ -157,11 +157,32 @@ resize();
 portalSDK.init();
 
 // Which gameStates count as "gameplay" for the portal's gameplayStart/Stop events.
+//
 // DECISION (Patch 44): only an actual run counts. The Mind Palace HUB is canvas-
 // rendered and walkable, but it is where the player shops, equips tokens and buys
 // tree nodes — menu behaviour — so it is deliberately EXCLUDED, matching the SDK
 // docs' guidance that menus are a gameplay break.
-const PORTAL_GAMEPLAY_STATES = new Set(['PLAYING']);
+//
+// AMENDED (Patch 82): LEVEL_UP now counts. The Patch 44 exclusion was aimed at
+// MENUS — out-of-run management the player enters on purpose and could stay in
+// indefinitely. A level-up card is the opposite: an in-run decision, forced by the
+// run itself, that the player cannot reach any other way and leaves in one click.
+//
+// This is not a neutral reclassification, which is why it ships alone. Patch 65
+// deliberately made the tutorial kill drop 75 XP so that EVERY new player reaches a
+// level-up card inside their first minute — so the card reliably lands inside the
+// platform's 60-second conversion window, and every second spent reading it was
+// being reported as not-playing. The cards render at clamp(94px, 28vw, 152px), so a
+// 390px phone spends longer on that screen than a desktop does, which means the
+// exclusion was subtracting more from mobile than from desktop from the one screen
+// the game guarantees both of them see. Some part of the measured desktop/mobile
+// conversion gap was an artefact of this line.
+//
+// PAUSED, DEAD, EXIT_REACHED and HUB stay excluded. The honest edge case: a player
+// who walks away with the card open is now counted as playing, where a player who
+// walks away on the pause menu is not. That asymmetry is accepted — PAUSED is the
+// player declaring they have stopped; a level-up card is a run in progress.
+const PORTAL_GAMEPLAY_STATES = new Set(['PLAYING', 'LEVEL_UP']);
 let portalLastGameplay = false;
 
 /**

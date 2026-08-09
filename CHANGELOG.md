@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–81)
+# FRACTURED — Change Log (Patches 49–71, 80–82)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -550,6 +550,79 @@ PROTOCOL's cost is likewise stated as "30 **current** Sanity".
 
 ---
 
+## METRICS — gameplay-state accounting (2026-08-09)
+
+### Patch 82 — `LEVEL_UP` now counts as gameplay
+
+> ## ⚠️ MEASUREMENT DISCONTINUITY — 2026-08-09
+>
+> **CrazyGames dashboard "gameplay conversion" and average-playtime figures from
+> before this date are NOT directly comparable with figures from after it.** This
+> patch changes what the game reports as gameplay, so a change in those numbers
+> across this boundary is not by itself evidence of a change in player behaviour.
+>
+> Both metrics should move **up**, on every platform, with no gameplay change
+> whatsoever — the conversion threshold is 60 seconds of reported gameplay, and this
+> patch stops subtracting level-up card time from it. Mobile should move up **more
+> than desktop**; see below for why.
+>
+> Any A/B reasoning that spans this date needs a fresh baseline taken after it.
+> Compare *within* an era, never across the boundary.
+
+**One line changed**, shipped alone and deliberately unbundled so the metric shift is
+attributable to exactly one cause:
+
+```js
+const PORTAL_GAMEPLAY_STATES = new Set(['PLAYING']);            // before
+const PORTAL_GAMEPLAY_STATES = new Set(['PLAYING', 'LEVEL_UP']); // after
+```
+
+**Why the Patch 44 exclusion was wrong here.** That decision was aimed at *menus* —
+out-of-run management the player enters on purpose and can sit in indefinitely, which
+is what the SDK docs call a gameplay break. A level-up card is the opposite of that:
+an in-run decision, forced by the run, unreachable any other way, exited in one click.
+It was swept up by a rule written for the Mind Palace.
+
+**Why it plausibly distorted the mobile gap specifically.** Patch 65 made the tutorial
+kill drop 75 XP precisely so that **every** new player reaches a level-up card inside
+their first minute — that was the right fix for the hook, and it is why the card
+reliably lands *inside* the platform's 60-second conversion window. The cards render
+at `clamp(94px, 28vw, 152px)`, so a 390px phone spends longer reading the same three
+options than a desktop does. The exclusion was therefore subtracting more time from
+mobile than from desktop, on the one screen the game guarantees both of them see.
+
+This does **not** claim the desktop/mobile conversion gap is only an artefact. It
+claims some unknown part of it was, and that the part was not measurable while this
+line stood. Establishing the real gap is the point of the change.
+
+**What stays excluded, and the one honest asymmetry.** `PAUSED`, `DEAD`,
+`EXIT_REACHED` and `HUB` are unchanged. The accepted edge case: a player who walks
+away with the level-up card open is now counted as playing, where a player who walks
+away on the pause menu is not. `PAUSED` is the player declaring they have stopped; a
+level-up card is a run in progress. Accepted knowingly rather than overlooked.
+
+**Verified before shipping** (`syncPortalGameplayState` is a frame observer, so the
+risk is a missed or duplicated edge, not a wrong value):
+
+- `PLAYING → LEVEL_UP → PLAYING` now emits **nothing at all** — no stop, no restart —
+  including across many idle frames with the card open. That is the whole intent.
+- Every exit from `LEVEL_UP` (`DEAD`, `PAUSED`, `EXIT_REACHED`, `HUB`) still emits
+  exactly one `gameplayStop`, and leaves the observer able to re-emit `gameplayStart`.
+- `showAdThen`'s `portalLastGameplay` handling is untouched. Its only caller runs at
+  `gameState === 'DEAD'`, where the flag is already false and the guard is a no-op —
+  before and after. Asserted anyway that if it ever fired mid-gameplay it stops once
+  and does not wedge the observer.
+- No `START`/`STOP` imbalance across a long mixed session.
+
+Three structural facts confirmed while reading `main.js`, which is what makes the
+above safe: the observer runs once per frame at the top of `gameLoop` rather than at
+the ~15 assignment sites; `showAdThen` has exactly one caller; and `LEVEL_UP` can only
+be entered from a `PLAYING` step, because `Game.update` early-returns for any state
+that is not `PLAYING` or `HUB`, `HUB` has no leveling, and `onLevelUp` returns early
+when `gameState === 'DEAD'`.
+
+---
+
 ## Keep clauses (things future patches break by accident)
 
 1. **Never touch `localStorage` directly in `main.js`.** Use
@@ -646,7 +719,16 @@ PROTOCOL's cost is likewise stated as "30 **current** Sanity".
     door reward, the display string says Sanity — and never rename an `id`,
     `effects` key or `bonuses` key while editing that text, since saves reference
     ids by `uid → id`.
-27. **`#control-band` stays `pointer-events: none` and takes its height from
+27. **`PORTAL_GAMEPLAY_STATES` changes are METRIC changes — ship them alone, dated.**
+    Editing that Set silently redefines what the CrazyGames dashboard's conversion
+    and playtime figures mean, and the discontinuity is invisible in the numbers
+    themselves. Anything bundled alongside becomes permanently unattributable. Every
+    change to it needs its own dated changelog banner (see Patch 82) so a future
+    reader can tell a real behaviour change from an accounting one. `syncPortalGameplayState`
+    is a frame OBSERVER — verify additions by walking every entry and exit edge of the
+    new state, not just the happy path, and confirm `showAdThen`'s
+    `portalLastGameplay` guard still leaves the observer authoritative.
+28. **`#control-band` stays `pointer-events: none` and takes its height from
     `Renderer.controlBandH`.** The floating joysticks materialise inside it and listen
     on the canvas, so a band that swallowed touches would remove the controls exactly
     where they are meant to be used. A CSS-set height would let the band and the

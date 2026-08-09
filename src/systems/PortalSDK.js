@@ -126,7 +126,9 @@ class PortalSDK {
     }
 
     /**
-     * Gameplay has broken off — death, pause, level-up modal, or a menu.
+     * Gameplay has broken off — death, pause, or a menu.
+     * (Patch 82: the level-up modal is NO LONGER one of these. It is an in-run
+     * decision, not a break — see PORTAL_GAMEPLAY_STATES in main.js.)
      * Idempotent: repeated calls without an intervening start are ignored.
      */
     gameplayStop() {
