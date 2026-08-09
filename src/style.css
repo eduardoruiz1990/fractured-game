@@ -977,6 +977,51 @@ canvas { display: block; }
     .roadmap-timeline { gap: 8px; }
     .roadmap-node { padding: 8px 12px; }
 }
+/* Touch-target floor for the HUD buttons (Patch 85).
+   #btn-pause is the only .hud-icon-btn, and on a phone it is the ONLY way to pause:
+   the Escape/P handlers in main.js are keyboard, so touch has no other route. The two
+   small-screen blocks above shrink it to `0.68rem / 3px 7px` (portrait) and
+   `0.68rem / 2px 6px` (landscape) — roughly 21px and 19px tall against the 44px
+   minimum touch target. The one control a player reaches for when they need OUT of the
+   game was the hardest thing on screen to hit.
+
+   GATED ON `pointer: coarse`, NOT on width. The rule is about the input device, not
+   the viewport — a desktop user with a narrow window has a mouse and needs no larger
+   target, and would otherwise get a HUD change for resizing their browser.
+   `(pointer: coarse)` describes the PRIMARY pointer, so a touchscreen laptop with a
+   trackpad reads as fine and is correctly left alone. It is the same signal
+   InputManager already probes for `coarsePointer` and Layout.js requires for the
+   portrait gate, so the codebase has one answer to "is this a touch device".
+
+   A VISIBLE 44px button, deliberately, rather than the usual invisible ::after hit-area
+   trick. #ui-layer is `pointer-events: none` with only this button set to `auto`, so an
+   expanded transparent region would sit directly over the CANVAS — in the top-right
+   corner, which is inside the aim half. The floating aim stick materialises wherever a
+   thumb lands, so an invisible catcher there would silently swallow aim touches and
+   pause the game instead, with nothing on screen to explain why. A target the player
+   can see is a target they can also choose to avoid.
+
+   COST, accepted: `.score-section` is a flex column and is already the tallest HUD
+   cluster, so the row grows by roughly 20px on a phone. That is real estate on a
+   390px-tall landscape screen. It buys a pause button that can actually be pressed.
+   Desktop is untouched — this block cannot match a mouse-driven pointer. */
+@media (pointer: coarse) {
+    .hud-icon-btn {
+        min-height: 44px;
+        min-width: 44px;
+        /* Trimmed to give back a little of what min-height takes. */
+        margin-top: 2px;
+        /* Explicit centring: once min-height exceeds the content box, relying on the
+           button's default vertical centring is UA-dependent. inline-flex rather than
+           flex so it still sizes to its text — .score-section is `align-items:
+           flex-end`, and a block-level flex child here would be fine today but would
+           stretch the moment that changes. */
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
 @keyframes glitch { 0% { opacity: 1; filter: contrast(1); } 50% { opacity: 0.95; filter: contrast(1.2); } 51% { opacity: 1; filter: contrast(1); } 100% { opacity: 1; } }
 
 .joystick-base {

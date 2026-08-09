@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–84)
+# FRACTURED — Change Log (Patches 49–71, 80–85)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -725,6 +725,42 @@ numbers, so retuning either step cannot quietly re-open the hole; every parkable
 is asserted finite in both modes; `FIGHT`/`DOOR` are asserted to be the only untimed
 ones; and the stuck-player path is replayed end to end in both modes to prove the
 constants actually drive the machine.
+
+### Patch 85 — The pause button is a real touch target
+
+**CSS only, additive, touch only.** Desktop cannot match this rule.
+
+`#btn-pause` is the only `.hud-icon-btn`, and on a phone it is the **only way to
+pause** — the Escape and `P` handlers in `main.js` are keyboard. The two small-screen
+blocks shrink it to `0.68rem / 3px 7px` in portrait and `0.68rem / 2px 6px` in
+landscape: roughly **21px and 19px tall** against a 44px minimum. The one control a
+player reaches for when they want *out* was the hardest thing on screen to hit — and
+since Patch 80 it is also the only in-run route to the audio sliders.
+
+Now `min-height: 44px; min-width: 44px`, with explicit `inline-flex` centring (once
+min-height exceeds the content box, relying on a button's default vertical centring is
+UA-dependent; `inline-flex` rather than `flex` so it still sizes to its text even if
+`.score-section` ever stops being `align-items: flex-end`).
+
+**Gated on `(pointer: coarse)`, not on width.** The rule is about the input device, not
+the viewport: a desktop user with a narrow window has a mouse and needs no larger
+target. `pointer` describes the PRIMARY pointer, so a touchscreen laptop with a
+trackpad reads as `fine` and is correctly left alone. Same signal `InputManager` probes
+for `coarsePointer` and `Layout.js` requires for the portrait gate — one answer to "is
+this a touch device".
+
+**A visible 44px button, deliberately, not the usual invisible `::after` hit-area
+trick.** `#ui-layer` is `pointer-events: none` with only this button set to `auto`, so
+an expanded transparent region would sit directly over the **canvas**, in the top-right
+corner — inside the aim half. The aim stick is floating and materialises wherever a
+thumb lands, so an invisible catcher there would silently swallow aim touches and pause
+the game instead, with nothing on screen to explain it. A target the player can see is
+one they can also choose to avoid.
+
+**Accepted cost:** `.score-section` is a flex column and is already the tallest HUD
+cluster, so the top row grows by roughly 20px on a phone — real estate on a 390px-tall
+landscape screen. It buys a pause button that can be pressed. **Wants eyes-on:** the
+arithmetic says it fits, but HUD crowding at 390px is a judgement no estimate settles.
 
 ---
 
