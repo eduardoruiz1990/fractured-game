@@ -180,7 +180,14 @@
                             <!-- Patch 33: drag an item onto a slot to prescribe it, or drag an
                                  equipped item back here to revoke it. Click still works exactly
                                  as before — the touch path, unchanged. -->
-                            <p class="typewriter-text" style="font-size: 0.7rem; color: #888; margin: 0 0 8px 0;">Drag to prescribe, or click for details. Hover an item for its effects.</p>
+                            <!-- Patch 87: the original line described TWO actions a touch
+                                 player cannot perform. The drag is HTML5 drag-and-drop
+                                 (draggable + ondragstart/ondrop in UIManager), which does not
+                                 fire from touch at all, and there is no hover on touch — so
+                                 on a phone this sentence was entirely impossible to follow.
+                                 The click path Patch 33 preserved is the real one there. -->
+                            <p class="kbd-copy typewriter-text" style="font-size: 0.7rem; color: #888; margin: 0 0 8px 0;">Drag to prescribe, or click for details. Hover an item for its effects.</p>
+                            <p class="touch-copy typewriter-text" style="font-size: 0.7rem; color: #888; margin: 0 0 8px 0;">Tap an item to see what it does, then tap PRESCRIBE to equip it.</p>
                             <!-- Patch 34: rarity sort/filter for the inventory grid. Inline-styled
                                  (this patch's file scope is UIManager.js + index.html only, not
                                  style.css) to match the existing dev-panel <select> pattern in main.js. -->
@@ -280,25 +287,44 @@
                          other, shown/hidden by GuideUI. -->
                     <div id="guide-cat-basics" class="guide-pane" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; overflow-y: auto; padding-right: 10px; padding-bottom: 20px;">
                         <div style="background: #fdfaf3; border: 2px solid #4466aa; box-shadow: 4px 4px 0 rgba(68, 102, 170, 0.2); padding: 15px; position: relative;">
-                            <div style="font-size: 1.5rem; text-align: center; margin-bottom: 10px; color: #4466aa;">
+                            <!-- Patch 87: two variants, one chosen by (pointer: coarse) in
+                                 style.css. This card taught WASD/SPACE/ESC to phones that
+                                 have none of those keys — the same failure Patch 65 fixed in
+                                 the tutorial, surviving here because GuideUI has no
+                                 device-awareness at all. -->
+                            <div class="kbd-copy" style="font-size: 1.5rem; text-align: center; margin-bottom: 10px; color: #4466aa;">
                                 <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">W</span><br>
                                 <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">A</span>
                                 <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">S</span>
                                 <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">D</span>
                             </div>
+                            <div class="touch-copy" style="font-size: 1.5rem; text-align: center; margin-bottom: 10px; color: #4466aa;">
+                                <span style="display:inline-block; border:2px solid #4466aa; border-radius:50%; padding:4px 10px; margin:2px; font-weight:bold; background:#fff;">◉</span>
+                                <span style="font-size:1rem;">+</span>
+                                <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:4px 8px; margin:2px; font-weight:bold; background:#fff; font-size:0.9rem;">DASH</span>
+                            </div>
                             <strong style="color: #4466aa; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">I. EVASION</strong>
-                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                            <p class="kbd-copy typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
                                 Move to survive. Press <span style="border:1px solid #666; padding:1px 4px; background:#eee;">SPACE</span> to Dash. Dashing grants temporary invulnerability against all nightmares. Press <span style="border:1px solid #666; padding:1px 4px; background:#eee;">ESC</span> or <span style="border:1px solid #666; padding:1px 4px; background:#eee;">P</span> to pause.
+                            </p>
+                            <p class="touch-copy typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                                Move to survive. Slide your left thumb to move. Tap <span style="border:1px solid #666; padding:1px 4px; background:#eee;">DASH</span> to dash — nothing can hit you while you dash. Tap <span style="border:1px solid #666; padding:1px 4px; background:#eee;">PAUSE</span>, top right, to pause.
                             </p>
                         </div>
                         
                         <div style="background: #fdfaf3; border: 2px solid #cc6600; box-shadow: 4px 4px 0 rgba(204, 102, 0, 0.2); padding: 15px;">
-                            <div style="font-size: 2rem; text-align: center; margin-bottom: 10px; color: #cc6600;">
+                            <div class="kbd-copy" style="font-size: 2rem; text-align: center; margin-bottom: 10px; color: #cc6600;">
                                 🖱️ / 🎯
                             </div>
+                            <div class="touch-copy" style="font-size: 2rem; text-align: center; margin-bottom: 10px; color: #cc6600;">
+                                👆 / 🎯
+                            </div>
                             <strong style="color: #cc6600; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">II. DIRECTED THERAPY</strong>
-                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
-                                Weapons fire <b>automatically</b>. Use your mouse cursor (or right joystick) to aim directional weapons like the Flashlight.
+                            <p class="kbd-copy typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                                Weapons fire <b>automatically</b>. Use your mouse cursor to aim directional weapons like the Flashlight.
+                            </p>
+                            <p class="touch-copy typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                                Weapons fire <b>automatically</b>. Slide your right thumb to aim directional weapons like the Flashlight.
                             </p>
                         </div>
 

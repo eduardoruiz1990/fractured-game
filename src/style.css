@@ -1037,6 +1037,66 @@ canvas { display: block; }
     }
 }
 
+/* --- Device-correct instructional copy (Patch 87) ---------------------------
+   Several bits of UI text name a control the player does not have. `TUTORIAL_COPY`
+   already solved this for the tutorial (Patch 65) by shipping keyboard/touch variants
+   and resolving one at runtime; the Clinical Guide and the loadout never got an
+   equivalent, so a phone was being told to press SPACE, use a mouse cursor, DRAG items
+   and HOVER them — four instructions, none of which are possible on touch. The drag
+   one is the sharpest: the loadout uses HTML5 drag-and-drop (`draggable` +
+   ondragstart/ondrop in UIManager), which does not fire from touch AT ALL, so that
+   sentence described an impossible action to every mobile player.
+
+   Done in CSS rather than JS because these are PROSE cards deliberately kept in markup
+   (Patches 55/56: "prose is fine hardcoded; a catalogue is not"). Both variants sit
+   beside each other and the media query picks one — no GuideUI change, no new runtime
+   surface. Explicit `display: block` rather than `revert`, so support is universal.
+
+   Gated on `(pointer: coarse)` for the same reason as Patch 85: it describes the
+   PRIMARY pointer, so a touchscreen laptop driven by a trackpad correctly keeps the
+   keyboard copy. */
+.touch-copy { display: none; }
+@media (pointer: coarse) {
+    .kbd-copy { display: none; }
+    .touch-copy { display: block; }
+}
+
+/* --- Touch targets and scroll affordance in the folder (Patch 87) ----------- */
+@media (pointer: coarse) {
+    /* The loadout's sort/filter selects are ~19px tall — same defect Patch 85 fixed on
+       the pause button. They carry INLINE font-size/padding from index.html (Patch 34
+       deliberately kept that patch's scope to UIManager.js + index.html), and inline
+       styles outrank a stylesheet, so only !important can reach those two properties.
+       Same reason #btn-close-folder above needs it. `min-height` is not set inline
+       anywhere, so it lands on its own. */
+    #loadout-sort, #loadout-filter-rarity {
+        min-height: 44px;
+        font-size: 0.85rem !important;
+        padding: 6px 10px !important;
+    }
+}
+
+@media (max-width: 768px), (max-height: 560px) {
+    /* THE TAB STRIP HIDES HALF THE GAME. Eight tabs are ~1000px wide against a 390px
+       screen, and the mobile rule above makes the strip scroll horizontally while
+       hiding its scrollbar (`scrollbar-width: none` + the ::-webkit-scrollbar rule) —
+       so MIND PALACE, CLINICAL GUIDE and MANIFESTATION LOG are off screen with no cue
+       whatsoever that they exist. A phone player has no way to learn the Clinical
+       Guide is in the game.
+       A right-edge shade, painted on the strip itself so no markup wrapper is needed.
+       `background-attachment: scroll` is the operative word: on a scroll container it
+       pins the layer to the element's padding box — the VISIBLE right edge — instead
+       of letting it scroll away with the content. It layers over the existing
+       `background: var(--folder-tab)` colour, which is untouched. */
+    .folder-tabs {
+        background-image: linear-gradient(to left, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0));
+        background-repeat: no-repeat;
+        background-size: 34px 100%;
+        background-position: right center;
+        background-attachment: scroll;
+    }
+}
+
 @keyframes glitch { 0% { opacity: 1; filter: contrast(1); } 50% { opacity: 0.95; filter: contrast(1.2); } 51% { opacity: 1; filter: contrast(1); } 100% { opacity: 1; } }
 
 /* Patch 86: a SECOND `.joystick-base` (a values-identical subset) and a byte-identical

@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–86)
+# FRACTURED — Change Log (Patches 49–71, 80–87)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -791,6 +791,62 @@ once already. Both were inert, but the `.joystick-base` copy was a live trap: it
 **after** the real rule, so any property ever added to it would have silently won over
 the definition everyone edits. There is now exactly one place to change the joysticks.
 
+### Patch 87 — Four menu defects that only exist on a phone
+
+Not the "menus are too wordy" work — this is the **defect** half of that finding.
+Word count is unchanged; what changed is that the words are now *possible to act on*
+and the hidden half of the folder is reachable.
+
+**1. The tab strip hid three tabs with no cue.** Eight tabs are ~1000px wide against a
+390px screen, and the mobile rule scrolls the strip horizontally while hiding its
+scrollbar (`scrollbar-width: none` plus the `::-webkit-scrollbar` rule). MIND PALACE,
+CLINICAL GUIDE and MANIFESTATION LOG were off screen with **no indication they exist** —
+a phone player had no way to learn the Clinical Guide is in the game. Now a right-edge
+shade painted on the strip itself, so no markup wrapper is needed.
+`background-attachment: scroll` is the operative property: on a scroll container it
+pins the layer to the padding box — the *visible* right edge — rather than letting it
+scroll away with the content.
+
+**2. A tab opened from the hub could be off screen.** `triggerInteraction` activates a
+tab by class, and the trophies desk activates `tab-trophies`, **sixth of eight** — so
+walking to it opened MIND PALACE while the strip showed three *other* tabs with none
+highlighted. Now `scrollIntoView({ inline: 'center', block: 'nearest' })`, called
+**after** the folder is displayed — it is a no-op on an element inside a `display:none`
+ancestor, so doing it beside the `classList` work would have silently done nothing.
+`center` rather than `nearest` so the neighbours show too, which is itself a second
+hint that the strip scrolls.
+
+**3. The Clinical Guide taught keyboard controls to phones.** Card I rendered literal
+**W/A/S/D keycaps** and "Press SPACE to Dash… Press ESC or P to pause"; Card II said
+"use your mouse cursor". `GuideUI.js` has **no device-awareness at all** (no `touch`,
+`mobile`, `getInputMode` or `coarse` anywhere in it). This is precisely the failure
+Patch 65 fixed in the tutorial, surviving in the guide because the fix was never
+generalised.
+
+**4. The loadout described two impossible actions.** *"Drag to prescribe, or click for
+details. Hover an item for its effects."* The drag is **HTML5 drag-and-drop**
+(`draggable` + `ondragstart`/`ondrop` in `UIManager`), which does not fire from touch
+at all — and there is no hover on touch. On a phone that sentence was impossible to
+follow end to end. The click path Patch 33 deliberately preserved is the real one, and
+the touch variant now says so.
+
+Plus the loadout's sort/filter selects, ~19px tall — the same defect Patch 85 fixed on
+the pause button, now `min-height: 44px` under `(pointer: coarse)`. Those two carry
+**inline** font-size/padding from `index.html`, which outranks a stylesheet, so only
+`!important` can reach those two properties — the same reason `#btn-close-folder`
+already needs it.
+
+**How the copy variants work.** Both variants ship in the markup and
+`@media (pointer: coarse)` picks one via `.kbd-copy` / `.touch-copy`. CSS rather than
+JS because these are **prose cards deliberately kept in markup** (Patches 55/56: "prose
+is fine hardcoded; a catalogue is not") — no `GuideUI` change and no new runtime
+surface. Explicit `display: block` rather than `revert`, for universal support.
+
+**Keep clause:** any new instructional string that names a control needs both variants,
+the same way `TUTORIAL_COPY` does. `index.html` was verified tag-balanced after the
+edit (143/143 div, 24/24 p, 28/28 button) — it is a file prior tooling has silently
+truncated before.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -848,6 +904,12 @@ the definition everyone edits. There is now exactly one place to change the joys
     press SPACE. Asserted in `test_tutorial.js`, along with a line-length ceiling —
     the copy is deliberately plain and short, and "improving" it is how that gets
     undone.
+16b. **The same rule applies to MENU copy, since Patch 87.** Any instructional string
+    that names a control needs both variants: `.kbd-copy` / `.touch-copy` in the
+    markup, picked by `@media (pointer: coarse)`. The guide told phones to press
+    WASD/SPACE/ESC and use a mouse, and the loadout told them to DRAG (HTML5
+    drag-and-drop never fires from touch) and HOVER. Not asserted by any test — the
+    copy is in `index.html`, so this one is on review.
 17. **Every tutorial step needs a working time fallback.** The gates are behavioural;
     a player who never presses the taught key must still reach combat, the kill and
     the exit. Asserted per step — and since Patch 84, **per step AND per device**.

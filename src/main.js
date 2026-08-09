@@ -1178,6 +1178,26 @@ function initEngine() {
                     if (zone.action === 'tab-loadout' && uiManager) uiManager.renderLoadoutUI();
                     
                     document.getElementById('clinical-folder-menu').style.display = 'flex';
+
+                    // Patch 87: bring the activated tab into view. The strip scrolls
+                    // horizontally on a phone (8 tabs, ~1000px of them against a 390px
+                    // screen), so a tab opened from a hub zone can be entirely off
+                    // screen — the trophies desk activates tab-trophies, SIXTH of eight,
+                    // which left the player looking at a strip of three other tabs with
+                    // none of them highlighted.
+                    //
+                    // Must run AFTER the folder is displayed: scrollIntoView is a no-op
+                    // on an element inside a `display: none` ancestor, so doing this up
+                    // with the classList work above would silently do nothing.
+                    // `inline: 'center'` rather than 'nearest' so the neighbouring tabs
+                    // show too — that is also what tells the player the strip scrolls.
+                    // `block: 'nearest'` keeps it from scrolling anything vertically.
+                    if (targetBtn && typeof targetBtn.scrollIntoView === 'function') {
+                        try {
+                            targetBtn.scrollIntoView({ inline: 'center', block: 'nearest' });
+                        } catch (e) { /* pre-options implementations; the tab is still active */ }
+                    }
+
                     interactionPrompt.style.display = 'none';
                     if (audioEngine) audioEngine.playSFX('ui_click');
                     inputManager.hideJoysticks();
