@@ -1049,6 +1049,54 @@ function initEngine() {
             });
         }
 
+        // Inject Settings Button into the Title Screen (Patch 83)
+        //
+        // The third and final entry point to this same panel, and the one that was
+        // missing where it mattered most: playMenuTheme() runs ON the title screen, so
+        // the music behind two player complaints in two days — one reporting a headache
+        // — was playing on the only screen with no way to adjust it. The player's
+        // choices were to start a run they did not want, or to go into the clinical
+        // folder to escape the sound.
+        //
+        // Built by injection here rather than as static markup in index.html so all
+        // three entry points are constructed identically and all three open THIS
+        // settingsUI element. A fourth button written into index.html would have needed
+        // its own listener wiring — a second way of opening one panel, which is how the
+        // two copies drift apart later.
+        //
+        // Appended AFTER btn-title-hub, so the reading order stays
+        // (RESUME) -> BEGIN DESCENT -> MIND HUB -> SYSTEM SETTINGS: BEGIN DESCENT keeps
+        // its position as the obvious primary action, and the two secondary entries sit
+        // together beneath it. Patch 52 collapsed this screen to one tap on purpose and
+        // that is not disturbed.
+        const titleHubBtn = document.getElementById('btn-title-hub');
+        const titleBtnContainer = titleHubBtn ? titleHubBtn.parentNode : null;
+        if (titleBtnContainer && !document.getElementById('btn-title-settings')) {
+            const titleSettingsBtn = document.createElement('button');
+            titleSettingsBtn.id = 'btn-title-settings';
+            titleSettingsBtn.className = 'file-btn';
+            titleSettingsBtn.innerText = 'SYSTEM SETTINGS';
+            // Matches MIND HUB's secondary convention (the title screen styles its
+            // buttons inline, unlike the pause/folder containers where a bare .file-btn
+            // is already the local convention) — same width/padding/size/opacity, so it
+            // reads as the same tier and neither competes with BEGIN DESCENT.
+            titleSettingsBtn.style.width = 'auto';
+            titleSettingsBtn.style.padding = '10px 34px';
+            titleSettingsBtn.style.fontSize = '0.95rem';
+            titleSettingsBtn.style.opacity = '0.85';
+            // The one deliberate deviation from MIND HUB. Those inline values compute to
+            // roughly 41px tall, just under the 44px touch-target floor, and this button
+            // exists FOR the player who is uncomfortable and wants out — it must not be
+            // fiddly to hit. min-height rather than more padding so the visual weight
+            // stays identical to its sibling on desktop, where it already clears 44px.
+            titleSettingsBtn.style.minHeight = '44px';
+            titleBtnContainer.appendChild(titleSettingsBtn);
+
+            titleSettingsBtn.addEventListener('click', () => {
+                settingsUI.style.display = 'flex';
+            });
+        }
+
         const toggleShake = document.getElementById('toggle-shake');
         const togglePhoto = document.getElementById('toggle-photo');
 

@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–82)
+# FRACTURED — Change Log (Patches 49–71, 80–83)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -620,6 +620,56 @@ the ~15 assignment sites; `showAdThen` has exactly one caller; and `LEVEL_UP` ca
 be entered from a `PLAYING` step, because `Game.update` early-returns for any state
 that is not `PLAYING` or `HUB`, `HUB` has no leveling, and `onLevelUp` returns early
 when `gameState === 'DEAD'`.
+
+---
+
+## ONBOARDING — mobile follow-ups (2026-08-09)
+
+### Patch 83 — Settings reachable from the title screen
+
+**Additive UI only.** No game logic, no metric accounting, nothing near Patch 82.
+
+Patch 80 shipped audio volume in response to two player complaints in two days, one
+reporting a headache — and then put it behind the pause menu (in-run) and the clinical
+folder's EVALUATION tab (behind MIND HUB). **`playMenuTheme()` runs on the title
+screen**, so the music that generated the complaints was playing on the one screen
+with no way to adjust it. The player's only options were to start a run they did not
+want, or to navigate into a clinical folder to escape the sound.
+
+Third entry point, same panel. Built by **injection** next to its two siblings rather
+than as static markup in `index.html`: all three are now constructed identically and
+all three open the same `settingsUI` element. A fourth button written into the markup
+would have needed its own listener wiring — a second way to open one panel, which is
+how two copies drift apart later. It also lands before `new UIManager`, so
+`attachEvents()`'s `querySelectorAll('.file-btn')` gives it hover/click SFX for free,
+exactly like the other two.
+
+Order is `(RESUME) → BEGIN DESCENT → MIND HUB → SYSTEM SETTINGS`. Patch 52 collapsed
+this screen to one tap deliberately and that is not disturbed — the new entry is
+styled to MIND HUB's secondary convention so it cannot compete with BEGIN DESCENT.
+
+**One deliberate deviation from MIND HUB: `min-height: 44px`.** MIND HUB's inline
+values compute to roughly 41px, just under the touch-target floor. `min-height` rather
+than extra padding, so the two look identical on desktop where both already clear 44px.
+
+**Deliberately NOT done — the "this is new" highlight.** Making it *one-time* needs
+persisted state, and the correct home is `SaveManager.metaState` (per Keep clause 1,
+raw `localStorage` throws in a blocked iframe), which per Keep clause 2 drags in
+back-fill across `loadGame()`, `importSave()` and `wipeSave()`. That is a save-schema
+change wearing a UI costume, and far more than this patch warrants. Flagged for a
+decision rather than smuggled in.
+
+**Known, pre-existing, made worse by ~58px:** `.fullscreen-menu` centres a flex column
+with no overflow handling (the same gap Patch 73 documented for the title text). A
+returning player with a *suspended run* renders RESUME DESCENT plus `#title-case-record`
+plus `#title-suspended-note`, which by arithmetic already overflowed a 390px-tall
+landscape phone before this patch. Because the column is centred, the overflow splits
+top and bottom — the title clips above and the suspended-run note clips below, while
+the buttons sit in the middle and survive. **These are estimates from CSS, not
+measurements**, and per Keep clause 12 font-derived heights differ by machine
+(`'Courier New'` is absent on most Linux systems). Not fixed here: a correct fix is not
+`overflow-y: auto` alone — a centred flex container makes its top overflow unreachable
+by scrolling — so it is its own patch.
 
 ---
 
