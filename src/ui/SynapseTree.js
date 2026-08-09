@@ -82,6 +82,67 @@ export class SynapseTree {
                 border-top: 2px dashed #c2b59b;
             }
             .synapse-capstone-row > .synapse-node-file { flex: 1; }
+
+            /* --- PORTRAIT: 2 columns, because 4 did not fit and could not be reached.
+               PATCH 88 — a real bug, not a polish item. The rules above are
+               unconditional: a 4-column grid with min-width 620px and 140px columns.
+               On a 390px phone .folder-content leaves 362px, so the grid rendered
+               620px wide and 258px of it sat outside the pane — MOTOR and FORTUNE,
+               14 of the 31 nodes, plus capstones C2 and C3.
+
+               It could not be scrolled to. .folder-content is the horizontal scroller
+               (overflow-y:auto forces overflow-x to compute to auto), but style.css
+               sets touch-action: pan-y on it — correctly, so the guide and the
+               inventory pan natively — which means a finger CANNOT pan it sideways,
+               and a phone has no scrollbar. The overflow-x: auto on the grid itself
+               does nothing: an element cannot scroll away its own min-width.
+
+               Confirmed on device: reachable in landscape, unreachable in portrait —
+               exactly as the widths predict. An 844px landscape phone leaves 816px,
+               so 620px fits and there is no overflow to reach in the first place.
+
+               FIXED BY FITTING, NOT BY SCROLLING. Enabling a horizontal pan nested
+               inside a vertical scroller is a known touch trap, and it would leave the
+               columns at 140px of 0.68rem text. Two columns give (362-12)/2 = 175px
+               per branch — wider than the 146px the 4-column minimum allows — and the
+               whole tree becomes reachable by ordinary vertical scrolling.
+
+               THRESHOLD: the grid needs 620px plus the folder's padding. Below 768px
+               .medical-folder is full-bleed with 14px padding, so the content box is
+               viewport - 28 and 620px stops fitting at ~648px. Above 768px the
+               folder is 90%/max-1000px with 30px padding, and the narrowest case there
+               (769px -> 632px of content) still fits. 700px is the round number that
+               covers the failing range with margin and touches nothing that works.
+
+               These live HERE rather than in style.css because this <style> is
+               appended to document.head at construction, i.e. AFTER the stylesheet, so
+               a same-specificity #synapse-tree-grid rule over there would lose the
+               cascade. Structural layout is this method's job (see its header comment);
+               node STATE visuals stay in style.css. */
+            @media (max-width: 700px) {
+                #synapse-tree-grid {
+                    grid-template-columns: repeat(2, 1fr);
+                    min-width: 0;
+                }
+                .synapse-branch-col { min-width: 0; }
+
+                /* Tiers 3/4 and 5/6 sit side by side. Inside a 175px column that is
+                   ~83px each, too narrow for a card carrying a button. flex-wrap
+                   with a 130px basis lets them stack only when they actually have to,
+                   so a 640px tablet in portrait keeps them paired and a phone does
+                   not — no second breakpoint to keep in sync. */
+                .synapse-tier-row.split { flex-wrap: wrap; }
+                .synapse-tier-row.split > * { flex: 1 1 130px; }
+
+                /* Same treatment for the three capstones, which are one flex row
+                   spanning the full grid width: 3 x 113px on a phone otherwise. */
+                .synapse-capstone-row { flex-wrap: wrap; }
+                .synapse-capstone-row > .synapse-node-file { flex: 1 1 150px; }
+
+                /* The header is two items with space-between; at this width they
+                   collide rather than sit apart. */
+                #synapse-tree-header { flex-wrap: wrap; gap: 6px; }
+            }
         `;
         document.head.appendChild(style);
     }

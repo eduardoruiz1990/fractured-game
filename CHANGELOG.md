@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–87)
+# FRACTURED — Change Log (Patches 49–71, 80–88)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -846,6 +846,66 @@ surface. Explicit `display: block` rather than `revert`, for universal support.
 the same way `TUTORIAL_COPY` does. `index.html` was verified tag-balanced after the
 edit (143/143 div, 24/24 p, 28/28 button) — it is a file prior tooling has silently
 truncated before.
+
+## MOBILE MENUS — the separate-rendering work (2026-08-09)
+
+Driven by a direct report that SYNAPSE RECORDS and THERAPY REGIMEN are "very very
+tough to navigate and read on a mobile". The framing that came out of the analysis:
+these are not *wordy* screens, they are **desktop layouts scaled down** — and in one
+case the scaling did not merely degrade, it put content out of reach entirely.
+
+### Patch 88 — Half the Synapse Tree was unreachable in portrait
+
+**A bug, not a polish item. Shipped alone, ahead of the redesign work.**
+
+`SynapseTree._injectStyles()` emits an unconditional `min-width: 620px` on
+`#synapse-tree-grid`, `repeat(4, 1fr)` columns and `min-width: 140px` per branch. On a
+390px phone `.folder-content` leaves **362px**, so the grid rendered **620px** wide and
+258px of it sat outside the pane: **MOTOR and FORTUNE — 14 of the 31 nodes — plus
+capstones C2 and C3.**
+
+**And it could not be scrolled to.** `.folder-content` is the horizontal scroller
+(`overflow-y: auto` forces `overflow-x` to compute to `auto`), but style.css sets
+`touch-action: pan-y` on it — correctly, so the guide and inventory pan natively —
+which means a finger **cannot** pan it sideways, and a phone has no scrollbar. The
+`overflow-x: auto` on the grid itself does nothing: an element cannot scroll away its
+own `min-width`.
+
+**Confirmed on device before the fix, and the confirmation is the proof:** reachable in
+landscape, unreachable in portrait. That is exactly what the widths predict — an 844px
+landscape phone leaves 816px, so 620px fits and there is no overflow to reach in the
+first place. A bug that reverses with orientation is a width bug.
+
+**Fixed by fitting, not by scrolling.** Enabling a horizontal pan nested inside a
+vertical scroller is a known touch trap, and it would have left the columns at 140px of
+`0.68rem` text. Two columns give `(362-12)/2 = 175px` per branch — **wider than the
+146px the 4-column minimum allows** — and the whole tree becomes reachable by ordinary
+vertical scrolling. RESILIENCE|FOCUS above MOTOR|FORTUNE, capstones spanning below.
+
+Threshold arithmetic, checked at nine viewports: the grid needs 620px plus the folder's
+padding. Below 768px `.medical-folder` is full-bleed with 14px padding, so the content
+box is `viewport − 28` and 620px stops fitting at **~648px**. Above 768px the folder is
+90%/max-1000px with 30px padding, and the narrowest case there (769px → 632px) still
+fits. `700px` covers the failing range with margin and touches nothing that works.
+
+Tier 3/4 and 5/6 `split` rows and the capstone row use `flex-wrap` with a flex-basis
+rather than a second breakpoint, so they pair up when there is room and stack when
+there is not — one rule instead of two thresholds to keep in sync.
+
+**The rules live in `SynapseTree.js`, not style.css.** That `<style>` is appended to
+`document.head` at construction, i.e. *after* the stylesheet, so a same-specificity
+`#synapse-tree-grid` rule over there would lose the cascade. Structural layout is that
+method's job; node state visuals stay in style.css.
+
+**Two traps for the next person editing that block:** the CSS is a JS **template
+literal**, so a backtick in a comment silently ends the string (this patch hit exactly
+that, caught by `node -c`), and **Vite never parses it** — it is a string, so a CSS
+syntax error there ships. Validate by constructing the class and checking the emitted
+text; this patch's brace/comment balance was verified that way.
+
+Still open on that screen, deliberately not bundled: **"LUCIDITY RESERVES" renders
+twice** — once from `#tree-lucidity` in `index.html` and again from
+`_buildHeader()` — two lines of the same number above the fold.
 
 ---
 
