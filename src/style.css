@@ -787,9 +787,24 @@ canvas { display: block; }
 }
 
 /* Joysticks */
+/* Patch 86: this was rgba(255,255,255,0.05) fill with a 0.1-alpha border — HALF the
+   alpha Patch 79 condemned on the sibling .action-btn as "legible only if you already
+   knew it was there". That patch fixed the dash button and never revisited the rings,
+   which are the more important of the two: the sticks are FLOATING, so the ring
+   appearing under the thumb is the only confirmation a player gets that their touch
+   registered at all and that the screen is split into move/aim halves. A ring nobody
+   can see is a control scheme nobody can learn.
+   Now on .action-btn's post-Patch-79 palette — same blue, same border alpha, same glow
+   family — so the two touch controls read as one system.
+   NOTE for tuning: the ring is 120px against the button's 72px, i.e. ~2.8x the area,
+   and it sits under the PLAY AREA rather than in a corner. The border is what does the
+   legibility work; the fill is the part that can obscure the world. If it reads heavy
+   on a real device, lower the fill alpha first and leave the border alone. */
 .joystick-base {
     position: absolute; width: 120px; height: 120px; border-radius: 50%;
-    background: rgba(255, 255, 255, 0.05); border: 2px solid rgba(255, 255, 255, 0.1);
+    background: rgba(136, 170, 255, 0.22);
+    border: 3px solid rgba(160, 190, 255, 0.85);
+    box-shadow: 0 0 18px rgba(136, 170, 255, 0.35), inset 0 0 12px rgba(136, 170, 255, 0.15);
     display: none; pointer-events: none; z-index: 50;
 }
 .joystick-knob {
@@ -1024,14 +1039,13 @@ canvas { display: block; }
 
 @keyframes glitch { 0% { opacity: 1; filter: contrast(1); } 50% { opacity: 0.95; filter: contrast(1.2); } 51% { opacity: 1; filter: contrast(1); } 100% { opacity: 1; } }
 
-.joystick-base {
-    display: none; pointer-events: none; z-index: 50;
-}
-.joystick-knob {
-    position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
-    border-radius: 50%; background: rgba(255, 255, 255, 0.3); transform: translate(-50%, -50%);
-    box-shadow: 0 0 10px rgba(0,0,0,0.5);
-}
+/* Patch 86: a SECOND `.joystick-base` (a values-identical subset) and a byte-identical
+   second `.joystick-knob` sat here, duplicating the pair ~230 lines above — the same
+   class of leftover Patch 38 and Patch 73 each removed once already. Both were inert,
+   but the `.joystick-base` copy was a live trap: it came AFTER the real rule, so any
+   property ever added to it would silently win over the definition everyone edits.
+   Deleted; the surviving definitions are the ones above, and there is now exactly one
+   place to change the joysticks. */
 
 /* Patch 73: a byte-identical SECOND copy of `.title-glitch`, the aggressive title
    rule and @keyframes aggressive-glitch sat here, duplicating the pair ~170 lines

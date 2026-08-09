@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–85)
+# FRACTURED — Change Log (Patches 49–71, 80–86)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -761,6 +761,35 @@ one they can also choose to avoid.
 cluster, so the top row grows by roughly 20px on a phone — real estate on a 390px-tall
 landscape screen. It buys a pause button that can be pressed. **Wants eyes-on:** the
 arithmetic says it fits, but HUD crowding at 390px is a judgement no estimate settles.
+
+### Patch 86 — The joystick rings are visible
+
+**CSS only.** Confirmed on a real device before shipping — this was a legibility
+judgement, not one that could be made from a hex value.
+
+`.joystick-base` was `rgba(255,255,255,0.05)` fill with a `0.1`-alpha border: **half
+the alpha Patch 79 condemned** on the sibling `.action-btn` as *"legible only if you
+already knew it was there"*. That patch fixed the dash button and never revisited the
+rings — which are the more important of the two. The sticks are **floating**, so the
+ring appearing under the thumb is the only confirmation a player gets that their touch
+registered and that the screen is split into move/aim halves. A ring nobody can see is
+a control scheme nobody can learn, which is the Patch 49 finding ("mobile has no
+visible controls until first touch") surviving in a second form: controls that are
+still invisible *after* the first touch.
+
+Now on `.action-btn`'s post-Patch-79 palette — same blue, same border alpha, same glow
+family — so the two touch controls read as one system.
+
+**Tuning note left in the stylesheet:** the ring is 120px against the button's 72px
+(~2.8× the area) and sits under the **play area** rather than in a corner. The border
+does the legibility work; the fill is the part that can obscure the world. If it reads
+heavy, lower the fill alpha and leave the border alone.
+
+**Also removed: a duplicate `.joystick-base` + `.joystick-knob` pair** ~230 lines
+below the originals — the same class of leftover Patch 38 and Patch 73 each removed
+once already. Both were inert, but the `.joystick-base` copy was a live trap: it came
+**after** the real rule, so any property ever added to it would have silently won over
+the definition everyone edits. There is now exactly one place to change the joysticks.
 
 ---
 
