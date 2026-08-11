@@ -128,6 +128,13 @@ function resize() {
         renderer.updateZoom();
         applyControlBand();
     }
+    // Patch 92: the retention bar's height changes with the viewport (it collapses to
+    // a single row under 560px tall), and the title column reserves that height. Both
+    // must be recomputed together or the bar starts overlapping the buttons again.
+    // Placed after the no-change early-return above deliberately: if the viewport did
+    // not move, neither did the bar. Hoisted, so calling it before its definition and
+    // before saveManager exists is fine — it null-guards.
+    applyStorageNoticeLayout();
 }
 
 // Coalesced to one resize per animation frame. A phone hiding or showing its URL bar
@@ -507,7 +514,7 @@ function resumeAudioForGameplay() {
  * dialog entirely would mean silently destroying a run without asking, which is
  * far worse than an ugly prompt.
  */
-function showConfirm({ title, body, note, confirmLabel, cancelLabel, onConfirm }) {
+function showConfirm({ title, body, note, confirmLabel, cancelLabel, onConfirm, danger = true }) {
     const modal = document.getElementById('confirm-modal');
     const acceptBtn = document.getElementById('btn-confirm-accept');
     const cancelBtn = document.getElementById('btn-confirm-cancel');
@@ -523,9 +530,29 @@ function showConfirm({ title, body, note, confirmLabel, cancelLabel, onConfirm }
     acceptBtn.innerText = confirmLabel;
     cancelBtn.innerText = cancelLabel;
 
+    // Patch 92: `danger` defaults TRUE, so the original ABANDON PROTOCOL dialog is
+    // byte-identical to before. The backup prompt passes false — it is an offer, not
+    // a destructive action, and a red accept button reads as a warning. Both classes
+    // are re-set on every open rather than toggled, so the modal cannot inherit the
+    // previous caller's tone.
+    const accent = danger ? 'var(--ui-red)' : 'var(--ui-gold)';
+    acceptBtn.className = danger ? 'file-btn danger' : 'file-btn primary';
+    cancelBtn.className = danger ? 'file-btn primary' : 'file-btn';
+    const titleEl = document.getElementById('confirm-title');
+    if (titleEl) titleEl.style.color = accent;
+    // The red frame is set inline in the markup, so it has to be re-stated for BOTH
+    // tones — assigning only the non-danger colour would leave the next destructive
+    // dialog wearing gold.
+    const modalFolder = modal.querySelector('.medical-folder');
+    const modalHeader = modal.querySelector('.folder-header');
+    if (modalFolder) modalFolder.style.borderColor = accent;
+    if (modalHeader) modalHeader.style.borderBottomColor = accent;
+
     const onKey = (e) => {
-        // Escape cancels. Safe to bind globally: main.js's own Escape handler only
-        // acts on PLAYING/PAUSED, and this dialog is only reachable from TITLE.
+        // Escape cancels. Safe to bind globally: main.js's own Escape handler acts
+        // only on PLAYING/PAUSED, and every caller of this dialog opens it from
+        // TITLE, DEAD or HUB — none of which that handler touches. (Patch 92 added
+        // the DEAD/HUB callers; the original comment said TITLE only.)
         if (e.key === 'Escape') close();
     };
     function close() {
@@ -548,6 +575,7 @@ function showConfirm({ title, body, note, confirmLabel, cancelLabel, onConfirm }
 function enterPlayingState() {
     const titleScreen = document.getElementById('title-screen');
     if (titleScreen) titleScreen.style.display = 'none';
+    hideStorageNotice();   // Patch 92: never let the bar sit over live gameplay.
     document.getElementById('clinical-folder-menu').style.display = 'none';
     document.getElementById('ui-layer').style.display = 'flex';
 
@@ -643,6 +671,7 @@ function autoSaveRun() {
 function enterMindHub() {
     const titleScreen = document.getElementById('title-screen');
     if (titleScreen) titleScreen.style.display = 'none';
+    hideStorageNotice();   // Patch 92: title-screen furniture, not a hub element.
     game.init(saveManager);
     game.state.player.x = 0;
     game.state.player.y = 0;
@@ -697,6 +726,117 @@ function refreshTitleActions() {
         note.innerText = summary ? `SUSPENDED PROTOCOL ON FILE — ${summary}` : '';
     }
     return summary;
+}
+
+// --- RECORDS RETENTION NOTICE (Patch 92) -------------------------------------
+//
+// One-time, first-load notice that progress lives in this browser and can be lost.
+// It exists because on itch.io the save is exposed three ways at once: a shared CDN
+// origin (clearing site data for any itch game clears ours), iframes where iOS and
+// Safari routinely block persistence outright, and itch's own history of migrating
+// CDN domains — which they have said loses saves, recommending exactly this pairing
+// of a download/upload feature plus advance warning.
+//
+// The acknowledgement flag lives in SaveManager.metaState, NOT raw localStorage, per
+// Keep clause 1: a direct localStorage read throws in the blocked iframe this notice
+// is warning about, which would make the warning itself the thing that breaks. When
+// storage is entirely unavailable nothing persists and the notice shows every load —
+// deliberate, and arguably correct, since that player really does have no save.
+
+/**
+ * Makes the title column reserve exactly the bar's height, so the bar can never
+ * cover a title button.
+ *
+ * This is not cosmetic. `.fullscreen-menu` centres a flex column with no overflow
+ * handling, so a bottom-anchored bar simply lands on top of whatever the column's
+ * bottom happens to be. Measured before this existed: on an 844x390 landscape phone
+ * the bar covered MIND HUB and SYSTEM SETTINGS — the exact route to the export
+ * feature the notice tells the player to use — and on desktop the clearance was
+ * 25px, which a returning player's RESUME DESCENT button would have eaten.
+ *
+ * Height is MEASURED, never assumed: the copy wraps differently at every width and
+ * the bar collapses to a single row under 560px tall, so any hardcoded reservation
+ * would be wrong on some viewport. Same reasoning as Patch 71 sizing #control-band
+ * from Renderer.controlBandH rather than from CSS — two places describing one
+ * boundary must not be able to disagree.
+ */
+function applyStorageNoticeLayout() {
+    const el = document.getElementById('storage-notice');
+    const title = document.getElementById('title-screen');
+    if (!el || !title) return;
+    if (!el.classList.contains('is-visible') || !el.offsetHeight) {
+        title.style.paddingBottom = '';
+        return;
+    }
+    // The clearance gap comes from the stylesheet (--notice-gap on #storage-notice),
+    // not from a constant here, so it stays next to the bar's own sizing rules and
+    // shrinks with them on a short viewport. Falls back to 12px if the property is
+    // missing or unparseable, which is the desktop value.
+    const raw = parseFloat(getComputedStyle(el).getPropertyValue('--notice-gap'));
+    const gap = Number.isFinite(raw) ? raw : 12;
+    title.style.paddingBottom = `${el.offsetHeight + gap}px`;
+}
+
+/** Shows the retention notice unless it has already been acknowledged. */
+function showStorageNoticeIfNeeded() {
+    const el = document.getElementById('storage-notice');
+    if (!el || !saveManager) return;
+    if (saveManager.metaState.storageNoticeAcknowledged === true) return;
+    el.classList.add('is-visible');
+    applyStorageNoticeLayout();
+}
+
+/** Hides the bar WITHOUT acknowledging — used when leaving the title screen. */
+function hideStorageNotice() {
+    const el = document.getElementById('storage-notice');
+    if (el) el.classList.remove('is-visible');
+    applyStorageNoticeLayout();   // releases the reserved space
+}
+
+// --- MILESTONE BACKUP PROMPT (Patch 92) --------------------------------------
+//
+// The retention notice above warns a brand-new player, who has nothing to lose yet
+// and no reason to care. This is the second half: catch them ONCE, at the first
+// moment the save is genuinely worth protecting, and hand them the export directly
+// rather than describing where it lives.
+//
+// TRIGGER: Patient Level 2 (SaveManager.isBackupWorthPrompting), i.e. 500 spent
+// Lucidity. Chosen over "first boss kill" because Patient Level only moves when
+// Lucidity is SPENT on permanent upgrades or Synapse nodes — that spending is what
+// metaState holds and what a cleared browser destroys. A boss kill is a run
+// achievement, and a run is not persistent progress. It also lands earlier for most
+// players, which is the whole point when the goal is to warn before loss.
+
+/**
+ * Offers the export once, on a non-gameplay screen.
+ *
+ * Call sites are deliberately the death summary and the return-to-hub from the
+ * clinical folder — never mid-run. The folder-close site is what catches the player
+ * in the same sitting as the purchase that crossed the threshold; the death site
+ * catches anyone who got there another way.
+ */
+function maybeShowBackupPrompt() {
+    if (!saveManager || !uiManager) return;
+    if (saveManager.metaState.backupPromptShown === true) return;
+    if (!saveManager.isBackupWorthPrompting()) return;
+
+    // Marked BEFORE the dialog opens, not in a callback. The prompt is a one-time
+    // offer, and this way it is spent however the player disposes of it — export,
+    // decline, or Escape. A flag set only in onConfirm would re-ask every single
+    // death until they exported, which is nagging, not helping.
+    saveManager.markBackupPromptShown();
+
+    showConfirm({
+        danger: false,
+        title: 'RECORDS RETENTION',
+        body: 'Your case file now holds real progress.',
+        note: 'It is stored in this browser only — clearing your browser data, or '
+            + 'switching browser or device, erases it. Copy the file now and keep it '
+            + 'somewhere safe. You can do this again any time from EVALUATION.',
+        confirmLabel: 'BACK UP FILE NOW',
+        cancelLabel: 'NOT NOW',
+        onConfirm: () => uiManager.runExportSave()
+    });
 }
 
 function initEngine() {
@@ -1215,6 +1355,10 @@ function initEngine() {
                 document.getElementById('clinical-folder-menu').style.display = 'none';
                 if (audioEngine) audioEngine.playSFX('ui_click');
                 gameState = 'HUB';
+                // Patch 92: the folder is where Lucidity gets spent, so this is the
+                // first non-gameplay moment after the purchase that can cross the
+                // Patient Level 2 threshold. Fires at most once, ever.
+                maybeShowBackupPrompt();
             });
         }
     }
@@ -1375,6 +1519,22 @@ function initEngine() {
     }
 
     refreshTitleActions();
+
+    // Patch 92: first-run retention notice. Wired here with the other title-screen
+    // actions, and shown immediately — it is a bar at the bottom of the viewport, so
+    // it neither gates nor delays anything above it.
+    const btnStorageAck = document.getElementById('btn-storage-notice-ack');
+    if (btnStorageAck) {
+        btnStorageAck.addEventListener('click', () => {
+            // Acknowledged only on this explicit tap. Starting a run without reading
+            // it leaves the flag unset, so it returns next cold load — see
+            // SaveManager.acknowledgeStorageNotice for why that is the right default.
+            saveManager.acknowledgeStorageNotice();
+            hideStorageNotice();
+            if (audioEngine) audioEngine.playSFX('ui_click');
+        });
+    }
+    showStorageNoticeIfNeeded();
 
     // --- AUTO-SAVE ON UNCLEAN EXIT (Patch 54) ---
     //
@@ -1591,6 +1751,11 @@ function initEngine() {
             ${buildRunSummaryHtml(game)}
         `;
         inputManager.hideJoysticks();
+
+        // Patch 92: the run is resolved and the summary is on screen — a genuine
+        // stopping point, and the second of the two safe moments to offer a backup.
+        // After the stats are written so the dialog sits over a complete summary.
+        maybeShowBackupPrompt();
 
         if (import.meta.env.DEV && window.FRACTURED_DEV_MODE && game.state.devTelemetryEnabled && game.state.telemetry) {
             const tel = game.state.telemetry;

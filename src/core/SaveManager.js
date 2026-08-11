@@ -52,7 +52,19 @@ export class SaveManager {
             // back into gameplay.
             runsStarted: 0,
             deaths: 0,
-            runsCompleted: 0
+            runsCompleted: 0,
+            // Patch 92: one-time UI acknowledgements. Neither is read back into
+            // gameplay — they exist only so a notice fires once and never again.
+            //
+            // These live in metaState rather than raw localStorage ON PURPOSE, per
+            // Keep clause 1: touching window.localStorage directly throws in a
+            // blocked/partitioned iframe, which is the EXACT environment the storage
+            // notice exists to warn about. Routing through metaState means they go
+            // out via portalSDK, which is try/caught end to end. When storage is
+            // wholly unavailable neither flag ever persists and both notices show on
+            // every load — correct, since that player genuinely has no save.
+            storageNoticeAcknowledged: false,
+            backupPromptShown: false
         };
         this.loadGame();
         // Runs even when loadGame() found nothing in localStorage (a truly fresh
@@ -113,6 +125,14 @@ export class SaveManager {
                 if (!Number.isFinite(this.metaState.runsStarted)) this.metaState.runsStarted = 0;
                 if (!Number.isFinite(this.metaState.deaths)) this.metaState.deaths = 0;
                 if (!Number.isFinite(this.metaState.runsCompleted)) this.metaState.runsCompleted = 0;
+
+                // Patch 92. Coerced to a strict boolean rather than undefined-checked,
+                // so a corrupt or hand-edited value can't leave a non-boolean sitting
+                // where the notice gate reads it. A save written before this patch
+                // lacks both keys and correctly reads false — an existing player is
+                // shown the retention notice once, which is the point.
+                this.metaState.storageNoticeAcknowledged = this.metaState.storageNoticeAcknowledged === true;
+                this.metaState.backupPromptShown = this.metaState.backupPromptShown === true;
             }
         } catch(e) {
             console.warn("Local storage disabled or blocked.");
@@ -224,6 +244,18 @@ export class SaveManager {
                     this.metaState[key] = Number.isFinite(parsed[key]) ? parsed[key] : 0;
                 });
 
+                // Patch 92: same rule as boonHistory and the counters above — DERIVED
+                // FROM `parsed`, never truthiness-guarded. A `if (!ack)` guard would
+                // let this instance's own acknowledgement survive an import that
+                // lacks the key, so importing an old file into an acknowledged
+                // profile would silently inherit the acknowledgement.
+                //
+                // Deriving it also gives the behaviour we want: importing a save into
+                // a NEW browser re-shows the retention notice, and that browser is a
+                // new storage environment the player has not been warned about yet.
+                this.metaState.storageNoticeAcknowledged = parsed.storageNoticeAcknowledged === true;
+                this.metaState.backupPromptShown = parsed.backupPromptShown === true;
+
                 this._recomputeUpgradeMirror();
 
                 this.saveGame();
@@ -296,6 +328,52 @@ export class SaveManager {
         if (this.metaState.killCounts[type] !== undefined) {
             this.metaState.killCounts[type]++;
         }
+    }
+
+    /**
+     * Patch 92: records that the player dismissed the first-run storage notice.
+     *
+     * Deliberately set on an EXPLICIT dismissal only, never merely on display. A
+     * player who cold-loads and taps BEGIN DESCENT without reading it has not been
+     * informed, and the notice is cheap to re-show — it is a non-blocking bar on the
+     * title screen, not a gate. Marking it read on display would let the one warning
+     * this game gives about browser-local saves be missed permanently in one tap.
+     */
+    acknowledgeStorageNotice() {
+        if (this.metaState.storageNoticeAcknowledged === true) return;
+        this.metaState.storageNoticeAcknowledged = true;
+        this.saveGame();
+    }
+
+    /**
+     * Patch 92: records that the milestone backup prompt has been offered.
+     *
+     * Set on BOTH answers — exporting and declining — because the prompt is a
+     * one-time offer, not a reminder. A player who says "later" has been told the
+     * feature exists and where it lives, which was the whole job; re-asking every
+     * death would be nagging, and the Evaluation tab (Patch 92 step 3) is the
+     * permanent home for it.
+     */
+    markBackupPromptShown() {
+        if (this.metaState.backupPromptShown === true) return;
+        this.metaState.backupPromptShown = true;
+        this.saveGame();
+    }
+
+    /**
+     * Patch 92: has the player reached the point where the save is worth protecting?
+     *
+     * Patient Level 2 (500 spent Lucidity) rather than a first boss kill. Patient
+     * Level only moves when Lucidity is SPENT on permanent upgrades or Synapse
+     * nodes, and that spending is precisely what metaState holds and precisely what
+     * a cleared browser or an itch CDN migration destroys. A boss kill is a run
+     * achievement, and a run is not persistent progress.
+     *
+     * Reads getPatientLevelInfo() rather than spentLucidity directly so the
+     * threshold cannot drift from the curve the rest of the UI displays.
+     */
+    isBackupWorthPrompting() {
+        return this.getPatientLevelInfo().level >= 2;
     }
 
     markFirstEscape() {
@@ -617,7 +695,12 @@ export class SaveManager {
             selectedCurses: [],
             killCounts: { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 },
             boonHistory: {},   // Patch 57: a wipe clears the record too.
-            runsStarted: 0, deaths: 0, runsCompleted: 0   // Patch 59
+            runsStarted: 0, deaths: 0, runsCompleted: 0,   // Patch 59
+            // Patch 92: a wipe is a new patient file, so the retention notice and the
+            // backup prompt are both re-armed. wipeSave() reloads the page, so the
+            // notice reappears on the way back in — which is right: the player just
+            // destroyed a save by choice and is starting one that can be lost again.
+            storageNoticeAcknowledged: false, backupPromptShown: false
         };
         this.saveGame();
         window.location.reload();

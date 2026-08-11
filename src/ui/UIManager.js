@@ -324,17 +324,22 @@ export class UIManager {
         });
 
         if (this.btnExportSave) {
-            this.btnExportSave.addEventListener('click', () => {
-                const encoded = this.saveManager.exportSave();
-                if (encoded) {
-                    navigator.clipboard.writeText(encoded).then(() => {
-                        alert("Clinical file copied to clipboard! Keep it safe.");
-                    }).catch(err => {
-                        prompt("Copy this text to save your file:", encoded);
-                    });
-                }
-            });
+            this.btnExportSave.addEventListener('click', () => this.runExportSave());
         }
+
+        // Patch 92: the export routine, extracted from the button handler above so the
+        // milestone backup prompt (main.js, maybeShowBackupPrompt) can offer a DIRECT
+        // route to export rather than only naming the tab it lives in. One code path,
+        // so the button and the prompt cannot drift.
+        //
+        // SaveManager.exportSave() itself is untouched — same base64, same format.
+        // The only change to the surrounding UI flow is the `navigator.clipboard`
+        // existence check: the old code called `.writeText` unconditionally, which
+        // throws a TypeError (not a rejection, so the .catch never ran) wherever the
+        // Clipboard API is absent — non-secure contexts and several in-app webviews,
+        // i.e. exactly the itch.io embed cases this patch exists for. That threw away
+        // the player's only backup route with no fallback and no message. It now
+        // falls through to the same prompt() path a rejection already used.
 
         if (this.btnImportSave) {
             this.btnImportSave.addEventListener('click', () => {
@@ -413,6 +418,37 @@ export class UIManager {
         // did — SynapseTree.js has no hook exposed for that, and it's out of this
         // patch's file scope (UIManager.js, index.html only) to add one. Flagging
         // as a real, known gap rather than a silent regression.
+    }
+
+    /**
+     * Exports the clinical file to the clipboard, with a copyable prompt() fallback.
+     *
+     * Patch 92: extracted verbatim from the EXPORT button's click handler so the
+     * milestone backup prompt can call the same path. Callers are the EVALUATION
+     * tab's button and main.js's maybeShowBackupPrompt().
+     *
+     * @returns {boolean} false only when SaveManager could not serialize the save.
+     */
+    runExportSave() {
+        const encoded = this.saveManager.exportSave();
+        if (!encoded) {
+            alert("ERROR: The clinical file could not be read for export.");
+            return false;
+        }
+        // Guarded because `navigator.clipboard` is undefined outside a secure context
+        // and in several in-app webviews; calling through it there throws
+        // synchronously, which the .catch below cannot see.
+        const clip = (typeof navigator !== 'undefined' && navigator.clipboard) ? navigator.clipboard : null;
+        if (!clip || typeof clip.writeText !== 'function') {
+            prompt("Copy this text to save your file:", encoded);
+            return true;
+        }
+        clip.writeText(encoded).then(() => {
+            alert("Clinical file copied to clipboard! Keep it safe.");
+        }).catch(() => {
+            prompt("Copy this text to save your file:", encoded);
+        });
+        return true;
     }
 
     updateMenuUI() {

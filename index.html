@@ -91,6 +91,48 @@
         <div id="title-suspended-note" style="display: none; margin-top: 24px; padding: 8px 22px; background: rgba(8, 8, 10, 0.85); border: 1px solid rgba(197, 160, 89, 0.5); color: #e8dcc8; font-family: var(--ui-font); font-size: 0.85rem; font-weight: bold; letter-spacing: 3px; text-align: center; text-shadow: 0 1px 3px #000; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);"></div>
     </div>
 
+    <!-- Patch 92: first-run records retention notice (itch.io / browser-local saves).
+         Shown once, until explicitly acknowledged. Styles live in style.css.
+
+         DELIBERATELY OUTSIDE #title-screen, and deliberately NOT a modal:
+         - Outside, because .fullscreen-menu centres a flex column with no overflow
+           handling, so on a 390px-tall landscape phone the column's top and bottom
+           both clip (see Patch 83's known issue). A warning appended there would be
+           invisible on precisely the mobile browsers most likely to block storage.
+         - Not a modal, because Patch 52 cut the path to gameplay from four actions
+           to one and that is not something a notice gets to undo. This bar is
+           anchored to the bottom of the viewport and never covers BEGIN DESCENT, so
+           a player who wants to play just plays. -->
+    <!-- Visibility is a CLASS (.is-visible), never an inline display. An inline
+         `display:block` from JS outranks the stylesheet, which would defeat the
+         landscape row layout in the max-height media query below. -->
+    <div id="storage-notice">
+        <div class="storage-notice-stamp">RECORDS RETENTION NOTICE</div>
+        <!-- The text is wrapped so the whole bar can become a single horizontal row
+             on a short (landscape phone) viewport without reflowing the copy itself.
+             See the max-height block in style.css. -->
+        <div class="storage-notice-text">
+            <p class="storage-notice-body storage-notice-long">
+                This case file is held in <strong>this browser only</strong>. Clearing your
+                browser data &mdash; or switching browser or device &mdash; erases it.
+            </p>
+            <p class="storage-notice-body storage-notice-where storage-notice-long">
+                Keep a copy: <strong>MIND HUB &rarr; EVALUATION &rarr; BACK UP FILE</strong>.
+            </p>
+            <!-- Condensed variant for short (landscape phone) viewports. Same pattern
+                 as the .kbd-copy / .touch-copy pairs (Patch 87, Keep clause 16b): both
+                 variants ship in the markup and CSS picks one, so there is no runtime
+                 branch and no JS involved. It exists because a 390px-tall phone has
+                 almost no vertical room to spare — the title column already overflows
+                 there (Patch 83) — and this bar's height is reserved out of it. -->
+            <p class="storage-notice-body storage-notice-short">
+                Saves live in <strong>this browser only</strong> and can be lost.
+                Back up: <strong>MIND HUB &rarr; EVALUATION</strong>.
+            </p>
+        </div>
+        <button class="file-btn" id="btn-storage-notice-ack">ACKNOWLEDGED</button>
+    </div>
+
     <div id="clinical-folder-menu" class="fullscreen-menu" style="display:none;">
         
         <div id="xp-toast" class="medical-toast">
@@ -147,9 +189,30 @@
                     <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
                         <button class="file-btn primary" id="btn-resume-run" style="display:none;">RESUME SUSPENDED PROTOCOL</button>
                         <button class="file-btn primary" id="btn-start">AUTHORIZE DESCENT</button>
-                        <div style="display: flex; gap: 10px; margin-top: 15px;">
-                            <button class="file-btn" id="btn-export-save">EXPORT CLINICAL FILE</button>
-                            <button class="file-btn" id="btn-import-save">IMPORT CLINICAL FILE</button>
+
+                        <!-- Patch 92: records retention. These two buttons already
+                             existed here, unlabelled as to WHY they matter and with no
+                             statement that the save is browser-local — so nobody found
+                             them until after losing something. Given a heading, a plain
+                             line of explanation, and action-first labels (BACK UP /
+                             RESTORE) with the old EXPORT/IMPORT words kept alongside so
+                             a returning player still recognises them.
+                             The ids are unchanged: UIManager binds by id. -->
+                        <div class="records-retention">
+                            <div class="records-retention-title">RECORDS RETENTION</div>
+                            <!-- Kept to one short sentence deliberately. The EVALUATION
+                                 pane fits its content EXACTLY at 1280x800 — measured —
+                                 so a third line of copy here pushes these buttons below
+                                 the fold, which is the opposite of what this patch is
+                                 for. Say the one thing that matters and stop. -->
+                            <p class="records-retention-note">
+                                Stored in <strong>this browser only</strong> &mdash; clearing browser
+                                data, or switching browser or device, erases it.
+                            </p>
+                            <div class="records-retention-actions">
+                                <button class="file-btn" id="btn-export-save">BACK UP FILE (EXPORT)</button>
+                                <button class="file-btn" id="btn-import-save">RESTORE FILE (IMPORT)</button>
+                            </div>
                         </div>
                     </div>
                 </div>

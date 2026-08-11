@@ -1038,6 +1038,223 @@ canvas { display: block; }
 }
 
 /* ============================================================================
+   RECORDS RETENTION NOTICE (Patch 92)
+   ============================================================================
+   Why this exists: on itch.io the game is served from a shared CDN origin, so a
+   player clearing site data for ANY itch game clears ours; iOS/Safari frequently
+   block persistence outright inside the iframe (portalSDK._storage() try/catches,
+   so nothing breaks — nothing saves either); and itch has migrated CDN domains
+   before, stating saves are lost when it happens. export/import already existed as
+   the mitigation; the gap was purely that nobody finds them before losing something.
+
+   NOT a modal, and not inside #title-screen — see the markup comment in index.html
+   for both reasons. It is a bottom-anchored bar so it can never cover BEGIN DESCENT
+   and can never be clipped by the title column's centred overflow.
+
+   Visual language borrowed from #title-suspended-note (dark plate, gold hairline,
+   bone text) rather than invented, so it reads as part of the case file. No
+   shadowBlur anywhere near this — it is DOM, but the project rule is a house style
+   as much as a canvas perf rule, and the depth here is a plain box-shadow.
+   ---------------------------------------------------------------------------- */
+#storage-notice {
+    /* Clearance between the bar and the title column above it. Declared HERE, beside
+       the bar's own sizing, and read by applyStorageNoticeLayout() — so the gap and
+       the layout it belongs to can only ever be changed together. On a short viewport
+       the media query drops it to 4px, because there the column has ~1px to spare. */
+    --notice-gap: 12px;
+    /* Hidden by default; main.js toggles .is-visible. Deliberately NOT an inline
+       display from JS — an inline value outranks the stylesheet and would defeat
+       the landscape row layout in the max-height block further down. */
+    display: none;
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    /* Sits above #title-screen (.fullscreen-menu is z-index 1000 territory) but
+       below #confirm-modal (1100), so a confirm dialog is never argued with. */
+    z-index: 1050;
+    width: 100%;
+    max-width: 680px;
+    box-sizing: border-box;
+    padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+    background: rgba(8, 8, 10, 0.94);
+    border-top: 1px solid rgba(197, 160, 89, 0.5);
+    text-align: center;
+    box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.6);
+    /* The bar itself is interactive, but it is the only thing here that is — it
+       must not become an invisible catcher over the title buttons above it. */
+    pointer-events: auto;
+}
+#storage-notice.is-visible { display: block; }
+.storage-notice-stamp {
+    font-family: var(--ui-font);
+    font-size: 0.8rem;
+    font-weight: bold;
+    letter-spacing: 3px;
+    color: var(--ui-gold);
+    margin-bottom: 8px;
+    text-shadow: 0 1px 3px #000;
+}
+.storage-notice-body {
+    font-family: var(--ui-font);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: #d8ceba;
+    margin: 0 auto 6px;
+    max-width: 560px;
+    text-shadow: 0 1px 3px #000;
+}
+.storage-notice-body strong { color: #f0e6d2; }
+.storage-notice-where { color: #a89d88; font-size: 0.76rem; }
+/* Long copy is the default; the condensed variant only appears on short viewports. */
+.storage-notice-short { display: none; }
+#btn-storage-notice-ack {
+    width: auto;
+    margin-top: 10px;
+    padding: 8px 26px;
+    font-size: 0.85rem;
+    /* 44px floor on touch for the same reason as Patches 85/87: this is the only
+       control on the bar, and a notice you cannot dismiss is worse than no notice. */
+    min-height: 44px;
+}
+
+/* The title column RESERVES the bar's height rather than letting it overlap.
+   .fullscreen-menu centres a flex column, so without this the bar simply sits on
+   top of whatever the column's bottom happens to be — measured on a 844x390
+   landscape phone, that was MIND HUB and SYSTEM SETTINGS, i.e. the notice covered
+   the exact route to the export feature it tells the player to use.
+
+   The value is set from JS (applyStorageNoticeLayout in main.js) from the bar's own
+   offsetHeight, NOT hardcoded here — the copy wraps differently at every width, so
+   any fixed number would be wrong somewhere. Same discipline as Patch 71's control
+   band taking its height from Renderer.controlBandH: the two must not be able to
+   disagree about where the bar starts. This rule only declares the transition. */
+#title-screen { transition: padding-bottom 0.15s ease-out; }
+
+/* Landscape phones are ~390px tall and the title column already overflows there
+   (Patch 83), so reserving a 140px stacked bar would push the title off screen.
+   The bar becomes a single ROW instead — stamp, copy, button side by side — which
+   takes ~60px, small enough to reserve without breaking the column. */
+@media (max-height: 560px) {
+    #storage-notice.is-visible {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        text-align: left;
+    }
+    #storage-notice {
+        padding: 6px 14px calc(6px + env(safe-area-inset-bottom));
+        --notice-gap: 4px;
+    }
+    /* Swap to the one-line copy. Explicit display values rather than `revert`, for
+       the same universal-support reason Patch 87 gives for .kbd-copy/.touch-copy. */
+    .storage-notice-long { display: none; }
+    .storage-notice-short { display: block; }
+    .storage-notice-stamp {
+        font-size: 0.7rem;
+        letter-spacing: 1px;
+        margin-bottom: 0;
+        /* One line, never wrapped. A width-capped stamp wrapped to three lines and
+           made the bar 81px tall, and every pixel here is reserved out of a title
+           column that already overflows a 390px-tall phone (Patch 83) — a taller
+           bar pushed the FRACTURED title clean off the top of the screen. */
+        flex: 0 0 auto;
+        white-space: nowrap;
+        line-height: 1.2;
+    }
+    /* min-width:0 is load-bearing: a flex item's default min-width:auto refuses to
+       shrink below its content, which would push the button off the right edge. */
+    .storage-notice-text { flex: 1 1 auto; min-width: 0; }
+    .storage-notice-body { font-size: 0.72rem; line-height: 1.35; margin: 0 0 2px; max-width: none; }
+    .storage-notice-where { font-size: 0.7rem; margin-bottom: 0; }
+    #btn-storage-notice-ack { flex: 0 0 auto; margin-top: 0; padding: 6px 16px; font-size: 0.78rem; }
+}
+
+/* ============================================================================
+   RECORDS RETENTION BLOCK — the EVALUATION tab (Patch 92)
+   ============================================================================
+   export/import were already here; the problem was purely discoverability. They sat
+   as two unexplained buttons below AUTHORIZE DESCENT with nothing saying the save is
+   browser-local, so a player found them only after losing progress.
+
+   Given a bordered plate so the pair reads as one labelled facility rather than two
+   loose buttons, in the same dashed-rule paper vocabulary as the rest of the folder.
+
+   The actions use flex-wrap with a flex-basis rather than a media query — the same
+   choice Patch 88 made for the tier rows: they sit side by side when there is room
+   and stack when there is not, which is one rule instead of two thresholds to keep
+   in sync. Before this, the pair stayed side by side at every width and each label
+   wrapped to three lines inside a 176px lane on a 390px phone.
+   ---------------------------------------------------------------------------- */
+.records-retention {
+    /* No margin-top: the parent column already supplies a 15px gap. An extra margin
+       here cost 20px of a pane that, measured at 1280x800, fits its content with
+       ZERO slack — the block has to earn every pixel it takes. */
+    width: 100%;
+    max-width: 620px;
+    box-sizing: border-box;
+    padding: 10px 14px;
+    border: 1px dashed rgba(17, 17, 17, 0.4);
+    background: rgba(17, 17, 17, 0.035);
+    text-align: center;
+}
+.records-retention-title {
+    font-family: var(--ui-font);
+    font-size: 0.85rem;
+    font-weight: bold;
+    letter-spacing: 3px;
+    color: var(--ink-black);
+    margin-bottom: 4px;
+}
+.records-retention-note {
+    font-family: var(--ui-font);
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: #555;
+    margin: 0 auto 10px;
+    max-width: 540px;
+}
+.records-retention-note strong { color: var(--ink-black); }
+.records-retention-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}
+.records-retention-actions .file-btn {
+    /* Basis chosen so the pair fits side by side from ~500px of content width and
+       stacks below it — a 390px phone leaves 362px, so it stacks there. */
+    flex: 1 1 230px;
+    max-width: 300px;
+    font-size: 1rem;
+    padding: 10px 18px;
+}
+
+@media (pointer: coarse) {
+    /* Measured at 50px desktop / 94px portrait BEFORE this patch, so the 44px floor
+       was already met — but only because the old labels wrapped to three lines in a
+       narrow lane. Now that they no longer wrap, state the floor explicitly so a
+       later font or padding change cannot quietly drop these under it. Same guard,
+       same reasoning as Patches 85 and 87. */
+    .records-retention-actions .file-btn {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
+/* A landscape phone gives .folder-content only ~315px, and the EVALUATION tab has
+   always needed scrolling there (measured 83px of overflow before this patch, on the
+   old two-button row). This block cannot be made to fit — nothing can, at that
+   height — so it is merely kept from being disproportionate. */
+@media (max-height: 560px) {
+    .records-retention { padding: 8px 12px; }
+    .records-retention-title { font-size: 0.8rem; margin-bottom: 3px; }
+    .records-retention-note { font-size: 0.72rem; line-height: 1.4; margin-bottom: 8px; }
+}
+
+/* ============================================================================
    THERAPY REGIMEN — MOBILE VIEW (Patch 91)
    ============================================================================
    The desktop screen is two panels side by side with a details panel below, and it
