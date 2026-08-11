@@ -9,9 +9,24 @@
     <meta property="og:description" content="Sanity is your HP. Every kill feeds Lucidity, the currency of your own unraveling. FRACTURED is a psychiatric horror roguelite where you can adopt Intrusive Thoughts as permanent curses for greater power — if you dare.">
     <meta property="og:type" content="website">
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <!-- Portal SDK. Absent/blocked/non-portal hosts are handled by src/systems/PortalSDK.js,
-         which no-ops when window.CrazyGames is missing or reports environment 'disabled'. -->
-    <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
+    <!-- Portal SDK — DELIBERATELY ABSENT (2026-08-11, itch.io self-hosted build).
+         src/systems/PortalSDK.js stays and is unchanged: with no script tag its
+         _probe() finds no window.CrazyGames, sets available = false, and every
+         portal method (ads, gameplay/loading events, user, platform mute) becomes a
+         genuine no-op while storage falls through to plain localStorage.
+
+         Note it does NOT no-op merely because we are off the portal's domain:
+         LIVE_ENVIRONMENTS includes 'local', so with the script present on localhost
+         `available` is true and requestAd() renders the SDK's "midgame ad would
+         appear here" dev placeholder — which is exactly what was happening on the
+         death screen. Absence of the tag is what disables the portal.
+
+         To target a portal again, re-add a script tag here loading
+         https://sdk.crazygames.com/crazygames-sdk-v3.js and change nothing else —
+         no PortalSDK.js edit, no LIVE_ENVIRONMENTS change, no call-site change.
+         Written as prose rather than a commented-out tag on purpose: a real tag
+         inside this comment would come back to life the moment anything disturbed
+         the comment terminator. -->
 </head>
 <body>
 
