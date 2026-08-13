@@ -521,12 +521,15 @@ function resumeAudioForGameplay() {
  * dialog entirely would mean silently destroying a run without asking, which is
  * far worse than an ugly prompt.
  */
-function showConfirm({ title, body, note, confirmLabel, cancelLabel, onConfirm, danger = true }) {
+function showConfirm({ title, body, note, confirmLabel, cancelLabel, onConfirm, danger = true, noticeOnly = false }) {
     const modal = document.getElementById('confirm-modal');
     const acceptBtn = document.getElementById('btn-confirm-accept');
     const cancelBtn = document.getElementById('btn-confirm-cancel');
 
     if (!modal || !acceptBtn || !cancelBtn) {
+        // Patch 101: a notice has nothing to decide, so asking for a yes/no here would
+        // invent a choice that does not exist.
+        if (noticeOnly) { window.alert(`${body}\n\n${note || ''}`); return; }
         if (window.confirm(`${body}\n\n${note || ''}`)) onConfirm();
         return;
     }
@@ -535,7 +538,20 @@ function showConfirm({ title, body, note, confirmLabel, cancelLabel, onConfirm, 
     document.getElementById('confirm-body').innerText = body;
     document.getElementById('confirm-note').innerText = note || '';
     acceptBtn.innerText = confirmLabel;
-    cancelBtn.innerText = cancelLabel;
+    // Defaulted rather than assigned raw: a noticeOnly caller has no cancel button to
+    // label, and `innerText = undefined` writes the literal string "undefined" into it —
+    // invisible today only because the button is hidden, and a trap for the next caller.
+    cancelBtn.innerText = cancelLabel || 'RETURN';
+
+    // Patch 101: `noticeOnly` turns this into a one-button NOTICE — same folder chrome,
+    // nothing to decide. Added here rather than as a second dialog so there stays one
+    // modal implementation; a second one is how two copies of the folder styling drift.
+    //
+    // Re-set on EVERY open rather than toggled, for exactly the reason the class resets
+    // below say: leaving `display: none` behind would silently remove the cancel button
+    // from the next ABANDON PROTOCOL dialog — a destructive prompt with no way out but
+    // to accept it.
+    cancelBtn.style.display = noticeOnly ? 'none' : '';
 
     // Patch 92: `danger` defaults TRUE, so the original ABANDON PROTOCOL dialog is
     // byte-identical to before. The backup prompt passes false — it is an offer, not
@@ -744,9 +760,18 @@ function enterMindHub() {
  * surprise. That is the same line the Descent Roadmap already draws — it seals unvisited
  * floors while still showing they exist.
  *
- * The locked button is a real `disabled` button rather than a styled-inert one, so it
- * cannot be clicked, takes no hover SFX, and is announced as unavailable rather than
- * merely looking it.
+ * PATCH 101 — the locked state got LOUDER, and got a click.
+ *
+ * Patch 99 rendered it in the roadmap's muted `#9a917f` at 0.6 opacity, over a dark red
+ * title screen. It was legible but it read as chrome — a disabled row you scan past —
+ * which is the opposite of a goal. It now wears the same gold as the live entries, with
+ * a dashed border and a stamped SEALED tag carrying the "unavailable" meaning instead of
+ * the colour doing it. Sealed, not switched off.
+ *
+ * It is also no longer a `disabled` button, so it can be clicked: locked, a click opens
+ * the notice below rather than launching anything. A goal you can interrogate is worth
+ * more than one you can only look at, and the two-line label cannot hold the tease that
+ * the notice can.
  */
 function refreshRecursionEntries() {
     if (!saveManager) return;
@@ -757,30 +782,58 @@ function refreshRecursionEntries() {
         if (!btn) return;
 
         btn.style.display = 'block';
-        btn.disabled = !unlocked;
+        // NOT `disabled` — the locked button is clickable and answers with a notice.
+        // (It also has to stay enabled for UIManager.attachEvents' hover/click SFX,
+        // which skip disabled buttons.)
+        btn.disabled = false;
 
         if (unlocked) {
             btn.innerHTML = 'THE RECURSION';
             btn.style.color = 'var(--ui-gold)';
             btn.style.opacity = '0.85';
             btn.style.borderStyle = '';
+            btn.style.borderColor = '';
             btn.style.cursor = '';
             btn.title = 'Endless descent. The construct rebuilds itself.';
         } else {
-            // The requirement, in the folder's own redaction vocabulary (dashed border
-            // + the muted #9a917f the roadmap uses for SEALED). Two lines, because the
-            // second one is the entire point of showing this at all.
-            btn.innerHTML = 'THE RECURSION <span style="opacity:0.75;">— SEALED</span>' +
-                '<span style="display:block; font-size:0.62rem; letter-spacing:2px; margin-top:3px; opacity:0.8;">SUBDUE THE SUBJECT ON FLOOR 5</span>';
-            btn.style.color = '#9a917f';
-            // Deliberately overrides `.file-btn:disabled { opacity: 0.3 }` in style.css.
-            // 0.3 is right for a button whose label you already know; it is too faint to
-            // READ, and the second line here is the whole reason this is on screen.
-            btn.style.opacity = '0.6';
+            // Gold, like the live entries — a locked goal has to look like something you
+            // WANT, not like a greyed-out control. The dashed border and the stamped tag
+            // carry "not yet", so the colour does not have to.
+            btn.innerHTML =
+                'THE RECURSION' +
+                '<span style="display:inline-block; margin-left:8px; padding:1px 6px; border:1px dashed currentColor; font-size:0.58rem; letter-spacing:2px; vertical-align:middle; opacity:0.85;">SEALED</span>' +
+                '<span style="display:block; font-size:0.62rem; letter-spacing:2px; margin-top:4px; opacity:0.75;">SUBDUE THE SUBJECT ON FLOOR 5</span>';
+            btn.style.color = 'var(--ui-gold)';
+            btn.style.opacity = '0.8';
             btn.style.borderStyle = 'dashed';
-            btn.style.cursor = 'not-allowed';
+            btn.style.borderColor = 'rgba(197, 160, 89, 0.55)';
+            btn.style.cursor = 'pointer';
             btn.title = 'Clear Floor 5 to unlock the endless descent.';
         }
+    });
+}
+
+/**
+ * Patch 101 — the notice behind a SEALED Recursion entry.
+ *
+ * Written to tease rather than to instruct. It states the requirement plainly (reach
+ * Floor 5, subdue what is there) and then declines to say what follows, because what
+ * follows is the reward for doing it. It never names the Architect — same line the
+ * Descent Roadmap draws, and the reason showing this at all is a hint and not a spoiler.
+ *
+ * Reuses the `#confirm-modal` folder chrome via showConfirm's noticeOnly mode, so it is
+ * the same torn-paper dialog as every other interruption in the game rather than a
+ * second thing that has to be kept looking like the first.
+ */
+function showRecursionSealedNotice() {
+    showConfirm({
+        title: 'PROTOCOL SEALED',
+        body: 'Clearance for this procedure requires a completed evaluation. Descend to FLOOR 5. Subdue whatever it is that keeps the construct standing.',
+        note: 'What happens after that is not recorded in this file.',
+        confirmLabel: 'UNDERSTOOD',
+        danger: false,
+        noticeOnly: true,
+        onConfirm: () => {}
     });
 }
 
@@ -1389,9 +1442,13 @@ function initEngine() {
             titleBtnContainer.insertBefore(titleEndlessBtn, titleHubBtn);
 
             titleEndlessBtn.addEventListener('click', () => {
-                // Belt and braces: the button is `disabled` when locked, so this cannot
-                // normally fire. Re-checked anyway because it launches a run.
-                if (!isRecursionUnlocked(saveManager.metaState)) return;
+                // Patch 101: locked, this is the tease rather than a dead click. This is
+                // also the real gate on launching a run — the button is deliberately not
+                // `disabled`, so nothing else stops a locked player getting through.
+                if (!isRecursionUnlocked(saveManager.metaState)) {
+                    showRecursionSealedNotice();
+                    return;
+                }
                 // A suspended run is real progress and this button starts a NEW one, so
                 // it asks first — the same rule and the same dialog BEGIN DESCENT uses.
                 const suspended = refreshTitleActions();
@@ -1496,7 +1553,11 @@ function initEngine() {
             hubStartBtn.parentNode.insertBefore(hubEndlessBtn, hubStartBtn.nextSibling);
 
             hubEndlessBtn.addEventListener('click', () => {
-                if (!isRecursionUnlocked(saveManager.metaState)) return;
+                // Same as the title entry — see the note there.
+                if (!isRecursionUnlocked(saveManager.metaState)) {
+                    showRecursionSealedNotice();
+                    return;
+                }
                 const suspended = refreshTitleActions();
                 const launch = () => {
                     if (audioEngine) audioEngine.stopMenuTheme();

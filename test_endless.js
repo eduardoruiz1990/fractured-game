@@ -300,6 +300,14 @@ check('a PRE-PATCH-59 save (kills, but no counter) still unlocks it',
       'this is the case a single-field gate would silently revoke');
 check('killing other bosses does NOT unlock it',
       isRecursionUnlocked({ killCounts: { BOSS: 40, RORSCHACH: 12, PANOPTICON: 5, AMALGAMATION: 2 } }) === false);
+// Patch 101: standing on floor 6 is itself proof — the only honest route there is
+// DESCEND DEEPER from a cleared floor 5. Found from a real save that was mid-run on
+// floor 6 with the entry still reading SEALED.
+check('having REACHED floor 6 unlocks it, whatever the counters say',
+      isRecursionUnlocked({ maxFloorReached: 6 }) === true &&
+      isRecursionUnlocked({ maxFloorReached: 14, killCounts: { ARCHITECT: 0 }, runsCompleted: 0 }) === true);
+check('...but floors 1-5 do not',
+      [1, 2, 3, 4, 5].every(f => isRecursionUnlocked({ maxFloorReached: f }) === false));
 check('a save shape it does not recognise reads as locked, never throws',
       [undefined, null, {}, { killCounts: null }, { killCounts: 'x' },
        { runsCompleted: 'many' }, { killCounts: { ARCHITECT: NaN } }, 42, 'save']

@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–100)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–101)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1059,7 +1059,7 @@ by this patch, and out of scope for a mobile-only change.
 
 ---
 
-## THE RECURSION — endless mode after the Architect (Patches 93–100, 2026-08-13)
+## THE RECURSION — endless mode after the Architect (Patches 93–101, 2026-08-13)
 
 **Driver:** a direct player request. A player who reached the Architect wrote: *"It
 would be really cool to add an infinite mode after the architect. it could be like a
@@ -1269,6 +1269,40 @@ or the grade reads as a filter sitting on top of the world instead of a property
 **40 strings over 120 floors**. Making the grade continuous per floor would look
 smoother and would mint a permanent `spriteCache` entry on every floor forever — see
 Keep clause 33. Adding a fifth grade is fine; interpolating between them is not.
+
+### Patch 101 — the sealed entry gets louder, and gets a click *(player feedback)*
+
+Patch 99 rendered the locked entry in the roadmap's muted `#9a917f` at 0.6 opacity over
+a dark red title screen. Legible, but it read as **chrome** — a disabled row you scan
+past — which is the opposite of a goal.
+
+- **Gold, like the live entries.** A locked goal has to look like something you want. The
+  dashed border and a stamped `SEALED` tag carry the "not yet", so the colour does not
+  have to. Sealed, not switched off.
+- **Clickable.** It is no longer a `disabled` button; locked, a click opens a
+  `PROTOCOL SEALED` notice — *"Descend to FLOOR 5. Subdue whatever it is that keeps the
+  construct standing. What happens after that is not recorded in this file."* It states
+  the requirement and then declines to say what follows, because what follows is the
+  reward for doing it. Still never names the Architect. A goal you can interrogate beats
+  one you can only look at, and the two-line label cannot hold a tease.
+- **`showConfirm` gained `noticeOnly`**, hiding the cancel button, rather than a second
+  dialog being written — one modal implementation, so the folder chrome cannot drift into
+  two versions. It is re-set on **every** open for the same reason the class resets are:
+  leaving `display: none` behind would silently strip the cancel button from the next
+  ABANDON PROTOCOL dialog, i.e. a destructive prompt with no way out but to accept.
+- Since the button is no longer `disabled`, **the click handler is now the only thing
+  standing between a locked player and a launched run** — both handlers check the gate
+  first. (Dropping `disabled` also restores the hover/click SFX, which
+  `UIManager.attachEvents` skips for disabled buttons.)
+
+**The unlock gate gained a third signal: `maxFloorReached >= 6`.** Found from a real
+save sitting mid-run on **floor 6** with the entry still reading SEALED. That save got
+there through the dev floor override, but the shape is reachable honestly:
+`killCounts.ARCHITECT` is written by `Combat.js` on the kill while `maxFloorReached` is
+written by the descend handler, so any future path that advances the floor without
+routing through the kill counter would strand a player who had visibly finished the
+game. You cannot legitimately stand on floor 6 without having put the Architect down, so
+being there is proof on its own.
 
 ### Deliberately NOT done
 
@@ -1528,7 +1562,7 @@ Keep clause 33. Adding a fifth grade is fine; interpolating between them is not.
 | `test_leash.js` | 15 | off-screen dead zone, recall lands on screen, boss exclusion, tutorial cases, **desktop viewport derivation unchanged by the live-zoom refactor** |
 | `test_tutorial.js` | 86 | **new** — step gates and overrides, every step's timeout, the instruction hold and its cap, device-appropriate copy, copy length ceiling, degenerate state |
 | `test_viewport.js` | 42 | **new** — the desktop/portrait split in both directions, desktop `updateZoom` bit-identical to pre-Patch-71, band and camera geometry, zero-sized canvas |
-| `test_endless.js` | 156 | **new (Patch 93)** — floors 1-5 bit-identical (boss dispatch, palette index, variant table, every multiplier `=== 1`), the boss rotation, `cadence` identity + min floors, the run-completion latch across a floor boundary, the direct-launch unlock gate and draft maths, and **the bounded colour set walked over 120 floors against the real Director** |
+| `test_endless.js` | 158 | **new (Patch 93)** — floors 1-5 bit-identical (boss dispatch, palette index, variant table, every multiplier `=== 1`), the boss rotation, `cadence` identity + min floors, the run-completion latch across a floor boundary, the direct-launch unlock gate and draft maths, and **the bounded colour set walked over 120 floors against the real Director** |
 
 `test_director.js` and `test_save.js` remain exploratory (they print, they don't
 assert). All six assertion suites exit non-zero on failure and should be run after

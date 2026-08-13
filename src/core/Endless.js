@@ -286,20 +286,33 @@ export function endlessDraftXP(xpForLevel, picks = ENDLESS_DRAFT_PICKS) {
 /**
  * Has this profile earned the right to skip straight to the Recursion?
  *
- * The gate is a first Architect kill, and it reads TWO fields on purpose.
- * `runsCompleted` is the natural signal but only exists since Patch 59, so a player who
- * beat the Architect before that patch has 0 there and a real ARCHITECT kill count —
- * gating on the counter alone would silently revoke something they had already earned.
+ * The gate is a first Architect kill, and it reads THREE fields on purpose — each is a
+ * different way of having already done the thing, and any one of them is proof:
  *
- * Defensive throughout: this is called on the title screen every refresh, and a save
- * shape it does not recognise must read as "locked", never throw.
+ *   - `killCounts.ARCHITECT` — the direct signal.
+ *   - `runsCompleted` — the natural one, but it only exists since Patch 59, so a player
+ *     who beat the Architect before that patch has 0 here and a real kill count. Gating
+ *     on this alone would silently revoke something already earned.
+ *   - `maxFloorReached >= FIRST_ENDLESS_FLOOR` (Patch 101) — you cannot legitimately
+ *     stand on floor 6 without having put the Architect down, since the only route there
+ *     is DESCEND DEEPER from a cleared floor 5. Added after a save turned up mid-run on
+ *     floor 6 with the entry still reading SEALED. That particular save got there through
+ *     the dev floor override, but the same shape is reachable honestly: `killCounts` is
+ *     written by `Combat.js` on the kill while `maxFloorReached` is written by the
+ *     descend handler, so any future path that advances the floor without routing through
+ *     the kill counter would strand a player who had visibly finished the game.
+ *
+ * Defensive throughout: this runs on every title-screen refresh, and a save shape it does
+ * not recognise must read as "locked", never throw.
  */
 export function isRecursionUnlocked(metaState) {
     if (!metaState || typeof metaState !== 'object') return false;
     const kills = metaState.killCounts && Number(metaState.killCounts.ARCHITECT);
     if (Number.isFinite(kills) && kills > 0) return true;
     const completed = Number(metaState.runsCompleted);
-    return Number.isFinite(completed) && completed > 0;
+    if (Number.isFinite(completed) && completed > 0) return true;
+    const deepest = Number(metaState.maxFloorReached);
+    return Number.isFinite(deepest) && deepest >= FIRST_ENDLESS_FLOOR;
 }
 
 // ---------------------------------------------------------------------------
