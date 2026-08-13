@@ -727,25 +727,60 @@ function enterMindHub() {
  * on the BEGIN DESCENT confirm, what they would be giving up).
  */
 /**
- * Patch 97 — shows or hides BOTH Recursion entries against the unlock gate.
+ * Patch 97/99 — puts BOTH Recursion entries into the right state for this save.
  *
  * One function for the two surfaces, so the title screen and the clinical folder can
- * never disagree about whether the mode is available. Called on every title refresh and
- * on every folder open rather than once at injection: those blocks run at boot, and the
- * Architect can fall during the session that follows — awakening after a first clear
- * must reveal the mode immediately, not on the next reload.
+ * never disagree. Called on every title refresh and on every folder open rather than
+ * once at injection: those blocks run at boot, and the Architect can fall during the
+ * session that follows — awakening after a first clear must promote the entry
+ * immediately, not on the next reload.
  *
- * HIDDEN rather than shown-disabled. A greyed-out button naming the final boss spoils
- * it for a player who has not met him, and redaction is already this game's convention
- * for unreached content (the roadmap seals unvisited floors, the Mind Palace seals
- * unencountered trophies).
+ * PATCH 99 — SHOWN WHEN LOCKED, not hidden. Patch 97 hid it, reasoning that a button
+ * naming an endless mode after the final boss spoils the ending. On play, that was the
+ * wrong trade: the mode was invisible to exactly the players who had not yet reached it,
+ * so it could not do the one thing an unreached goal is for — give a reason to go back
+ * down. It now reads as SEALED and states its requirement, which is a hint rather than
+ * a spoiler: it names FLOOR 5, never the Architect, so what is waiting there is still a
+ * surprise. That is the same line the Descent Roadmap already draws — it seals unvisited
+ * floors while still showing they exist.
+ *
+ * The locked button is a real `disabled` button rather than a styled-inert one, so it
+ * cannot be clicked, takes no hover SFX, and is announced as unavailable rather than
+ * merely looking it.
  */
 function refreshRecursionEntries() {
     if (!saveManager) return;
     const unlocked = isRecursionUnlocked(saveManager.metaState);
+
     ['btn-title-endless', 'btn-start-endless'].forEach(id => {
         const btn = document.getElementById(id);
-        if (btn) btn.style.display = unlocked ? 'block' : 'none';
+        if (!btn) return;
+
+        btn.style.display = 'block';
+        btn.disabled = !unlocked;
+
+        if (unlocked) {
+            btn.innerHTML = 'THE RECURSION';
+            btn.style.color = 'var(--ui-gold)';
+            btn.style.opacity = '0.85';
+            btn.style.borderStyle = '';
+            btn.style.cursor = '';
+            btn.title = 'Endless descent. The construct rebuilds itself.';
+        } else {
+            // The requirement, in the folder's own redaction vocabulary (dashed border
+            // + the muted #9a917f the roadmap uses for SEALED). Two lines, because the
+            // second one is the entire point of showing this at all.
+            btn.innerHTML = 'THE RECURSION <span style="opacity:0.75;">— SEALED</span>' +
+                '<span style="display:block; font-size:0.62rem; letter-spacing:2px; margin-top:3px; opacity:0.8;">SUBDUE THE SUBJECT ON FLOOR 5</span>';
+            btn.style.color = '#9a917f';
+            // Deliberately overrides `.file-btn:disabled { opacity: 0.3 }` in style.css.
+            // 0.3 is right for a button whose label you already know; it is too faint to
+            // READ, and the second line here is the whole reason this is on screen.
+            btn.style.opacity = '0.6';
+            btn.style.borderStyle = 'dashed';
+            btn.style.cursor = 'not-allowed';
+            btn.title = 'Clear Floor 5 to unlock the endless descent.';
+        }
     });
 }
 
@@ -1347,11 +1382,16 @@ function initEngine() {
             titleEndlessBtn.style.fontSize = '0.95rem';
             titleEndlessBtn.style.opacity = '0.85';
             titleEndlessBtn.style.minHeight = '44px';   // touch-target floor, as above
-            titleEndlessBtn.style.color = 'var(--ui-gold)';
-            titleEndlessBtn.style.display = 'none';     // refreshTitleActions decides
+            // Label, colour, border and disabled state are all decided by
+            // refreshRecursionEntries — it runs at boot and again on every title
+            // refresh, so this starts hidden and is never left in a stale state.
+            titleEndlessBtn.style.display = 'none';
             titleBtnContainer.insertBefore(titleEndlessBtn, titleHubBtn);
 
             titleEndlessBtn.addEventListener('click', () => {
+                // Belt and braces: the button is `disabled` when locked, so this cannot
+                // normally fire. Re-checked anyway because it launches a run.
+                if (!isRecursionUnlocked(saveManager.metaState)) return;
                 // A suspended run is real progress and this button starts a NEW one, so
                 // it asks first — the same rule and the same dialog BEGIN DESCENT uses.
                 const suspended = refreshTitleActions();
@@ -1448,14 +1488,15 @@ function initEngine() {
             const hubEndlessBtn = document.createElement('button');
             hubEndlessBtn.id = 'btn-start-endless';
             hubEndlessBtn.className = 'file-btn';
-            hubEndlessBtn.innerText = 'ENTER THE RECURSION';
-            hubEndlessBtn.style.color = 'var(--ui-gold)';
             hubEndlessBtn.style.minHeight = '44px';
+            // As on the title screen: refreshRecursionEntries owns the label and state,
+            // and runs on every folder open.
             hubEndlessBtn.style.display = 'none';
             // After AUTHORIZE DESCENT: the normal descent stays the primary action.
             hubStartBtn.parentNode.insertBefore(hubEndlessBtn, hubStartBtn.nextSibling);
 
             hubEndlessBtn.addEventListener('click', () => {
+                if (!isRecursionUnlocked(saveManager.metaState)) return;
                 const suspended = refreshTitleActions();
                 const launch = () => {
                     if (audioEngine) audioEngine.stopMenuTheme();

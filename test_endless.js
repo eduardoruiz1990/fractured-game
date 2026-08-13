@@ -27,7 +27,8 @@ import {
     bossTypeForFloor, paletteIndexForFloor, visualCycle,
     enemyScaling, bossScaling, variantChance, cadence,
     weaponLevelCap, BASE_WEAPON_LEVEL_CAP,
-    ENDLESS_START_FLOOR, ENDLESS_DRAFT_PICKS, endlessDraftXP, isRecursionUnlocked, cycleLabel
+    ENDLESS_START_FLOOR, ENDLESS_DRAFT_PICKS, endlessDraftXP, isRecursionUnlocked, cycleLabel,
+    cycleGrade, mixHex
 } from './src/core/Endless.js';
 
 let passed = 0;
@@ -332,6 +333,68 @@ console.log('\nDirect launch: the opening draft');
     check('the grant tracks the curve rather than a hardcoded number',
           endlessDraftXP(l => 100, 3) === 300, String(endlessDraftXP(l => 100, 3)));
 }
+
+// ---------------------------------------------------------------------------
+console.log('\nCycle colour grades (Patch 100)');
+
+check('Cycle I has NO grade — the original game draws nothing extra',
+      [1, 2, 3, 4, 5].every(f => cycleGrade(f) === null),
+      'null is the meaningful return here, not an oversight');
+check('every endless floor has a grade',
+      [6, 10, 11, 20, 99, 500].every(f => cycleGrade(f) !== null));
+check('the three grades are distinct identities',
+      new Set([6, 11, 16].map(f => cycleGrade(f).id)).size === 3,
+      [6, 11, 16].map(f => cycleGrade(f).id).join(', '));
+check('grading holds at the visual cap rather than continuing forever',
+      cycleGrade(16).id === cycleGrade(500).id && cycleGrade(16) === cycleGrade(9999),
+      'a continuous gradient here would grow the sprite cache without bound');
+check('every grade carries the full field set the renderer reads',
+      [6, 11, 16].every(f => {
+          const g = cycleGrade(f);
+          return g.id && g.mult && g.screen && g.tint && g.fog &&
+                 Number.isFinite(g.tintMix) && Number.isFinite(g.overlayAlpha) &&
+                 Number.isFinite(g.darkScale);
+      }));
+check('washes are valid rgba() strings (they go straight to fillStyle)',
+      [6, 11, 16].every(f => {
+          const g = cycleGrade(f);
+          return /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*[\d.]+\s*\)$/.test(g.mult) &&
+                 /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*[\d.]+\s*\)$/.test(g.screen);
+      }));
+check('fog values are the bare "r, g, b" triples the fog renderer expects',
+      [6, 11, 16].every(f => /^\d+,\s*\d+,\s*\d+$/.test(cycleGrade(f).fog)),
+      'getAtmosphere().fog is interpolated into rgba(...) by the caller');
+check('alphas and scales stay inside their legal ranges',
+      [6, 11, 16].every(f => {
+          const g = cycleGrade(f);
+          return g.overlayAlpha > 0 && g.overlayAlpha <= 1 &&
+                 g.tintMix > 0 && g.tintMix <= 1 &&
+                 g.darkScale > 0 && g.darkScale <= 1;
+      }));
+check('each cycle is darker and more overgrown than the last',
+      cycleGrade(6).darkScale > cycleGrade(11).darkScale &&
+      cycleGrade(11).darkScale > cycleGrade(16).darkScale &&
+      cycleGrade(6).overlayAlpha < cycleGrade(11).overlayAlpha &&
+      cycleGrade(11).overlayAlpha < cycleGrade(16).overlayAlpha);
+
+console.log('\nmixHex()');
+check('amount 0 returns the input UNCHANGED, string identity included',
+      mixHex('#8b5a2b', '#ffffff', 0) === '#8b5a2b',
+      'these strings become sprite-cache keys');
+check('amount 1 returns the target',
+      mixHex('#000000', '#c5a059', 1) === '#c5a059');
+check('the midpoint is the midpoint',
+      mixHex('#000000', '#ffffff', 0.5) === '#808080', mixHex('#000000', '#ffffff', 0.5));
+check('output is always a parseable 6-digit hex',
+      [0.1, 0.33, 0.5, 0.9].every(t => /^#[0-9a-f]{6}$/.test(mixHex('#8b5a2b', '#7f8c99', t))),
+      'drawGlow silently renders WHITE for anything hexToRgba cannot parse');
+check('malformed input degrades to the original rather than a broken colour',
+      mixHex('not-a-colour', '#ffffff', 0.5) === 'not-a-colour' &&
+      mixHex('#8b5a2b', 'nope', 0.5) === '#8b5a2b' &&
+      mixHex('#8b5a2b', '#ffffff', NaN) === '#8b5a2b');
+check('amount is clamped, never extrapolated past the target',
+      mixHex('#000000', '#ffffff', 5) === '#ffffff' &&
+      mixHex('#000000', '#ffffff', -3) === '#000000');
 
 // ---------------------------------------------------------------------------
 console.log('\nCycle labels (player-facing copy)');

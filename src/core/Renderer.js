@@ -11,7 +11,7 @@ import { ARENA_VOID_RADIUS } from '../data/Config.js';
 // Patch 96 — THE RECURSION's look: the five biomes cycle past floor 5, with a capped
 // depth escalation layered over them. The cap is a memory bound, not a taste one —
 // see CYCLE_VISUAL_CAP in src/core/Endless.js.
-import { paletteIndexForFloor, visualCycle, isEndless } from './Endless.js';
+import { paletteIndexForFloor, visualCycle, cycleGrade } from './Endless.js';
 
 export class Renderer {
     constructor(canvas, ctx) {
@@ -668,25 +668,28 @@ export class Renderer {
 
         // Cycle I returns the object above untouched — same reference shape, same
         // values, so floors 1-5 are unchanged to the byte.
-        const depth = visualCycle(floor) - 1;
-        if (depth <= 0) return base;
+        const grade = cycleGrade(floor);
+        if (!grade) return base;
 
-        // Deeper cycles: the dark gets darker and the air gets thicker. `dark` is a
-        // plain fillStyle string and `haze` a plain number — neither is ever used as a
-        // sprite-cache key, so unlike an enemy tint these two can vary freely without
-        // touching the cache-growth budget. Capped by visualCycle regardless.
-        const scale = Math.max(0, 1 - 0.22 * depth);
+        // Patch 100: the fog takes the CYCLE'S colour rather than the biome's, which is
+        // what ties the air to the floor wash — the two are the largest areas of colour
+        // on screen, and they have to agree or the grade reads as a filter sitting on
+        // top of the world instead of a property of it.
+        //
+        // `dark` and `fog` are plain fillStyle strings and `haze` a plain number; none
+        // is ever used as a sprite-cache key, so unlike the enemy tints these can vary
+        // freely without touching the cache-growth budget. Capped by visualCycle anyway.
         const darker = base.dark.replace(/^#([0-9a-f]{6})$/i, (_, hex) => {
             const ch = [0, 2, 4].map(i => {
-                const v = Math.round(parseInt(hex.slice(i, i + 2), 16) * scale);
+                const v = Math.round(parseInt(hex.slice(i, i + 2), 16) * grade.darkScale);
                 return Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0');
             });
             return `#${ch.join('')}`;
         });
         return {
             dark: darker,
-            fog: base.fog,
-            haze: Math.min(0.75, base.haze + 0.05 * depth)
+            fog: grade.fog,
+            haze: Math.min(0.75, base.haze + 0.04 * (visualCycle(floor) - 1))
         };
     }
 
@@ -1849,12 +1852,39 @@ export class Renderer {
         // NOT generated per floor. visualCycle() is capped, so the alpha reaches a
         // ceiling and stops; see CYCLE_VISUAL_CAP for why that bound is a memory
         // constraint rather than a taste one.
-        if (isEndless(state.floor) && this.cachedRecursionPattern) {
-            const depth = visualCycle(state.floor) - 1;   // 0 in Cycle I, 1..3 beyond
-            this.ctx.globalAlpha = 0.12 * depth;
+        const grade = cycleGrade(state.floor);   // null on floors 1-5: nothing below runs
+
+        if (grade && this.cachedRecursionPattern) {
+            this.ctx.globalAlpha = grade.overlayAlpha;
             this.ctx.fillStyle = this.cachedRecursionPattern;
             this.ctx.fillRect(state.player.x - 4000, state.player.y - 4000, 8000, 8000);
             this.ctx.globalAlpha = 1;
+        }
+
+        // Patch 100 — THE CYCLE GRADE. Two full-floor washes that give each lap its own
+        // colour identity (BLEACH / INFLAMMATION / GILDING — see CYCLE_GRADES). Patch 96
+        // expressed depth as "darker", which made a deep floor read as the same floor at
+        // night rather than a different place.
+        //
+        // `multiply` carries the hue and does the darkening; `screen` lifts the shadows
+        // toward the same hue so the blacks are tinted too, which is what stops the
+        // result reading as a flat sheet of colour laid over the top.
+        //
+        // globalCompositeOperation is reset to 'source-over' explicitly before leaving
+        // this block. The enclosing save/restore would also restore it, but the golden
+        // rule is explicit for a reason: a leaked 'multiply' turns everything drawn
+        // afterwards — including the player — invisible or wrong, and it fails far away
+        // from here.
+        if (grade) {
+            const gx = state.player.x - 4000;
+            const gy = state.player.y - 4000;
+            this.ctx.globalCompositeOperation = 'multiply';
+            this.ctx.fillStyle = grade.mult;
+            this.ctx.fillRect(gx, gy, 8000, 8000);
+            this.ctx.globalCompositeOperation = 'screen';
+            this.ctx.fillStyle = grade.screen;
+            this.ctx.fillRect(gx, gy, 8000, 8000);
+            this.ctx.globalCompositeOperation = 'source-over';
         }
         this.ctx.restore();
 

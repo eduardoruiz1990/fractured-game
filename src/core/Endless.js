@@ -302,6 +302,103 @@ export function isRecursionUnlocked(metaState) {
     return Number.isFinite(completed) && completed > 0;
 }
 
+// ---------------------------------------------------------------------------
+// Patch 100 — CYCLE COLOUR GRADES.
+//
+// Patch 96 expressed depth as a single scalar: darken everything a bit more each lap.
+// It was safe and it was dull — a Cycle III floor read as a Cycle I floor with the
+// lights turned down, which is not a different place, it is the same place at night.
+//
+// Each cycle now has its own GRADE: a named colour treatment applied to the floor wash,
+// the fog, the darkness and the enemy tints together, so the whole frame moves as one
+// and each lap has an identity you could name from a screenshot.
+//
+//   Cycle II  THE BLEACH        — colour draining out of the construct. Cold, bloodless,
+//                                 desaturated; the memory losing its fidelity.
+//   Cycle III THE INFLAMMATION  — the construct irritated by being walked through again.
+//                                 Rust and inflamed red, high contrast.
+//   Cycle IV  THE GILDING       — the Architect's own gold consuming every earlier
+//                                 biome. Near-black and metallic. Terminal.
+//
+// WHY THIS IS A FIXED TABLE OF FOUR AND NOT A CONTINUOUS FUNCTION. It is capped by
+// visualCycle() for the memory reason spelled out at CYCLE_VISUAL_CAP: enemy tints
+// become sprite-cache keys downstream, and a smooth per-floor gradient would mint a new
+// permanent cache entry on every floor forever. Quantised to four, the reachable colour
+// set is 5 palettes x 2 roles x 4 cycles = 40 strings, for any depth. Adding a fifth
+// grade is fine; making it continuous is not.
+//
+// `mult` and `screen` are drawn as full-floor washes under globalCompositeOperation
+// 'multiply' and 'screen' — see Renderer.drawWorldItems, which resets to 'source-over'
+// before returning, per the golden rule.
+const CYCLE_GRADES = [
+    null,   // Cycle I — the original game. No grade, no wash, nothing drawn.
+    {
+        id: 'BLEACH',
+        mult: 'rgba(146, 165, 190, 0.34)',   // pulls the warmth out, cools the midtones
+        screen: 'rgba(26, 40, 64, 0.10)',    // cold lift in the shadows
+        tint: '#7f8c99', tintMix: 0.38,      // enemies go grey-blue, drained
+        fog: '198, 212, 226',
+        overlayAlpha: 0.13,
+        darkScale: 0.86
+    },
+    {
+        id: 'INFLAMMATION',
+        mult: 'rgba(168, 58, 42, 0.38)',
+        screen: 'rgba(58, 6, 2, 0.14)',
+        tint: '#8c2b1e', tintMix: 0.46,
+        fog: '226, 152, 138',
+        overlayAlpha: 0.20,
+        darkScale: 0.72
+    },
+    {
+        id: 'GILDING',
+        mult: 'rgba(126, 100, 38, 0.44)',
+        screen: 'rgba(72, 56, 12, 0.18)',
+        tint: '#c5a059', tintMix: 0.55,
+        fog: '216, 196, 142',
+        overlayAlpha: 0.28,
+        darkScale: 0.45                       // the deepest cycle is very nearly black
+    }
+];
+
+/**
+ * The colour grade for a floor, or NULL for Cycle I.
+ *
+ * Null is the meaningful return, not an oversight: every consumer treats it as "draw
+ * nothing extra and change nothing", which is what keeps floors 1-5 untouched by this
+ * entire system rather than merely unchanged-looking.
+ */
+export function cycleGrade(floor) {
+    return CYCLE_GRADES[visualCycle(floor) - 1] || null;
+}
+
+/**
+ * Blend hex colour `a` toward hex colour `b` by `amount` (0..1).
+ *
+ * Returns `a` UNCHANGED at amount 0 — string identity included, which matters because
+ * these strings become sprite-cache keys and `'#8b5a2b'` recomputed to an identical
+ * value would still be the same key, but a rounding difference would not.
+ *
+ * Total by design: a malformed input returns `a` rather than a broken colour. drawGlow
+ * routes through hexToRgba, which silently returns WHITE for anything it cannot parse —
+ * so a bad colour here would not throw, it would just make an enemy glow white forever,
+ * which is far harder to notice and far harder to trace.
+ */
+export function mixHex(a, b, amount) {
+    const t = Math.max(0, Math.min(1, Number(amount)));
+    if (!t) return a;
+    const pa = /^#([0-9a-f]{6})$/i.exec(String(a));
+    const pb = /^#([0-9a-f]{6})$/i.exec(String(b));
+    if (!pa || !pb) return a;
+    const ch = [0, 2, 4].map(i => {
+        const va = parseInt(pa[1].slice(i, i + 2), 16);
+        const vb = parseInt(pb[1].slice(i, i + 2), 16);
+        const v = Math.round(va + (vb - va) * t);
+        return Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0');
+    });
+    return `#${ch.join('')}`;
+}
+
 /**
  * Patch 98 — the cycle as a Roman numeral, for player-facing copy.
  *

@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–98)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–100)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1059,7 +1059,7 @@ by this patch, and out of scope for a mobile-only change.
 
 ---
 
-## THE RECURSION — endless mode after the Architect (Patches 93–98, 2026-08-13)
+## THE RECURSION — endless mode after the Architect (Patches 93–100, 2026-08-13)
 
 **Driver:** a direct player request. A player who reached the Architect wrote: *"It
 would be really cool to add an infinite mode after the architect. it could be like a
@@ -1215,6 +1215,60 @@ the genuine gate rather than bypassing it).
 placeholder markup inside `.roadmap-timeline`, which `renderRoadmap()` wipes with
 `innerHTML = ''` before building the real list. Both new buttons are injected from JS,
 following Patch 83's convention.
+
+### Patch 99 — the Recursion is visible before it is available *(player feedback)*
+
+**Reverses a Patch 97 decision, on play.** That patch HID the entry until the Architect
+had fallen, reasoning that a button naming an endless mode after the final boss spoils
+the ending. Wrong trade: it made the mode invisible to exactly the players who had not
+reached it, so it could not do the one thing an unreached goal is for — give a reason to
+go back down.
+
+Both entries now always render. Locked, they read
+`THE RECURSION — SEALED / SUBDUE THE SUBJECT ON FLOOR 5` in the folder's own redaction
+vocabulary (dashed border, the `#9a917f` the roadmap uses for SEALED). **The requirement
+names FLOOR 5, never the Architect** — which is the same line the Descent Roadmap
+already draws: it seals unvisited floors while still showing they exist. So it hints
+without spoiling who is waiting there.
+
+A real `disabled` button, not a styled-inert one, so it cannot be clicked, takes no
+hover SFX and is announced as unavailable. The click handlers re-check the gate anyway,
+since they launch a run. **The inline `opacity: 0.6` deliberately overrides
+`.file-btn:disabled { opacity: 0.3 }`** in style.css — 0.3 is fine for a button whose
+label you already know, and too faint to READ, which defeats the point of the second line.
+
+### Patch 100 — cycle colour grades *(player feedback: "revamp the new coloring")*
+
+Patch 96 expressed depth as one scalar — darken a bit more each lap. Safe, and dull: a
+Cycle III floor read as a Cycle I floor with the lights off, which is not a different
+place, it is the same place at night.
+
+Each cycle now has a named **grade** applied to the floor wash, the fog, the darkness and
+the enemy tints *together*, so the whole frame moves as one:
+
+| Cycle | Grade | Reads as |
+|---|---|---|
+| II | **THE BLEACH** | colour draining out; cold, bloodless, the memory losing fidelity |
+| III | **THE INFLAMMATION** | the construct irritated by being walked through again; rust and inflamed red |
+| IV+ | **THE GILDING** | the Architect's gold consuming every earlier biome; near-black and metallic |
+
+Two full-floor washes do the work: `multiply` carries the hue and the darkening, `screen`
+lifts the shadows toward the same hue so the blacks are tinted too — which is what stops
+it reading as a flat sheet of colour laid over the top. `globalCompositeOperation` is
+reset to `'source-over'` explicitly before the block returns; the enclosing save/restore
+would also do it, but a leaked `multiply` turns everything drawn afterwards (including
+the player) wrong, and it fails far from where it was caused.
+
+**Enemy tints blend toward the cycle's signature colour** (`mixHex`) instead of just
+darkening, so a deep scavenger is recognisably the same creature, visibly processed by
+somewhere it should not still be alive in. Fog takes the cycle's colour rather than the
+biome's — fog and floor are the two largest areas of colour on screen and have to agree,
+or the grade reads as a filter sitting on top of the world instead of a property of it.
+
+**Still a fixed table of four, still capped.** The measured colour set is unchanged at
+**40 strings over 120 floors**. Making the grade continuous per floor would look
+smoother and would mint a permanent `spriteCache` entry on every floor forever — see
+Keep clause 33. Adding a fifth grade is fine; interpolating between them is not.
 
 ### Deliberately NOT done
 
@@ -1402,12 +1456,15 @@ following Patch 83's convention.
     writes it AFTER init, and on floors 1-5 it early-returns and never writes it at all —
     so a pooled boss last used deep in the Recursion carries that aggression into a
     Cycle I fight. Same rule as `variant = null` and `strayTime`.
-33. **`CYCLE_VISUAL_CAP` is a MEMORY bound.** `Renderer.spriteCache` has no eviction and
+33. **`CYCLE_VISUAL_CAP` is a MEMORY bound, and `CYCLE_GRADES` must stay a FIXED,
+    QUANTISED table.** `Renderer.spriteCache` has no eviction and
     is never cleared, and `drawGlow` keys on `glow|${color}|${alpha}` while particle
     glows take their colour from `ent.color`. Any visual escalation that varies colour
     with depth must stay quantised and capped, or every cycle mints a permanent cache
     entry on exactly the devices that cannot afford it. `test_endless.js` walks 120
-    floors against the real Director and asserts the colour set stays at 40.
+    floors against the real Director and asserts the colour set stays at 40. Adding a
+    sixth grade is fine; INTERPOLATING between grades per floor is not — that is the
+    exact change that turns a bounded 40-string set into an unbounded one.
 34. **`DEEP_BOONS` must stay repeat-safe, and must never be merged into `BOONS`.** Every
     effect is plain addition or a multiplier above 1 — no flags, no division, no one-way
     switches — because these are offered an unbounded number of times. The 24 in `BOONS`
@@ -1471,7 +1528,7 @@ following Patch 83's convention.
 | `test_leash.js` | 15 | off-screen dead zone, recall lands on screen, boss exclusion, tutorial cases, **desktop viewport derivation unchanged by the live-zoom refactor** |
 | `test_tutorial.js` | 86 | **new** — step gates and overrides, every step's timeout, the instruction hold and its cap, device-appropriate copy, copy length ceiling, degenerate state |
 | `test_viewport.js` | 42 | **new** — the desktop/portrait split in both directions, desktop `updateZoom` bit-identical to pre-Patch-71, band and camera geometry, zero-sized canvas |
-| `test_endless.js` | 141 | **new (Patch 93)** — floors 1-5 bit-identical (boss dispatch, palette index, variant table, every multiplier `=== 1`), the boss rotation, `cadence` identity + min floors, the run-completion latch across a floor boundary, the direct-launch unlock gate and draft maths, and **the bounded colour set walked over 120 floors against the real Director** |
+| `test_endless.js` | 156 | **new (Patch 93)** — floors 1-5 bit-identical (boss dispatch, palette index, variant table, every multiplier `=== 1`), the boss rotation, `cadence` identity + min floors, the run-completion latch across a floor boundary, the direct-launch unlock gate and draft maths, and **the bounded colour set walked over 120 floors against the real Director** |
 
 `test_director.js` and `test_save.js` remain exploratory (they print, they don't
 assert). All six assertion suites exit non-zero on failure and should be run after

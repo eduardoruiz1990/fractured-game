@@ -17,7 +17,7 @@ import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE } from '../data/Config.js';
 // endless floors mean something. See src/core/Endless.js.
 import {
     bossTypeForFloor, enemyScaling, bossScaling, variantChance, isEndless,
-    paletteIndexForFloor, visualCycle
+    paletteIndexForFloor, cycleGrade, mixHex
 } from '../core/Endless.js';
 
 /** Boss types, in one place — this list was previously repeated inline four times. */
@@ -46,25 +46,20 @@ const ENEMY_TINTS = [
 ];
 
 /**
- * Darken a biome tint by cycle depth. Returns the input UNCHANGED for Cycle I, so
- * floors 1-5 keep their exact colours — string identity included, which matters
- * because these strings become sprite-cache keys downstream.
+ * Patch 100 — grade a biome tint for the current cycle.
  *
- * Deliberately quantised to whole cycles and capped by the caller (visualCycle), so
- * the set of strings this can ever produce is small and finite. A smooth per-floor
- * gradient here would be prettier and would grow Renderer.spriteCache without bound.
+ * Was a flat darkening (Patch 96), which made a deep enemy read as the same enemy in
+ * worse lighting. It now blends toward the CYCLE'S OWN signature colour, so a Cycle III
+ * scavenger is inflamed and a Cycle IV one is gilded — recognisably the same creature,
+ * visibly processed by somewhere it should not still be alive in.
+ *
+ * Returns the input UNCHANGED for Cycle I (cycleGrade returns null), string identity
+ * included, which matters because these strings become sprite-cache keys downstream.
  */
-function recursionTint(hex, cycle) {
-    const depth = Math.max(0, (cycle || 1) - 1);
-    if (depth === 0) return hex;
-    const scale = Math.max(0.35, 1 - 0.18 * depth);
-    const m = /^#([0-9a-f]{6})$/i.exec(hex);
-    if (!m) return hex;
-    const ch = [0, 2, 4].map(i => {
-        const v = Math.round(parseInt(m[1].slice(i, i + 2), 16) * scale);
-        return Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0');
-    });
-    return `#${ch.join('')}`;
+function recursionTint(hex, floor) {
+    const grade = cycleGrade(floor);
+    if (!grade) return hex;
+    return mixHex(hex, grade.tint, grade.tintMix);
 }
 
 export class Director {
@@ -673,7 +668,7 @@ export class Director {
                 const tints = ENEMY_TINTS[paletteIndexForFloor(state.floor)];
                 ent.originalColor = recursionTint(
                     ent.type === 'SCAVENGER' ? tints[0] : tints[1],
-                    visualCycle(state.floor)
+                    state.floor
                 );
                 ent.color = ent.originalColor;
 
