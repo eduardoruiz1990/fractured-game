@@ -8,6 +8,10 @@ import { errorLog } from './ErrorLog.js';
 // The arena wall drawn below is the same boundary Game.js drains Sanity past and
 // Director.js clamps spawns inside — see the note on ARENA_VOID_RADIUS in Config.js.
 import { ARENA_VOID_RADIUS } from '../data/Config.js';
+// Patch 96 — THE RECURSION's look: the five biomes cycle past floor 5, with a capped
+// depth escalation layered over them. The cap is a memory bound, not a taste one —
+// see CYCLE_VISUAL_CAP in src/core/Endless.js.
+import { paletteIndexForFloor, visualCycle, isEndless } from './Endless.js';
 
 export class Renderer {
     constructor(canvas, ctx) {
@@ -18,7 +22,11 @@ export class Renderer {
         this.cachedNoisePattern = this.ctx.createPattern(this.noisePattern, 'repeat');
         this.fogClouds = this.generateFogClouds();
         this.cachedFloorPatterns = this.generateFloorPatterns();
-        
+        // Patch 96: ONE extra cached pattern, built here with the other five and reused
+        // by every endless floor forever. Depth changes the alpha it is drawn at, never
+        // the number of cached canvases.
+        this.cachedRecursionPattern = this.generateRecursionPattern();
+
         this.lightCanvas = document.createElement('canvas');
         this.lightCtx = this.lightCanvas.getContext('2d');
         
@@ -507,6 +515,100 @@ export class Renderer {
         return patterns;
     }
 
+    /**
+     * Patch 96 — THE RECURSION overlay: the sixth pattern.
+     *
+     * Composited over whichever biome is showing on floors 6+, at an alpha that rises
+     * with the cycle (drawWorldItems). The point is that a returning biome must not
+     * read as "the same floor again" but as that floor being OVERWRITTEN — so this is
+     * deliberately the Architect's own language, blueprint linework and fracture lines,
+     * bleeding through the earlier floors it now contains.
+     *
+     * Built ONCE at construction, exactly like cachedFloorPatterns, and reused by every
+     * endless floor forever. That is the whole memory story: depth changes the alpha
+     * this is drawn at, never the number of cached canvases.
+     *
+     * Transparent background, not a filled one — it is an overlay, so the biome under
+     * it has to survive. Same 512px tileWrap seam discipline as the five biomes: the
+     * pattern repeats across an 8000px fill, so anything clipped at a tile edge would
+     * print a visible grid over the entire floor. All randomness is sampled OUTSIDE the
+     * tileWrap callback, or the nine copies disagree and the wrap achieves nothing.
+     */
+    generateRecursionPattern() {
+        const S = 512;
+        const c = document.createElement('canvas');
+        c.width = S;
+        c.height = S;
+        const cx = c.getContext('2d');
+
+        const tileWrap = (fn) => {
+            for (let ox = -1; ox <= 1; ox++) {
+                for (let oy = -1; oy <= 1; oy++) {
+                    cx.save();
+                    cx.translate(ox * S, oy * S);
+                    fn();
+                    cx.restore();
+                }
+            }
+        };
+
+        // Blueprint grid — the construct's underlying drawing, showing through.
+        cx.strokeStyle = 'rgba(184, 134, 11, 0.35)';
+        cx.lineWidth = 1;
+        for (let i = 0; i <= S; i += 64) {
+            cx.beginPath(); cx.moveTo(i, 0); cx.lineTo(i, S); cx.stroke();
+            cx.beginPath(); cx.moveTo(0, i); cx.lineTo(S, i); cx.stroke();
+        }
+
+        // Heavier construction lines on the 256 divisions, so the grid has a hierarchy
+        // rather than reading as graph paper.
+        cx.strokeStyle = 'rgba(197, 160, 89, 0.5)';
+        cx.lineWidth = 2;
+        for (let i = 0; i <= S; i += 256) {
+            cx.beginPath(); cx.moveTo(i, 0); cx.lineTo(i, S); cx.stroke();
+            cx.beginPath(); cx.moveTo(0, i); cx.lineTo(S, i); cx.stroke();
+        }
+
+        // Fracture lines: the geometry failing where it has been drawn over itself too
+        // many times. Points are computed up front, outside tileWrap, for the reason
+        // in the doc comment.
+        for (let i = 0; i < 10; i++) {
+            const pts = [];
+            let px = Math.random() * S, py = Math.random() * S;
+            let a = Math.random() * Math.PI * 2;
+            pts.push([px, py]);
+            for (let s = 0; s < 6; s++) {
+                a += (Math.random() - 0.5) * 1.6;
+                px += Math.cos(a) * (18 + Math.random() * 30);
+                py += Math.sin(a) * (18 + Math.random() * 30);
+                pts.push([px, py]);
+            }
+            tileWrap(() => {
+                cx.strokeStyle = 'rgba(230, 200, 140, 0.42)';
+                cx.lineWidth = 1.2;
+                cx.beginPath();
+                cx.moveTo(pts[0][0], pts[0][1]);
+                for (let k = 1; k < pts.length; k++) cx.lineTo(pts[k][0], pts[k][1]);
+                cx.stroke();
+            });
+        }
+
+        // Survey marks at the fracture origins — the construct measuring its own damage.
+        for (let i = 0; i < 7; i++) {
+            const mx = Math.random() * S, my = Math.random() * S;
+            const r = 5 + Math.random() * 7;
+            tileWrap(() => {
+                cx.strokeStyle = 'rgba(197, 160, 89, 0.55)';
+                cx.lineWidth = 1;
+                cx.beginPath(); cx.arc(mx, my, r, 0, Math.PI * 2); cx.stroke();
+                cx.beginPath(); cx.moveTo(mx - r - 4, my); cx.lineTo(mx + r + 4, my); cx.stroke();
+                cx.beginPath(); cx.moveTo(mx, my - r - 4); cx.lineTo(mx, my + r + 4); cx.stroke();
+            });
+        }
+
+        return this.ctx.createPattern(c, 'repeat');
+    }
+
     generateNoisePattern() {
         const c = document.createElement('canvas');
         c.width = 128;
@@ -553,14 +655,39 @@ export class Renderer {
     // Floor 2 deliberately keeps the original values: the Divide is the stark
     // grayscale floor, so "no tint" IS its identity.
     getAtmosphere(floor) {
-        const f = Math.max(1, Math.min(floor || 1, 5));
-        return [
+        // Patch 96: was `min(floor, 5) - 1`, so every endless floor inherited the
+        // Architect's atmosphere. Now the five come round with the cycle, and depth is
+        // expressed by DEEPENING each one rather than by inventing new ones.
+        const base = [
             { dark: '#0a0704', fog: '190, 172, 150', haze: 0.50 }, // 1 Wastes: warm dust
             { dark: '#010102', fog: '200, 210, 220', haze: 0.50 }, // 2 Divide: unchanged
             { dark: '#0b0202', fog: '215, 165, 165', haze: 0.55 }, // 3 Panopticon: blood haze
             { dark: '#020803', fog: '170, 205, 175', haze: 0.58 }, // 4 Amalgamation: spore bloom
             { dark: '#000000', fog: '205, 190, 150', haze: 0.42 }  // 5 Architect: gold dust, true black
-        ][f - 1];
+        ][paletteIndexForFloor(floor)];
+
+        // Cycle I returns the object above untouched — same reference shape, same
+        // values, so floors 1-5 are unchanged to the byte.
+        const depth = visualCycle(floor) - 1;
+        if (depth <= 0) return base;
+
+        // Deeper cycles: the dark gets darker and the air gets thicker. `dark` is a
+        // plain fillStyle string and `haze` a plain number — neither is ever used as a
+        // sprite-cache key, so unlike an enemy tint these two can vary freely without
+        // touching the cache-growth budget. Capped by visualCycle regardless.
+        const scale = Math.max(0, 1 - 0.22 * depth);
+        const darker = base.dark.replace(/^#([0-9a-f]{6})$/i, (_, hex) => {
+            const ch = [0, 2, 4].map(i => {
+                const v = Math.round(parseInt(hex.slice(i, i + 2), 16) * scale);
+                return Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0');
+            });
+            return `#${ch.join('')}`;
+        });
+        return {
+            dark: darker,
+            fog: base.fog,
+            haze: Math.min(0.75, base.haze + 0.05 * depth)
+        };
     }
 
     drawMenuBackground(time, gameState) {
@@ -1556,12 +1683,17 @@ export class Renderer {
             vigX, vigY, outerVig
         );
         
-        let voidColor = 'rgba(0,0,0,0.98)';
-        if (state.floor === 1) voidColor = 'rgba(30,20,10,0.98)';
-        else if (state.floor === 2) voidColor = 'rgba(10,10,10,0.98)';
-        else if (state.floor === 3) voidColor = 'rgba(40,5,5,0.98)';
-        else if (state.floor === 4) voidColor = 'rgba(5,20,5,0.98)';
-        else if (state.floor >= 5) voidColor = 'rgba(20,15,0,0.98)';
+        // Patch 96: the same five values as before, indexed by the cycled palette
+        // rather than by an if/else chain whose tail was `floor >= 5`. Floors 1-5 pick
+        // exactly what they always picked.
+        const VOID_BY_PALETTE = [
+            'rgba(30,20,10,0.98)',  // 1 Wastes
+            'rgba(10,10,10,0.98)',  // 2 Divide
+            'rgba(40,5,5,0.98)',    // 3 Panopticon
+            'rgba(5,20,5,0.98)',    // 4 Amalgamation
+            'rgba(20,15,0,0.98)'    // 5 Architect
+        ];
+        let voidColor = VOID_BY_PALETTE[paletteIndexForFloor(state.floor)] || 'rgba(0,0,0,0.98)';
         
         vig.addColorStop(0, 'rgba(0,0,0,0)');
         vig.addColorStop(1, voidColor);
@@ -1699,10 +1831,31 @@ export class Renderer {
 
     drawWorldItems(state) {
         this.ctx.save();
-        const patternIndex = Math.max(0, Math.min((state.floor || 1) - 1, 4));
+        // Patch 96: was `min(floor - 1, 4)` — every floor past 5 wore the Architect's
+        // blueprint. The five biomes now come round with the cycle, so Cycle II opens
+        // back in the Wastes.
+        const patternIndex = paletteIndexForFloor(state.floor);
         this.ctx.fillStyle = this.cachedFloorPatterns[patternIndex];
-        
+
         this.ctx.fillRect(state.player.x - 4000, state.player.y - 4000, 8000, 8000);
+
+        // THE RECURSION OVERLAY. A returning biome must not read as "the same floor
+        // again" — it has to read as that floor being overwritten. So the Architect's
+        // own visual language (blueprint linework, fracture lines) is composited over
+        // whichever biome is showing, deepening each cycle: the construct's geometry
+        // bleeding through the earlier floors is exactly why the run is repeating.
+        //
+        // One extra cached pattern, built once at construction with the other five —
+        // NOT generated per floor. visualCycle() is capped, so the alpha reaches a
+        // ceiling and stops; see CYCLE_VISUAL_CAP for why that bound is a memory
+        // constraint rather than a taste one.
+        if (isEndless(state.floor) && this.cachedRecursionPattern) {
+            const depth = visualCycle(state.floor) - 1;   // 0 in Cycle I, 1..3 beyond
+            this.ctx.globalAlpha = 0.12 * depth;
+            this.ctx.fillStyle = this.cachedRecursionPattern;
+            this.ctx.fillRect(state.player.x - 4000, state.player.y - 4000, 8000, 8000);
+            this.ctx.globalAlpha = 1;
+        }
         this.ctx.restore();
 
         // Patch 65: the world-space tutorial text is gone. Three lines of WASD/mouse/

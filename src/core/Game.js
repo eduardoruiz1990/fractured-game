@@ -6,6 +6,8 @@ import { HubWorld } from '../systems/HubWorld.js';
 import { Tutorial } from '../systems/Tutorial.js';
 import { EventBus } from './EventBus.js';
 import { getXPRequiredForLevel, ARENA_VOID_RADIUS } from '../data/Config.js';
+// Patch 96 — the biome palettes cycle past floor 5. See src/core/Endless.js.
+import { paletteIndexForFloor } from './Endless.js';
 
 export class Game {
     constructor() {
@@ -149,6 +151,12 @@ export class Game {
             hitStop: 0,
             bossSpawned: false,
             activeBoss: null,
+            // Patch 93: read back from the carry (see getCarriedState) so a run that
+            // has already banked its floor-5 clear cannot bank it again on floor 6.
+            // A run suspended by an older build has no such key, so it degrades to
+            // false — the safe direction: at worst a pre-Recursion save that somehow
+            // re-clears floor 5 records the clear it genuinely earned.
+            runCompletionRecorded: carriedState ? !!carriedState.runCompletionRecorded : false,
             mapOriginX: null,
             mapOriginY: null,
 
@@ -307,6 +315,17 @@ export class Game {
             // CURRENTLY in, so anything that carries state to a NEW floor (the
             // descend path in main.js) must reset it to 1 itself.
             roomNumber: this.state.roomNumber,
+            // Patch 93: MUST be carried, and it is not decoration.
+            //
+            // The latch that stops runsCompleted being recorded twice lives on
+            // this.state, and init() rebuilds this.state from scratch on every floor
+            // descent — so before the Recursion existed the flag quietly died at the
+            // one boundary it was never asked to cross (floor 5 was terminal, so there
+            // was no next floor to lose it to). The moment DESCEND DEEPER works past
+            // floor 5, clearing floor 6 would re-enter main.js's `floor >= 5` branch
+            // with a fresh, false latch and bank a second completion — and a third on
+            // floor 7, forever.
+            runCompletionRecorded: !!this.state.runCompletionRecorded,
             sanity: this.state.sanity,
             weapons: this.state.player.weapons,
             xp: this.state.xp,
@@ -735,12 +754,13 @@ export class Game {
             }
             if (this.state.frame % 10 === 0) {
                 this.state.cameraShake = Math.max(this.state.cameraShake, 2);
-                let voidColor = '#800080';
-                if (this.state.floor === 1) voidColor = '#a05a2c';
-                else if (this.state.floor === 2) voidColor = '#555555';
-                else if (this.state.floor === 3) voidColor = '#8b0000';
-                else if (this.state.floor === 4) voidColor = '#2e8b57';
-                else if (this.state.floor >= 5) voidColor = '#daa520';
+                // Patch 96: the same five colours, indexed by the cycled palette
+                // instead of an if/else chain whose tail was `floor >= 5`. Floors 1-5
+                // pick exactly what they always picked. These reach drawGlow via
+                // spawnParticles, whose cache is keyed on colour — which is why the
+                // list is a FIXED five and the escalation elsewhere is capped.
+                const VOID_PARTICLE_BY_PALETTE = ['#a05a2c', '#555555', '#8b0000', '#2e8b57', '#daa520'];
+                let voidColor = VOID_PARTICLE_BY_PALETTE[paletteIndexForFloor(this.state.floor)] || '#800080';
                 
                 this.spawnDamageText(this.state.player.x, this.state.player.y - 20, "VOID", voidColor, 1.0, 0.5);
             }

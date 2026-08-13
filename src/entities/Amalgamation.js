@@ -1,4 +1,6 @@
 import { Enemy } from './Enemy.js';
+// Patch 94 — boss aggression. See src/core/Endless.js.
+import { cadence } from '../core/Endless.js';
 
 export class Amalgamation extends Enemy {
     constructor() {
@@ -12,8 +14,9 @@ export class Amalgamation extends Enemy {
         this.phase = 0;
         this.actionState = 'pulling';
         this.actionTimer = 180;
+        this.aggression = 1;   // Patch 94 — pooled state; see the note in Boss.init.
         // Colossal HP, extremely slow movement
-        return this.initBase(id, x, y, 6000, 0.4); 
+        return this.initBase(id, x, y, 6000, 0.4);
     }
 
     update(state, game) {
@@ -61,14 +64,19 @@ export class Amalgamation extends Enemy {
 
             if (this.actionTimer <= 0) {
                 this.actionState = 'resting';
-                this.actionTimer = 90;
+                // Patch 94: 'resting' is dead time — pure cooldown, so it compresses.
+                // The 60-frame 'spawning' window above is NOT touched: it vomits an
+                // add every 15 frames, so shortening it would mean FEWER adds.
+                this.actionTimer = cadence(90, this.aggression, 30);
             }
         } 
         else if (this.actionState === 'resting') {
             this.actionTimer--;
             if (this.actionTimer <= 0) {
                 this.actionState = 'pulling';
-                this.actionTimer = 240; 
+                // The long gravity-well phase between spawn waves. Compressing it is
+                // what makes a deep-cycle Amalgamation vomit adds far more often.
+                this.actionTimer = cadence(240, this.aggression, 80);
                 if (game.audioEngine) game.audioEngine.playSFX('boss_static', 0.5);
             }
         }

@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–98)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1059,6 +1059,176 @@ by this patch, and out of scope for a mobile-only change.
 
 ---
 
+## THE RECURSION — endless mode after the Architect (Patches 93–98, 2026-08-13)
+
+**Driver:** a direct player request. A player who reached the Architect wrote: *"It
+would be really cool to add an infinite mode after the architect. it could be like a
+new game+."*
+
+`game.onFloorComplete` treated floor ≥ 5 as terminal — it recorded `runsCompleted`,
+printed *"You have conquered the nightmare"* and hid `btnDescend` behind the comment
+`// No floor 6 yet!`. That comment was the seam. Floors 6+ are now **THE RECURSION**:
+five floors per **CYCLE**, the five bosses coming round in their original order, both
+sides uncapping, and the biomes returning with the Architect's geometry printed over
+them. **New module `src/core/Endless.js`; new suite `test_endless.js` (141 assertions).**
+
+### The invariant the whole feature is built around
+
+Floors 1–5 must behave exactly as before. That is asserted, not intended: every
+function in `Endless.js` is shaped so `endlessTier(floor) === 0` — true for floors 1–5 —
+returns the identity, and `test_endless.js` checks each multiplier is **exactly** 1 with
+`===` rather than a tolerance. A multiplier of 1.0000000001 would silently retune the
+original game for every existing player.
+
+### Three findings from reading the code, which changed the design
+
+**1. `runsCompleted` was going to double-count, and that was a prerequisite fix.** The
+latch is `game.state.runCompletionRecorded`, and `Game.init()` rebuilds `state` from
+scratch on every descent. That was harmless only because floor 5 was terminal, so the
+latch was never asked to cross a floor boundary. The moment DESCEND DEEPER worked past
+floor 5, clearing floor 6 would re-enter the same branch with a fresh false latch and
+bank a second escape — and a third on floor 7, forever. It now rides
+`getCarriedState()`. Asserted end-to-end against the real `Game`, and the assertion was
+checked against a deliberately reverted fix to prove it is not vacuous.
+
+**2. Nothing about enemy strength keyed off the floor at all.** Scavenger `hp 20` flat,
+Parasite `hp 15` flat, Predator `45 * stress` — and `stress` is `1 + roomNumber * 0.1`,
+which **resets every floor**. A floor-6 enemy was a floor-1 enemy; only the head-count
+grew. Endless floors would have got relatively *easier* each lap.
+
+**3. The curves are LINEAR on both sides, and this is the non-obvious part.** The
+player's damage is capped and grows additively: weapons stop at level 5, and
+`selectCard`'s upgrades are `wep.damage += 5`, never `*= 1.15`. Once the boon pool
+empties, level-ups pay `+50 maxHp` and no damage at all. Against an additive attacker a
+geometric HP curve does not produce a harder fight — it produces a **stalemate**, a boss
+a maxed build cannot chew through. The run should end because something killed the
+player. So HP rises linearly to stay in step, and lethality (damage, variant density,
+boss cadence) is what closes the run.
+
+### Patch 93 — the seam
+
+`Endless.js` (pure, no DOM — the `Layout.js`/`Pacing.js` precedent, so the real module
+is testable). `Director.spawnRoom`'s boss `if/else` chain, whose tail was
+`: 'ARCHITECT'`, became `bossTypeForFloor(floor)`. **Repeating the Architect forever was
+never a decision — it was the tail of a chain**, and it would have left four of the five
+bosses as dead content for the entire mode. `test_bosses.js` asserted
+`6: 'ARCHITECT' // 5+ all fall through`; that expectation encoded the accident and now
+spells out floors 1–12 explicitly.
+
+### Patch 94 — escalation
+
+Per-tier multipliers applied in `Director.applyEndlessScaling`, plus a variant-chance
+ramp and per-boss **aggression**.
+
+- **It runs inside `spawnEntity`, not `spawnRoom`.** `spawnEntity` is the single funnel
+  every body goes through — *including a Rorschach split*, which `Combat.js` spawns
+  mid-fight. Scaling in `spawnRoom` would have left a scaled parent shedding unscaled
+  children.
+- **`Rorschach` does not extend `Enemy`** — no `damage`, no `baseDamage`, no
+  `spawnMaxHp`. Every field is guarded; an unguarded `ent.damage *=` would write NaN
+  onto the one boss that splits into three more of itself.
+- **Only idle/cooldown timers compress — never a telegraph, never an attack's active
+  duration, never a window whose length sets how many projectiles fire.** Two concrete
+  traps this avoids: `Boss.js` derives its warning ring from `1 - pulseTimer/45`, and
+  `Renderer.js:2364` draws Rorschach's telegraph alpha as `1 - shootTimer/45` — both
+  hardcoded to the exact windows left untouched. Compressing Panopticon's 180-frame
+  sweep or Amalgamation's 60-frame spawn window would have made those fights *easier*.
+- **`cadence(n, 1, min) === n` for integer `n`**, which is what let every boss file be
+  edited while floors 1–5 stay bit-identical. Asserted against every timer value in the
+  five files.
+- **`aggression` is reset in each boss's `init()`.** The pooling trap: `applyEndlessScaling`
+  writes it *after* `init()`, and on floors 1–5 it early-returns and never writes it at
+  all — so a pooled Architect last used on floor 16 would walk into a floor-2 fight
+  still carrying it.
+- **Live-entity ceiling (endless only, 60).** `enemyBudget` stays uncapped by design, but
+  budget is a cost total, not a crowd size. Holding spawns converts extra budget into a
+  longer fight rather than a denser one — better pacing, and it bounds phone cost.
+
+### Patch 95 — the player uncaps too
+
+`weaponLevelCap(floor)` returns exactly 5 through Cycle I and `Infinity` past it,
+replacing the twin hardcoded `level < 5` checks in `LevelUpUI.show()` and `Combat.js`'s
+WEAPON_UPGRADE door — which can now no longer disagree about whether a weapon is maxed.
+
+**New `DEEP_BOONS`, offered only on floors 6+, rather than making the existing 24
+repeatable** — the obvious cheaper answer, and wrong on inspection: 11 of the 24 are
+flag boons read with `boons.includes(...)`, so a repeat does literally nothing, and
+several are degenerate (`tunnel_vision` *halves* the flashlight cone each time,
+`lead_shoes` permanently disables dashing). The DEEP cards carry their own `type` so
+`selectCard` cannot push one into `player.boons` and make it un-offerable again, and
+every effect is repeat-safe by construction: plain addition or a multiplier above 1, no
+flags, no division, no one-way switches. **Keep that constraint if a card is ever added.**
+
+### Patch 96 — the look of a returning biome
+
+Palettes cycle (`(floor-1) % 5`) across the floor pattern, `getAtmosphere`, both void
+colours and the enemy tints. Over the top, on floors 6+ only, a **recursion overlay**:
+one extra cached 512×512 pattern in the Architect's own blueprint language, at an alpha
+that rises per cycle. A returning biome must not read as "the same floor again" but as
+that floor being *overwritten* — the construct's geometry bleeding through the earlier
+floors is why the run repeats.
+
+**`CYCLE_VISUAL_CAP` is a memory bound, not a taste one.** `Renderer.spriteCache` has no
+eviction and is never cleared, and two of its key spaces are keyed on colour —
+`drawGlow`'s `glow|${color}|${alpha}`, and the particle glow, whose colour comes from
+`ent.color`. An escalation that kept deepening would mint a permanent cache entry every
+cycle. Capped, the reachable set is **40 colours, forever** — asserted by walking 120
+floors against the real `Director` and counting. One extra cached canvas total, built
+once at construction; depth changes the alpha it is drawn at, never the canvas count.
+
+### Patch 97 — THE RECURSION as a directly launchable mode
+
+Once the Architect has fallen, the mode is launchable straight from the title screen and
+from the clinical folder, starting at floor 6.
+
+- **`startEndlessRun()` calls `startNewRun()`** rather than reimplementing it. Patch 52
+  collapsed every route into gameplay onto one path so two entry points could not drift;
+  this is a third route and obeys the same rule. Only the seed is applied after.
+- **Deliberately NOT routed through `carriedState`**, which would have been the obvious
+  way to set a starting floor: `Game.init` treats a non-null `carriedState` as a floor
+  descent and skips the C1/C2 capstone grants on that basis. This is a fresh run; it
+  just does not begin at the top.
+- **The unlock gate reads two fields** — `killCounts.ARCHITECT > 0 || runsCompleted > 0`.
+  `runsCompleted` only exists since Patch 59, so gating on it alone would silently revoke
+  the mode from a player who beat the Architect before that patch.
+- **Hidden when locked, not shown-disabled.** A greyed button naming the final boss
+  spoils it; redaction is already this screen family's convention.
+- **The opening draft.** A fresh floor-6 run at level 1 is not a fight, so the launch
+  grants XP that cascades through the existing level-up path — the player *drafts* a
+  build before descending, at the cost of no new UI. The knob is expressed in **cards**
+  (`ENDLESS_DRAFT_PICKS = 8`) and the XP is derived from the real curve, so retuning
+  `BASE_XP_REQ` cannot silently change how many cards the opening is worth.
+  **8 picks / 612 XP is the one number here that wants play-testing.**
+
+### Patch 98 — copy, roadmap, dev tooling
+
+Floor-complete copy is cycle-aware (first clear / cycle closed / mid-cycle); the HUD
+names the cycle on floors 6+ only, so the Cycle I readout is byte-identical; the
+roadmap's `Math.min(maxFloor, 5)` clamp is gone and a sixth RECURSION node appears once
+reached — **appended after the five rather than added to the `floors` array**, which
+drives the "n / 5 SUBDUED" count and would have been corrupted by an entry with no
+single boss and no completion state. Dev: floor selector gains 6/7/10/16, plus
+FORCE UNLOCK: THE RECURSION (which sets the same field a real kill sets, so it exercises
+the genuine gate rather than bypassing it).
+
+**`index.html` was not opened.** The five static `.roadmap-node` divs there are
+placeholder markup inside `.roadmap-timeline`, which `renderRoadmap()` wipes with
+`innerHTML = ''` before building the real list. Both new buttons are injected from JS,
+following Patch 83's convention.
+
+### Deliberately NOT done
+
+- **Token/meta-item uncapping.** Raising `upgradeToken`'s ceiling would change floors
+  1–5, since tokens are meta and shared with them, and it opens the save schema. Flagged
+  for its own decision.
+- **No new `metaState` field.** `maxFloorReached` already exists, is already unbounded
+  and is already back-filled in `loadGame()`/`importSave()`/`wipeSave()`. Only its
+  *display* was clamped. This deliberately avoids the Keep-clause-2 surface entirely.
+- `maxConvergence = 100 * 1.3^(floor-1)` left alone — nothing reads it, and it stays
+  finite past floor 2000.
+
+---
+
 ## Keep clauses (things future patches break by accident)
 
 1. **Never touch `localStorage` directly in `main.js`.** Use
@@ -1210,6 +1380,45 @@ by this patch, and out of scope for a mobile-only change.
     on the canvas, so a band that swallowed touches would remove the controls exactly
     where they are meant to be used. A CSS-set height would let the band and the
     camera disagree about where the world stops.
+29. **Endless is ADDITIVE: `endlessTier(floor) === 0` must keep returning the identity
+    for floors 1-5.** Every scaling function in `src/core/Endless.js` is shaped so
+    Cycle I gets multipliers of exactly 1, the boss the old if/else chain picked, and
+    the palette index the old clamp produced. `test_endless.js` asserts this with
+    `===`, not a tolerance — a 1.0000000001 would retune the original game for every
+    existing player, invisibly. Anything new that keys off depth goes through this
+    module and inherits the guarantee; a bare `if (floor > 5)` somewhere else does not.
+30. **`runCompletionRecorded` must stay in `getCarriedState()`.** `Game.init()` rebuilds
+    state on every descent, so the latch that stops `runsCompleted` double-counting only
+    survives a floor boundary because it is carried. Removing it silently banks a
+    "construct escaped" on every endless floor cleared. Asserted against the real `Game`.
+31. **Boss aggression compresses COOLDOWNS ONLY — never a telegraph, an attack's active
+    duration, or a window whose length decides how many projectiles fire.** Two live
+    traps: `Boss.js` derives its warning ring from `1 - pulseTimer/45`, and `Renderer.js`
+    draws Rorschach's telegraph alpha as `1 - shootTimer/45` — both hardcoded to windows
+    that are deliberately left alone. And compressing Panopticon's 180-frame sweep or
+    Amalgamation's 60-frame spawn window makes those fights EASIER, not harder.
+    `cadence(n, 1, min)` must stay exactly `n` for integer n, or floors 1-5 move.
+32. **`aggression` must be reset in every boss's `init()`.** `Director.applyEndlessScaling`
+    writes it AFTER init, and on floors 1-5 it early-returns and never writes it at all —
+    so a pooled boss last used deep in the Recursion carries that aggression into a
+    Cycle I fight. Same rule as `variant = null` and `strayTime`.
+33. **`CYCLE_VISUAL_CAP` is a MEMORY bound.** `Renderer.spriteCache` has no eviction and
+    is never cleared, and `drawGlow` keys on `glow|${color}|${alpha}` while particle
+    glows take their colour from `ent.color`. Any visual escalation that varies colour
+    with depth must stay quantised and capped, or every cycle mints a permanent cache
+    entry on exactly the devices that cannot afford it. `test_endless.js` walks 120
+    floors against the real Director and asserts the colour set stays at 40.
+34. **`DEEP_BOONS` must stay repeat-safe, and must never be merged into `BOONS`.** Every
+    effect is plain addition or a multiplier above 1 — no flags, no division, no one-way
+    switches — because these are offered an unbounded number of times. The 24 in `BOONS`
+    are NOT interchangeable with them: 11 are flag boons that do nothing on a repeat, and
+    `tunnel_vision` halves the flashlight cone every time it is taken. The distinct
+    `type: 'deep'` is what stops `selectCard` filing them in `player.boons`.
+35. **`startEndlessRun()` must keep calling `startNewRun()`, and must not route through
+    `carriedState`.** The call is what keeps the third entry point from drifting from the
+    other two (Patch 52's rule). The `carriedState` avoidance is load-bearing: `Game.init`
+    reads a non-null carry as "floor descent" and skips the C1/C2 capstone grants, which
+    a fresh run must receive.
 
 ---
 
@@ -1262,6 +1471,7 @@ by this patch, and out of scope for a mobile-only change.
 | `test_leash.js` | 15 | off-screen dead zone, recall lands on screen, boss exclusion, tutorial cases, **desktop viewport derivation unchanged by the live-zoom refactor** |
 | `test_tutorial.js` | 86 | **new** — step gates and overrides, every step's timeout, the instruction hold and its cap, device-appropriate copy, copy length ceiling, degenerate state |
 | `test_viewport.js` | 42 | **new** — the desktop/portrait split in both directions, desktop `updateZoom` bit-identical to pre-Patch-71, band and camera geometry, zero-sized canvas |
+| `test_endless.js` | 141 | **new (Patch 93)** — floors 1-5 bit-identical (boss dispatch, palette index, variant table, every multiplier `=== 1`), the boss rotation, `cadence` identity + min floors, the run-completion latch across a floor boundary, the direct-launch unlock gate and draft maths, and **the bounded colour set walked over 120 floors against the real Director** |
 
 `test_director.js` and `test_save.js` remain exploratory (they print, they don't
 assert). All six assertion suites exit non-zero on failure and should be run after

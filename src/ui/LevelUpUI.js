@@ -3,6 +3,8 @@
 // MANIFESTATIONS is NOT the level-up boon pool despite appearing to be. The real
 // pool is BOONS, below.
 import { getActiveSynergies } from '../data/Manifestations.js';
+// Patch 95 — the weapon ceiling comes off in THE RECURSION. See src/core/Endless.js.
+import { weaponLevelCap, isEndless } from '../core/Endless.js';
 
 /**
  * The level-up boon pool — the real one.
@@ -45,6 +47,36 @@ export const BOONS = [
     { id: 'slowing_field', name: 'Slowing Field', desc: 'Enemies caught in your Static aura move at half speed.', color: '#aaddff', icon: '❄️', tags: ['aura', 'focus'] },
     { id: 'last_light', name: 'Last Light', desc: 'Flashlight damage +50% while below half Sanity.', color: '#ffaa33', icon: '🕯️', tags: ['light', 'focus'] },
     { id: 'reinforced_frame', name: 'Reinforced Frame', desc: 'Take 15% less damage from everything.', color: '#99aabb', icon: '🦴', tags: ['passive', 'melee'] }
+];
+
+/**
+ * Patch 95 — THE RECURSION's repeatable cards. Offered ONLY on floors 6+.
+ *
+ * WHY THESE ARE NEW CARDS RATHER THAN "the existing 24, made repeatable", which was
+ * the obvious cheaper answer and is wrong on inspection:
+ *
+ *   - 11 of the 24 are FLAG boons. Game.js and Combat.js read them with
+ *     `boons.includes('shadow_step')`, so taking one a second time does precisely
+ *     nothing. A card that visibly does nothing is worse than no card.
+ *   - Several are actively degenerate on repeat. `tunnel_vision` HALVES the flashlight
+ *     cone each time (three picks and the beam is a line); `wide_lens` multiplies
+ *     damage by 0.9 every time; `lead_shoes` permanently disables dashing.
+ *
+ * These are deliberately plain numbers instead. They are the endgame's "there is always
+ * something to take" floor, not a second design space — the interesting choices are
+ * still the 24 boons and the now-uncapped weapons, and these should never crowd those
+ * out. Every one is safely repeatable by construction: no flags, no division, no
+ * one-way switches.
+ *
+ * Exported for the same reason BOONS is (Patches 55/56): the Clinical Guide renders
+ * from live data and must never carry a hand-transcribed copy of a catalogue.
+ */
+export const DEEP_BOONS = [
+    { id: 'deep_acuity',    name: 'Acuity',    desc: 'All weapon damage +10%.',      color: '#ffd27f', icon: '🜂', tags: ['focus', 'passive'] },
+    { id: 'deep_bulwark',   name: 'Bulwark',   desc: 'Max Sanity +25.',              color: '#9fd3c7', icon: '🜃', tags: ['passive', 'utility'] },
+    { id: 'deep_impulse',   name: 'Impulse',   desc: 'Move speed +4%.',              color: '#8ec5ff', icon: '🜁', tags: ['kinetic', 'passive'] },
+    { id: 'deep_reflex',    name: 'Reflex',    desc: 'Dash recharges 4 frames faster.', color: '#c9a0ff', icon: '🜄', tags: ['utility', 'kinetic'] },
+    { id: 'deep_avarice',   name: 'Avarice',   desc: 'Pull Lucidity from 8% further.', color: '#ffcc66', icon: '🝊', tags: ['utility', 'passive'] }
 ];
 
 export class LevelUpUI {
@@ -128,10 +160,20 @@ export class LevelUpUI {
         }
 
         let availableBoons = BOONS.filter(b => !game.state.player.boons.includes(b.id)).map(b => ({ ...b, type: 'boon' }));
-        
+
+        // Patch 95: repeatable, so deliberately NOT filtered against player.boons —
+        // and given their own `type` so selectCard cannot mistake one for a one-shot
+        // boon and push it into that array, which would make it un-offerable again.
+        if (isEndless(game.state.floor)) {
+            availableBoons = availableBoons.concat(DEEP_BOONS.map(b => ({ ...b, type: 'deep' })));
+        }
+
         let availableWeapons = [];
+        const levelCap = weaponLevelCap(game.state.floor);
         for (const [weaponKey, wep] of Object.entries(game.state.player.weapons)) {
-            if (wep.level < 5) {
+            // Patch 95: was a hardcoded `wep.level < 5`. weaponLevelCap returns exactly
+            // 5 for floors 1-5, so Cycle I keeps its ceiling to the letter.
+            if (wep.level < levelCap) {
                 availableWeapons.push({
                     type: 'weapon',
                     id: weaponKey,
@@ -208,7 +250,13 @@ export class LevelUpUI {
             card.style.background = '#111';
             card.style.border = '2px solid #555';
             
-            let label = choice.type === 'boon' ? 'CLINICAL BREAKTHROUGH' : `WEAPON LVL ${choice.currentLevel + 1}`;
+            // Patch 95: 'deep' needs its own arm. Without it a DEEP card falls into the
+            // weapon branch and renders "WEAPON LVL NaN" — those cards carry no
+            // currentLevel because they have no level to carry.
+            let label;
+            if (choice.type === 'boon') label = 'CLINICAL BREAKTHROUGH';
+            else if (choice.type === 'deep') label = 'RECURSIVE ADAPTATION';
+            else label = `WEAPON LVL ${choice.currentLevel + 1}`;
 
             card.innerHTML = `
                 <div class="polaroid-photo" style="background: #111">
@@ -273,9 +321,39 @@ export class LevelUpUI {
                     wep.damage += 5; wep.baseRadius += 10; wep.speed += 0.02;
                 }
             }
+        } else if (choice.type === 'deep') {
+            // Patch 95 — repeatable. Deliberately NOT pushed into player.boons: that
+            // array is the one-shot ledger the BOONS pool filters against, and adding
+            // to it would make each of these offerable exactly once, which is the whole
+            // thing they exist not to be.
+            //
+            // Every effect below is safe to apply an unbounded number of times — plain
+            // addition or a multiplier above 1, no flags, no division, no one-way
+            // switches. That constraint is what the pool was designed around; keep it
+            // if any card is ever added here.
+            const p = game.state.player;
+            if (choice.id === 'deep_acuity') {
+                Object.values(p.weapons).forEach(wep => {
+                    if (wep && Number.isFinite(wep.damage)) wep.damage *= 1.10;
+                });
+            } else if (choice.id === 'deep_bulwark') {
+                p.maxHp += 25;
+                game.state.sanity += 25;
+            } else if (choice.id === 'deep_impulse') {
+                p.speed *= 1.04;
+            } else if (choice.id === 'deep_reflex') {
+                // Same clamp Game.init applies to the Synapse Tree's dashCooldown node,
+                // so stacking this can never reach a degenerate near-zero cooldown.
+                p.dash.baseCooldown = Math.max(20, p.dash.baseCooldown - 4);
+            } else if (choice.id === 'deep_avarice') {
+                // Combat.collectXP reads `70 + vacRadiusBonusPx`, so an 8% increase in
+                // reach means 8% of that total, not 8% of the bonus alone.
+                const current = 70 + (p.vacRadiusBonusPx || 0);
+                p.vacRadiusBonusPx = (p.vacRadiusBonusPx || 0) + Math.round(current * 0.08);
+            }
         } else {
             game.state.player.boons.push(choice.id);
-            
+
             const w = game.state.player.weapons;
 
             if (choice.id === 'tunnel_vision') {

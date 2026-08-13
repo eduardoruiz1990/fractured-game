@@ -13,6 +13,59 @@ import { errorLog } from '../core/ErrorLog.js';
 // The spawn clamp is derived from the arena's void radius rather than repeated as a
 // literal — see the note on ARENA_VOID_RADIUS in Config.js for why the two must agree.
 import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE } from '../data/Config.js';
+// Patch 93/94 — the boss rotation past floor 5, and the escalation curves that make
+// endless floors mean something. See src/core/Endless.js.
+import {
+    bossTypeForFloor, enemyScaling, bossScaling, variantChance, isEndless,
+    paletteIndexForFloor, visualCycle
+} from '../core/Endless.js';
+
+/** Boss types, in one place — this list was previously repeated inline four times. */
+const BOSS_TYPES = ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'];
+
+/**
+ * Patch 94 — the live-entity ceiling, endless only.
+ *
+ * Floors 1-5 top out around 55 budget points and never approach this, and the caller
+ * gates on isEndless() anyway, so it is doubly unreachable there. It exists because
+ * enemyBudget is uncapped by design: a deep floor is meant to be able to COST 200
+ * points without ever having 200 bodies alive at once on a phone.
+ */
+const ENDLESS_MAX_LIVE_ENTITIES = 60;
+
+/**
+ * Patch 96 — per-biome enemy tints, [scavenger, everything else], indexed by the
+ * cycled palette. Exactly the five pairs the old if/else chain held inline.
+ */
+const ENEMY_TINTS = [
+    ['#8b5a2b', '#a0522d'],   // 1 Wastes
+    ['#888888', '#333333'],   // 2 Divide
+    ['#800020', '#4b0000'],   // 3 Panopticon
+    ['#2e8b57', '#004d00'],   // 4 Amalgamation
+    ['#daa520', '#b8860b']    // 5 Architect
+];
+
+/**
+ * Darken a biome tint by cycle depth. Returns the input UNCHANGED for Cycle I, so
+ * floors 1-5 keep their exact colours — string identity included, which matters
+ * because these strings become sprite-cache keys downstream.
+ *
+ * Deliberately quantised to whole cycles and capped by the caller (visualCycle), so
+ * the set of strings this can ever produce is small and finite. A smooth per-floor
+ * gradient here would be prettier and would grow Renderer.spriteCache without bound.
+ */
+function recursionTint(hex, cycle) {
+    const depth = Math.max(0, (cycle || 1) - 1);
+    if (depth === 0) return hex;
+    const scale = Math.max(0.35, 1 - 0.18 * depth);
+    const m = /^#([0-9a-f]{6})$/i.exec(hex);
+    if (!m) return hex;
+    const ch = [0, 2, 4].map(i => {
+        const v = Math.round(parseInt(m[1].slice(i, i + 2), 16) * scale);
+        return Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0');
+    });
+    return `#${ch.join('')}`;
+}
 
 export class Director {
     constructor(game) {
@@ -98,11 +151,12 @@ export class Director {
             // on phones. See BOSS_MIN_SPAWN_DISTANCE in Config.js.
             const bw = Number.isFinite(this.lastViewW) ? this.lastViewW : 1920;
             const bh = Number.isFinite(this.lastViewH) ? this.lastViewH : 1080;
-            const bossType = state.floor === 1 ? 'BOSS'
-                           : state.floor === 2 ? 'RORSCHACH'
-                           : state.floor === 3 ? 'PANOPTICON'
-                           : state.floor === 4 ? 'AMALGAMATION'
-                           : 'ARCHITECT';
+            // Patch 93: was an if/else chain ending in `: 'ARCHITECT'`, so every floor
+            // past 5 fought the Architect again — the tail of a chain rather than a
+            // decision. bossTypeForFloor returns the identical boss for floors 1-5 and
+            // wraps the five back round after that, so the Recursion re-presents all
+            // five instead of leaving four of them as dead content.
+            const bossType = bossTypeForFloor(state.floor);
             this.spawnEntity(bossType, bw, bh, null, null, 1, BOSS_MIN_SPAWN_DISTANCE);
             state.bossSpawned = true;
             // Resolve activeBoss immediately. processGameLogic() normally computes this,
@@ -270,7 +324,22 @@ export class Director {
                 else if (state.roomModifier === 'SWARM') spawnRate = Math.max(8, Math.floor(spawnRate * 0.5));
             }
 
-            if (state.budgetTimer % spawnRate === 0) {
+            // Patch 94 — endless-only live-entity ceiling.
+            //
+            // enemyBudget stays uncapped past floor 5 by design: a deep floor SHOULD
+            // cost more to clear. But budget is a cost total, not a crowd size, and
+            // nothing else in spawnWave limits how many bodies are alive at once — so
+            // an uncapped budget on a phone is an uncapped simulation and render cost.
+            // Holding spawns while the room is already full converts the extra budget
+            // into a LONGER fight rather than a denser one, which is also the better
+            // read: the pressure is sustained instead of arriving all at once.
+            //
+            // Budget is not consumed while held, so nothing is lost — only deferred.
+            const liveEnemies = state.entities.length;
+            const atLiveCeiling = isEndless(state.floor) && !bossAlive &&
+                                  liveEnemies >= ENDLESS_MAX_LIVE_ENTITIES;
+
+            if (!atLiveCeiling && state.budgetTimer % spawnRate === 0) {
                 // Determine spawn pools by biome (Floor)
                 let spawnType = 'SCAVENGER';
                 let roll = Math.random();
@@ -344,8 +413,11 @@ export class Director {
     applyEnemyVariant(ent, state) {
         // Floor 1 stays variant-free so the three base enemy behaviours are learned
         // before modifiers are layered on top.
-        const chanceByFloor = { 1: 0, 2: 0.12, 3: 0.20, 4: 0.28 };
-        const chance = state.floor >= 5 ? 0.35 : (chanceByFloor[state.floor] || 0);
+        //
+        // Patch 94: the per-floor table moved into Endless.variantChance, which returns
+        // the identical values for floors 1-5 (including floor 3's 0.20, which this
+        // file's forced-roll tests depend on) and keeps climbing past them.
+        const chance = variantChance(state.floor);
         if (Math.random() >= chance) return;
 
         const roll = Math.random();
@@ -388,6 +460,61 @@ export class Director {
         ent.spawnMaxHp = ent.maxHp;
         ent.baseSpeed = ent.speed;
         ent.variant = variant;
+    }
+
+    /**
+     * Patch 94 — THE RECURSION's difficulty, applied to one freshly-init'd entity.
+     *
+     * A NO-OP on floors 1-5: every multiplier Endless hands back there is exactly 1,
+     * and the early return means a floor-1 enemy is not even re-stamped.
+     *
+     * WHERE THIS IS CALLED FROM MATTERS. It runs inside spawnEntity rather than
+     * spawnRoom, because spawnEntity is the single funnel every body goes through —
+     * including a Rorschach SPLIT, which Combat.js spawns mid-fight with a higher
+     * `generation`. Scaling the boss in spawnRoom instead would have produced the
+     * quietly wrong result of a scaled parent shedding unscaled children.
+     *
+     * Runs BEFORE the ELITE/variant branch, so those existing multipliers compound
+     * onto the scaled body exactly as they compound onto a base one today.
+     *
+     * Every field is guarded, and that is not defensive habit — Rorschach does NOT
+     * extend Enemy. It is a standalone class with no `damage`, no `baseDamage` and no
+     * `spawnMaxHp`, so an unguarded `ent.damage *=` would write NaN onto the one boss
+     * that splits into three more of itself.
+     */
+    applyEndlessScaling(ent, state) {
+        if (!ent || !isEndless(state.floor)) return;
+
+        const isBoss = BOSS_TYPES.includes(ent.type);
+        const s = isBoss ? bossScaling(state.floor) : enemyScaling(state.floor);
+
+        if (Number.isFinite(ent.hp)) {
+            ent.hp *= s.hp;
+            ent.maxHp = ent.hp;
+            // Keep clause 6: spawnMaxHp is the pool this body STARTED with, and the
+            // Predator's feeding cap is measured against it. Re-stamped here for the
+            // same reason applyEnemyVariant re-stamps it after ITS multiplier — a cap
+            // computed from a pre-scaling number sits below the enemy's own starting
+            // HP, and the mechanic silently stops working.
+            if (Number.isFinite(ent.spawnMaxHp)) ent.spawnMaxHp = ent.maxHp;
+        }
+
+        if (Number.isFinite(ent.damage)) {
+            ent.damage *= s.damage;
+            // baseDamage is the pristine value initBase restores from on pooled reuse.
+            // It must move with damage, or the next occupant of this object starts
+            // from an already-scaled number and every recycle hits harder than the last.
+            if (Number.isFinite(ent.baseDamage)) ent.baseDamage = ent.damage;
+        }
+
+        if (!isBoss && Number.isFinite(ent.speed)) {
+            ent.speed *= s.speed;
+            if (Number.isFinite(ent.baseSpeed)) ent.baseSpeed = ent.speed;
+        }
+
+        // Read by each boss's update() through Endless.cadence(). Set on every entity
+        // (harmlessly 1 for non-bosses) so nothing has to ask whether the field exists.
+        ent.aggression = isBoss ? s.aggression : 1;
     }
 
     spawnEntity(type, canvasWidth, canvasHeight, forceX = null, forceY = null, generation = 1, minSpawnRadius = 0) {
@@ -528,12 +655,26 @@ export class Director {
         else if (type === 'ARCHITECT') ent = this.pools.architect.get().init(Math.random(), x, y);
 
         if (ent) {
-            if (!['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(ent.type)) {
-                if (state.floor === 1) ent.originalColor = ent.type === 'SCAVENGER' ? '#8b5a2b' : '#a0522d';
-                else if (state.floor === 2) ent.originalColor = ent.type === 'SCAVENGER' ? '#888888' : '#333333';
-                else if (state.floor === 3) ent.originalColor = ent.type === 'SCAVENGER' ? '#800020' : '#4b0000';
-                else if (state.floor === 4) ent.originalColor = ent.type === 'SCAVENGER' ? '#2e8b57' : '#004d00';
-                else if (state.floor >= 5) ent.originalColor = ent.type === 'SCAVENGER' ? '#daa520' : '#b8860b';
+            // Patch 94: before the ELITE/variant branch, so those compound onto it.
+            this.applyEndlessScaling(ent, state);
+
+            if (!BOSS_TYPES.includes(ent.type)) {
+                // Patch 96: the same five biome tints, indexed by the cycled palette
+                // rather than by an if/else whose tail was `floor >= 5`, and then
+                // darkened per cycle so a Cycle III scavenger reads as a corrupted
+                // version of its Cycle I self rather than an identical one.
+                //
+                // THIS is the site the CYCLE_VISUAL_CAP bound exists for. These colours
+                // reach Renderer.drawGlow (via spawnParticles on death) and its cache is
+                // keyed `glow|${color}|${alpha}` with no eviction, so a tint that kept
+                // deepening forever would mint a new permanent cache entry every cycle.
+                // Capped, the reachable set is 5 palettes x 2 roles x 4 tiers = 40
+                // strings, forever — asserted in test_endless.js.
+                const tints = ENEMY_TINTS[paletteIndexForFloor(state.floor)];
+                ent.originalColor = recursionTint(
+                    ent.type === 'SCAVENGER' ? tints[0] : tints[1],
+                    visualCycle(state.floor)
+                );
                 ent.color = ent.originalColor;
 
                 // ELITE room modifier: fewer total spawns (enemyBudget cut in
