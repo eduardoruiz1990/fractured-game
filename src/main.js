@@ -12,6 +12,13 @@ import { errorLog } from './core/ErrorLog.js';
 import { Tutorial } from './systems/Tutorial.js';
 import { isPortraitLayout } from './core/Layout.js';
 import { Pacing } from './core/Pacing.js';
+// Patch 93/97 — THE RECURSION: the endless floors past the Architect, and the mode
+// that launches straight into them. See src/core/Endless.js.
+import {
+    ENDLESS_START_FLOOR, endlessDraftXP, isRecursionUnlocked,
+    cycleLabel, isEndless
+} from './core/Endless.js';
+import { getXPRequiredForLevel } from './data/Config.js';
 
 // Patch 50: installed before ANYTHING else in this module runs, including the
 // canvas lookup below. A throw during boot is invisible to the log unless the
@@ -514,12 +521,15 @@ function resumeAudioForGameplay() {
  * dialog entirely would mean silently destroying a run without asking, which is
  * far worse than an ugly prompt.
  */
-function showConfirm({ title, body, note, confirmLabel, cancelLabel, onConfirm, danger = true }) {
+function showConfirm({ title, body, note, confirmLabel, cancelLabel, onConfirm, danger = true, noticeOnly = false }) {
     const modal = document.getElementById('confirm-modal');
     const acceptBtn = document.getElementById('btn-confirm-accept');
     const cancelBtn = document.getElementById('btn-confirm-cancel');
 
     if (!modal || !acceptBtn || !cancelBtn) {
+        // Patch 101: a notice has nothing to decide, so asking for a yes/no here would
+        // invent a choice that does not exist.
+        if (noticeOnly) { window.alert(`${body}\n\n${note || ''}`); return; }
         if (window.confirm(`${body}\n\n${note || ''}`)) onConfirm();
         return;
     }
@@ -528,7 +538,20 @@ function showConfirm({ title, body, note, confirmLabel, cancelLabel, onConfirm, 
     document.getElementById('confirm-body').innerText = body;
     document.getElementById('confirm-note').innerText = note || '';
     acceptBtn.innerText = confirmLabel;
-    cancelBtn.innerText = cancelLabel;
+    // Defaulted rather than assigned raw: a noticeOnly caller has no cancel button to
+    // label, and `innerText = undefined` writes the literal string "undefined" into it —
+    // invisible today only because the button is hidden, and a trap for the next caller.
+    cancelBtn.innerText = cancelLabel || 'RETURN';
+
+    // Patch 101: `noticeOnly` turns this into a one-button NOTICE — same folder chrome,
+    // nothing to decide. Added here rather than as a second dialog so there stays one
+    // modal implementation; a second one is how two copies of the folder styling drift.
+    //
+    // Re-set on EVERY open rather than toggled, for exactly the reason the class resets
+    // below say: leaving `display: none` behind would silently remove the cancel button
+    // from the next ABANDON PROTOCOL dialog — a destructive prompt with no way out but
+    // to accept it.
+    cancelBtn.style.display = noticeOnly ? 'none' : '';
 
     // Patch 92: `danger` defaults TRUE, so the original ABANDON PROTOCOL dialog is
     // byte-identical to before. The backup prompt passes false — it is an offer, not
@@ -624,6 +647,42 @@ function startNewRun() {
 }
 
 /**
+ * Patch 97 — starts a fresh run directly in THE RECURSION, at floor 6.
+ *
+ * CALLS startNewRun() rather than reimplementing it. That is the whole design of this
+ * function: Patch 52 collapsed every route into gameplay onto one code path precisely
+ * so two entry points could not drift apart in their setup, and this is a third route.
+ * Everything shared — reading meta at launch, dev overrides, `runsStarted`, audio,
+ * revealing touch controls, the portal gameplay state — happens in there, once. Only
+ * the seed is applied here.
+ *
+ * DELIBERATELY NOT ROUTED THROUGH carriedState, which would have been the obvious way
+ * to set a starting floor: Game.init treats a non-null carriedState as "this is a floor
+ * descent, not a new run", and skips the C1/C2 capstone grants (start_boon,
+ * start_weapon) on that basis. A player who has bought those nodes must receive them
+ * here — this IS a fresh run, it just does not begin at the top.
+ */
+function startEndlessRun() {
+    startNewRun();
+
+    game.state.floor = ENDLESS_START_FLOOR;
+    // Same expression Game.init uses, so the two cannot disagree about what this
+    // derived value means.
+    game.state.maxConvergence = Math.floor(100 * Math.pow(1.3, ENDLESS_START_FLOOR - 1));
+
+    // The opening draft. Granting XP rather than handing over a pre-built loadout means
+    // the player CHOOSES the build they take in, through the level-up cards that
+    // already exist — and it costs no new UI at all.
+    game.state.xp += endlessDraftXP(getXPRequiredForLevel);
+
+    if (saveManager && saveManager.metaState &&
+        ENDLESS_START_FLOOR > (saveManager.metaState.maxFloorReached || 1)) {
+        saveManager.metaState.maxFloorReached = ENDLESS_START_FLOOR;
+        saveManager.saveGame();
+    }
+}
+
+/**
  * Resumes the suspended run. Returns false (leaving the player where they are)
  * when there is nothing to resume or the saved run was corrupt — loadSuspendedRun
  * discards a corrupt one, so the UI is refreshed to match.
@@ -683,6 +742,101 @@ function enterMindHub() {
  * names the floor/room so the player knows what they would be returning to (and,
  * on the BEGIN DESCENT confirm, what they would be giving up).
  */
+/**
+ * Patch 97/99 — puts BOTH Recursion entries into the right state for this save.
+ *
+ * One function for the two surfaces, so the title screen and the clinical folder can
+ * never disagree. Called on every title refresh and on every folder open rather than
+ * once at injection: those blocks run at boot, and the Architect can fall during the
+ * session that follows — awakening after a first clear must promote the entry
+ * immediately, not on the next reload.
+ *
+ * PATCH 99 — SHOWN WHEN LOCKED, not hidden. Patch 97 hid it, reasoning that a button
+ * naming an endless mode after the final boss spoils the ending. On play, that was the
+ * wrong trade: the mode was invisible to exactly the players who had not yet reached it,
+ * so it could not do the one thing an unreached goal is for — give a reason to go back
+ * down. It now reads as SEALED and states its requirement, which is a hint rather than
+ * a spoiler: it names FLOOR 5, never the Architect, so what is waiting there is still a
+ * surprise. That is the same line the Descent Roadmap already draws — it seals unvisited
+ * floors while still showing they exist.
+ *
+ * PATCH 101 — the locked state got LOUDER, and got a click.
+ *
+ * Patch 99 rendered it in the roadmap's muted `#9a917f` at 0.6 opacity, over a dark red
+ * title screen. It was legible but it read as chrome — a disabled row you scan past —
+ * which is the opposite of a goal. It now wears the same gold as the live entries, with
+ * a dashed border and a stamped SEALED tag carrying the "unavailable" meaning instead of
+ * the colour doing it. Sealed, not switched off.
+ *
+ * It is also no longer a `disabled` button, so it can be clicked: locked, a click opens
+ * the notice below rather than launching anything. A goal you can interrogate is worth
+ * more than one you can only look at, and the two-line label cannot hold the tease that
+ * the notice can.
+ */
+function refreshRecursionEntries() {
+    if (!saveManager) return;
+    const unlocked = isRecursionUnlocked(saveManager.metaState);
+
+    ['btn-title-endless', 'btn-start-endless'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+
+        btn.style.display = 'block';
+        // NOT `disabled` — the locked button is clickable and answers with a notice.
+        // (It also has to stay enabled for UIManager.attachEvents' hover/click SFX,
+        // which skip disabled buttons.)
+        btn.disabled = false;
+
+        if (unlocked) {
+            btn.innerHTML = 'THE RECURSION';
+            btn.style.color = 'var(--ui-gold)';
+            btn.style.opacity = '0.85';
+            btn.style.borderStyle = '';
+            btn.style.borderColor = '';
+            btn.style.cursor = '';
+            btn.title = 'Endless descent. The construct rebuilds itself.';
+        } else {
+            // Gold, like the live entries — a locked goal has to look like something you
+            // WANT, not like a greyed-out control. The dashed border and the stamped tag
+            // carry "not yet", so the colour does not have to.
+            btn.innerHTML =
+                'THE RECURSION' +
+                '<span style="display:inline-block; margin-left:8px; padding:1px 6px; border:1px dashed currentColor; font-size:0.58rem; letter-spacing:2px; vertical-align:middle; opacity:0.85;">SEALED</span>' +
+                '<span style="display:block; font-size:0.62rem; letter-spacing:2px; margin-top:4px; opacity:0.75;">SUBDUE THE SUBJECT ON FLOOR 5</span>';
+            btn.style.color = 'var(--ui-gold)';
+            btn.style.opacity = '0.8';
+            btn.style.borderStyle = 'dashed';
+            btn.style.borderColor = 'rgba(197, 160, 89, 0.55)';
+            btn.style.cursor = 'pointer';
+            btn.title = 'Clear Floor 5 to unlock the endless descent.';
+        }
+    });
+}
+
+/**
+ * Patch 101 — the notice behind a SEALED Recursion entry.
+ *
+ * Written to tease rather than to instruct. It states the requirement plainly (reach
+ * Floor 5, subdue what is there) and then declines to say what follows, because what
+ * follows is the reward for doing it. It never names the Architect — same line the
+ * Descent Roadmap draws, and the reason showing this at all is a hint and not a spoiler.
+ *
+ * Reuses the `#confirm-modal` folder chrome via showConfirm's noticeOnly mode, so it is
+ * the same torn-paper dialog as every other interruption in the game rather than a
+ * second thing that has to be kept looking like the first.
+ */
+function showRecursionSealedNotice() {
+    showConfirm({
+        title: 'PROTOCOL SEALED',
+        body: 'Clearance for this procedure requires a completed evaluation. Descend to FLOOR 5. Subdue whatever it is that keeps the construct standing.',
+        note: 'What happens after that is not recorded in this file.',
+        confirmLabel: 'UNDERSTOOD',
+        danger: false,
+        noticeOnly: true,
+        onConfirm: () => {}
+    });
+}
+
 function refreshTitleActions() {
     const resumeBtn = document.getElementById('btn-title-resume');
     const note = document.getElementById('title-suspended-note');
@@ -705,6 +859,8 @@ function refreshTitleActions() {
             record.style.display = 'none';
         }
     }
+
+    refreshRecursionEntries();
 
     let summary = null;
     if (raw) {
@@ -860,6 +1016,10 @@ function initEngine() {
                 <option value="3">3 - PANOPTICON</option>
                 <option value="4">4 - AMALGAMATION</option>
                 <option value="5">5 - ARCHITECT</option>
+                <option value="6">6 - RECURSION II: SPHERE HEAD</option>
+                <option value="7">7 - RECURSION II: RORSCHACH</option>
+                <option value="10">10 - RECURSION II: ARCHITECT</option>
+                <option value="16">16 - RECURSION IV (visual cap)</option>
             </select>
             <label for="dev-skip-to-boss" style="display:block; margin-top:8px; cursor:pointer; user-select:none;">
                 <input type="checkbox" id="dev-skip-to-boss" style="vertical-align:middle; margin-right:6px;">
@@ -870,6 +1030,7 @@ function initEngine() {
                 <button id="dev-btn-add-patient-xp" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">+5000 SPENT (PATIENT LVL)</button>
                 <button id="dev-btn-force-escape" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE UNLOCK: FIRST ESCAPE</button>
                 <button id="dev-btn-force-boss-kill" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE UNLOCK: FIRST BOSS KILL</button>
+                <button id="dev-btn-force-recursion" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE UNLOCK: THE RECURSION</button>
                 <button id="dev-btn-dump-builds" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">DUMP BUILD LOG (CONSOLE)</button>
                 <button id="dev-btn-dump-errors" style="background:#111; color:var(--ui-gold); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">DUMP ERROR LOG (CONSOLE)</button>
                 <button id="dev-btn-force-error" style="background:#111; color:var(--ui-red); border:1px solid #333; cursor:pointer; font-family:inherit; padding:4px;">FORCE TEST ERROR (3 PATHS)</button>
@@ -933,6 +1094,17 @@ function initEngine() {
             saveManager.metaState.killCounts.BOSS = Math.max(1, saveManager.metaState.killCounts.BOSS || 0);
             saveManager.saveGame();
             console.log(`%c DEV: killCounts.BOSS forced to ${saveManager.metaState.killCounts.BOSS}. `, 'background: #c5a059; color: #000; font-weight: bold;');
+        });
+        // Patch 98: the endless mode's entry points are gated on a first Architect kill,
+        // which is a ~40-minute prerequisite to reproduce by hand. Sets the same field
+        // the real kill sets, so this exercises the genuine gate rather than bypassing
+        // it — and refreshes both entry points immediately, which is also a live check
+        // that the refresh is wired to something.
+        document.getElementById('dev-btn-force-recursion').addEventListener('click', () => {
+            saveManager.metaState.killCounts.ARCHITECT = Math.max(1, saveManager.metaState.killCounts.ARCHITECT || 0);
+            saveManager.saveGame();
+            refreshRecursionEntries();
+            console.log(`%c DEV: killCounts.ARCHITECT forced to ${saveManager.metaState.killCounts.ARCHITECT} — THE RECURSION unlocked. `, 'background: #c5a059; color: #000; font-weight: bold;');
         });
         document.getElementById('dev-btn-dump-builds').addEventListener('click', () => {
             const log = saveManager.getRunBuildLog();
@@ -1237,6 +1409,70 @@ function initEngine() {
             });
         }
 
+        // Patch 97 — THE RECURSION, on the title screen.
+        //
+        // Same injection convention as SYSTEM SETTINGS directly above, and for the same
+        // reason: built here rather than written into index.html so there is one
+        // construction site and one handler, and it lands before `new UIManager` so
+        // attachEvents()'s .file-btn sweep gives it hover/click SFX for free.
+        //
+        // Inserted BEFORE MIND HUB so the reading order is
+        // (RESUME) -> BEGIN DESCENT -> THE RECURSION -> MIND HUB -> SYSTEM SETTINGS:
+        // it belongs with the things that start a run, not with the management screens.
+        // Styled to the same secondary convention as its two neighbours, so BEGIN
+        // DESCENT keeps its position as the obvious primary action — Patch 52 collapsed
+        // this screen to one tap deliberately and that is not disturbed.
+        //
+        // Visibility is decided in refreshTitleActions(), not here: this block runs once
+        // at boot, and the Architect can fall during the session that follows.
+        if (titleBtnContainer && titleHubBtn && !document.getElementById('btn-title-endless')) {
+            const titleEndlessBtn = document.createElement('button');
+            titleEndlessBtn.id = 'btn-title-endless';
+            titleEndlessBtn.className = 'file-btn';
+            titleEndlessBtn.innerText = 'THE RECURSION';
+            titleEndlessBtn.style.width = 'auto';
+            titleEndlessBtn.style.padding = '10px 34px';
+            titleEndlessBtn.style.fontSize = '0.95rem';
+            titleEndlessBtn.style.opacity = '0.85';
+            titleEndlessBtn.style.minHeight = '44px';   // touch-target floor, as above
+            // Label, colour, border and disabled state are all decided by
+            // refreshRecursionEntries — it runs at boot and again on every title
+            // refresh, so this starts hidden and is never left in a stale state.
+            titleEndlessBtn.style.display = 'none';
+            titleBtnContainer.insertBefore(titleEndlessBtn, titleHubBtn);
+
+            titleEndlessBtn.addEventListener('click', () => {
+                // Patch 101: locked, this is the tease rather than a dead click. This is
+                // also the real gate on launching a run — the button is deliberately not
+                // `disabled`, so nothing else stops a locked player getting through.
+                if (!isRecursionUnlocked(saveManager.metaState)) {
+                    showRecursionSealedNotice();
+                    return;
+                }
+                // A suspended run is real progress and this button starts a NEW one, so
+                // it asks first — the same rule and the same dialog BEGIN DESCENT uses.
+                const suspended = refreshTitleActions();
+                const launch = () => {
+                    if (audioEngine) audioEngine.stopMenuTheme();
+                    resumeAudioForGameplay();
+                    clearSuspendedRun();
+                    startEndlessRun();
+                };
+                if (suspended) {
+                    showConfirm({
+                        title: 'ABANDON PROTOCOL?',
+                        body: `A suspended protocol is on file — ${suspended}.`,
+                        note: 'Entering the Recursion discards it. Banked Lucidity and all meta-progression are untouched.',
+                        confirmLabel: 'ENTER THE RECURSION',
+                        cancelLabel: 'KEEP IT',
+                        onConfirm: launch
+                    });
+                } else {
+                    launch();
+                }
+            });
+        }
+
         const toggleShake = document.getElementById('toggle-shake');
         const togglePhoto = document.getElementById('toggle-photo');
 
@@ -1293,6 +1529,56 @@ function initEngine() {
             settingsUI.style.display = 'none';
         });
 
+        // Patch 97 — THE RECURSION, in the clinical folder beside AUTHORIZE DESCENT.
+        //
+        // The second of the two surfaces the mode is reachable from, covering "goes back
+        // to the mind hub" the same way the title button covers "awakens". Injected next
+        // to #btn-start rather than written into index.html, for the same reasons as the
+        // title button — one construction site, free .file-btn SFX, and index.html stays
+        // shut (it is on the fragile-file list).
+        //
+        // It calls the SAME startEndlessRun() the title button does, so the two routes
+        // cannot produce differently-set-up runs. Visibility is refreshed on every
+        // folder open, not decided here, because the Architect can fall mid-session.
+        const hubStartBtn = document.getElementById('btn-start');
+        if (hubStartBtn && hubStartBtn.parentNode && !document.getElementById('btn-start-endless')) {
+            const hubEndlessBtn = document.createElement('button');
+            hubEndlessBtn.id = 'btn-start-endless';
+            hubEndlessBtn.className = 'file-btn';
+            hubEndlessBtn.style.minHeight = '44px';
+            // As on the title screen: refreshRecursionEntries owns the label and state,
+            // and runs on every folder open.
+            hubEndlessBtn.style.display = 'none';
+            // After AUTHORIZE DESCENT: the normal descent stays the primary action.
+            hubStartBtn.parentNode.insertBefore(hubEndlessBtn, hubStartBtn.nextSibling);
+
+            hubEndlessBtn.addEventListener('click', () => {
+                // Same as the title entry — see the note there.
+                if (!isRecursionUnlocked(saveManager.metaState)) {
+                    showRecursionSealedNotice();
+                    return;
+                }
+                const suspended = refreshTitleActions();
+                const launch = () => {
+                    if (audioEngine) audioEngine.stopMenuTheme();
+                    clearSuspendedRun();
+                    startEndlessRun();
+                };
+                if (suspended) {
+                    showConfirm({
+                        title: 'ABANDON PROTOCOL?',
+                        body: `A suspended protocol is on file — ${suspended}.`,
+                        note: 'Entering the Recursion discards it. Banked Lucidity and all meta-progression are untouched.',
+                        confirmLabel: 'ENTER THE RECURSION',
+                        cancelLabel: 'KEEP IT',
+                        onConfirm: launch
+                    });
+                } else {
+                    launch();
+                }
+            });
+        }
+
         // --- PHASE 2: HUB INTERACTION EVENT LISTENERS ---
         const interactionPrompt = document.getElementById('interaction-prompt');
         const interactionText = document.getElementById('prompt-text');
@@ -1318,6 +1604,11 @@ function initEngine() {
                     if (zone.action === 'tab-loadout' && uiManager) uiManager.renderLoadoutUI();
                     
                     document.getElementById('clinical-folder-menu').style.display = 'flex';
+
+                    // Patch 97: re-checked on every open, so a first Architect kill
+                    // reveals ENTER THE RECURSION on the very next visit to the hub
+                    // rather than on the next page load.
+                    refreshRecursionEntries();
 
                     // Patch 87: bring the activated tab into view. The strip scrolls
                     // horizontally on a phone (8 tabs, ~1000px of them against a 390px
@@ -1795,17 +2086,35 @@ function initEngine() {
             // the player could close the tab on this screen and it would still be a
             // finished run. Latched on state so a re-entry into EXIT_REACHED (the
             // handler is a callback, not a one-shot) cannot count the same clear twice.
+            //
+            // Patch 93: that latch now also has to survive a FLOOR BOUNDARY, because
+            // there is one past floor 5 for the first time. It rides getCarriedState()
+            // through game.init() — see the note there. Without that, every endless
+            // floor cleared would bank another "construct escaped".
             if (!game.state.runCompletionRecorded) {
                 game.state.runCompletionRecorded = true;
                 saveManager.recordRunStat('runsCompleted');
+                // The first clear. Still the victory it always was — the Recursion is
+                // offered, never imposed, and AWAKEN banks everything exactly as before.
+                document.getElementById('pause-desc').innerText =
+                    `You have conquered the nightmare. The Architect has fallen — and the construct begins to rebuild itself around you. Awaken with your Lucidity, or follow it down?`;
+            } else if (game.state.floor % 5 === 0) {
+                // A cycle closed: the Architect has fallen again, deeper down.
+                document.getElementById('pause-desc').innerText =
+                    `Cycle ${cycleLabel(game.state.floor)} is complete. The Architect falls again, and again the construct rebuilds. Awaken, or continue into Cycle ${cycleLabel(game.state.floor + 1)}?`;
+            } else {
+                document.getElementById('pause-desc').innerText =
+                    `You survived Floor ${game.state.floor}, deep in Cycle ${cycleLabel(game.state.floor)}. Awaken with your Lucidity, or descend further?`;
             }
-            document.getElementById('pause-desc').innerText = `You have conquered the nightmare. The Architect has fallen.`;
-            btnDescend.style.display = 'none'; // No floor 6 yet!
         } else {
             document.getElementById('pause-desc').innerText = `You survived Floor ${game.state.floor}. Awaken with your Lucidity, or risk descending deeper into the nightmare?`;
-            btnDescend.style.display = 'block'; 
         }
-        
+
+        // Patch 93: THE seam this feature opens. This used to be
+        // `btnDescend.style.display = 'none'; // No floor 6 yet!` on the floor-5
+        // branch. There is a floor 6 now, and every floor after it.
+        btnDescend.style.display = 'block';
+
         document.getElementById('btn-unpause').style.display = 'none'; 
         pauseMenu.style.display = 'flex';
         inputManager.hideJoysticks();
@@ -2043,7 +2352,13 @@ function gameLoop(time) {
                 if (isBreakdown && gameSettings.photosensitive) targetGlitchOpacity = '0.3'; 
                 document.getElementById('glitch-overlay').style.opacity = targetGlitchOpacity;
                 
-                document.getElementById('score').innerHTML = `LUCIDITY: ${game.state.lucidity} <br> FLOOR: ${game.state.floor} - ROOM: ${game.state.roomNumber}`;
+                // Patch 98: the cycle is named on floors 6+ only, so the Cycle I HUD is
+                // byte-identical to before. Without it the readout says FLOOR 13 with
+                // the Wastes on screen and nothing connects the two.
+                const floorReadout = isEndless(game.state.floor)
+                    ? `CYCLE ${cycleLabel(game.state.floor)} - FLOOR: ${game.state.floor} - ROOM: ${game.state.roomNumber}`
+                    : `FLOOR: ${game.state.floor} - ROOM: ${game.state.roomNumber}`;
+                document.getElementById('score').innerHTML = `LUCIDITY: ${game.state.lucidity} <br> ${floorReadout}`;
 
                 // Patch 25: screen-fixed tutorial banner, driven off the same
                 // state.isTutorial gate Director.spawnRoom/Combat.js already use.

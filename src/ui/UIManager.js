@@ -3,6 +3,8 @@ import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHT
 import { SynapseTree } from './SynapseTree.js';
 import { GuideUI } from './GuideUI.js';
 import { BOONS } from './LevelUpUI.js';
+// Patch 98 — the roadmap reports depth past floor 5. See src/core/Endless.js.
+import { isEndless, cycleLabel } from '../core/Endless.js';
 
 // Matches the hardcoded progression chain in SaveManager.upgradeToken() exactly —
 // that method does NOT derive the chain from TOKEN_RARITIES, it's a separate
@@ -691,7 +693,12 @@ export class UIManager {
               note: "Terminal stage. The source of the construct.", isFinal: true }
         ];
 
-        const deepest = Math.min(maxFloor, floors.length);
+        // Patch 98: was `Math.min(maxFloor, floors.length)`, which capped the readout at
+        // 5 — correct while 5 was the end of the game, and now it would under-report
+        // every endless run a player had made. The clamp is gone; the five listed
+        // floors below are unaffected because they are their own array.
+        const deepest = maxFloor;
+        const inRecursion = isEndless(maxFloor);
         const conquered = floors.filter(fl => (kills[fl.bossKey] || 0) > 0).length;
         const pct = Math.round((conquered / floors.length) * 100);
 
@@ -707,7 +714,7 @@ export class UIManager {
             </div>
             <div class="roadmap-progress-track"><div class="roadmap-progress-fill" style="width:${pct}%;"></div></div>
             <div class="roadmap-summary-row roadmap-summary-sub">
-                <span>DEEPEST REACHED: FLOOR ${deepest}</span>
+                <span>DEEPEST REACHED: FLOOR ${deepest}${inRecursion ? ` · CYCLE ${cycleLabel(maxFloor)}` : ''}</span>
                 <span>${meta.hasEscapedFloor1 ? 'ESCAPE ON RECORD' : 'NO ESCAPE ON RECORD'}</span>
             </div>
         `;
@@ -752,6 +759,32 @@ export class UIManager {
             }
             timeline.appendChild(node);
         });
+
+        // Patch 98 — THE RECURSION. Appended after the five rather than added to the
+        // `floors` array on purpose: that array drives the "n / 5 SUBDUED" count and
+        // the per-floor boss records above, and the Recursion has no single boss and no
+        // completion state, so folding it in would corrupt both.
+        //
+        // Shown only once the player has actually been there. Same redaction convention
+        // the rest of this screen uses — a sealed node that names an endless mode after
+        // the final boss would spoil the ending to someone still on floor 2.
+        if (inRecursion) {
+            const rec = document.createElement('div');
+            rec.className = 'roadmap-node boss active';
+            rec.innerHTML = `
+                <div class="roadmap-node-head">
+                    <span class="roadmap-floor-tag">FLOOR 6+</span>
+                    <span class="roadmap-status pending">CYCLE ${cycleLabel(maxFloor)}</span>
+                </div>
+                <div class="roadmap-area">THE RECURSION</div>
+                <div class="roadmap-boss">SUBJECT OF RECORD: <strong>ALL OF THEM, AGAIN</strong></div>
+                <div class="roadmap-note typewriter-text">
+                    The construct does not end; it repeats. Each cycle re-presents all five subjects,
+                    deeper and less patient than the last. Deepest floor on record: ${deepest}.
+                </div>
+            `;
+            timeline.appendChild(rec);
+        }
     }
 
     /**

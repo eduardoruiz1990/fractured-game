@@ -1,4 +1,9 @@
 // src/entities/Rorschach.js
+// Patch 94 — boss aggression. NOTE this class does NOT extend Enemy: it has no
+// baseDamage, no spawnMaxHp and no `damage` field at all, which is why
+// Director.applyEndlessScaling guards every field it touches.
+import { cadence } from '../core/Endless.js';
+
 export class Rorschach {
     constructor() {
         this.active = false;
@@ -25,10 +30,15 @@ export class Rorschach {
         this.acidTime = 0;
         this.acidDmg = 0;
         
-        this.shootState = 'hunting'; 
-        this.shootTimer = 180 + Math.random() * 120; 
+        this.shootState = 'hunting';
+        this.shootTimer = 180 + Math.random() * 120;
         this.shootAngle = 0;
-        
+        // Patch 94: cleared on every init, like every other pooled field here — see
+        // the note in Boss.init. A split child re-inits through this same path, then
+        // Director.applyEndlessScaling re-stamps it, so children inherit the parent's
+        // difficulty rather than spawning as Cycle I bosses mid-fight.
+        this.aggression = 1;
+
         this.active = true;
         return this;
     }
@@ -60,8 +70,11 @@ export class Rorschach {
 
             if (this.shootTimer <= 0) {
                 this.shootState = 'hunting';
-                this.shootTimer = 180 + Math.random() * 120; 
-                
+                // Patch 94: the volley COOLDOWN. The 45-frame telegraph that precedes
+                // it is left alone — Renderer draws its warning line's alpha as
+                // `1 - shootTimer/45`, and it is the only warning this attack gives.
+                this.shootTimer = cadence(180 + Math.random() * 120, this.aggression, 60);
+
                 let count = this.generation === 1 ? 5 : (this.generation === 2 ? 3 : 1);
                 let spread = 0.5; 
                 let pSpeed = 3.0 + this.generation; 

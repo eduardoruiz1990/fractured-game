@@ -1,4 +1,6 @@
 import { Enemy } from './Enemy.js';
+// Patch 94 — boss aggression. See src/core/Endless.js.
+import { cadence } from '../core/Endless.js';
 
 export class Architect extends Enemy {
     constructor() {
@@ -14,7 +16,8 @@ export class Architect extends Enemy {
         this.actionState = 'hovering';
         this.actionTimer = 120;
         this.burstCount = 0;
-        return this.initBase(id, x, y, 8000, 1.5); 
+        this.aggression = 1;   // Patch 94 — pooled state; see the note in Boss.init.
+        return this.initBase(id, x, y, 8000, 1.5);
     }
 
     update(state, game) {
@@ -85,9 +88,14 @@ export class Architect extends Enemy {
             this.actionTimer--;
             if (this.actionTimer <= 0) {
                 this.actionState = 'hovering';
-                this.actionTimer = 180;
+                // Patch 94: the recovery back to hovering — a cooldown, so it
+                // compresses. The 90-frame burst above is NOT touched (it fires a
+                // volley every 15 frames, so a shorter burst is a weaker one), and
+                // neither is the 180-frame charging_collapse, which is the telegraph
+                // for the arena collapse.
+                this.actionTimer = cadence(180, this.aggression, 60);
             }
-        } 
+        }
         else if (this.actionState === 'charging_collapse') {
             this.vx = 0;
             this.vy = 0;
@@ -145,7 +153,9 @@ export class Architect extends Enemy {
             this.actionTimer--;
             if (this.actionTimer <= 0) {
                 this.actionState = 'hovering';
-                this.actionTimer = 120 + Math.random() * 60;
+                // The lull after the collapse. The 600-frame collapse itself is the
+                // attack and stays exactly as long as it always was.
+                this.actionTimer = cadence(120 + Math.random() * 60, this.aggression, 45);
             }
         }
 

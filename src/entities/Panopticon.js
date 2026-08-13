@@ -1,4 +1,6 @@
 import { Enemy } from './Enemy.js';
+// Patch 94 — boss aggression. See src/core/Endless.js.
+import { cadence } from '../core/Endless.js';
 
 export class Panopticon extends Enemy {
     constructor() {
@@ -14,7 +16,8 @@ export class Panopticon extends Enemy {
         this.gazeState = 'moving';
         this.gazeTimer = 120;
         this.gazeAngle = 0;
-        return this.initBase(id, x, y, 4000, 1.2); 
+        this.aggression = 1;   // Patch 94 — pooled state; see the note in Boss.init.
+        return this.initBase(id, x, y, 4000, 1.2);
     }
 
     update(state, game) {
@@ -77,8 +80,13 @@ export class Panopticon extends Enemy {
             this.gazeTimer--;
             if (this.gazeTimer <= 0) {
                 this.gazeState = 'recovering';
-                this.gazeTimer = 60;
-                
+                // Patch 94: 'recovering' is the punish window — the only stretch where
+                // this boss stands still and cannot retaliate. Shortening it is the
+                // sharpest aggression lever it has. The 180-frame sweep above is the
+                // ATTACK and is left alone: cutting it short would make the fight
+                // easier, not harder.
+                this.gazeTimer = cadence(60, this.aggression, 24);
+
                 // Bullet Hell Burst
                 for (let i = 0; i < 18; i++) {
                     let pAngle = (i / 18) * Math.PI * 2;
@@ -97,7 +105,8 @@ export class Panopticon extends Enemy {
             this.gazeTimer--;
             if (this.gazeTimer <= 0) {
                 this.gazeState = 'moving';
-                this.gazeTimer = 120 + Math.random() * 60;
+                // The stalk before the next gaze — a cooldown, so it compresses.
+                this.gazeTimer = cadence(120 + Math.random() * 60, this.aggression, 45);
             }
         }
 

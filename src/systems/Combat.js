@@ -1,5 +1,7 @@
 // src/systems/Combat.js
 import { getActiveSynergies, LIGHT_RECOIL_RESIST } from '../data/Manifestations.js';
+// Patch 95 — the weapon ceiling comes off in THE RECURSION. See src/core/Endless.js.
+import { weaponLevelCap } from '../core/Endless.js';
 
 /**
  * Flashlight cone falloff (Patch 63).
@@ -207,7 +209,13 @@ export class Combat {
                             // Patch 57: entries() rather than values() so the chosen
                             // weapon's id survives for the history record below —
                             // values() discards exactly the key the record is keyed on.
-                            const upgradeable = Object.entries(state.player.weapons).filter(([, w]) => w.level < 5);
+                            // Patch 95: was a hardcoded `w.level < 5`, the twin of the
+                            // one in LevelUpUI.show(). Both now read the same helper, so
+                            // the reward door and the level-up card cannot disagree
+                            // about whether a weapon is maxed. Returns exactly 5 for
+                            // floors 1-5.
+                            const doorLevelCap = weaponLevelCap(state.floor);
+                            const upgradeable = Object.entries(state.player.weapons).filter(([, w]) => w.level < doorLevelCap);
                             if (upgradeable.length > 0) {
                                 const [wepId, wep] = upgradeable[Math.floor(Math.random() * upgradeable.length)];
                                 wep.level++;

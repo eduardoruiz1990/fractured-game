@@ -26,6 +26,7 @@ There is no test runner configured (no `test` script, no framework installed). T
 | `test_leash.js` | `Enemy.applyMovement`, leash thresholds, tutorial spawn distances |
 | `test_tutorial.js` | `src/systems/Tutorial.js`, tutorial copy, the step gates, the instruction hold |
 | `test_viewport.js` | `Renderer.updateZoom`, `src/core/Layout.js`, the portrait band, anything reading canvas dimensions |
+| `test_endless.js` | `src/core/Endless.js`, boss-per-floor dispatch, endless scaling/cadence, the run-completion latch, per-floor palettes or enemy tints, `LevelUpUI`'s weapon cap or `DEEP_BOONS` |
 
 `test_director.js` and `test_save.js` are exploratory only (they print, they don't assert).
 
@@ -65,7 +66,7 @@ recorded under those numbers. The changelog's numbers match the source comments.
 
 **Note (2026-07-31): the gore/decal splatter system (`Director.spawnDecal`, `state.decals`, the `decal` pool, and the menu-screen blood-drop rain in `UIManager.initBloodRain`) was removed for the CrazyGames PEGI-12 release. Don't reintroduce blood/gore visual effects without checking with the user first.**
 
-`Director.spawnRoom()` sets the enemy budget for a room and spawns the floor's boss when `roomNumber >= state.maxRoomsPerFloor`. Boss choice is keyed off `state.floor` (1→BOSS, 2→RORSCHACH, 3→PANOPTICON, 4→AMALGAMATION, 5+→ARCHITECT). `Director.spawnWave()` runs every frame combat is active, throttled by `budgetTimer % spawnRate`, and picks scavenger/predator/parasite by floor-dependent RNG tables.
+`Director.spawnRoom()` sets the enemy budget for a room and spawns the floor's boss when `roomNumber >= state.maxRoomsPerFloor`. Boss choice comes from `bossTypeForFloor(state.floor)` in **`src/core/Endless.js`** (1→BOSS, 2→RORSCHACH, 3→PANOPTICON, 4→AMALGAMATION, 5→ARCHITECT, then the same five again — floors 6+ are **THE RECURSION**, the endless mode added in Patches 93–98; see `CHANGELOG.md` and Keep clauses 29–35). `Endless.js` is a pure module and the single place anything keyed off depth is decided; every one of its functions returns the identity for floors 1–5, which is what makes the mode strictly additive. `Director.spawnWave()` runs every frame combat is active, throttled by `budgetTimer % spawnRate`, and picks scavenger/predator/parasite by floor-dependent RNG tables.
 
 ### Entities: shared base class + per-type files
 

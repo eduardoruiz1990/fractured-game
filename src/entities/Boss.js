@@ -1,4 +1,7 @@
 import { Enemy } from './Enemy.js';
+// Patch 94 — THE RECURSION's boss aggression. cadence(n, 1, min) === n for integer n,
+// so floors 1-5 are bit-identical despite every timer below routing through it.
+import { cadence } from '../core/Endless.js';
 
 export class Boss extends Enemy {
     constructor() {
@@ -12,7 +15,13 @@ export class Boss extends Enemy {
     init(id, x, y) {
         this.phase = 0;
         this.pulseState = 'hunting';
-        this.pulseTimer = 180; 
+        this.pulseTimer = 180;
+        // Patch 94: MUST be reset here, and this is the pooling trap, not decoration.
+        // Director.applyEndlessScaling writes this field AFTER init() — and on floors
+        // 1-5 it early-returns and never writes it at all. A pooled Boss last used on
+        // floor 16 would otherwise walk into a floor-2 fight still carrying that
+        // aggression. Same rule as `variant = null` on the small enemies.
+        this.aggression = 1;
         return this.initBase(id, x, y, 800, 1.2); // Base speed boosted to 1.2
     }
 
@@ -43,7 +52,11 @@ export class Boss extends Enemy {
              if (this.pulseTimer <= 0) {
                  this.pulseState = 'hunting';
                  // Pulse much more frequently after getting close
-                 this.pulseTimer = 60 + Math.random() * 60; 
+                 // Patch 94: the COOLDOWN between pulses, so this is the honest place
+                 // to spend aggression. The 45-frame charge above is deliberately NOT
+                 // compressed — it is the telegraph, and line 28 derives the warning
+                 // ring's radius from it (`1 - pulseTimer/45`).
+                 this.pulseTimer = cadence(60 + Math.random() * 60, this.aggression, 24);
                  this.pulseRadius = 0;
              }
         } else {

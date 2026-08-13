@@ -78,13 +78,26 @@ function freshGame() {
 // ---------------------------------------------------------------------------
 console.log('\nBoss type per floor');
 
+// Patch 93: floors 1-5 are unchanged and MUST stay so. Floor 6 used to assert
+// 'ARCHITECT' with the note "5+ all fall through to the Architect" — that was the
+// tail of an if/else chain, not a design decision, and THE RECURSION replaces it with
+// a real rotation. The five original floors are listed explicitly here precisely so a
+// future change to the cycle cannot quietly move them.
 const expectedBoss = {
     1: 'BOSS',
     2: 'RORSCHACH',
     3: 'PANOPTICON',
     4: 'AMALGAMATION',
     5: 'ARCHITECT',
-    6: 'ARCHITECT'   // 5+ all fall through to the Architect
+    // Cycle II: the five come round again in their original order.
+    6: 'BOSS',
+    7: 'RORSCHACH',
+    8: 'PANOPTICON',
+    9: 'AMALGAMATION',
+    10: 'ARCHITECT',
+    // Cycle III begins.
+    11: 'BOSS',
+    12: 'RORSCHACH'
 };
 
 for (const [floor, expected] of Object.entries(expectedBoss)) {

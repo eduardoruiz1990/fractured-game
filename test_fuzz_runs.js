@@ -609,7 +609,12 @@ function runOne(seed) {
         save.metaState.killCounts.BOSS = randInt(0, 5);
 
         // --- floor / room / carried-state --------------------------------------
-        const floor = randInt(1, 5);
+        // Patch 94: was randInt(1, 5). THE RECURSION means floors 6+ are real, and
+        // they are where the scaling multipliers, the boss rotation and the cadence
+        // compression all actually run — so the fuzz has to reach them or it stops
+        // covering the code it claims to. 12 spans two full cycles plus a partial,
+        // which puts every boss into both a Cycle I and a scaled appearance.
+        const floor = randInt(1, 12);
         const roomNumber = randInt(1, 12); // > maxRoomsPerFloor(10) is an intentional edge case
         params.floor = floor;
         params.roomNumber = roomNumber;

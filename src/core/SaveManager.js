@@ -50,6 +50,16 @@ export class SaveManager {
             // deaths counts minds broken, runsCompleted counts Floor 5 clears (the
             // Architect falling). All three are records only — nothing reads them
             // back into gameplay.
+            //
+            // Patch 97 gave runsCompleted a SECOND job: it is half the gate that
+            // unlocks THE RECURSION as a directly-launchable mode (the other half is
+            // killCounts.ARCHITECT, which covers saves predating this counter). So it
+            // is no longer purely a record — see Endless.isRecursionUnlocked.
+            //
+            // Patch 93: it still counts FLOOR 5 clears specifically, not "the deepest
+            // floor cleared". Endless floors do not add to it; the latch that enforces
+            // that now rides getCarriedState across floor boundaries. Deepest progress
+            // is maxFloorReached, which is already unbounded.
             runsStarted: 0,
             deaths: 0,
             runsCompleted: 0,
