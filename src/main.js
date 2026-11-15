@@ -2356,6 +2356,9 @@ const MAX_LOGGED_LOOP_CRASHES = 20;
  */
 const pacing = new Pacing();
 let lastBreakdown = false;
+// Patch 114: what the last drawn frame was drawn for (see the draw skip in gameLoop).
+let lastDrawSizeKey = '';
+let lastDrawState = '';
 
 function gameLoop(time) {
     // G2 instrumentation (dev only, stripped from builds): CPU time spent inside one
@@ -2609,8 +2612,21 @@ function gameLoop(time) {
                 }
             }
             
-            // Send the gameState so the renderer knows to bypass the Void code!
-            renderer.drawGame(game.state, audioEngine, gameState);
+            // Patch 114 (V2 plan B6): skip the draw on a frame where no simulation step
+            // ran. The sim is a fixed 60 Hz (Patch 74) with no interpolation, so on a
+            // 120/144 Hz screen roughly half the frames would redraw an identical world
+            // — full-screen fills, fog, the light mask — for nothing, costing battery
+            // and heat on exactly the phones that have such screens. The canvas keeps
+            // its last image. Always drawn when the canvas was resized (which clears
+            // it) or the game state changed, so a transition never shows a stale frame.
+            const sizeKey = canvas.width + 'x' + canvas.height;
+            const mustDraw = simSteps > 0 || sizeKey !== lastDrawSizeKey || gameState !== lastDrawState;
+            if (mustDraw) {
+                lastDrawSizeKey = sizeKey;
+                lastDrawState = gameState;
+                // Send the gameState so the renderer knows to bypass the Void code!
+                renderer.drawGame(game.state, audioEngine, gameState);
+            }
         }
     } catch (e) {
         // Patch 50: this catch is why the platform's gameplay crash rate has been

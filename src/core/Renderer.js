@@ -313,6 +313,16 @@ export class Renderer {
         this.cullB = py + (this.canvas.height - this.cameraCenterY) / z + pad;
     }
 
+    /**
+     * Patch 114 (V2 plan B6): how many simulation steps this draw represents, for the
+     * few timers that live in the renderer. At least 1 — main.js skips the draw
+     * entirely on a frame with no sim step, so a draw always covers >= 1 step.
+     */
+    drawSteps() {
+        const n = this.simStepsThisFrame;
+        return (Number.isFinite(n) && n >= 1) ? n : 1;
+    }
+
     /** Patch 112: true unless (x, y) is certainly off screen. Fails open on bad data. */
     inView(x, y) {
         if (!Number.isFinite(this.cullL)) return true;
@@ -1077,7 +1087,10 @@ export class Renderer {
                         console.warn("Recoverable Boss Intro error:", e);
                         errorLog.capture(e, 'renderer-boss-intro');
                     }
-                    this.bossAnnouncementTimer--; 
+                    // Patch 114: in sim steps, matching the 240-frame hitStop it
+                    // announces. Per-draw, the banner ended after ~1.7 s on a 144 Hz
+                    // screen while the game stayed frozen for the full 4 s.
+                    this.bossAnnouncementTimer = Math.max(0, this.bossAnnouncementTimer - this.drawSteps());
                 }
                 
                 this.drawFilmGrain();
@@ -1222,11 +1235,12 @@ export class Renderer {
         const frozen = state.hitStop > 0;
 
         this.ctx.globalAlpha = atmo.haze;
+        const fogSteps = this.drawSteps();   // Patch 114: drift per sim step, not per draw
         this.fogClouds.forEach(cloud => {
             if (!frozen) {
-                cloud.x += cloud.vx;
-                cloud.y += cloud.vy;
-                cloud.phase = (cloud.phase || 0) + (cloud.driftRate || 0.006);
+                cloud.x += cloud.vx * fogSteps;
+                cloud.y += cloud.vy * fogSteps;
+                cloud.phase = (cloud.phase || 0) + (cloud.driftRate || 0.006) * fogSteps;
             }
 
             let dx = (cloud.x - state.player.x) % 2000;
@@ -3807,7 +3821,7 @@ export class Renderer {
         if (state.playerAfterimages) {
             for (let i = state.playerAfterimages.length - 1; i >= 0; i--) {
                 let img = state.playerAfterimages[i];
-                img.life -= 0.1;
+                img.life -= 0.1 * this.drawSteps();   // Patch 114: per sim step
                 if (img.life <= 0) {
                     state.playerAfterimages.splice(i, 1);
                     continue;
@@ -3837,8 +3851,11 @@ export class Renderer {
 
         let moveX = 0, moveY = 0;
         if (isMoving || (state.player.dash && state.player.dash.active)) {
-            let globalVx = state.player.x - this.lastPx;
-            let globalVy = state.player.y - this.lastPy;
+            // Patch 114: per-step velocity — a draw can cover 2-3 sim steps on a slow
+            // device, which used to double or triple the body lean.
+            const dSteps = this.drawSteps();
+            let globalVx = (state.player.x - this.lastPx) / dSteps;
+            let globalVy = (state.player.y - this.lastPy) / dSteps;
             if (state.player.dash && state.player.dash.active) {
                 globalVx = state.player.dash.dx * 10;
                 globalVy = state.player.dash.dy * 10;
@@ -3853,7 +3870,7 @@ export class Renderer {
         this.lastPy = state.player.y;
 
         if (isMoving) {
-            this.legPhase += 0.3 + (panic * 0.4);
+            this.legPhase += (0.3 + (panic * 0.4)) * this.drawSteps();   // Patch 114
             
             if (Math.abs(Math.sin(this.legPhase)) > 0.9 && Math.abs(Math.sin(this.lastFootstepPhase)) <= 0.9) {
                 if (audioEngine && (!state.player.dash || !state.player.dash.active)) {
