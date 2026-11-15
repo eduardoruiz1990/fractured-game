@@ -59,6 +59,7 @@ const URL = process.env.FRACTURED_URL || 'http://localhost:5199/';
     // Start AT the live-enemy ceiling, so the cap itself is exercised from frame one.
     const mix = ['SCAVENGER', 'PREDATOR', 'PARASITE'];
     for (let i = 0; g.director.hasRoomForEnemy() && i < 500; i++) g.director.spawnEntity(mix[i % 3], null, null);
+    window.__soakSeeded = g.director.liveRegularEnemyCount();
     // Frame recorder + keep-alive, all in-page so the harness does not perturb timing.
     window.__soak = { frames: [], maxRegular: 0, maxTotal: 0, maxOrbs: 0, maxParticles: 0, maxPuddles: 0 };
     const BOSS = new Set(['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT']);
@@ -69,6 +70,7 @@ const URL = process.env.FRACTURED_URL || 'http://localhost:5199/';
       const S = f.game.state;
       if (S.player && Number.isFinite(S.player.maxHp)) S.sanity = S.player.maxHp;   // immortal
       S.enemyBudget = Math.max(S.enemyBudget || 0, 200);                            // endless pressure
+      S.xp = 0;   // no level-up cards: LEVEL_UP pauses the sim and would skew the numbers
       const ents = S.entities || [];
       let reg = 0; for (const e of ents) if (!BOSS.has(e.type)) reg++;
       s.maxRegular = Math.max(s.maxRegular, reg);
@@ -87,7 +89,7 @@ const URL = process.env.FRACTURED_URL || 'http://localhost:5199/';
     const m = Object.fromEntries(metrics.map(x => [x.name, x.value]));
     return m.JSHeapUsedSize / 1048576;
   };
-  await page.evaluate(() => { window.__soak.frames.length = 0; });
+  await page.evaluate(() => { window.__soak.frames.length = 0; window.__fractured.loopMs = []; });
   const heap0 = await heap();
   const cacheSamples = [];
   const keys = ['d', 's', 'a', 'w'];
@@ -106,11 +108,14 @@ const URL = process.env.FRACTURED_URL || 'http://localhost:5199/';
   const r = await page.evaluate(() => {
     const s = window.__soak, fr = s.frames.slice(5).sort((a, b) => a - b);
     const q = p => fr.length ? fr[Math.min(fr.length - 1, Math.floor(p * fr.length))] : NaN;
+    const lm = (window.__fractured.loopMs || []).slice().sort((a, b) => a - b);
+    const lq = p => lm.length ? lm[Math.min(lm.length - 1, Math.floor(p * lm.length))] : NaN;
     return {
       frames: fr.length, p50: q(0.5), p95: q(0.95), p99: q(0.99), worst: fr[fr.length - 1],
+      loop50: lq(0.5), loop95: lq(0.95), loopMean: lm.length ? lm.reduce((a, b) => a + b, 0) / lm.length : NaN,
       maxRegular: s.maxRegular, maxTotal: s.maxTotal, maxOrbs: s.maxOrbs,
       maxParticles: s.maxParticles, maxPuddles: s.maxPuddles,
-      cap: window.__fractured.game.director.liveEntityCap,
+      cap: window.__fractured.game.director.liveEntityCap, seeded: window.__soakSeeded,
       state: window.__fractured.gameState
     };
   });
@@ -119,7 +124,8 @@ const URL = process.env.FRACTURED_URL || 'http://localhost:5199/';
   const fmt = n => Number.isFinite(n) ? n.toFixed(1) : String(n);
   console.log(`soak: ${SECONDS}s, ${PHONE ? 'phone 844x390' : 'desktop 1280x720'}, CPU throttle x${THROTTLE}, floor ${FLOOR}`);
   console.log(`  frames ${r.frames}  frame ms p50 ${fmt(r.p50)}  p95 ${fmt(r.p95)}  p99 ${fmt(r.p99)}  worst ${fmt(r.worst)}`);
-  console.log(`  entities max ${r.maxTotal} (regular ${r.maxRegular}, cap ${r.cap})  orbs max ${r.maxOrbs}  particles max ${r.maxParticles}  puddles max ${r.maxPuddles}`);
+  console.log(`  loop CPU ms (sim+render, no vsync) mean ${fmt(r.loopMean)}  p50 ${fmt(r.loop50)}  p95 ${fmt(r.loop95)}`);
+  console.log(`  entities max ${r.maxTotal} (regular ${r.maxRegular}, seeded ${r.seeded}, cap ${r.cap})  orbs max ${r.maxOrbs}  particles max ${r.maxParticles}  puddles max ${r.maxPuddles}`);
   console.log(`  heap ${fmt(heap0)} -> ${fmt(heap1)} MB (${fmt(heap1 - heap0)})  spriteCache ${cacheSamples.join(' ')}`);
   console.log(`  final state ${r.state}  page errors ${errors.length}`);
   errors.slice(0, 5).forEach(e => console.log('    ! ' + e));

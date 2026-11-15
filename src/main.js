@@ -2358,6 +2358,10 @@ const pacing = new Pacing();
 let lastBreakdown = false;
 
 function gameLoop(time) {
+    // G2 instrumentation (dev only, stripped from builds): CPU time spent inside one
+    // loop iteration — simulation + render — independent of vsync quantisation, for
+    // qa/soak_check.cjs. Frame-to-frame intervals only move in 16.7 ms steps.
+    const loopT0 = import.meta.env.DEV ? performance.now() : 0;
     try {
         // Accumulate before anything else, so a slow branch below cannot lose time.
         pacing.addFrame(time);
@@ -2637,6 +2641,11 @@ function gameLoop(time) {
                 'background:#8b0000; color:#fff; font-weight:bold;', 'color:#ff8888;'
             );
         }
+    }
+    if (import.meta.env.DEV && window.__fractured) {
+        const ring = window.__fractured.loopMs || (window.__fractured.loopMs = []);
+        ring.push(performance.now() - loopT0);
+        if (ring.length > 4000) ring.splice(0, ring.length - 4000);
     }
     requestAnimationFrame(gameLoop);
 }

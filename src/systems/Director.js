@@ -47,6 +47,18 @@ const ENDLESS_MAX_LIVE_ENTITIES = 60;
 // does, the spawn is deferred, not dropped (budget is only spent on a real spawn).
 const DEFAULT_LIVE_ENTITY_CAP = ENDLESS_MAX_LIVE_ENTITIES;
 
+// Patch 112 (V2 plan B4): ceilings for the high-count effect arrays. All three were
+// unbounded — the soak saw 633 live particles — and each costs per frame to update
+// and draw (orbs are also scanned by every vacuuming Scavenger, puddles by every
+// entity). Instance fields, so the quality tier (B7) can lower them.
+//  - particles: purely cosmetic; a burst that would overflow is trimmed.
+//  - XP orbs: past the soft cap a drop arrives as ONE orb carrying the whole amount,
+//    so no XP or Lucidity is ever lost (collectXP adds xp.value to both).
+//  - ink puddles: past the cap the OLDEST puddle is retired (released to its pool).
+const DEFAULT_PARTICLE_CAP = 450;
+const DEFAULT_XP_ORB_SOFT_CAP = 150;
+const DEFAULT_INK_PUDDLE_CAP = 40;
+
 /**
  * Patch 96 — per-biome enemy tints, [scavenger, everything else], indexed by the
  * cycled palette. Exactly the five pairs the old if/else chain held inline.
@@ -80,6 +92,9 @@ export class Director {
     constructor(game) {
         this.game = game;
         this.liveEntityCap = DEFAULT_LIVE_ENTITY_CAP;   // Patch 110
+        this.particleCap = DEFAULT_PARTICLE_CAP;        // Patch 112
+        this.xpOrbSoftCap = DEFAULT_XP_ORB_SOFT_CAP;    // Patch 112
+        this.inkPuddleCap = DEFAULT_INK_PUDDLE_CAP;     // Patch 112
         
         this.pools = {
             scavenger: new ObjectPool(() => new Scavenger(), 100),
@@ -739,6 +754,18 @@ export class Director {
 
     spawnXP(x, y, amount, isMassive = false) {
         const state = this.game.state;
+        // Patch 112: over the soft cap, one orb carries the whole drop. Same total XP and
+        // Lucidity (collectXP credits xp.value to both); a Scavenger vacuuming it gets
+        // one orb's growth instead of several, which only makes a crowded room easier.
+        if (amount > 1 && state.xpDrops.length + amount > this.xpOrbSoftCap) {
+            const xp = this.pools.xpDrop.get();
+            xp.x = x; xp.y = y;
+            xp.value = (isMassive ? 25 : 1) * amount;
+            xp.collected = false;
+            xp.active = true;
+            state.xpDrops.push(xp);
+            return;
+        }
         for(let i=0; i<amount; i++) {
             let xp = this.pools.xpDrop.get();
             xp.x = x + (Math.random() * (isMassive ? 100 : 20) - (isMassive ? 50 : 10));
@@ -769,6 +796,10 @@ export class Director {
     // would only create dead code. All the added variety comes from here.
     spawnParticles(x, y, color, count) {
         const state = this.game.state;
+        // Patch 112: trim a burst that would overflow the ceiling.
+        const room = this.particleCap - state.particles.length;
+        if (room <= 0) return;
+        if (count > room) count = room;
         for(let i=0; i<count; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = Math.random() * 3 + 1;
@@ -806,6 +837,12 @@ export class Director {
     }
 
     spawnInkPuddle(x, y, radius, damage) {
+        // Patch 112: retire the oldest puddle (released, not just dropped) at the cap.
+        const puddles = this.game.state.inkPuddles;
+        while (puddles.length >= this.inkPuddleCap) {
+            const old = puddles.shift();
+            if (old) { old.active = false; this.pools.inkPuddle.release(old); }
+        }
         let p = this.pools.inkPuddle.get();
         p.x = x; p.y = y; p.radius = radius; p.damage = damage; p.life = 300; 
         p.active = true;

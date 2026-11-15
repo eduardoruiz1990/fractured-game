@@ -297,6 +297,28 @@ export class Renderer {
              + Math.sin(this.renderFrame * speed * 3.7 + p) * 0.3;
     }
 
+    // Patch 112 (V2 plan B4): the visible world rectangle, padded, for culling cheap
+    // high-count draws (XP orbs, ink puddles, particles) that used to be drawn even when
+    // nowhere near the screen. Mirrors the camera transform in drawGame exactly —
+    // cameraCenter is where the player is drawn, and the world is scaled by zoom — so
+    // it is right on every layout including the portrait band. The pad covers camera
+    // shake and the largest culled radius; anything partly visible is still drawn.
+    updateCullRect(state) {
+        const z = (Number.isFinite(this.zoom) && this.zoom > 0) ? this.zoom : 1;
+        const px = state.player.x, py = state.player.y;
+        const pad = 120 + (Number.isFinite(state.cameraShake) ? state.cameraShake : 0);
+        this.cullL = px - this.cameraCenterX / z - pad;
+        this.cullR = px + (this.canvas.width - this.cameraCenterX) / z + pad;
+        this.cullT = py - this.cameraCenterY / z - pad;
+        this.cullB = py + (this.canvas.height - this.cameraCenterY) / z + pad;
+    }
+
+    /** Patch 112: true unless (x, y) is certainly off screen. Fails open on bad data. */
+    inView(x, y) {
+        if (!Number.isFinite(this.cullL)) return true;
+        return x >= this.cullL && x <= this.cullR && y >= this.cullT && y <= this.cullB;
+    }
+
     // Patch 17: per-entity hit squash/recoil, driven off flashTime (set to 5 on
     // takeDamage, ticking down to 0 in Enemy.applyMovement — see Enemy.js). Widens
     // then eases back to 1,1 as flashTime decays, giving a one-frame "impact pop."
@@ -891,7 +913,8 @@ export class Renderer {
             this.ctx.translate(this.cameraCenterX, this.cameraCenterY);
             this.ctx.scale(this.zoom, this.zoom);
             this.ctx.translate(-state.player.x, -state.player.y);
-            
+            this.updateCullRect(state);   // Patch 112
+
             let curShakeX = 0, curShakeY = 0;
             if (state.cameraShake > 0) {
                 curShakeX = (Math.random() - 0.5) * state.cameraShake;
@@ -2126,6 +2149,7 @@ export class Renderer {
 
         if (state.inkPuddles) {
             state.inkPuddles.forEach(p => {
+                if (!this.inView(p.x, p.y)) return;   // Patch 112
                 const lifeRatio = p.life / 300;
                 
                 this.ctx.save();
@@ -2164,6 +2188,7 @@ export class Renderer {
 
         if (state.xpDrops) {
             state.xpDrops.forEach(xp => {
+                if (!this.inView(xp.x, xp.y)) return;   // Patch 112
                 this.ctx.save();
                 this.ctx.translate(xp.x, xp.y);
                 
@@ -3091,6 +3116,7 @@ export class Renderer {
             // settling embers as the new drag takes hold, and bright particles
             // get a cached faux-glow head.
             state.particles.forEach(p => {
+                if (!this.inView(p.x, p.y)) return;   // Patch 112
                 const life = Math.max(0, Math.min(1, p.life));
                 if (life <= 0) return;
                 const speed = Math.hypot(p.vx, p.vy);
