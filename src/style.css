@@ -241,6 +241,17 @@ canvas { display: block; }
     box-shadow: 0 -18px 18px -8px var(--paper-bg), 2px 2px 5px rgba(0, 0, 0, 0.2);
 }
 
+/* Patch 104: rewarded-ad offers on the death screen. Stacked, centred, separated from
+   the stats by a dashed rule so they read as an offer, not as part of the record. */
+#death-rewarded {
+    flex-direction: column; align-items: center; gap: 10px;
+    margin: 0 0 16px 0; padding: 0 0 14px 0;
+    border-bottom: 1px dashed #999;
+}
+#death-rewarded .file-btn { min-height: 44px; }
+#death-rewarded .file-btn:disabled { opacity: 0.45; cursor: default; }
+#death-rewarded-note { margin: 0; font-size: 0.8rem; color: #555; min-height: 1em; }
+
 /* Sized here rather than inline so the media queries below can actually shrink them —
    an inline font-size wins over every stylesheet rule that is not !important. */
 #final-stats, #pause-desc { font-size: 1.2rem; margin-bottom: 30px; }

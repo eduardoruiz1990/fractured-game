@@ -227,14 +227,31 @@ function syncPortalGameplayState() {
  * authoritative — otherwise it would still believe gameplay was running and would
  * never re-emit `gameplayStart`.
  */
-function showAdThen(next) {
+// Patch 104 (V2 plan A3, decided 2026-11-15): at most ONE midgame ad per 5 minutes,
+// stricter than the SDK's own 3-minute floor. The clock starts at page load, so a new
+// player's first five minutes are ad-free — the window the conversion metric judges.
+// Any ad (midgame or rewarded) resets it, so a player who just chose to watch a
+// rewarded ad is never handed a midgame one straight after.
+const MIDGAME_MIN_INTERVAL_MS = 5 * 60 * 1000;
+let lastAdAt = (typeof performance !== 'undefined') ? performance.now() : 0;
+function noteAdShown() { lastAdAt = performance.now(); }
+
+function showAdThen(next, { allowAd = true } = {}) {
+    // Inside the cooldown (or the caller ruled an ad out): behave exactly like the
+    // no-portal path — run the transition now, then let gameplay events re-sync.
+    if (!allowAd || performance.now() - lastAdAt < MIDGAME_MIN_INTERVAL_MS) {
+        try { next(); } catch (e) { console.error("Post-ad transition failed: " + e.message); }
+        syncPortalGameplayState();
+        return;
+    }
+
     if (portalLastGameplay) {
         portalLastGameplay = false;
         portalSDK.gameplayStop();
     }
 
     portalSDK.showMidgameAd({
-        onStart: () => { if (audioEngine) audioEngine.setMuted('ad', true); },
+        onStart: () => { noteAdShown(); if (audioEngine) audioEngine.setMuted('ad', true); },
         onComplete: () => {
             if (audioEngine) audioEngine.setMuted('ad', false);
             try {
@@ -247,6 +264,152 @@ function showAdThen(next) {
             syncPortalGameplayState();
         }
     });
+}
+
+// --- REWARDED ADS ON THE DEATH SCREEN (Patch 104, V2 plan A3) ---------------------
+//
+// CrazyGames rules this is built to: reward only on adFinished; never a rewarded
+// button on an active gameplay screen (so only here, on DEAD); no chaining (ONE
+// rewarded ad per death — a success hides both offers); and never a midgame ad plus
+// a "watch to keep playing" offer between the same two levels (a revived run gets no
+// end-of-run midgame — see btn-restart). Off-portal and under Basic Launch
+// (adsDisabled) canOfferRewarded() is false and the whole block stays hidden.
+//
+// Revive undoes the death SETTLEMENT, not just the screen: onDeath has already banked
+// 50% of the run's Lucidity, so that payout is taken back (removeLucidity) and the run
+// banks normally at its real end. Tokens already decrypted stay decrypted and
+// runInventory stays empty, so nothing is granted twice. The 'deaths' stat stands —
+// the player did break.
+
+/** Run-scoped death bookkeeping, written by onDeath for the reward handlers. */
+let deathSettlement = null;   // { recovered, lost, floor }
+
+function setDeathRewardNote(text) {
+    const note = document.getElementById('death-rewarded-note');
+    if (note) note.innerText = text || '';
+}
+
+function setupDeathRewards() {
+    const box = document.getElementById('death-rewarded');
+    const reviveBtn = document.getElementById('btn-revive');
+    const recoverBtn = document.getElementById('btn-recover-lucidity');
+    if (!box || !reviveBtn || !recoverBtn) return;
+
+    const canRevive = !(game.state && game.state.reviveUsed);
+    const lost = deathSettlement ? deathSettlement.lost : 0;
+    const canRecover = lost > 0;
+
+    if (!portalSDK.canOfferRewarded() || (!canRevive && !canRecover)) {
+        box.style.display = 'none';
+        return;
+    }
+    reviveBtn.style.display = canRevive ? '' : 'none';
+    recoverBtn.style.display = canRecover ? '' : 'none';
+    recoverBtn.innerText = `RECOVER ${lost} LUCIDITY (AD)`;
+    reviveBtn.disabled = false;
+    recoverBtn.disabled = false;
+    setDeathRewardNote('');
+    box.style.display = 'flex';
+}
+
+function runDeathReward(kind) {
+    const box = document.getElementById('death-rewarded');
+    const reviveBtn = document.getElementById('btn-revive');
+    const recoverBtn = document.getElementById('btn-recover-lucidity');
+    const restartBtn = document.getElementById('btn-restart');
+    if (gameState !== 'DEAD' || !deathSettlement) return;
+    // Lock every exit while the ad request is in flight, so a double tap cannot
+    // request twice and RECONSTRUCT cannot tear the run down under a pending revive.
+    [reviveBtn, recoverBtn, restartBtn].forEach(b => { if (b) b.disabled = true; });
+
+    portalSDK.showRewardedAd({
+        onStart: () => { noteAdShown(); if (audioEngine) audioEngine.setMuted('ad', true); },
+        onRewarded: () => {
+            if (kind === 'revive') performRevive();
+            else performLucidityRecovery();
+        },
+        onComplete: ({ rewarded, errorCode }) => {
+            if (audioEngine) audioEngine.setMuted('ad', false);
+            if (restartBtn) restartBtn.disabled = false;
+            if (rewarded) {
+                noteAdShown();
+                if (box) box.style.display = 'none';   // one rewarded ad per death
+                return;
+            }
+            // Not rewarded: say so plainly, and offer again only if it can work.
+            setDeathRewardNote(errorCode === 'unfilled' || errorCode === 'adCooldown'
+                ? 'No transmission available right now. Try again in a moment.'
+                : 'Transmission unavailable.');
+            if (!portalSDK.canOfferRewarded()) {
+                if (box) box.style.display = 'none';
+            } else {
+                if (reviveBtn) reviveBtn.disabled = false;
+                if (recoverBtn) recoverBtn.disabled = false;
+            }
+        }
+    });
+}
+
+function performLucidityRecovery() {
+    if (!deathSettlement || deathSettlement.lost <= 0) return;
+    saveManager.addLucidity(deathSettlement.lost);
+    const stats = document.getElementById('final-stats');
+    if (stats) {
+        stats.insertAdjacentHTML('afterbegin',
+            `<span style="color:var(--ui-gold);">Recovered <strong>${deathSettlement.lost}</strong> Lucidity from the Void. ` +
+            `Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong></span><br><br>`);
+    }
+    deathSettlement.lost = 0;
+}
+
+function performRevive() {
+    if (!game.state || !deathSettlement) return;
+    saveManager.removeLucidity(deathSettlement.recovered);
+    deathSettlement = null;
+
+    const st = game.state;
+    st.reviveUsed = true;
+    const maxHp = Number.isFinite(st.player.maxHp) ? st.player.maxHp : 100;
+    st.sanity = Math.ceil(maxHp * 0.5);
+    // 3 s of invulnerability (the existing i-frame mechanism) and a shove that clears
+    // the space around the player; bosses hold their ground. Knockback decays x0.8 per
+    // frame in Enemy.update, so a force of 40 travels about 200px.
+    st.player.iframes = Math.max(st.player.iframes || 0, 180);
+    for (const ent of st.entities) {
+        if (!ent || BOSS_TYPE_SET.has(ent.type)) continue;
+        const dx = ent.x - st.player.x, dy = ent.y - st.player.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 320) continue;
+        const d = Math.max(dist, 0.001);
+        ent.knockbackX = (ent.knockbackX || 0) + (dx / d) * 40;
+        ent.knockbackY = (ent.knockbackY || 0) + (dy / d) * 40;
+    }
+
+    document.getElementById('death-screen').style.display = 'none';
+    document.getElementById('ui-layer').style.display = 'flex';
+    if (inputManager && typeof inputManager.revealTouchControls === 'function') {
+        inputManager.revealTouchControls();
+    }
+    if (audioEngine) audioEngine.startGameDrone();   // onDeath faded the master out
+    pacing.reset();
+    lastBreakdown = false;
+    gameState = 'PLAYING';
+    syncPortalGameplayState();   // gameplayStart on revive, as the SDK docs list
+}
+
+const BOSS_TYPE_SET = new Set(['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT']);
+
+// happytime() (Patch 104): CrazyGames asks for it "sparingly", on achievements such
+// as beating a boss — not on ordinary level completion. We fire it when a boss falls
+// on the player's deepest floor so far, once per floor per session, so farming floor
+// 1 does not spam it.
+const happyFloorsThisSession = new Set();
+function maybeHappytimeForBossKill(floor) {
+    if (!saveManager || !Number.isFinite(floor)) return;
+    if (floor < (saveManager.metaState.maxFloorReached || 1)) return;
+    if (happyFloorsThisSession.has(floor)) return;
+    happyFloorsThisSession.add(floor);
+    portalSDK.happytime();
 }
 
 // --- NEW: GLOBAL ACCESSIBILITY SETTINGS ---
@@ -1597,6 +1760,19 @@ function initEngine() {
 
     game.audioEngine = audioEngine;
 
+    // V2 plan G1: a DEV-ONLY inspection hook for the headless Playwright checks
+    // (entity/orb counts, sprite-cache size, driving a death). `import.meta.env.DEV` is
+    // statically false in `vite build`, so this whole block is dropped from every
+    // shipped bundle — same guarantee as the dev panel.
+    if (import.meta.env.DEV) {
+        window.__fractured = {
+            get game() { return game; },
+            get renderer() { return renderer; },
+            get saveManager() { return saveManager; },
+            get gameState() { return gameState; }
+        };
+    }
+
     // Patch 49: respect the platform's own mute setting (distinct from Patch 47's
     // ad-muting — see AudioEngine.setMuted's reason-tracking). No-ops off-portal.
     portalSDK.onPlatformMuteChange((muted) => {
@@ -1672,14 +1848,28 @@ function initEngine() {
         // player has already stopped here, which is the pacing CrazyGames asks for.
         // NEVER mid-run. Off-portal showMidgameAd() invokes its completion callback
         // synchronously, so this is a plain function call with no ad and no delay.
+        //
+        // Patch 104: a run that was revived by a rewarded ad ends WITHOUT a midgame ad
+        // (CrazyGames: never a midgame plus a "watch to keep playing" offer between the
+        // same two levels). The 5-minute cooldown in showAdThen applies on top.
+        const revived = !!(game.state && game.state.reviveUsed);
+        deathSettlement = null;
+        const rewardBox = document.getElementById('death-rewarded');
+        if (rewardBox) rewardBox.style.display = 'none';
         showAdThen(() => {
             game.init(saveManager);
             game.state.player.x = 0;
             game.state.player.y = 0;
             if (audioEngine) audioEngine.playMenuTheme();
             gameState = 'HUB';
-        });
+        }, { allowAd: !revived });
     });
+
+    // Patch 104: rewarded offers on the death screen.
+    const btnRevive = document.getElementById('btn-revive');
+    const btnRecover = document.getElementById('btn-recover-lucidity');
+    if (btnRevive) btnRevive.addEventListener('click', () => runDeathReward('revive'));
+    if (btnRecover) btnRecover.addEventListener('click', () => runDeathReward('recover'));
     
     // --- TITLE SCREEN ACTIONS (Patch 52) ---
     //
@@ -1845,6 +2035,10 @@ function initEngine() {
 
         pauseMenu.style.display = 'none';
         document.getElementById('ui-layer').style.display = 'none';
+        // Patch 104: AWAKEN reuses the death screen; its rewarded offers are death-only.
+        const awakenRewardBox = document.getElementById('death-rewarded');
+        if (awakenRewardBox) awakenRewardBox.style.display = 'none';
+        deathSettlement = null;
         document.getElementById('death-screen').style.display = 'flex';
         
         const deathScreen = document.getElementById('death-screen');
@@ -1894,6 +2088,9 @@ function initEngine() {
     });
 
     document.getElementById('btn-descend').addEventListener('click', () => {
+      // Patch 104: a floor transition is a CrazyGames-sanctioned midgame slot. Gated by
+      // the 5-minute cooldown in showAdThen, so most descents still show nothing.
+      showAdThen(() => {
         const carryData = game.getCarriedState();
         carryData.floor += 1;
         // Patch 53: a NEW floor always starts at room 1. getCarriedState() now
@@ -1914,6 +2111,7 @@ function initEngine() {
         game.state.player.y = canvas.height / 2;
         pauseMenu.style.display = 'none';
         gameState = 'PLAYING';
+      });
     });
 
     game.onDeath = () => {
@@ -1962,6 +2160,14 @@ function initEngine() {
         }
         if (btn) btn.innerText = 'RECONSTRUCT FILE';
 
+        // Patch 104: what this death banked and lost, for the rewarded offers.
+        deathSettlement = {
+            recovered,
+            lost: Math.max(0, Math.floor(game.state.lucidity - recovered)),
+            floor: game.state.floor
+        };
+        setupDeathRewards();
+
         document.getElementById('final-stats').innerHTML = `
             Died on <strong>Floor ${game.state.floor}</strong>.<br><br>
             Earned <strong>${game.state.lucidity}</strong> Lucidity.<br>
@@ -2006,6 +2212,7 @@ function initEngine() {
 
     game.onFloorComplete = () => {
         gameState = 'EXIT_REACHED';
+        maybeHappytimeForBossKill(game.state.floor);   // Patch 104
         pauseTitle.innerText = "THE DESCENT CALLS";
         pauseTitle.style.color = "var(--ui-red)";
         

@@ -311,6 +311,75 @@ class PortalSDK {
     }
 
     // ---------------------------------------------------------------------
+    // Rewarded ads + happytime (Patch 104, V2 plan A3)
+    //
+    // CrazyGames rules (requirements/ads, sdk/video-ads), verified 2026-11-15:
+    //   - grant the reward ONLY in adFinished; on adError "do NOT reward the player";
+    //   - the request button must not appear on an active gameplay screen;
+    //   - Basic Launch has ads disabled -> adError with code 'adsDisabled'.
+    // ---------------------------------------------------------------------
+
+    /**
+     * True when a rewarded offer may be SHOWN. False off-portal, and false for the
+     * rest of the session once the portal has said ads are disabled or blocked —
+     * so a Basic Launch build never shows a button that can only fail.
+     */
+    canOfferRewarded() {
+        return this.available && !this._rewardedUnavailable;
+    }
+
+    /**
+     * Same total contract as showMidgameAd: `onComplete` fires exactly once on every
+     * path. `onRewarded` fires at most once, only from adFinished, and always BEFORE
+     * onComplete, so a caller can apply the reward and then resume in one place.
+     * `onComplete` receives `{ rewarded, errorCode }`.
+     */
+    showRewardedAd({ onStart, onRewarded, onComplete } = {}) {
+        let settled = false;
+        let watchdog = null;
+        const complete = (rewarded, errorCode = null) => {
+            if (settled) return;
+            settled = true;
+            if (watchdog !== null) clearTimeout(watchdog);
+            this.adPlaying = false;
+            if (rewarded) { try { if (onRewarded) onRewarded(); } catch (e) {} }
+            try { if (onComplete) onComplete({ rewarded: !!rewarded, errorCode }); } catch (e) {}
+        };
+
+        if (!this.canOfferRewarded()) { complete(false, 'unavailable'); return; }
+
+        try {
+            // A watchdog completes WITHOUT reward: we cannot prove the ad was watched.
+            watchdog = setTimeout(() => complete(false, 'timeout'), AD_WATCHDOG_MS);
+            window.CrazyGames.SDK.ad.requestAd('rewarded', {
+                adStarted: () => {
+                    this.adPlaying = true;
+                    try { if (onStart) onStart(); } catch (e) {}
+                },
+                adFinished: () => complete(true),
+                adError: (error) => {
+                    const code = (error && (error.code || error.message)) || 'other';
+                    // These will not change during this session, so stop offering.
+                    // 'unfilled' and 'adCooldown' are transient and keep the offer.
+                    if (code === 'adsDisabled' || code === 'adblock') this._rewardedUnavailable = true;
+                    complete(false, code);
+                }
+            });
+        } catch (e) {
+            complete(false, 'other');
+        }
+    }
+
+    /**
+     * Signals a moment of player delight. CrazyGames: use for achievements (boss
+     * kill, new highscore), "sparingly", and NOT for ordinary level completion.
+     */
+    happytime() {
+        if (!this.available) return;
+        try { window.CrazyGames.SDK.game.happytime(); } catch (e) {}
+    }
+
+    // ---------------------------------------------------------------------
     // Platform-forced mute (Patch 49)
     //
     // Separate from ad muting: `game.settings.muteAudio` reflects the PLAYER's

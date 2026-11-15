@@ -452,6 +452,18 @@ export class SaveManager {
         this.saveGame();
     }
 
+    /**
+     * Patch 104: takes back Lucidity that was banked provisionally — the death
+     * payout, when the player then revives (rewarded ad). Without this the revived
+     * run would bank the same Lucidity again at its next death or Awaken. Clamped at
+     * 0 so a bank somehow spent in between can never go negative.
+     */
+    removeLucidity(amount) {
+        const n = Number.isFinite(amount) ? Math.max(0, amount) : 0;
+        this.metaState.lucidityBank = Math.max(0, (this.metaState.lucidityBank || 0) - n);
+        this.saveGame();
+    }
+
     // uid was previously Date.now() + a 0-999 random suffix — fine for one drop at
     // a time in real play, but a real collision risk for any caller invoking this
     // in a tight loop (e.g. a dev tool granting several tokens at once): with ~16
