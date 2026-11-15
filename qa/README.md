@@ -13,8 +13,16 @@ node qa/focus_keys_check.cjs [portal]  # tab-hide mute (+ auto-pause off-portal)
 node qa/settings_check.cjs         # settings migrate from localStorage into the portal store
 node qa/suspend_bank_check.cjs     # mid-floor Awaken banks once; resume cannot re-bank
 node qa/sprite_cache_check.cjs     # sprite cache plateaus while the tutorial cue fades (Patch 109)
+node qa/soak_check.cjs [--seconds 45] [--throttle 4] [--phone] [--floor 9]   # perf soak: all bosses + capped crowd; exits 1 on invariant breaks
 ```
 
 `sdkmock.js` is a minimal CrazyGames SDK v3 stand-in, injected with `addInitScript`.
 Set `window.__adMode` to `'finish'` or `'error:<code>'` (e.g. `error:adsDisabled`).
 Screenshots land next to the scripts and are gitignored.
+
+## Soak baselines (headless Chromium, software canvas — compare runs, not absolutes)
+
+| Date / patch | Flags | frame p50 / p95 ms | max regular (cap) | particles max | heap Δ | spriteCache end |
+|---|---|---|---|---|---|---|
+| 2026-11-15, after P111 | `--seconds 30` | 33.4 / 50.1 | 60 (60) | 633 | +0.3 MB | 306 |
+| 2026-11-15, after P111 | `--seconds 30 --phone --throttle 4` | 116.7 / 166.6 | 40 (60) | 587 | +0.1 MB | 294 |

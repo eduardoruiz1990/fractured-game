@@ -2772,8 +2772,14 @@ export class Renderer {
                     // cheap two-draw element that isn't worth caching.
                     const lunging = ent.attackState === 'lunging';
                     let stretch = lunging ? 5 : 0;
-                    let pulseA = Math.round(this.entPulse(ent, 0.2) * 2 * 2) / 2;
-                    let pulseB = Math.round(this.entPulse(ent, 0.2, Math.PI/2) * 2 * 2) / 2;
+                    // Patch 111: whole-unit buckets (were half-unit). entPulse mixes two
+                    // frequencies, so A and B do not trace a circle — they fill the whole
+                    // square, and at 0.5 steps that was 11x11 = 121 sprites (64 KB each)
+                    // per flag combination: the headless soak held ~340 predator sprites,
+                    // ~21 MB, and still climbing. Whole units give 7x7 = 49 per combination
+                    // for a 1px-vs-0.5px step in the body-edge breathing.
+                    let pulseA = Math.round(this.entPulse(ent, 0.2) * 2);
+                    let pulseB = Math.round(this.entPulse(ent, 0.2, Math.PI/2) * 2);
                     const predColor = isFlashed ? '#ddaaaa' : (ent.buffed ? '#3a0a0a' : '#111111');
 
                     const predSprite = this.getSprite(
