@@ -16,6 +16,22 @@ export const GAME_CONFIG = {
  * Endless.BOSS_ORDER, which is the dispatch ORDER and must stay an array.
  */
 export const BOSS_TYPE_SET = new Set(['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT']);
+
+/**
+ * Patch 123 (V2 plan C5): rooms per floor, boss room included. Was 10; v1's Basic
+ * Launch averaged 1m36s of play, and a 10-room floor kept the first boss — the
+ * first real payoff — out of reach of almost every session.
+ *
+ * ROOM_PACE compresses the within-floor ramp so a short floor still builds: every
+ * formula that used to scale by `roomNumber` (room budget, stress, spawn rate)
+ * scales by `roomNumber * ROOM_PACE`, so room 4 of 5 plays like room 8 of 10 did.
+ * A regular kill orb is worth ROOM_PACE XP (and Lucidity) instead of 1, so XP and
+ * Lucidity per floor stay at ~89% of the 10-room floor without putting more orbs
+ * on screen. Door rewards are NOT scaled: 4 doors a floor instead of 9 is a
+ * deliberate trim that comes with the shorter floor.
+ */
+export const ROOMS_PER_FLOOR = 5;
+export const ROOM_PACE = 10 / ROOMS_PER_FLOOR;
 export function isBossType(type) { return BOSS_TYPE_SET.has(type); }
 
 export function getXPRequiredForLevel(level) {

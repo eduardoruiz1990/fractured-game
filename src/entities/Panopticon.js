@@ -71,7 +71,7 @@ export class Panopticon extends Enemy {
             if (Math.abs(angleDiff) < this.gazeWidth) {
                 if (!state.player.dash || !state.player.dash.active) {
                     if (state.frame % 15 === 0) {
-                        game.takeDamage(15); 
+                        game.takeDamage(15, this.type); 
                         if (game.audioEngine) game.audioEngine.playSFX('player_hurt', 0.4);
                     }
                 }
@@ -112,7 +112,7 @@ export class Panopticon extends Enemy {
 
         // Contact damage
         if (distToPlayer < 55 && (!state.player.dash || !state.player.dash.active)) {
-            if (state.frame % 15 === 0) game.takeDamage(this.damage);
+            if (state.frame % 15 === 0) game.takeDamage(this.damage, this.type);
         }
 
         this.applyMovement(state, game);

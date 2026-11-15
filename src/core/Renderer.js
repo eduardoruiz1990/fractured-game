@@ -33,7 +33,20 @@ export class Renderer {
 
         this.lightCanvas = document.createElement('canvas');
         this.lightCtx = this.lightCanvas.getContext('2d');
+        // Patch 121: the vignette's quarter-resolution buffer (see drawVignette). A
+        // plain canvas, not a spriteCache entry: one buffer, rebuilt in place.
+        // NOTE (Patch 122): fog must NOT get the same treatment. A per-frame offscreen
+        // round trip (clear, draw, composite) was built and measured in Patch 121: it
+        // was slower headless, and on a Samsung A56 it stalled each frame for 68 ms
+        // and pushed the phone into a slowdown that lasted the rest of the session.
+        // A buffer pays off only when it is redrawn rarely, as the vignette is.
+        this.vigCanvas = document.createElement('canvas');
+        this.vigCtx = this.vigCanvas.getContext('2d');
+        this.vigKey = '';
         this.setQuality('high');   // Patch 115; main.js applies the player's tier at boot
+        // Patch 120: per-effect switches for the playtest perf panel (src/dev/PerfOverlay.js).
+        // Always all-true in shipped builds; nothing outside that panel writes them.
+        this.diag = { fog: true, lights: true, vignette: true };
         
         // Camera zoom. 1.3 is the desktop look and the MAXIMUM — updateZoom() only
         // ever scales DOWN, on viewports too small to show a usable amount of world.
@@ -1064,8 +1077,8 @@ export class Renderer {
                 }
             } else {
                 this.drawWorldItems(state, audioEngine);
-                this.drawFog(state);
-                this.drawLightingMasks(state, curShakeX, curShakeY);
+                if (this.diag.fog) this.drawFog(state);
+                if (this.diag.lights) this.drawLightingMasks(state, curShakeX, curShakeY);
                 this.drawEffectsAndAuras(state);
                 this.drawPlayer(state, audioEngine);
                 this.drawDamageText(state);
@@ -1075,7 +1088,7 @@ export class Renderer {
             this.ctx.restore(); 
 
             if (gameState !== 'HUB') {
-                this.drawVignette(state);
+                if (this.diag.vignette) this.drawVignette(state);
 
                 if (this.bossAnnouncementTimer > 0) {
                     try {
@@ -1323,7 +1336,10 @@ export class Renderer {
     setQuality(tier) {
         this.quality = tier === 'low' ? 'low' : 'high';
         const low = this.quality === 'low';
-        this.lightScale = low ? 0.5 : 1;
+        // Patch 121: LOW's darkness mask 0.5 -> 0.35 of full resolution. A real
+        // Samsung A56 (portrait, 120 Hz) ran HIGH at 25-26 fps with fog, darkness,
+        // vignette and grain on, and 60 fps with them off.
+        this.lightScale = low ? 0.35 : 1;
         this.fogCloudLimit = low ? 12 : 30;
         this.filmGrainEnabled = !low;
     }
@@ -1840,11 +1856,6 @@ export class Renderer {
         // centre. Identical on every other layout, where the two are the same point.
         const vigX = Number.isFinite(this.cameraCenterX) ? this.cameraCenterX : this.canvas.width / 2;
         const vigY = Number.isFinite(this.cameraCenterY) ? this.cameraCenterY : this.canvas.height / 2;
-        const vig = this.ctx.createRadialGradient(
-            vigX, vigY, innerVig,
-            vigX, vigY, outerVig
-        );
-        
         // Patch 96: the same five values as before, indexed by the cycled palette
         // rather than by an if/else chain whose tail was `floor >= 5`. Floors 1-5 pick
         // exactly what they always picked.
@@ -1856,11 +1867,34 @@ export class Renderer {
             'rgba(20,15,0,0.98)'    // 5 Architect
         ];
         let voidColor = VOID_BY_PALETTE[paletteIndexForFloor(state.floor)] || 'rgba(0,0,0,0.98)';
-        
-        vig.addColorStop(0, 'rgba(0,0,0,0)');
-        vig.addColorStop(1, voidColor);
-        this.ctx.fillStyle = vig;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Patch 121: the gradient is baked into vigCanvas at quarter resolution and
+        // only rebuilt when what it depends on moves: canvas size, camera centre,
+        // palette, or Sanity in 2.5% steps (finer than the eye can follow on a
+        // full-screen falloff). It was a fresh full-screen radial gradient every
+        // drawn frame. Same stops, same geometry; upscaled with smoothing.
+        const VS = 0.25;
+        const sanityStep = Math.round(sanityRatio * 40);
+        const vkey = `${this.canvas.width}x${this.canvas.height}|${vigX | 0},${vigY | 0}|${voidColor}|${sanityStep}`;
+        if (vkey !== this.vigKey && Number.isFinite(innerVig) && Number.isFinite(outerVig)) {
+            this.vigKey = vkey;
+            const vw = Math.max(1, Math.round(this.canvas.width * VS));
+            const vh = Math.max(1, Math.round(this.canvas.height * VS));
+            if (this.vigCanvas.width !== vw || this.vigCanvas.height !== vh) {
+                this.vigCanvas.width = vw; this.vigCanvas.height = vh;
+            } else {
+                this.vigCtx.clearRect(0, 0, vw, vh);
+            }
+            const sr = Math.max(0.01, sanityStep / 40);
+            const inner = (this.canvas.height / 4) * sr * VS;
+            const outer = (this.canvas.height) * (0.2 + sr * 0.8) * VS;
+            const vig = this.vigCtx.createRadialGradient(vigX * VS, vigY * VS, inner, vigX * VS, vigY * VS, outer);
+            vig.addColorStop(0, 'rgba(0,0,0,0)');
+            vig.addColorStop(1, voidColor);
+            this.vigCtx.fillStyle = vig;
+            this.vigCtx.fillRect(0, 0, vw, vh);
+        }
+        this.ctx.drawImage(this.vigCanvas, 0, 0, this.canvas.width, this.canvas.height);
 
         if (sanityRatio < 0.4) {
             this.ctx.strokeStyle = `rgba(255,255,255,${0.1 + (0.4 - sanityRatio)})`;

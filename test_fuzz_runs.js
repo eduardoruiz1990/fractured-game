@@ -615,7 +615,7 @@ function runOne(seed) {
         // covering the code it claims to. 12 spans two full cycles plus a partial,
         // which puts every boss into both a Cycle I and a scaled appearance.
         const floor = randInt(1, 12);
-        const roomNumber = randInt(1, 12); // > maxRoomsPerFloor(10) is an intentional edge case
+        const roomNumber = randInt(1, 12); // > maxRoomsPerFloor (5 since Patch 123) is an intentional edge case
         params.floor = floor;
         params.roomNumber = roomNumber;
 

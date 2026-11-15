@@ -602,6 +602,11 @@
                 <div class="title-typewriter" style="color: var(--ui-red);">MIND BROKEN</div>
             </div>
             <div class="folder-content" style="text-align: center;">
+                <!-- Patch 124 (V2 plan C4): death only — what broke you, and the run in
+                     four numbers. Filled and shown by game.onDeath in main.js; hidden on
+                     the AWAKEN screens, which reuse this folder. -->
+                <div id="death-cause" class="typewriter-text" style="display: none;"></div>
+                <div id="death-stats" style="display: none;"></div>
                 <!-- Patch 104: rewarded-ad offers (CrazyGames only). Above the stats so
                      they are visible without scrolling; shown by main.js
                      (setupDeathRewards) only when portalSDK.canOfferRewarded(). -->
@@ -611,7 +616,13 @@
                     <p id="death-rewarded-note" class="typewriter-text"></p>
                 </div>
                 <div id="final-stats" class="typewriter-text" style="color: #111;"></div>
-                <button class="file-btn primary" id="btn-restart">RECONSTRUCT FILE</button>
+                <!-- Patch 124: the way off this screen. Sticky (see style.css). On death,
+                     PLAY AGAIN is first and RETURN TO WARD is secondary; on AWAKEN only
+                     btn-restart shows, as before. -->
+                <div id="death-actions">
+                    <button class="file-btn primary" id="btn-play-again" style="display: none;">PLAY AGAIN</button>
+                    <button class="file-btn primary" id="btn-restart">RECONSTRUCT FILE</button>
+                </div>
             </div>
         </div>
     </div>

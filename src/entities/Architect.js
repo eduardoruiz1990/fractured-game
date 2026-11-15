@@ -144,7 +144,7 @@ export class Architect extends Enemy {
             if (distToPlayer > this.safeZoneRadius) {
                 if (!state.player.dash || !state.player.dash.active) {
                     if (state.frame % 15 === 0) { 
-                        game.takeDamage(25);
+                        game.takeDamage(25, this.type);
                         if (game.audioEngine) game.audioEngine.playSFX('player_hurt', 0.8);
                     }
                 }
@@ -160,7 +160,7 @@ export class Architect extends Enemy {
         }
 
         if (distToPlayer < 60 && (!state.player.dash || !state.player.dash.active)) {
-            if (state.frame % 15 === 0) game.takeDamage(this.damage);
+            if (state.frame % 15 === 0) game.takeDamage(this.damage, this.type);
         }
 
         this.applyMovement(state, game);

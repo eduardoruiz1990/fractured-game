@@ -6,7 +6,7 @@ import { Renderer } from './core/Renderer.js';
 import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
-import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies } from './data/Manifestations.js';
+import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies, ENEMY_BESTIARY } from './data/Manifestations.js';
 import { portalSDK } from './systems/PortalSDK.js';
 import { showConfirm } from './ui/Dialog.js';
 import { errorLog } from './core/ErrorLog.js';
@@ -19,7 +19,7 @@ import {
     ENDLESS_START_FLOOR, endlessDraftXP, isRecursionUnlocked,
     cycleLabel, isEndless
 } from './core/Endless.js';
-import { getXPRequiredForLevel, BOSS_TYPE_SET } from './data/Config.js';
+import { getXPRequiredForLevel, BOSS_TYPE_SET, ROOMS_PER_FLOOR } from './data/Config.js';
 
 // Patch 50: installed before ANYTHING else in this module runs, including the
 // canvas lookup below. A throw during boot is invisible to the log unless the
@@ -389,7 +389,8 @@ function runDeathReward(kind) {
     if (gameState !== 'DEAD' || !deathSettlement) return;
     // Lock every exit while the ad request is in flight, so a double tap cannot
     // request twice and RECONSTRUCT cannot tear the run down under a pending revive.
-    [reviveBtn, recoverBtn, restartBtn].forEach(b => { if (b) b.disabled = true; });
+    const playAgainBtn = document.getElementById('btn-play-again');
+    [reviveBtn, recoverBtn, restartBtn, playAgainBtn].forEach(b => { if (b) b.disabled = true; });
 
     portalSDK.showRewardedAd({
         onStart: () => { noteAdShown(); if (audioEngine) audioEngine.setMuted('ad', true); },
@@ -400,6 +401,7 @@ function runDeathReward(kind) {
         onComplete: ({ rewarded, errorCode }) => {
             if (audioEngine) audioEngine.setMuted('ad', false);
             if (restartBtn) restartBtn.disabled = false;
+            if (playAgainBtn) playAgainBtn.disabled = false;
             if (rewarded) {
                 noteAdShown();
                 if (box) box.style.display = 'none';   // one rewarded ad per death
@@ -467,6 +469,49 @@ function performRevive() {
 }
 
 // BOSS_TYPE_SET now lives in data/Config.js (Patch 117).
+
+// ---------------------------------------------------------------------------
+// Patch 124 (V2 plan C4) — the death screen says what broke you and offers
+// PLAY AGAIN first. v1 sent every death through ad -> hub -> walk to the machine ->
+// folder -> AUTHORIZE; a player who wants another go now gets one in one tap.
+// ---------------------------------------------------------------------------
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/** state.lastDamageSource -> a phrase for "Broken by ...". */
+function describeDamageSource(source) {
+    if (source === 'VOID') return 'the Void beyond the ward';
+    if (source === 'DRAIN') return 'the dark, slowly';
+    if (source === 'VOLATILE') return 'a VOLATILE blast';
+    const entry = source && ENEMY_BESTIARY.find(e => e.id === source);
+    if (entry) return entry.name;
+    return 'something in the dark';
+}
+
+/** Sim frames (60 per second) -> "m:ss". */
+function formatRunTime(frames) {
+    const secs = Math.max(0, Math.floor((Number.isFinite(frames) ? frames : 0) / 60));
+    return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Shows or hides the death-only parts of the shared #death-screen folder. AWAKEN
+ * reuses the folder, so it calls this with false to get the pre-124 layout back
+ * (btn-restart alone, as the primary).
+ */
+function setDeathLayout(isDeath) {
+    const cause = document.getElementById('death-cause');
+    const stats = document.getElementById('death-stats');
+    const playAgain = document.getElementById('btn-play-again');
+    const restart = document.getElementById('btn-restart');
+    if (cause) cause.style.display = isDeath ? 'block' : 'none';
+    if (stats) stats.style.display = isDeath ? 'grid' : 'none';
+    if (playAgain) { playAgain.style.display = isDeath ? '' : 'none'; playAgain.disabled = false; }
+    if (restart) {
+        restart.classList.toggle('primary', !isDeath);
+        restart.classList.toggle('secondary', isDeath);
+        restart.disabled = false;
+    }
+}
 
 // happytime() (Patch 104): CrazyGames asks for it "sparingly", on achievements such
 // as beating a boss — not on ordinary level completion. We fire it when a boss falls
@@ -545,23 +590,40 @@ function applyQualityTier() {
     const tier = currentQualityTier();
     if (renderer && typeof renderer.setQuality === 'function') renderer.setQuality(tier);
     if (game && game.director) Object.assign(game.director, QUALITY_CAPS[tier]);
+    // Patch 122: LOW also drops the CRT scanline overlay (style.css, body.quality-low).
+    // It is a full-screen DOM layer over a canvas that repaints every frame, so the
+    // compositor blends it at the DEVICE resolution (2.8x on the Samsung A56 that
+    // reported this), and it was the one switch that still saved ~15 ms per frame
+    // once that phone had slowed down.
+    try { document.body.classList.toggle('quality-low', tier === 'low'); } catch (e) {}
 }
 
-// AUTO's probe: mean frame interval over ~3 s of live PLAYING, after a 2 s warm-up
-// (asset decode and first-room spawns are not representative). Intervals over 100 ms
-// are ignored — a backgrounded tab or a GC pause is not the device's steady state.
-// Below ~40 fps (25 ms) it drops to LOW and remembers it for the next session, so a
-// weak phone does not pay the slow first minute again.
-const qualityProbe = { lastTime: 0, playingMs: 0, sum: 0, n: 0, done: false };
-function probeQuality(time) {
-    const dt = time - qualityProbe.lastTime;
-    qualityProbe.lastTime = time;
+// AUTO's probe (Patch 115, corrected in Patch 120): mean interval between DRAWN
+// frames over 2 s of live PLAYING (at least 30 draws), after a 2 s warm-up (asset decode and first-room
+// spawns are not representative). Above 25 ms (under ~40 drawn fps) it drops to LOW
+// and remembers it for the next session, so a weak phone does not pay the slow first
+// minute again.
+//
+// Patch 120 fixed two ways the first version missed exactly the phones it was for
+// (reported from a Samsung A56): it timed rAF callbacks, and on a 120 Hz screen the
+// Patch 114 draw-skip interleaves ~8 ms empty callbacks that pulled the mean under
+// the threshold however slow the real draws were; and it DISCARDED intervals over
+// 100 ms as "gaps", so a device running at under 10 fps never accumulated a sample.
+// Called from the draw branch only, and the clock advances on every draw (menus
+// included), so only intervals between consecutive draws count. Intervals over 1 s
+// are still skipped: a backgrounded tab or a one-off hitch is not the steady state.
+const qualityProbe = { lastDraw: 0, playingMs: 0, sum: 0, n: 0, done: false };
+function probeQualityOnDraw(time) {
+    const dt = time - qualityProbe.lastDraw;
+    qualityProbe.lastDraw = time;
     if (qualityProbe.done || gameSettings.quality !== 'auto' || currentQualityTier() === 'low') return;
-    if (gameState !== 'PLAYING' || !(dt > 0) || dt > 100) return;
+    if (gameState !== 'PLAYING' || !(dt > 0) || dt > 1000) return;
     qualityProbe.playingMs += dt;
     if (qualityProbe.playingMs < 2000) return;
     qualityProbe.sum += dt; qualityProbe.n++;
-    if (qualityProbe.n < 180) return;
+    // Decide after 2 s of sampled play, not after N draws: a fixed count takes 2 s at
+    // 60 fps but 12+ s at 10 fps, so the slowest phones would wait longest for help.
+    if (qualityProbe.sum < 2000 || qualityProbe.n < 30) return;
     const mean = qualityProbe.sum / qualityProbe.n;
     qualityProbe.done = true;
     if (mean > 25) {
@@ -1095,7 +1157,11 @@ function refreshTitleActions() {
         try {
             const parsed = JSON.parse(raw);
             if (parsed && typeof parsed === 'object') {
-                summary = `FLOOR ${parsed.floor || 1}, ROOM ${parsed.roomNumber || 1}`;
+                // Patch 123: show the room the run will ACTUALLY resume in (Game.init
+                // moves a pre-5-room save past room 5 back to the last regular room).
+                const savedRoom = parsed.roomNumber || 1;
+                const resumeRoom = savedRoom > ROOMS_PER_FLOOR ? ROOMS_PER_FLOOR - 1 : savedRoom;
+                summary = `FLOOR ${parsed.floor || 1}, ROOM ${resumeRoom}/${ROOMS_PER_FLOOR}`;
             }
         } catch (e) {
             // Corrupt payload: treated as "no suspended run" here. It is cleared for
@@ -1942,15 +2008,22 @@ function initEngine() {
     // (entity/orb counts, sprite-cache size, driving a death). `import.meta.env.DEV` is
     // statically false in `vite build`, so this whole block is dropped from every
     // shipped bundle — same guarantee as the dev panel.
-    if (import.meta.env.DEV) {
+    if ((import.meta.env.DEV || import.meta.env.MODE === 'playtest')) {
         window.__fractured = {
             get game() { return game; },
             get renderer() { return renderer; },
             get saveManager() { return saveManager; },
             get gameState() { return gameState; },
             setQuality(q) { gameSettings.quality = q; applyQualityTier(); },   // Patch 115
-            get qualityTier() { return currentQualityTier(); }
+            get qualityTier() { return currentQualityTier(); },
+            get qualitySetting() { return gameSettings.quality; }   // Patch 120
         };
+        // Patch 120: the on-screen perf panel, playtest builds only. MODE is a string
+        // literal after Vite's replacement, so every other build drops this branch and
+        // never emits the chunk.
+        if (import.meta.env.MODE === 'playtest') {
+            import('./dev/PerfOverlay.js').then(m => m.installPerfOverlay()).catch(() => {});
+        }
     }
 
     // Patch 49: respect the platform's own mute setting (distinct from Patch 47's
@@ -2042,6 +2115,22 @@ function initEngine() {
             game.state.player.y = 0;
             if (audioEngine) audioEngine.playMenuTheme();
             gameState = 'HUB';
+        }, { allowAd: !revived });
+    });
+
+    // Patch 124 (C4): straight back into a fresh run — same ad rules as RETURN TO
+    // WARD (a natural break; none after a rewarded revive; the 5-minute cooldown),
+    // then the one launch path every other route uses.
+    document.getElementById('btn-play-again').addEventListener('click', () => {
+        if (gameState !== 'DEAD') return;
+        const revived = !!(game.state && game.state.reviveUsed);
+        deathSettlement = null;
+        document.getElementById('death-screen').style.display = 'none';
+        const rewardBox = document.getElementById('death-rewarded');
+        if (rewardBox) rewardBox.style.display = 'none';
+        showAdThen(() => {
+            resumeAudioForGameplay();
+            startNewRun();
         }, { allowAd: !revived });
     });
 
@@ -2265,6 +2354,7 @@ function initEngine() {
         const awakenRewardBox = document.getElementById('death-rewarded');
         if (awakenRewardBox) awakenRewardBox.style.display = 'none';
         deathSettlement = null;
+        setDeathLayout(false);   // Patch 124: no cause/stats/PLAY AGAIN on AWAKEN
         document.getElementById('death-screen').style.display = 'flex';
         
         const deathScreen = document.getElementById('death-screen');
@@ -2387,7 +2477,27 @@ function initEngine() {
             title.style.color = 'var(--ui-red)';
             title.innerText = 'MIND BROKEN';
         }
-        if (btn) btn.innerText = 'RECONSTRUCT FILE';
+        if (btn) btn.innerText = 'RETURN TO WARD';
+
+        // Patch 124: cause, place and the run in four numbers, above everything else.
+        setDeathLayout(true);
+        const st = game.state;
+        const causeEl = document.getElementById('death-cause');
+        if (causeEl) {
+            const where = st.floor > 0
+                ? `Floor ${st.floor}, room ${Math.min(st.roomNumber || 1, st.maxRoomsPerFloor || ROOMS_PER_FLOOR)}/${st.maxRoomsPerFloor || ROOMS_PER_FLOOR}`
+                : 'Orientation';
+            const record = st.floor > (st.bestFloorAtStart || 1)
+                ? `<span class="death-record">NEW DEEPEST FLOOR: ${st.floor}</span>` : '';
+            causeEl.innerHTML = `Broken by <strong>${escapeHtml(describeDamageSource(st.lastDamageSource))}</strong>` +
+                `<span class="death-where">${where} · ${formatRunTime(st.runFrames)} survived</span>${record}`;
+        }
+        const statsEl = document.getElementById('death-stats');
+        if (statsEl) {
+            const cell = (v, l) => `<div><span class="stat-value">${v}</span><span class="stat-label">${l}</span></div>`;
+            statsEl.innerHTML = cell(formatRunTime(st.runFrames), 'TIME') + cell(st.runKills || 0, 'KILLS') +
+                cell(st.level || 1, 'LEVEL') + cell(recovered, 'BANKED');
+        }
 
         // Patch 104: what this death banked and lost, for the rewarded offers.
         deathSettlement = {
@@ -2397,13 +2507,15 @@ function initEngine() {
         };
         setupDeathRewards();
 
+        // Patch 124: one line of economy, tokens, and the full case file folded away.
         document.getElementById('final-stats').innerHTML = `
-            Died on <strong>Floor ${game.state.floor}</strong>.<br><br>
-            Earned <strong>${game.state.lucidity}</strong> Lucidity.<br>
-            Lost to the Void: <strong>${game.state.lucidity - recovered}</strong>.<br>
+            Kept <strong>${recovered}</strong> of <strong>${game.state.lucidity}</strong> Lucidity
+            (lost <strong>${game.state.lucidity - recovered}</strong>).
             Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
             ${tokenHtml}
+            <details class="death-file"><summary>CASE FILE — THIS ATTEMPT</summary>
             ${buildRunSummaryHtml(game)}
+            </details>
         `;
         inputManager.hideJoysticks();
 
@@ -2511,15 +2623,21 @@ let lastBreakdown = false;
 let lastDrawSizeKey = '';
 let lastDrawState = '';
 
+// Patch 120: the inspection hook and loop timing exist in dev AND in the `playtest`
+// build (npm run build:playtest), which ships the on-screen perf panel for testing on
+// real phones. The condition is written out INLINE at each site, deliberately not
+// hoisted into a const: Vite replaces `import.meta.env.*` with literals and the
+// minifier folds the inline form to `false` and drops the branch, but it does not
+// fold through a module-level const, which shipped the (inert) hook to players.
+
 function gameLoop(time) {
     // G2 instrumentation (dev only, stripped from builds): CPU time spent inside one
     // loop iteration — simulation + render — independent of vsync quantisation, for
     // qa/soak_check.cjs. Frame-to-frame intervals only move in 16.7 ms steps.
-    const loopT0 = import.meta.env.DEV ? performance.now() : 0;
+    const loopT0 = (import.meta.env.DEV || import.meta.env.MODE === 'playtest') ? performance.now() : 0;
     try {
         // Accumulate before anything else, so a slow branch below cannot lose time.
         pacing.addFrame(time);
-        probeQuality(time);   // Patch 115
 
         syncPortalGameplayState();
         syncPortalContext();   // Patch 119
@@ -2729,9 +2847,12 @@ function gameLoop(time) {
                 // Patch 98: the cycle is named on floors 6+ only, so the Cycle I HUD is
                 // byte-identical to before. Without it the readout says FLOOR 13 with
                 // the Wastes on screen and nothing connects the two.
+                // Patch 123: ROOM n/5 — with five rooms the count is short enough to
+                // be worth showing, and it tells a new player the boss is close.
+                const roomReadout = `${game.state.roomNumber}/${game.state.maxRoomsPerFloor || ROOMS_PER_FLOOR}`;
                 const floorReadout = isEndless(game.state.floor)
-                    ? `CYCLE ${cycleLabel(game.state.floor)} - FLOOR: ${game.state.floor} - ROOM: ${game.state.roomNumber}`
-                    : `FLOOR: ${game.state.floor} - ROOM: ${game.state.roomNumber}`;
+                    ? `CYCLE ${cycleLabel(game.state.floor)} - FLOOR: ${game.state.floor} - ROOM: ${roomReadout}`
+                    : `FLOOR: ${game.state.floor} - ROOM: ${roomReadout}`;
                 hudHtml(document.getElementById('score'), `LUCIDITY: ${game.state.lucidity} <br> ${floorReadout}`);
 
                 // Patch 25: screen-fixed tutorial banner, driven off the same
@@ -2779,6 +2900,7 @@ function gameLoop(time) {
                 lastDrawState = gameState;
                 // Send the gameState so the renderer knows to bypass the Void code!
                 renderer.drawGame(game.state, audioEngine, gameState);
+                probeQualityOnDraw(time);   // Patch 115/120
             }
         }
     } catch (e) {
@@ -2811,7 +2933,7 @@ function gameLoop(time) {
             );
         }
     }
-    if (import.meta.env.DEV && window.__fractured) {
+    if ((import.meta.env.DEV || import.meta.env.MODE === 'playtest') && window.__fractured) {
         const ring = window.__fractured.loopMs || (window.__fractured.loopMs = []);
         ring.push(performance.now() - loopT0);
         if (ring.length > 4000) ring.splice(0, ring.length - 4000);

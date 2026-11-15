@@ -92,7 +92,8 @@ export class Combat {
             
             let distToPlayer = Math.hypot(p.x - state.player.x, p.y - state.player.y);
             if (distToPlayer < p.radius + state.player.radius && (!state.player.dash || !state.player.dash.active)) {
-                game.takeDamage(p.damage);
+                // Patch 124: projectiles are boss-fired; credit the boss on screen.
+                game.takeDamage(p.damage, p.source || (state.activeBoss && state.activeBoss.type) || 'PROJECTILE');
                 p.life = 0; 
                 game.spawnParticles(p.x, p.y, p.color, 10);
             }
@@ -678,7 +679,7 @@ export class Combat {
                     const blastRadius = 130;
                     const distToPlayer = Math.hypot(ent.x - state.player.x, ent.y - state.player.y);
                     if (distToPlayer < blastRadius) {
-                        game.takeDamage(18);
+                        game.takeDamage(18, 'VOLATILE');   // Patch 124
                     }
                     game.spawnParticles(ent.x, ent.y, '#ff7043', 40);
                     state.cameraShake = Math.max(state.cameraShake, 16);
@@ -690,6 +691,7 @@ export class Combat {
                 // --- ANTI-ZOMBIE FIX: Immediately extract from array ---
                 state.entities.splice(i, 1);
 
+                state.runKills = (state.runKills || 0) + 1;   // Patch 124
                 try {
                     if (game.saveManager && typeof game.saveManager.recordKill === 'function') {
                         game.saveManager.recordKill(ent.type);

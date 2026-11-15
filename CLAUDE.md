@@ -13,6 +13,7 @@ npm run dev              # start Vite dev server (no portal SDK)
 npm run dev:crazygames   # dev server WITH the CrazyGames SDK tag (placeholder ads on localhost)
 npm run build            # production build to dist/ — the CrazyGames target (SDK tag injected)
 npm run build:itch       # production build without the SDK tag (itch.io / self-hosted)
+npm run build:playtest   # itch-style build + on-screen PERF panel/benchmark for real-device testing (Patch 120)
 npm run preview          # preview the production build
 ```
 

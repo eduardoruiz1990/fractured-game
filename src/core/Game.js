@@ -5,7 +5,7 @@ import { TOKENS, getActiveSynergies } from '../data/Manifestations.js';
 import { HubWorld } from '../systems/HubWorld.js';
 import { Tutorial } from '../systems/Tutorial.js';
 import { EventBus } from './EventBus.js';
-import { getXPRequiredForLevel, ARENA_VOID_RADIUS, isBossType } from '../data/Config.js';
+import { getXPRequiredForLevel, ARENA_VOID_RADIUS, isBossType, ROOMS_PER_FLOOR } from '../data/Config.js';
 // Patch 96 — the biome palettes cycle past floor 5. See src/core/Endless.js.
 import { paletteIndexForFloor } from './Endless.js';
 
@@ -140,8 +140,15 @@ export class Game {
             // no roomNumber in its carried state, and letting `undefined` through here
             // would poison every `roomNumber` comparison in Director/Renderer with NaN
             // on the first resume after this update.
-            roomNumber: (carriedState && carriedState.roomNumber) || 1,
-            maxRoomsPerFloor: 10,
+            //
+            // Patch 123: a run suspended under 10-room floors can carry room 6-9. Past
+            // the new cap it resumes in the last regular room, not straight into the
+            // boss it would otherwise meet without warning.
+            roomNumber: (() => {
+                const r = (carriedState && carriedState.roomNumber) || 1;
+                return r > ROOMS_PER_FLOOR ? ROOMS_PER_FLOOR - 1 : r;
+            })(),
+            maxRoomsPerFloor: ROOMS_PER_FLOOR,
             combatActive: true,
             roomCleared: false,
             convergence: 0,
@@ -164,6 +171,15 @@ export class Game {
             // false — the safe direction: at worst a pre-Recursion save that somehow
             // re-clears floor 5 records the clear it genuinely earned.
             runCompletionRecorded: carriedState ? !!carriedState.runCompletionRecorded : false,
+            // Patch 124: whole-run totals for the death screen. Carried across floors;
+            // a run suspended by an older build has neither and starts them at 0.
+            runKills: (carriedState && Number.isFinite(carriedState.runKills)) ? carriedState.runKills : 0,
+            runFrames: (carriedState && Number.isFinite(carriedState.runFrames)) ? carriedState.runFrames : 0,
+            lastDamageSource: null,
+            // Patch 124: the deepest floor on record when this run began, so the death
+            // screen can say "new deepest floor". Taken before the run can raise it.
+            bestFloorAtStart: (carriedState && Number.isFinite(carriedState.bestFloorAtStart))
+                ? carriedState.bestFloorAtStart : (meta.maxFloorReached || 1),
             mapOriginX: null,
             mapOriginY: null,
 
@@ -333,6 +349,9 @@ export class Game {
             // with a fresh, false latch and bank a second completion — and a third on
             // floor 7, forever.
             runCompletionRecorded: !!this.state.runCompletionRecorded,
+            runKills: this.state.runKills || 0,     // Patch 124
+            runFrames: this.state.runFrames || 0,   // Patch 124
+            bestFloorAtStart: this.state.bestFloorAtStart || 1,   // Patch 124
             sanity: this.state.sanity,
             weapons: this.state.player.weapons,
             xp: this.state.xp,
@@ -362,7 +381,13 @@ export class Game {
         };
     }
 
-    takeDamage(amount) {
+    /**
+     * @param {number} amount
+     * @param {string} [source] Patch 124: what dealt it — an entity type ('PREDATOR',
+     *   'BOSS', ...) or 'VOLATILE'. Recorded as state.lastDamageSource for the death
+     *   screen's "what broke you" line. Optional: an omitted source keeps the last one.
+     */
+    takeDamage(amount, source) {
         // Already invulnerable from a previous hit this window — ignore entirely,
         // same as denialShieldActive's block below, just without consuming anything.
         if (this.state.player.iframes > 0) return;
@@ -396,6 +421,7 @@ export class Game {
 
         const finalDmg = amount * (1 - dmgReduction);
         this.state.sanity -= finalDmg;
+        if (source && finalDmg > 0) this.state.lastDamageSource = source;   // Patch 124
 
         if (this.state.telemetry) {
             this.state.telemetry.currentRoomDamage += finalDmg;
@@ -609,6 +635,9 @@ export class Game {
         }
 
         this.state.frame++;
+        // Patch 124: sim steps of real play this run (60 per second; the hub and the
+        // boss-intro freeze are not counted), for the death screen's "time survived".
+        if (!isHub) this.state.runFrames = (this.state.runFrames || 0) + 1;
 
         // DEV: run telemetry tick (Patch 13). One-frame-late detection of room
         // clears / boss spawn is fine at this granularity; keeps this out of
@@ -758,6 +787,7 @@ export class Game {
             this.state.inVoid = true;
             if (this.state.combatActive && !this.state.isTutorial) {
                 this.state.sanity -= 0.1;
+                this.state.lastDamageSource = 'VOID';   // Patch 124
             }
             if (this.state.frame % 10 === 0) {
                 this.state.cameraShake = Math.max(this.state.cameraShake, 2);
@@ -783,6 +813,9 @@ export class Game {
                 // glass_cannon: the drain half of its tradeoff (damage half is in Combat.js).
                 if (this.state.player.boons && this.state.player.boons.includes('glass_cannon')) drainRate *= 2;
                 this.state.sanity -= drainRate;
+                // Patch 124: only claims the kill if nothing else has hurt the player
+                // this floor; a hit from an enemy is the more useful answer.
+                if (!this.state.lastDamageSource) this.state.lastDamageSource = 'DRAIN';
             }
         }
 

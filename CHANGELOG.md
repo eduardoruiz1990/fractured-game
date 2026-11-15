@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–119)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–124)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1486,10 +1486,182 @@ player feedback reports. Those reach the developer by email and on the Developer
 - It never sends the user agent or any identifier.
 - Covered by `qa/context_check.cjs`.
 
+**Patch 120 — AUTO actually catches slow phones; a perf panel for real devices.**
+*(Player report: "performance was terrible" on a Samsung A56, a 120 Hz mid-range
+Android phone.)*
+
+The Patch 115 probe had three faults, and each one made it miss the phones it was
+written for:
+1. **It timed rAF callbacks.** On a 120 Hz screen the Patch 114 draw-skip puts ~8 ms
+   empty callbacks between the real draws, which pulled the mean under 25 ms however
+   slow the draws were.
+2. **It discarded intervals over 100 ms as "gaps".** A phone running under 10 fps
+   therefore never collected a sample.
+3. **It waited for 120 samples.** At 10 fps that takes 12+ s.
+
+It now times consecutive **drawn** frames, skips only intervals over 1 s, and decides
+after 2 s of sampled play (at least 30 draws). `qa/auto_quality_check.cjs` checks both
+directions: a slow run drops to LOW and persists it, and a ~50 fps run stays on HIGH.
+
+Headless Chromium draws canvas in software, so it cannot show what a phone GPU
+spends. A CPU profile of the throttled soak put 76% of the time in native drawing and
+under 5% in game JS. To measure on the real device there is now a **playtest build**:
+- `npm run build:playtest` (Vite mode `playtest`, no SDK tag).
+- It adds `src/dev/PerfOverlay.js`: a live PERF strip, plus a panel with switches for
+  fog, the darkness mask, vignette, film grain, the CRT overlay, the DOM HUD and the
+  quality tier.
+- **RUN BENCHMARK** holds a busy room and measures 7 setups for 4 s each, then prints a
+  copyable text report.
+
+Supporting changes:
+- `Renderer.diag` holds the per-effect switches. They are always on outside that panel.
+- The `window.__fractured` hook and the loop timing now exist in dev **and** playtest.
+- The gate is written inline, not as a module-level const. A const is not constant-
+  folded, and in that form the inert hook shipped to players. That was caught by
+  grepping all three builds.
+
+**Patch 121 — the A56 report: safe render savings, and a benchmark that can tell.**
+The first playtest report (Samsung A56, Claude app WebView, portrait 384×717, 120 Hz):
+- **AUTO worked:** it chose LOW, and LOW ran at 60 fps.
+- **HIGH was over budget:** with every effect on it ran at 26 fps. With fog, darkness,
+  vignette and grain all off it held 60.
+- **Two rows contradicted the rest:** darkness off was *slower*, and LOW ran at 21 fps in
+  one row and 60 in another.
+- **A stall inside the game's JS:** 35 ms per draw, only with darkness and fog both on.
+
+Shipped:
+- **Vignette** is baked into a quarter-resolution `vigCanvas` and rebuilt only when the
+  canvas size, camera centre, palette, or Sanity (in 1/40 steps) changes. It used to be
+  a fresh full-screen radial gradient on every drawn frame.
+- **LOW's darkness mask** drops from 0.5 to 0.35 of full resolution.
+- Seeded before/after screenshots differ by about 1/255 on average; the look is
+  unchanged.
+
+Built, but **opt-in (`renderer.fogBuffered`, default off)**: fog drawn into a buffer at
+0.5 (HIGH) or 0.25 (LOW) scale, under the main canvas's own transform (`getTransform`).
+The reason it is off: in a headless A/B the offscreen round trip (clear, draw, composite)
+cost more than the fog it replaced, about +2.4 ms at half size and +11 ms at full size,
+against ~0.5 ms for drawing the fog directly. The darkness mask uses the same pattern,
+and that is where the A56 stalled. So it may help or hurt a phone GPU, and only the
+device can say.
+
+**Benchmark v2** (`src/dev/PerfOverlay.js`) runs 13 setups:
+- REF (HIGH, all on) first, and again near the end to catch drift from heat or clocks;
+- each other row changes one thing from REF;
+- darkness at 1/2 and at 0.35;
+- fog buffered at 1/2 and 1/4;
+- LOW, and everything off.
+
+It reports a "vs REF" column and adds a FOG BUFFER switch to the panel. The soak gains a
+`FRACTURED_PRE` env hook for in-page A/B runs.
+
+**Patch 122 — the A56 v2 report: the phone slows down and stays slow; LOW must stay
+well under budget.** The v2 benchmark's drift check found that the phone itself
+changes under load:
+- **The reference setup did not hold its speed.** It ran at 40 ms/frame first and at
+  91 ms/frame when repeated near the end. After ~8 s of heavy load the phone slows down
+  and stays slow, either GPU throttling (heat or Samsung's power management) or Chrome
+  falling back to slower canvas drawing. That state is reached sooner from the HIGH tier.
+- **The fog buffer was harmful.** It stalled JS for 68 ms per frame (37 ms on LOW) and
+  the slowdown began when it was first enabled. It is **removed**, and `drawFog` is back
+  to its Patch 115 code byte for byte. A comment at the vignette buffer records why fog
+  must not be buffered.
+- **The CRT scanline overlay was the only cut that still helped in the slow state**
+  (about 15 ms with the HUD). It is a full-screen DOM layer over a canvas that changes
+  every frame, so the compositor blends it at the device's resolution (2.8× there). LOW
+  now hides it: `applyQualityTier()` toggles `body.quality-low`, and `style.css` hides
+  `#crt-scanlines` under it.
+
+**Benchmark v3** asks the question that matters now: does LOW hold for minutes?
+- It holds LOW for 60 s and reports it in 10 s windows.
+- It then runs LOW minus fog, darkness, vignette and HUD, an everything-off floor, and
+  LOW again.
+- HIGH runs **last**, so it cannot heat the phone before the rows that matter.
+
+**Result on the Samsung A56 (Claude app WebView, portrait, 120 Hz), benchmark v3:**
+- **LOW held 60 fps (16.7 ms) in every 10 s window for 60 s.** p95 stayed ≤ 22 ms, and
+  JS per draw was about 1.2 ms.
+- **The drift check matched the first window,** so the phone never entered the slow
+  state.
+- **Every LOW-minus row and the everything-off row also ran at 60 fps.** LOW has
+  headroom, and no single effect is the limit any more.
+- **HIGH ran at 33 fps (30.6 ms),** up from 25–26 fps in the earlier reports. That is
+  still over budget on this phone, which is why AUTO picks LOW there.
+
+Closed for this device class. Baselines are in `qa/README.md`.
+
 **B2 (spatial grid) — closed, not built.** `qa/sim_cost_check.cjs` times
 `processGameLogic` alone under the soak scenario. It costs 0.31–0.45 ms per step against
 ~6 ms for the whole loop, because the Patch 110 cap bounds the list. A grid would save
 under 0.1 ms. See `V2_PLAN.md` B2 for when to revisit.
+
+### Phase C — the first session (Patches 123+)
+
+**Patch 123 — 5-room floors (C5, the user's call).** `Config.ROOMS_PER_FLOOR = 5`, boss
+room included; the old value was 10.
+
+Cutting the rooms alone would have left only rooms 1–4 for combat. Floor 1's total
+enemy budget would have dropped from 225 to 80 (36%), and every boss would be fought
+underleveled. So the within-floor ramp is compressed instead.
+
+`ROOM_PACE = 10 / ROOMS_PER_FLOOR` (= 2) multiplies the room term in three places:
+- the room budget: `10 + floor·5 + room·2·ROOM_PACE`
+- `stress`: `1 + room·0.1·ROOM_PACE`
+- the spawn-rate ramp
+
+Room 4 of 5 now plays like room 8 of 10 did. Floor *f* budget is `80 + 20f`, against
+`180 + 45f` before.
+
+A regular kill orb is worth `ROOM_PACE` XP and Lucidity instead of 1. That puts per-floor
+XP and Lucidity at about 89% of the old 10-room floor, with no extra orbs on screen.
+Massive orbs (bosses, the tutorial kill, interactables) are unchanged.
+
+**Door rewards are deliberately not scaled.** A floor now has 4 doors instead of 9, as
+part of the shorter floor.
+
+Saves suspended under 10-room floors can carry room 6–9. These resume in room 4 (the last
+regular room), not straight into the boss. The resume prompt shows the room the run will
+actually resume in. `test_endless` gains 4 assertions for this.
+
+The HUD now reads `ROOM: n/5`. Fuzz: 200/200 runs clean.
+
+**Patch 124 — death screen, PLAY AGAIN first (C4).** In v1 every death went through an
+ad, then the walkable hub, a walk to the machine, a folder, and AUTHORIZE: 4–5 actions
+before the next attempt. Now it takes one tap.
+
+- **PLAY AGAIN** is the primary button. It runs the same `showAdThen` rules as before:
+  no midgame ad after a rewarded revive, and the 5-minute floor applies. It then calls
+  `startNewRun()`, the one launch path every other route uses.
+- **RETURN TO WARD** (the old RECONSTRUCT FILE, `#btn-restart`) is secondary.
+- Both buttons sit in a sticky `#death-actions` bar. In short landscape they share one
+  row.
+- **What killed you.** `Game.takeDamage(amount, source)` records
+  `state.lastDamageSource` whenever a hit lands.
+  - Every entity passes its `type`.
+  - Boss projectiles pass the boss type.
+  - VOLATILE passes `'VOLATILE'`.
+  - The Void drain records `'VOID'`.
+  - Ambient drain records `'DRAIN'`, but only when nothing has hit yet.
+  - The death screen names the bestiary entry, for example "Broken by HALL MONITORS".
+- **The run in four numbers:** TIME, KILLS, LEVEL and BANKED.
+  - `runKills` and `runFrames` are new whole-run counters, carried across floors.
+  - `runFrames` counts sim ticks, not rAF frames, so it is right at 144 Hz.
+  - Suspended runs from older builds start both at 0.
+- **Records and economy text.**
+  - "NEW DEEPEST FLOOR" appears when the floor beats `bestFloorAtStart`. That is the
+    record taken at `Game.init`, before the run can raise it, and it is carried.
+  - The Lucidity text is down to one line.
+  - The full run summary is folded into a `<details>` "CASE FILE — THIS ATTEMPT".
+- **AWAKEN** reuses the folder. It calls `setDeathLayout(false)`, so it gets the
+  pre-124 layout back: no cause, no stats, no PLAY AGAIN, and `#btn-restart` as primary.
+
+New `qa/death_screen_check.cjs` (assertion-based, 384×717, 915×412 and 1280×720) checks:
+- the cause, place, time and record text, and the stats strip;
+- PLAY AGAIN is on screen without scrolling and at least 44 px tall;
+- PLAY AGAIN lands in a fresh PLAYING run;
+- AWAKEN gets the old layout back.
+
+`ads_rewarded`, `suspend_bank`, `ads_cooldown` and `focus_keys` still pass.
 
 ---
 
@@ -1706,6 +1878,13 @@ under 0.1 ms. See `V2_PLAN.md` B2 for when to revisit.
     and nothing identifying in the context.** The payload is built only when a compared
     value changes. Add a field to the compare list only if it changes a few times per
     run.
+41. **Diagnostic code is gated INLINE on `import.meta.env.DEV || import.meta.env.MODE
+    === 'playtest'`, never through a const (Patch 120).** Only the inline literal
+    comparison is folded away. After touching any of it, build all three modes and
+    `grep -l __fractured dist/assets/*.js`: it must be empty for crazygames and itch.
+42. **Anything that scales with the room number uses `roomNumber * ROOM_PACE`, and the
+    room count comes from `ROOMS_PER_FLOOR` (Patch 123).** Never hardcode 10 or 5. A raw
+    `roomNumber` in a ramp silently halves that ramp on 5-room floors.
 
 ---
 

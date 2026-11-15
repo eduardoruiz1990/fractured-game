@@ -100,7 +100,7 @@ export class Scavenger extends Enemy {
                     } else {
                         this.vx = Math.cos(state.frame * 0.05 + this.id) * (this.speed * 0.5);
                         this.vy = Math.sin(state.frame * 0.05 + this.id) * (this.speed * 0.5);
-                        if (state.frame % 15 === 0) game.takeDamage(this.damage);
+                        if (state.frame % 15 === 0) game.takeDamage(this.damage, this.type);
                     }
                 }
             }

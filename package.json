@@ -8,6 +8,7 @@
     "dev:crazygames": "vite --mode crazygames",
     "build": "vite build --mode crazygames",
     "build:itch": "vite build --mode itch",
+    "build:playtest": "vite build --mode playtest",
     "preview": "vite preview"
   },
   "devDependencies": {

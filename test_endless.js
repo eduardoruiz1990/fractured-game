@@ -549,6 +549,17 @@ console.log('\nThe run-completion latch survives a floor boundary');
           String(game.state.runCompletionRecorded));
     check('and re-carries as a strict boolean, not undefined',
           game.getCarriedState().runCompletionRecorded === false);
+
+    // Patch 123: floors are 5 rooms. A run suspended under 10-room floors may carry
+    // room 6-9; it must resume in the last regular room, never straight into the boss,
+    // and a room that is still valid must be kept exactly.
+    check('floors are 5 rooms', game.state.maxRoomsPerFloor === 5, String(game.state.maxRoomsPerFloor));
+    game.init(mockSave, { ...legacyCarry, roomNumber: 8 });
+    check('a suspended room 8 resumes in room 4', game.state.roomNumber === 4, String(game.state.roomNumber));
+    game.init(mockSave, { ...legacyCarry, roomNumber: 5 });
+    check('a suspended boss room (5) is kept', game.state.roomNumber === 5, String(game.state.roomNumber));
+    game.init(mockSave, { ...legacyCarry, roomNumber: 3 });
+    check('a suspended room 3 is kept', game.state.roomNumber === 3, String(game.state.roomNumber));
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

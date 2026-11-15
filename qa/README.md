@@ -12,13 +12,24 @@ node qa/dialog_check.cjs           # in-world dialog: export field, import value
 node qa/focus_keys_check.cjs [portal]  # tab-hide mute (+ auto-pause off-portal), Space vs focused buttons
 node qa/settings_check.cjs         # settings migrate from localStorage into the portal store
 node qa/suspend_bank_check.cjs     # mid-floor Awaken banks once; resume cannot re-bank
+node qa/death_screen_check.cjs     # cause/stats, PLAY AGAIN on screen + into a fresh run, AWAKEN layout (Patch 124)
 node qa/sprite_cache_check.cjs     # sprite cache plateaus while the tutorial cue fades (Patch 109)
 node qa/soak_check.cjs [--seconds 45] [--throttle 4] [--phone] [--floor 9]   # perf soak: all bosses + capped crowd; exits 1 on invariant breaks
 node qa/render_recovery_check.cjs   # injected render faults do not leak canvas state (Patch 113)
 node qa/highrefresh_check.cjs      # ~144 Hz rAF: idle frames skipped; boss banner ends with its freeze (Patch 114)
 node qa/sim_cost_check.cjs [--no-weapons]  # processGameLogic alone, soak scenario (B2 measurement)
+node qa/auto_quality_check.cjs [--fast]  # AUTO steps down on a slow run and persists; --fast must stay HIGH (Patch 120)
 node qa/context_check.cjs          # portal feedback context: sent on change only, carries last error, no UA (Patch 119)
 ```
+
+**Real devices:** `npm run build:playtest` builds the game with an on-screen PERF panel
+(`src/dev/PerfOverlay.js`). RUN BENCHMARK there measures fog, darkness, vignette, grain,
+the CRT overlay, the HUD and both tiers on the phone's own GPU, and prints a copyable
+report. The headless checks can't measure this, because they draw in software.
+
+**A/B in the soak:** `FRACTURED_PRE='<js>' node qa/soak_check.cjs ...` evaluates the snippet
+in the page after the tier is set, e.g. `window.__fractured.renderer.fogBuffered=true`.
+Headless runs drift by ±1–2 ms between sessions, so always run both sides back to back.
 
 `sdkmock.js` is a minimal CrazyGames SDK v3 stand-in, injected with `addInitScript`.
 Set `window.__adMode` to `'finish'` or `'error:<code>'` (e.g. `error:adsDisabled`).
@@ -32,3 +43,12 @@ Screenshots land next to the scripts and are gitignored.
 | 2026-11-15, after P111 | `--seconds 30 --phone --throttle 4` | 116.7 / 166.6 | 40 (60) | 587 | +0.1 MB | 294 |
 | 2026-11-15, after P115 | `--seconds 25 --quality high` | 50.0 / 66.8 (loop CPU mean 6.6) | — | — | — | — |
 | 2026-11-15, after P115 | `--seconds 25 --quality low` | 33.3 / 50.0 (loop CPU mean 3.6) | — | — | — | — |
+
+## Real-device baselines (playtest build, PERF → RUN BENCHMARK)
+
+| Date / patch | Device | LOW sustained 60 s | HIGH | Notes |
+|---|---|---|---|---|
+| 2026-11-15, P120 | Samsung A56, Claude app WebView, 384×717 portrait, dpr 2.8, 120 Hz | 60 fps at start, slowed later in the run | 26 fps | AUTO picked LOW correctly; the slowdown made the rows hard to read |
+| 2026-11-15, P121 | same | not measured | 25 fps → 11 fps after ~8 s | the fog buffer stalled JS for 68 ms; removed in P122 |
+| 2026-11-15, P122 | same | **60 fps in all six 10 s windows**, p95 ≤ 22 ms | 33 fps | drift check matched the first window; every LOW-minus row ran at 60 |
+
