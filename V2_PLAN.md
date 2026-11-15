@@ -99,6 +99,7 @@ The analysis below combines five reviews: gamer, UI/UX, story designer, mobile, 
 **B2. Stop the per-entity scans of the whole list.**
 - `Scavenger.js:28,45`, `Predator.js:26,60`, `Parasite.js:61`, `Enemy.js:268` and `Combat.js:393` each loop over every entity.
 - Add a simple uniform spatial grid, rebuilt once per sim step in `Game.processGameLogic`, for entity, orb and puddle queries.
+- **Closed without a grid (2026-11-15, measured).** With the Patch 110 live-entity cap the list never exceeds ~65, so these scans are ~4k distance checks a step. `qa/sim_cost_check.cjs` times `processGameLogic` alone under the soak scenario (all 5 bosses, floor 9): mean 0.38–0.45 ms with weapons on, 0.31 ms with the crowd held at the cap (`--no-weapons`), against ~6 ms for the whole loop. Render is the budget; a grid would save well under 0.1 ms and add a second source of truth for positions. Revisit only if the cap is raised or D4 adds a type that queries neighbours every step.
 
 **B3. Fix the `drawGlow` cache leak.**
 - `Renderer.js:240`: quantize alpha into about 16 steps. The tutorial cue at :1813 currently creates a new 64 KB canvas almost every frame.

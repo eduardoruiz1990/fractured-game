@@ -16,6 +16,7 @@ node qa/sprite_cache_check.cjs     # sprite cache plateaus while the tutorial cu
 node qa/soak_check.cjs [--seconds 45] [--throttle 4] [--phone] [--floor 9]   # perf soak: all bosses + capped crowd; exits 1 on invariant breaks
 node qa/render_recovery_check.cjs   # injected render faults do not leak canvas state (Patch 113)
 node qa/highrefresh_check.cjs      # ~144 Hz rAF: idle frames skipped; boss banner ends with its freeze (Patch 114)
+node qa/sim_cost_check.cjs [--no-weapons]  # processGameLogic alone, soak scenario (B2 measurement)
 node qa/context_check.cjs          # portal feedback context: sent on change only, carries last error, no UA (Patch 119)
 ```
 
