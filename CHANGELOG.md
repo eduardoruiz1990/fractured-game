@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–108)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–119)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1389,6 +1389,108 @@ The Lucidity double-bank is fixed (see Known issues). The mid-floor Awaken scree
 SUSPENDED / Banked N**. The token door's copy now matches behaviour (tokens decrypt at
 run end whether you extract or break).
 
+### Phase B — stability and performance (Patches 109–119)
+
+Every number below comes from the `qa/` Playwright checks (headless Chromium, software
+canvas). Compare runs with each other, not with 16.7 ms. `qa/README.md` lists the checks
+and the soak baselines.
+
+**Patch 109 — the glow cache leak (B3).** `drawGlow` cached a 128×128 canvas keyed on
+colour **and alpha**. The tutorial's off-screen cue fades its alpha smoothly, so every
+first-time player minted a new 64 KB canvas nearly every frame and kept them all
+session. Measured: 185 entries and climbing before, a 21-entry plateau after. Glows are
+now baked at alpha 1 and drawn with `globalAlpha`, one sprite per colour. Every insert
+goes through `Renderer.cacheSprite()`, which caps the cache at 768 entries (evicting
+the oldest quarter) as a backstop.
+
+**Patch 110 — one live-enemy ceiling (B1).** The 60-enemy cap applied only in endless
+rooms with no boss alive. Boss fights kept adding a free enemy every 120 frames, and
+the Amalgamation added four per cycle, so bodies could pile into the hundreds. Now
+`Director.liveEntityCap` (default 60) gates `spawnWave` on every floor, boss fights
+included. It counts regular enemies only; bosses and Rorschach splits are never held.
+The Amalgamation's adds also check `hasRoomForEnemy()`. A held spawn spends no budget,
+so pressure is deferred, not lost.
+
+**Patch 111 — predator sprites, and the soak (B3 + G2 seed).** `qa/soak_check.cjs`
+runs a deliberate ceiling: floor 9, every weapon at level 5, all five bosses alive,
+the room at the cap, and the player immortal and walking. It exits non-zero on page
+errors, on regulars above the cap, and on a sprite cache thrashing toward 768. Never on
+slow frames. Its first run found the predator body sprite keyed on two pulse terms in
+half-unit buckets: about 340 sprites (~21 MB) after 30 s. Whole-unit buckets level the
+whole cache off near 300 entries.
+
+**Patch 112 — caps and culling (B4).**
+- `particleCap` 450: a burst that would overflow is trimmed.
+- `xpOrbSoftCap` 150: past it, a drop merges into one orb carrying the whole value.
+- `inkPuddleCap` 40: the oldest puddle is released.
+- `Renderer.updateCullRect`/`inView`: orbs, puddles and particles off screen are not
+  drawn.
+- `window.__fractured.loopMs` (dev only) gives a vsync-free loop CPU figure.
+
+**Patch 113 — renderer recovery (B5).** `drawGame`'s catch skipped every `restore()`
+between the throw and the frame's end, so one bad frame could leave `screen`
+compositing or a low `globalAlpha` in force. The screen then smeared to near-white.
+The catch now unwinds both contexts to base state and logs once per distinct message.
+`qa/render_recovery_check.cjs` injects 30 such faults.
+
+**Patch 114 — high-refresh screens (B6).**
+- The boss banner counted down per draw while the freeze it announces is 240 sim
+  steps. At ~125 Hz the banner ended at 2.2 s and the game stayed frozen until 4.0 s.
+- The banner, fog drift, afterimages, walk cycle and lean now advance by sim steps
+  (`Renderer.drawSteps()`).
+- `main.js` skips `drawGame` on frames with no sim step, except after a resize or a
+  `gameState` change.
+- Measured: 234 draws per 234 frames before; 126 draws per 252 frames after.
+
+**Patch 115 — quality tiers (B7).**
+- **Fog** was 30 live radial gradients per frame. It is now one cached sprite per fog
+  colour.
+- **Settings → Graphics Quality** offers AUTO (default), HIGH and LOW. LOW renders the
+  darkness mask at half resolution, draws 12 fog clouds instead of 30, skips film grain,
+  and lowers the Director caps to 45 enemies and 200 particles.
+- **AUTO** measures about 3 s of `PLAYING` after a 2 s warm-up and drops to LOW once if
+  the mean frame is over 25 ms. The choice persists; AUTO never steps back up on its own.
+- **Measured loop CPU:** HIGH 6.6 ms, LOW 3.6 ms.
+
+**Patch 116 — pool hygiene (B8).** Room transitions and `Game.init` replaced pooled
+arrays with fresh `[]`, so every room drained the pools. `Director.releaseRoomState` and
+`releaseAll` now return everything first. `ObjectPool.release` ignores an object
+already in its pool (`__inPool`).
+
+**Patch 117 — hot-path allocations (B9).**
+- `BOSS_TYPE_SET`/`isBossType()` (`data/Config.js`) replace eleven inline arrays built
+  per check.
+- HUD writes happen only when the live value differs.
+- Footsteps, boss static and breath share one 4 s noise buffer.
+- Sample SFX are capped at 24 voices, and player-critical sounds are never dropped.
+- Result: HIGH loop CPU went from 6.6 to 5.6 ms.
+
+**Patch 118 — audio size (B10).** Re-encoded to mono, with the same filenames:
+
+| File | Before | After |
+|---|---|---|
+| `menu_theme` | 2.0 MB | 1.0 MB (64 kbps, level-matched after the downmix) |
+| `game_drone` | 4.5 MB | 1.9 MB (48 kbps, still deferred until after load) |
+| `boss_intro` | 321 KB | 121 KB |
+
+`dist` went from 7.6 MB to 4.0 MB. The initial load (excluding the deferred drone) is
+~2.1 MB, under the plan's 2.5 MB target.
+
+**Patch 119 — portal feedback context (B11).** CrazyGames has no error-reporting API. Its
+documented diagnostics path is `SDK.game.setGameContext({...})`, which attaches data to
+player feedback reports. Those reach the developer by email and on the Developer Portal.
+- `PortalSDK.setGameContext()` flattens values to strings and no-ops off-portal.
+- `main.js syncPortalContext()` compares primitives each frame and sends a snapshot only
+  when something changes. The snapshot holds the screen, quality, floor, room, weapons,
+  Sanity %, error count, last error, and touch/pointer.
+- It never sends the user agent or any identifier.
+- Covered by `qa/context_check.cjs`.
+
+**B2 (spatial grid) — closed, not built.** `qa/sim_cost_check.cjs` times
+`processGameLogic` alone under the soak scenario. It costs 0.31–0.45 ms per step against
+~6 ms for the whole loop, because the Patch 110 cap bounds the list. A grid would save
+under 0.1 ms. See `V2_PLAN.md` B2 for when to revisit.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -1565,8 +1667,9 @@ run end whether you extract or break).
     so a pooled boss last used deep in the Recursion carries that aggression into a
     Cycle I fight. Same rule as `variant = null` and `strayTime`.
 33. **`CYCLE_VISUAL_CAP` is a MEMORY bound, and `CYCLE_GRADES` must stay a FIXED,
-    QUANTISED table.** `Renderer.spriteCache` has no eviction and
-    is never cleared, and `drawGlow` keys on `glow|${color}|${alpha}` while particle
+    QUANTISED table.** `Renderer.spriteCache` is never cleared (since Patch 109 it
+    evicts only as a backstop at 768 entries, and thrashing there costs a canvas per
+    draw), and `drawGlow` keys on `glow|${color}` while particle
     glows take their colour from `ent.color`. Any visual escalation that varies colour
     with depth must stay quantised and capped, or every cycle mints a permanent cache
     entry on exactly the devices that cannot afford it. `test_endless.js` walks 120
@@ -1584,6 +1687,25 @@ run end whether you extract or break).
     other two (Patch 52's rule). The `carriedState` avoidance is load-bearing: `Game.init`
     reads a non-null carry as "floor descent" and skips the C1/C2 capstone grants, which
     a fresh run must receive.
+36. **Every sprite-cache key must come from a small, fixed set of inputs (Patch 109/111).**
+    Never key on a continuously varying value: alpha, a timer, a raw position or an
+    un-bucketed pulse. Bake at a fixed value and vary at draw time (`globalAlpha`, a
+    transform), or quantise into a few buckets. Insert only through `cacheSprite()`.
+    `qa/sprite_cache_check.cjs` and the soak's cache invariant are the guards.
+37. **Every enemy source goes through the live cap (Patch 110).** A new spawner (an
+    elite wave, a room event, a boss's adds) must ask `director.hasRoomForEnemy()` or
+    go through `spawnWave`. Bosses are the only exemption.
+38. **Pooled arrays are emptied with `Director.releaseArrays`/`releaseRoomState`/
+    `releaseAll`, never by assigning `[]` (Patch 116).** A new pooled state array must
+    be added to those key lists in the same patch.
+39. **Render-side timers advance by `renderer.drawSteps()`, never per draw (Patch
+    114).** Draw frequency is the display's refresh rate, not 60. Anything that counts
+    down, drifts or fades in `Renderer` must use sim steps, and anything gameplay-
+    relevant belongs in the sim.
+40. **Nothing per frame in `syncPortalContext` beyond primitive compares (Patch 119),
+    and nothing identifying in the context.** The payload is built only when a compared
+    value changes. Add a field to the compare list only if it changes a few times per
+    run.
 
 ---
 
@@ -1629,13 +1751,19 @@ run end whether you extract or break).
 
 | File | Count | Covers |
 |---|---|---|
-| `test_bosses.js` | 34 | boss dispatch, `activeBoss` on spawn frame, entity `.phase` pooling, predator feeding cap, **spawn ring clears the view on 5 viewports + desktop ring unchanged** |
+| `test_bosses.js` | 67 | boss dispatch, `activeBoss` on spawn frame, entity `.phase` pooling, predator feeding cap, **spawn ring clears the view on 5 viewports + desktop ring unchanged** |
 | `test_content.js` | 180 | synergy/token/set/curse data, XP curve, audio asset paths, boon pool, `PLAYER_WEAPON_IDS` vs real loadout, cone falloff curves + light-recoil coverage |
 | `test_synapse.js` | 255 | Synapse Tree costs, gates, resolver |
 | `test_leash.js` | 15 | off-screen dead zone, recall lands on screen, boss exclusion, tutorial cases, **desktop viewport derivation unchanged by the live-zoom refactor** |
 | `test_tutorial.js` | 86 | **new** — step gates and overrides, every step's timeout, the instruction hold and its cap, device-appropriate copy, copy length ceiling, degenerate state |
 | `test_viewport.js` | 42 | **new** — the desktop/portrait split in both directions, desktop `updateZoom` bit-identical to pre-Patch-71, band and camera geometry, zero-sized canvas |
 | `test_endless.js` | 158 | **new (Patch 93)** — floors 1-5 bit-identical (boss dispatch, palette index, variant table, every multiplier `=== 1`), the boss rotation, `cadence` identity + min floors, the run-completion latch across a floor boundary, the direct-launch unlock gate and draft maths, and **the bounded colour set walked over 120 floors against the real Director** |
+
+**Browser checks (`qa/`, V2):** Playwright scripts against the Vite dev server. They
+need `npx vite --port 5199 --strictPort` running, and `qa/README.md` lists them. They
+cover what the Node suites cannot: the ads flow against an SDK mock, dialogs, focus and
+keys, settings migration, the sprite cache, render recovery, high refresh, the perf
+soak, sim cost and the portal context.
 
 `test_director.js` and `test_save.js` remain exploratory (they print, they don't
 assert). All six assertion suites exit non-zero on failure and should be run after
