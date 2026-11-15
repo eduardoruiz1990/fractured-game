@@ -36,6 +36,8 @@ There is no test runner configured (no `test` script, no framework installed). T
 
 `test_director.js` and `test_save.js` are exploratory only (they print, they don't assert).
 
+**Browser checks (`qa/`, V2):** Playwright scripts that drive the real game against the dev server (`npx vite --port 5199 --strictPort`). They cover ads against an SDK mock, dialogs, focus and keys, the sprite cache, render recovery, high refresh, the portal context, and a perf soak (`qa/soak_check.cjs`) that fails on invariant breaks. See `qa/README.md`. Run the relevant ones after touching `main.js` flows, `PortalSDK`, `Renderer` caching or Director caps. Keep clauses 36–40 in `CHANGELOG.md` cover the V2 performance guards.
+
 Anything *visual* cannot be covered by these — `Renderer` needs a real canvas. Use the in-game **VISUAL TEST BENCH** instead: press `0` at the title/hub to reveal the dev panel (now also visible during `PLAYING`), then use SPAWN ONE OF EACH ENEMY / SPAWN ALL 5 BOSSES, FREEZE ENEMY AI (sets `state.devFreezeEntities`, which halts `entity.update()` and further spawning in `Game.processGameLogic()` while rendering keeps animating), and the scenario dropdown (IDLE / TELEGRAPH / ATTACK / HIT FLASH) to pin every entity into a state that would otherwise tick past in well under a second. `patch_game.cjs` is a one-off migration script (regex-based source patcher), not part of any workflow — don't run it against current source without reading it first, it assumes an older shape of `Game.js`.
 
 ## Change history

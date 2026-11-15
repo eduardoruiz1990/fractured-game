@@ -1,6 +1,18 @@
 // src/core/AudioEngine.js
 // Hybrid Audio Manager: Dynamic Routing, Muffling, and Procedural Heartbeat.
 
+// Patch 117: length of the shared noise bed (see _sharedNoise). >= the longest
+// noise-based sound (boss_static, 4 s).
+const SHARED_NOISE_SECONDS = 4.0;
+
+// Patch 117 (V2 plan B9): ceiling on simultaneously playing sample SFX. There was only a
+// 50 ms per-key throttle, so a crowded boss fight — many different hurt/hit keys at
+// once — could stack dozens of overlapping voices, each a source + gain node, which is
+// muddy and costs real CPU on phones. Past the ceiling, ordinary SFX are dropped;
+// sounds that carry information about the PLAYER always play.
+const MAX_SFX_VOICES = 24;
+const PRIORITY_SFX = new Set(['player_hurt', 'levelup', 'boss_intro', 'ui_click', 'ui_hover', 'ui_upgrade', 'dash', 'polaroid']);
+
 export class AudioEngine {
     constructor() {
         this.isInitialized = false;
@@ -76,7 +88,7 @@ export class AudioEngine {
         };
 
         // Loaded in the background AFTER the loading window closes — see
-        // loadDeferredAssets(). game_drone.mp3 is ~4.3MB, over half the entire
+        // loadDeferredAssets(). game_drone.mp3 is ~1.9MB (Patch 118 re-encode), the largest file in the
         // download, and is not audible until a run starts.
         this.deferredAssetUrls = {
             game_drone: "sounds/game_drone.mp3"
@@ -453,6 +465,8 @@ export class AudioEngine {
         }
 
         if (this.buffers[key]) {
+            // Patch 117: voice ceiling (see MAX_SFX_VOICES).
+            if ((this._activeVoices || 0) >= MAX_SFX_VOICES && !PRIORITY_SFX.has(key)) return;
             try {
                 const source = this.audioCtx.createBufferSource();
                 source.buffer = this.buffers[key];
@@ -467,6 +481,9 @@ export class AudioEngine {
                 gainNode.gain.value = Math.max(0, Math.min(finalVolume, 2.0));
                 source.connect(gainNode).connect(this._sfxBus());
                 source.start();
+                // Counted only once start() succeeded, so a throw cannot leak a voice.
+                this._activeVoices = (this._activeVoices || 0) + 1;
+                source.onended = () => { this._activeVoices = Math.max(0, (this._activeVoices || 1) - 1); };
             } catch (e) { console.warn(`Failed to play buffer ${key}:`, e); }
         } else {
             this.playProceduralSFX(key, finalVolume);
@@ -490,13 +507,11 @@ export class AudioEngine {
         this.lastFootstepTime = now;
 
         try {
-            const bufferSize = this.audioCtx.sampleRate * 0.1; 
-            const noiseBuffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
-            const output = noiseBuffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
-
+            // Patch 117: a 0.1 s window of the shared noise bed at a random offset, not a
+            // freshly generated buffer per step (an allocation + 4800 Math.random() calls,
+            // several times a second while walking).
             const noise = this.audioCtx.createBufferSource();
-            noise.buffer = noiseBuffer;
+            noise.buffer = this._sharedNoise();
 
             const filter = this.audioCtx.createBiquadFilter();
             filter.type = 'lowpass';
@@ -507,8 +522,24 @@ export class AudioEngine {
             gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
 
             noise.connect(filter).connect(gain).connect(this._sfxBus());
-            noise.start(now);
+            noise.start(now, Math.random() * (SHARED_NOISE_SECONDS - 0.2), 0.1);
         } catch(e) {}
+    }
+
+    /**
+     * Patch 117 (V2 plan B9): one white-noise buffer, generated once per AudioContext and
+     * shared by every noise-based sound (footsteps, boss static, breath). Each sound
+     * plays a window of it from a random offset, so repeats still differ.
+     */
+    _sharedNoise() {
+        if (this._noiseBuf && this._noiseBufCtx === this.audioCtx) return this._noiseBuf;
+        const len = Math.floor(this.audioCtx.sampleRate * SHARED_NOISE_SECONDS);
+        const buf = this.audioCtx.createBuffer(1, len, this.audioCtx.sampleRate);
+        const out = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) out[i] = Math.random() * 2 - 1;
+        this._noiseBuf = buf;
+        this._noiseBufCtx = this.audioCtx;
+        return buf;
     }
 
     stop() {
@@ -695,11 +726,7 @@ export class AudioEngine {
             osc.disconnect(); osc.connect(filter).connect(gain); osc.start(now); osc.stop(now + 2.0);
         }
         else if (key === 'boss_static') {
-            const bufferSize = this.audioCtx.sampleRate * 4.0; 
-            const noiseBuffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
-            const output = noiseBuffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
-            const noise = this.audioCtx.createBufferSource(); noise.buffer = noiseBuffer;
+            const noise = this.audioCtx.createBufferSource(); noise.buffer = this._sharedNoise();   // Patch 117
 
             let filter = this.audioCtx.createBiquadFilter(); filter.type = 'highpass'; filter.frequency.setValueAtTime(1000, now);
             let noiseGain = this.audioCtx.createGain(); 
@@ -707,7 +734,7 @@ export class AudioEngine {
             noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 4.0);
 
             noise.connect(filter).connect(noiseGain).connect(targetGainNode);
-            noise.start(now);
+            noise.start(now, 0, 4.0);
         }
         else if (key === 'heartbeat') {
             osc.type = 'sine'; osc.frequency.value = 50;
@@ -780,11 +807,8 @@ export class AudioEngine {
             osc.start(now); osc.stop(now + 0.1);
         }
         else if (key === 'player_breath') {
-            const bufferSize = this.audioCtx.sampleRate * 0.8; 
-            const noiseBuffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
-            const output = noiseBuffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
-            const noise = this.audioCtx.createBufferSource(); noise.buffer = noiseBuffer;
+            const noise = this.audioCtx.createBufferSource(); noise.buffer = this._sharedNoise();   // Patch 117
+            const breathOffset = Math.random() * (SHARED_NOISE_SECONDS - 1.0);
 
             let filter = this.audioCtx.createBiquadFilter(); 
             filter.type = 'bandpass'; 
@@ -797,7 +821,7 @@ export class AudioEngine {
             noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
 
             noise.connect(filter).connect(noiseGain).connect(targetGainNode); 
-            noise.start(now);
+            noise.start(now, breathOffset, 0.8);
         }
     }
 }

@@ -12,7 +12,7 @@ import { Architect } from '../entities/Architect.js';
 import { errorLog } from '../core/ErrorLog.js';
 // The spawn clamp is derived from the arena's void radius rather than repeated as a
 // literal — see the note on ARENA_VOID_RADIUS in Config.js for why the two must agree.
-import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE } from '../data/Config.js';
+import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE, isBossType } from '../data/Config.js';
 // Patch 93/94 — the boss rotation past floor 5, and the escalation curves that make
 // endless floors mean something. See src/core/Endless.js.
 import {
@@ -21,7 +21,7 @@ import {
 } from '../core/Endless.js';
 
 /** Boss types, in one place — this list was previously repeated inline four times. */
-const BOSS_TYPES = ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'];
+// BOSS_TYPES: replaced by isBossType() from data/Config.js (Patch 117).
 
 /**
  * Patch 94 — the live-entity ceiling, endless only.
@@ -32,6 +32,32 @@ const BOSS_TYPES = ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITEC
  * points without ever having 200 bodies alive at once on a phone.
  */
 const ENDLESS_MAX_LIVE_ENTITIES = 60;
+
+// Patch 110 (V2 plan B1, QA P0): the ceiling above only applied in endless rooms with
+// NO boss alive. Boss fights are exactly where bodies pile up — spawnWave keeps adding
+// one regular enemy every 120 frames without spending budget, and the Amalgamation
+// adds four per cycle, faster with depth — and several enemy updates scan the whole
+// entity list per entity, so the cost grows with the square of the crowd. The ceiling
+// now applies on EVERY floor and during boss fights, counting regular enemies only
+// (bosses and Rorschach's splits are never held). `liveEntityCap` is an instance field
+// so the quality tier (B7) can lower it on weak devices.
+//
+// Floors 1-5 outside boss fights top out around 55 budget points and spawn over
+// time, so in normal play they do not reach 60 and behave as before; when a room
+// does, the spawn is deferred, not dropped (budget is only spent on a real spawn).
+const DEFAULT_LIVE_ENTITY_CAP = ENDLESS_MAX_LIVE_ENTITIES;
+
+// Patch 112 (V2 plan B4): ceilings for the high-count effect arrays. All three were
+// unbounded — the soak saw 633 live particles — and each costs per frame to update
+// and draw (orbs are also scanned by every vacuuming Scavenger, puddles by every
+// entity). Instance fields, so the quality tier (B7) can lower them.
+//  - particles: purely cosmetic; a burst that would overflow is trimmed.
+//  - XP orbs: past the soft cap a drop arrives as ONE orb carrying the whole amount,
+//    so no XP or Lucidity is ever lost (collectXP adds xp.value to both).
+//  - ink puddles: past the cap the OLDEST puddle is retired (released to its pool).
+const DEFAULT_PARTICLE_CAP = 450;
+const DEFAULT_XP_ORB_SOFT_CAP = 150;
+const DEFAULT_INK_PUDDLE_CAP = 40;
 
 /**
  * Patch 96 — per-biome enemy tints, [scavenger, everything else], indexed by the
@@ -65,6 +91,10 @@ function recursionTint(hex, floor) {
 export class Director {
     constructor(game) {
         this.game = game;
+        this.liveEntityCap = DEFAULT_LIVE_ENTITY_CAP;   // Patch 110
+        this.particleCap = DEFAULT_PARTICLE_CAP;        // Patch 112
+        this.xpOrbSoftCap = DEFAULT_XP_ORB_SOFT_CAP;    // Patch 112
+        this.inkPuddleCap = DEFAULT_INK_PUDDLE_CAP;     // Patch 112
         
         this.pools = {
             scavenger: new ObjectPool(() => new Scavenger(), 100),
@@ -159,7 +189,7 @@ export class Director {
             // 240-frame hitStop that early-returns out of update() before it can catch
             // up — leaving activeBoss null for the whole banner, which made
             // drawBossAnnouncement() fall back to 'BOSS' for every floor.
-            state.activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type)) || null;
+            state.activeBoss = state.entities.find(e => isBossType(e.type)) || null;
 
 
             try {
@@ -330,11 +360,11 @@ export class Director {
             // read: the pressure is sustained instead of arriving all at once.
             //
             // Budget is not consumed while held, so nothing is lost — only deferred.
-            const liveEnemies = state.entities.length;
-            const atLiveCeiling = isEndless(state.floor) && !bossAlive &&
-                                  liveEnemies >= ENDLESS_MAX_LIVE_ENTITIES;
-
-            if (!atLiveCeiling && state.budgetTimer % spawnRate === 0) {
+            // Patch 110: counted only on the frames a spawn would actually fire, and over
+            // regular enemies on every floor (see DEFAULT_LIVE_ENTITY_CAP).
+            if (state.budgetTimer % spawnRate === 0 && !this.hasRoomForEnemy()) {
+                // Held: no spawn, no budget spent this tick.
+            } else if (state.budgetTimer % spawnRate === 0) {
                 // Determine spawn pools by biome (Floor)
                 let spawnType = 'SCAVENGER';
                 let roll = Math.random();
@@ -480,7 +510,7 @@ export class Director {
     applyEndlessScaling(ent, state) {
         if (!ent || !isEndless(state.floor)) return;
 
-        const isBoss = BOSS_TYPES.includes(ent.type);
+        const isBoss = isBossType(ent.type);
         const s = isBoss ? bossScaling(state.floor) : enemyScaling(state.floor);
 
         if (Number.isFinite(ent.hp)) {
@@ -510,6 +540,72 @@ export class Director {
         // Read by each boss's update() through Endless.cadence(). Set on every entity
         // (harmlessly 1 for non-bosses) so nothing has to ask whether the field exists.
         ent.aggression = isBoss ? s.aggression : 1;
+    }
+
+    /**
+     * Patch 116 (V2 plan B8): return every pooled object in a run's arrays to its pool
+     * and empty the arrays in place. Room transitions and Game.init used to replace the
+     * arrays with fresh [] literals, dropping everything in them on the floor: no leak
+     * (ObjectPool.get allocates when empty) but the pools drained a little every room,
+     * and the GC churn they exist to prevent came back. A CHANGELOG known issue since
+     * the Basic Launch work.
+     *
+     * Entities go to the pool named by their type; particles only when they carry the
+     * `pooled` provenance flag (footstep dust is a plain literal, Patch 39).
+     */
+    releaseArrays(state, keys) {
+        if (!state) return;
+        const P = this.pools;
+        const poolFor = {
+            projectiles: P.projectile, xpDrops: P.xpDrop, tokenDrops: P.tokenDrop,
+            inkPuddles: P.inkPuddle, safeZones: P.safeZone, damageTexts: P.damageText,
+            meleeSwings: P.meleeSwing
+        };
+        for (const key of keys) {
+            const arr = state[key];
+            if (!Array.isArray(arr)) continue;
+            for (let i = 0; i < arr.length; i++) {
+                const item = arr[i];
+                if (!item) continue;
+                item.active = false;
+                if (key === 'entities') {
+                    const pool = P[String(item.type || '').toLowerCase()];
+                    if (pool) pool.release(item);
+                } else if (key === 'particles') {
+                    if (item.pooled) P.particle.release(item);
+                } else if (poolFor[key]) {
+                    poolFor[key].release(item);
+                }
+            }
+            arr.length = 0;
+        }
+    }
+
+    /** Patch 116: what a room transition clears (particles and texts play out). */
+    releaseRoomState(state) {
+        this.releaseArrays(state, ['entities', 'projectiles', 'xpDrops', 'tokenDrops', 'inkPuddles', 'safeZones']);
+    }
+
+    /** Patch 116: everything pooled — used when Game.init discards a whole run state. */
+    releaseAll(state) {
+        this.releaseArrays(state, ['entities', 'projectiles', 'particles', 'xpDrops', 'tokenDrops',
+                                   'damageTexts', 'safeZones', 'inkPuddles', 'meleeSwings']);
+    }
+
+    /** Patch 110: regular (non-boss) enemies currently alive. */
+    liveRegularEnemyCount() {
+        const ents = this.game.state.entities;
+        let n = 0;
+        for (let i = 0; i < ents.length; i++) {
+            if (!isBossType(ents[i].type)) n++;
+        }
+        return n;
+    }
+
+    /** Patch 110: whether one more regular enemy may spawn (spawnWave, boss adds). */
+    hasRoomForEnemy() {
+        const cap = Number.isFinite(this.liveEntityCap) ? this.liveEntityCap : DEFAULT_LIVE_ENTITY_CAP;
+        return this.liveRegularEnemyCount() < cap;
     }
 
     spawnEntity(type, canvasWidth, canvasHeight, forceX = null, forceY = null, generation = 1, minSpawnRadius = 0) {
@@ -653,7 +749,7 @@ export class Director {
             // Patch 94: before the ELITE/variant branch, so those compound onto it.
             this.applyEndlessScaling(ent, state);
 
-            if (!BOSS_TYPES.includes(ent.type)) {
+            if (!isBossType(ent.type)) {
                 // Patch 96: the same five biome tints, indexed by the cycled palette
                 // rather than by an if/else whose tail was `floor >= 5`, and then
                 // darkened per cycle so a Cycle III scavenger reads as a corrupted
@@ -708,6 +804,18 @@ export class Director {
 
     spawnXP(x, y, amount, isMassive = false) {
         const state = this.game.state;
+        // Patch 112: over the soft cap, one orb carries the whole drop. Same total XP and
+        // Lucidity (collectXP credits xp.value to both); a Scavenger vacuuming it gets
+        // one orb's growth instead of several, which only makes a crowded room easier.
+        if (amount > 1 && state.xpDrops.length + amount > this.xpOrbSoftCap) {
+            const xp = this.pools.xpDrop.get();
+            xp.x = x; xp.y = y;
+            xp.value = (isMassive ? 25 : 1) * amount;
+            xp.collected = false;
+            xp.active = true;
+            state.xpDrops.push(xp);
+            return;
+        }
         for(let i=0; i<amount; i++) {
             let xp = this.pools.xpDrop.get();
             xp.x = x + (Math.random() * (isMassive ? 100 : 20) - (isMassive ? 50 : 10));
@@ -738,6 +846,10 @@ export class Director {
     // would only create dead code. All the added variety comes from here.
     spawnParticles(x, y, color, count) {
         const state = this.game.state;
+        // Patch 112: trim a burst that would overflow the ceiling.
+        const room = this.particleCap - state.particles.length;
+        if (room <= 0) return;
+        if (count > room) count = room;
         for(let i=0; i<count; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = Math.random() * 3 + 1;
@@ -775,6 +887,12 @@ export class Director {
     }
 
     spawnInkPuddle(x, y, radius, damage) {
+        // Patch 112: retire the oldest puddle (released, not just dropped) at the cap.
+        const puddles = this.game.state.inkPuddles;
+        while (puddles.length >= this.inkPuddleCap) {
+            const old = puddles.shift();
+            if (old) { old.active = false; this.pools.inkPuddle.release(old); }
+        }
         let p = this.pools.inkPuddle.get();
         p.x = x; p.y = y; p.radius = radius; p.damage = damage; p.life = 300; 
         p.active = true;

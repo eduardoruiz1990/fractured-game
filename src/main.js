@@ -8,6 +8,7 @@ import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
 import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies } from './data/Manifestations.js';
 import { portalSDK } from './systems/PortalSDK.js';
+import { showConfirm } from './ui/Dialog.js';
 import { errorLog } from './core/ErrorLog.js';
 import { Tutorial } from './systems/Tutorial.js';
 import { isPortraitLayout } from './core/Layout.js';
@@ -18,7 +19,7 @@ import {
     ENDLESS_START_FLOOR, endlessDraftXP, isRecursionUnlocked,
     cycleLabel, isEndless
 } from './core/Endless.js';
-import { getXPRequiredForLevel } from './data/Config.js';
+import { getXPRequiredForLevel, BOSS_TYPE_SET } from './data/Config.js';
 
 // Patch 50: installed before ANYTHING else in this module runs, including the
 // canvas lookup below. A throw during boot is invisible to the log unless the
@@ -212,6 +213,45 @@ function syncPortalGameplayState() {
     else portalSDK.gameplayStop();
 }
 
+// Patch 119 (V2 plan B11): keeps the portal's feedback-report context current (see
+// PortalSDK.setGameContext). Observed once per frame like the gameplay events above,
+// but the comparison is on primitives and the payload is only built when one of
+// them moved — screen, floor, room, quality tier or the error count — which is a
+// handful of times per run, never per frame. Weapons are read at those moments, and
+// a level-up always passes through LEVEL_UP and back, so they stay current too.
+// Nothing identifying is sent: the coarse device class, never the user agent.
+const portalCtx = { state: '', floor: -1, room: -1, tier: '', errors: -1 };
+function syncPortalContext() {
+    if (!portalSDK.available) return;
+    const st = (game && game.state) || null;
+    const floor = st ? (st.floor | 0) : 0;
+    const room = st ? (st.roomNumber | 0) : 0;
+    const tier = currentQualityTier();
+    const errCount = errorLog.entries.length;   // the live array: no per-frame copy
+    if (portalCtx.state === gameState && portalCtx.floor === floor && portalCtx.room === room &&
+        portalCtx.tier === tier && portalCtx.errors === errCount) return;
+    portalCtx.state = gameState; portalCtx.floor = floor; portalCtx.room = room;
+    portalCtx.tier = tier; portalCtx.errors = errCount;
+    const errs = errorLog.getEntries();
+
+    const ctx = { screen: gameState, quality: tier, errors: errs.length };
+    if (st && gameState !== 'TITLE' && gameState !== 'MENU') {
+        ctx.floor = floor;
+        ctx.room = room;
+        const w = (st.player && st.player.weapons) || {};
+        ctx.weapons = Object.keys(w).filter(k => w[k] && w[k].level > 0).map(k => k + w[k].level).join(',');
+        if (st.player && Number.isFinite(st.player.maxHp) && st.player.maxHp > 0 && Number.isFinite(st.sanity)) {
+            ctx.sanityPct = Math.round(100 * st.sanity / st.player.maxHp);
+        }
+    }
+    const last = errs[errs.length - 1];
+    if (last) ctx.lastError = `${last.src}: ${last.msg}${last.n > 1 ? ' (x' + last.n + ')' : ''}`;
+    try {
+        ctx.device = (coarsePointerHint || (inputManager && inputManager.isTouchDevice)) ? 'touch' : 'pointer';
+    } catch (e) { /* inputManager not built yet */ }
+    portalSDK.setGameContext(ctx);
+}
+
 /**
  * Shows a midgame ad (when a portal offers one) and then runs `next` (Patch 47b).
  *
@@ -226,14 +266,31 @@ function syncPortalGameplayState() {
  * authoritative — otherwise it would still believe gameplay was running and would
  * never re-emit `gameplayStart`.
  */
-function showAdThen(next) {
+// Patch 104 (V2 plan A3, decided 2026-11-15): at most ONE midgame ad per 5 minutes,
+// stricter than the SDK's own 3-minute floor. The clock starts at page load, so a new
+// player's first five minutes are ad-free — the window the conversion metric judges.
+// Any ad (midgame or rewarded) resets it, so a player who just chose to watch a
+// rewarded ad is never handed a midgame one straight after.
+const MIDGAME_MIN_INTERVAL_MS = 5 * 60 * 1000;
+let lastAdAt = (typeof performance !== 'undefined') ? performance.now() : 0;
+function noteAdShown() { lastAdAt = performance.now(); }
+
+function showAdThen(next, { allowAd = true } = {}) {
+    // Inside the cooldown (or the caller ruled an ad out): behave exactly like the
+    // no-portal path — run the transition now, then let gameplay events re-sync.
+    if (!allowAd || performance.now() - lastAdAt < MIDGAME_MIN_INTERVAL_MS) {
+        try { next(); } catch (e) { console.error("Post-ad transition failed: " + e.message); }
+        syncPortalGameplayState();
+        return;
+    }
+
     if (portalLastGameplay) {
         portalLastGameplay = false;
         portalSDK.gameplayStop();
     }
 
     portalSDK.showMidgameAd({
-        onStart: () => { if (audioEngine) audioEngine.setMuted('ad', true); },
+        onStart: () => { noteAdShown(); if (audioEngine) audioEngine.setMuted('ad', true); },
         onComplete: () => {
             if (audioEngine) audioEngine.setMuted('ad', false);
             try {
@@ -248,6 +305,182 @@ function showAdThen(next) {
     });
 }
 
+// --- HUD WRITES ONLY ON CHANGE (Patch 117, V2 plan B9) ------------------------------
+//
+// The HUD block in gameLoop rewrote ~25 inline styles, several innerTexts and #score's
+// innerHTML every frame, each an invalidation the browser then had to process, and
+// the tutorial banner READ innerText per frame (a forced layout). These compare
+// against the element's LIVE value, not a private cache, so a write made elsewhere
+// (onDeath zeroing the glitch overlay, the pause menu) is never masked. Inline style
+// and textContent reads do not force layout. A value the browser normalises on read
+// (a hex colour read back as rgb()) simply writes as before — never worse than it was.
+function hudStyle(el, prop, value) {
+    if (!el) return;
+    const v = String(value);
+    if (el.style[prop] !== v) el.style[prop] = v;
+}
+function hudText(el, value) {
+    if (!el) return;
+    const v = String(value);
+    if (el.textContent !== v) el.textContent = v;
+}
+let lastScoreHtml = null;
+function hudHtml(el, html) {
+    if (!el || html === lastScoreHtml) return;   // #score is written only from here
+    lastScoreHtml = html;
+    el.innerHTML = html;
+}
+function hudPct(ratio) {
+    const r = Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : 0;
+    return (Math.round(r * 1000) / 10) + '%';
+}
+
+// --- REWARDED ADS ON THE DEATH SCREEN (Patch 104, V2 plan A3) ---------------------
+//
+// CrazyGames rules this is built to: reward only on adFinished; never a rewarded
+// button on an active gameplay screen (so only here, on DEAD); no chaining (ONE
+// rewarded ad per death — a success hides both offers); and never a midgame ad plus
+// a "watch to keep playing" offer between the same two levels (a revived run gets no
+// end-of-run midgame — see btn-restart). Off-portal and under Basic Launch
+// (adsDisabled) canOfferRewarded() is false and the whole block stays hidden.
+//
+// Revive undoes the death SETTLEMENT, not just the screen: onDeath has already banked
+// 50% of the run's Lucidity, so that payout is taken back (removeLucidity) and the run
+// banks normally at its real end. Tokens already decrypted stay decrypted and
+// runInventory stays empty, so nothing is granted twice. The 'deaths' stat stands —
+// the player did break.
+
+/** Run-scoped death bookkeeping, written by onDeath for the reward handlers. */
+let deathSettlement = null;   // { recovered, lost, floor }
+
+function setDeathRewardNote(text) {
+    const note = document.getElementById('death-rewarded-note');
+    if (note) note.innerText = text || '';
+}
+
+function setupDeathRewards() {
+    const box = document.getElementById('death-rewarded');
+    const reviveBtn = document.getElementById('btn-revive');
+    const recoverBtn = document.getElementById('btn-recover-lucidity');
+    if (!box || !reviveBtn || !recoverBtn) return;
+
+    const canRevive = !(game.state && game.state.reviveUsed);
+    const lost = deathSettlement ? deathSettlement.lost : 0;
+    const canRecover = lost > 0;
+
+    if (!portalSDK.canOfferRewarded() || (!canRevive && !canRecover)) {
+        box.style.display = 'none';
+        return;
+    }
+    reviveBtn.style.display = canRevive ? '' : 'none';
+    recoverBtn.style.display = canRecover ? '' : 'none';
+    recoverBtn.innerText = `RECOVER ${lost} LUCIDITY (AD)`;
+    reviveBtn.disabled = false;
+    recoverBtn.disabled = false;
+    setDeathRewardNote('');
+    box.style.display = 'flex';
+}
+
+function runDeathReward(kind) {
+    const box = document.getElementById('death-rewarded');
+    const reviveBtn = document.getElementById('btn-revive');
+    const recoverBtn = document.getElementById('btn-recover-lucidity');
+    const restartBtn = document.getElementById('btn-restart');
+    if (gameState !== 'DEAD' || !deathSettlement) return;
+    // Lock every exit while the ad request is in flight, so a double tap cannot
+    // request twice and RECONSTRUCT cannot tear the run down under a pending revive.
+    [reviveBtn, recoverBtn, restartBtn].forEach(b => { if (b) b.disabled = true; });
+
+    portalSDK.showRewardedAd({
+        onStart: () => { noteAdShown(); if (audioEngine) audioEngine.setMuted('ad', true); },
+        onRewarded: () => {
+            if (kind === 'revive') performRevive();
+            else performLucidityRecovery();
+        },
+        onComplete: ({ rewarded, errorCode }) => {
+            if (audioEngine) audioEngine.setMuted('ad', false);
+            if (restartBtn) restartBtn.disabled = false;
+            if (rewarded) {
+                noteAdShown();
+                if (box) box.style.display = 'none';   // one rewarded ad per death
+                return;
+            }
+            // Not rewarded: say so plainly, and offer again only if it can work.
+            setDeathRewardNote(errorCode === 'unfilled' || errorCode === 'adCooldown'
+                ? 'No transmission available right now. Try again in a moment.'
+                : 'Transmission unavailable.');
+            if (!portalSDK.canOfferRewarded()) {
+                if (box) box.style.display = 'none';
+            } else {
+                if (reviveBtn) reviveBtn.disabled = false;
+                if (recoverBtn) recoverBtn.disabled = false;
+            }
+        }
+    });
+}
+
+function performLucidityRecovery() {
+    if (!deathSettlement || deathSettlement.lost <= 0) return;
+    saveManager.addLucidity(deathSettlement.lost);
+    const stats = document.getElementById('final-stats');
+    if (stats) {
+        stats.insertAdjacentHTML('afterbegin',
+            `<span style="color:var(--ui-gold);">Recovered <strong>${deathSettlement.lost}</strong> Lucidity from the Void. ` +
+            `Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong></span><br><br>`);
+    }
+    deathSettlement.lost = 0;
+}
+
+function performRevive() {
+    if (!game.state || !deathSettlement) return;
+    saveManager.removeLucidity(deathSettlement.recovered);
+    deathSettlement = null;
+
+    const st = game.state;
+    st.reviveUsed = true;
+    const maxHp = Number.isFinite(st.player.maxHp) ? st.player.maxHp : 100;
+    st.sanity = Math.ceil(maxHp * 0.5);
+    // 3 s of invulnerability (the existing i-frame mechanism) and a shove that clears
+    // the space around the player; bosses hold their ground. Knockback decays x0.8 per
+    // frame in Enemy.update, so a force of 40 travels about 200px.
+    st.player.iframes = Math.max(st.player.iframes || 0, 180);
+    for (const ent of st.entities) {
+        if (!ent || BOSS_TYPE_SET.has(ent.type)) continue;
+        const dx = ent.x - st.player.x, dy = ent.y - st.player.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 320) continue;
+        const d = Math.max(dist, 0.001);
+        ent.knockbackX = (ent.knockbackX || 0) + (dx / d) * 40;
+        ent.knockbackY = (ent.knockbackY || 0) + (dy / d) * 40;
+    }
+
+    document.getElementById('death-screen').style.display = 'none';
+    document.getElementById('ui-layer').style.display = 'flex';
+    if (inputManager && typeof inputManager.revealTouchControls === 'function') {
+        inputManager.revealTouchControls();
+    }
+    if (audioEngine) audioEngine.startGameDrone();   // onDeath faded the master out
+    pacing.reset();
+    lastBreakdown = false;
+    gameState = 'PLAYING';
+    syncPortalGameplayState();   // gameplayStart on revive, as the SDK docs list
+}
+
+// BOSS_TYPE_SET now lives in data/Config.js (Patch 117).
+
+// happytime() (Patch 104): CrazyGames asks for it "sparingly", on achievements such
+// as beating a boss — not on ordinary level completion. We fire it when a boss falls
+// on the player's deepest floor so far, once per floor per session, so farming floor
+// 1 does not spam it.
+const happyFloorsThisSession = new Set();
+function maybeHappytimeForBossKill(floor) {
+    if (!saveManager || !Number.isFinite(floor)) return;
+    if (floor < (saveManager.metaState.maxFloorReached || 1)) return;
+    if (happyFloorsThisSession.has(floor)) return;
+    happyFloorsThisSession.add(floor);
+    portalSDK.happytime();
+}
+
 // --- NEW: GLOBAL ACCESSIBILITY SETTINGS ---
 //
 // musicVolume / sfxVolume (Patch 80) default to 1 — the exact pre-patch mix. This
@@ -255,12 +488,13 @@ function showAdThen(next) {
 // what they heard yesterday, and a saved settings blob written before this patch
 // simply lacks the keys, so the spread below leaves the defaults in place.
 //
-// NOTE: this store is RAW localStorage, unlike the suspended-run storage below,
-// which goes through portalSDK for the blocked-iframe reasons documented there.
-// It is at least try/caught in both directions, so a SecurityError degrades to
-// default settings rather than killing boot. Left as-is deliberately — migrating
-// it is a separate change with its own save-compatibility question.
-let gameSettings = { screenShake: true, photosensitive: false, musicVolume: 1, sfxVolume: 1 };
+// Patch 106: this import-time read is raw localStorage because it runs before
+// portalSDK.init(); reloadSettingsFromPortal() re-reads through the portal once init
+// has resolved, and saveSettings() writes through it. Try/caught, so a SecurityError
+// degrades to default settings rather than killing boot.
+let gameSettings = { screenShake: true, photosensitive: false, musicVolume: 1, sfxVolume: 1,
+                     // Patch 115: 'auto' | 'high' | 'low'; autoQuality is what AUTO settled on.
+                     quality: 'auto', autoQuality: 'high' };
 try {
     const savedSettings = localStorage.getItem('fractured_settings');
     if (savedSettings) gameSettings = { ...gameSettings, ...JSON.parse(savedSettings) };
@@ -274,7 +508,81 @@ function safeVolume(v) {
 }
 
 function saveSettings() {
-    try { localStorage.setItem('fractured_settings', JSON.stringify(gameSettings)); } catch(e) {}
+    // Patch 106 (V2 plan A6): through portalSDK, so on CrazyGames settings follow the
+    // player's account like the rest of the save (the data module is the save of
+    // record there). Off-portal portalSDK.setItem IS localStorage.setItem on the same
+    // key, so itch/self-hosted storage is byte-for-byte unchanged. Never throws.
+    portalSDK.setItem('fractured_settings', JSON.stringify(gameSettings));
+}
+
+/**
+ * Patch 106: the module-level read above runs at import time, BEFORE portalSDK.init()
+ * resolves, so it can only see raw localStorage. Called first thing in initEngine()
+ * (after init), it re-reads through the portal and merges over the defaults.
+ *
+ * Migration: a player whose settings only exist in raw localStorage (every v1 player
+ * on the portal) has them copied into the portal store once, so a volume they turned
+ * down yesterday is not reset to full by the move. Off-portal both reads hit the same
+ * key and this is a no-op.
+ */
+// --- GRAPHICS QUALITY TIER (Patch 115, V2 plan B7) --------------------------------
+//
+// HIGH is the game as it was. LOW: darkness mask at half resolution, 12 fog clouds
+// instead of 30, no film grain, and lower simulation ceilings (45 live enemies, 200
+// particles). AUTO starts at whatever it last settled on and steps DOWN once per
+// session if live gameplay is slow; it never steps back up on its own (that would
+// flap), but choosing AUTO again in Settings re-evaluates from HIGH.
+const QUALITY_CAPS = {
+    high: { liveEntityCap: 60, particleCap: 450 },
+    low:  { liveEntityCap: 45, particleCap: 200 }
+};
+function currentQualityTier() {
+    const q = gameSettings.quality;
+    if (q === 'high' || q === 'low') return q;
+    return gameSettings.autoQuality === 'low' ? 'low' : 'high';
+}
+function applyQualityTier() {
+    const tier = currentQualityTier();
+    if (renderer && typeof renderer.setQuality === 'function') renderer.setQuality(tier);
+    if (game && game.director) Object.assign(game.director, QUALITY_CAPS[tier]);
+}
+
+// AUTO's probe: mean frame interval over ~3 s of live PLAYING, after a 2 s warm-up
+// (asset decode and first-room spawns are not representative). Intervals over 100 ms
+// are ignored — a backgrounded tab or a GC pause is not the device's steady state.
+// Below ~40 fps (25 ms) it drops to LOW and remembers it for the next session, so a
+// weak phone does not pay the slow first minute again.
+const qualityProbe = { lastTime: 0, playingMs: 0, sum: 0, n: 0, done: false };
+function probeQuality(time) {
+    const dt = time - qualityProbe.lastTime;
+    qualityProbe.lastTime = time;
+    if (qualityProbe.done || gameSettings.quality !== 'auto' || currentQualityTier() === 'low') return;
+    if (gameState !== 'PLAYING' || !(dt > 0) || dt > 100) return;
+    qualityProbe.playingMs += dt;
+    if (qualityProbe.playingMs < 2000) return;
+    qualityProbe.sum += dt; qualityProbe.n++;
+    if (qualityProbe.n < 180) return;
+    const mean = qualityProbe.sum / qualityProbe.n;
+    qualityProbe.done = true;
+    if (mean > 25) {
+        gameSettings.autoQuality = 'low';
+        applyQualityTier();
+        saveSettings();
+    }
+}
+
+function reloadSettingsFromPortal() {
+    if (!portalSDK.available) return;
+    try {
+        const fromPortal = portalSDK.getItem('fractured_settings');
+        if (fromPortal) {
+            gameSettings = { ...gameSettings, ...JSON.parse(fromPortal) };
+        } else {
+            saveSettings();   // migrate whatever the import-time localStorage read found
+        }
+    } catch (e) {
+        errorLog.capture(e, 'settings-portal-load');
+    }
 }
 
 /** Pushes the persisted volumes into the audio graph. Safe to call before the
@@ -512,87 +820,7 @@ function resumeAudioForGameplay() {
     }
 }
 
-/**
- * In-world confirmation dialog (Patch 52b), replacing window.confirm() for
- * destructive choices. Callback-based rather than a returned promise, because the
- * caller has to be able to simply do nothing on cancel.
- *
- * Falls back to the native confirm() if the markup is somehow absent — losing the
- * dialog entirely would mean silently destroying a run without asking, which is
- * far worse than an ugly prompt.
- */
-function showConfirm({ title, body, note, confirmLabel, cancelLabel, onConfirm, danger = true, noticeOnly = false }) {
-    const modal = document.getElementById('confirm-modal');
-    const acceptBtn = document.getElementById('btn-confirm-accept');
-    const cancelBtn = document.getElementById('btn-confirm-cancel');
-
-    if (!modal || !acceptBtn || !cancelBtn) {
-        // Patch 101: a notice has nothing to decide, so asking for a yes/no here would
-        // invent a choice that does not exist.
-        if (noticeOnly) { window.alert(`${body}\n\n${note || ''}`); return; }
-        if (window.confirm(`${body}\n\n${note || ''}`)) onConfirm();
-        return;
-    }
-
-    document.getElementById('confirm-title').innerText = title;
-    document.getElementById('confirm-body').innerText = body;
-    document.getElementById('confirm-note').innerText = note || '';
-    acceptBtn.innerText = confirmLabel;
-    // Defaulted rather than assigned raw: a noticeOnly caller has no cancel button to
-    // label, and `innerText = undefined` writes the literal string "undefined" into it —
-    // invisible today only because the button is hidden, and a trap for the next caller.
-    cancelBtn.innerText = cancelLabel || 'RETURN';
-
-    // Patch 101: `noticeOnly` turns this into a one-button NOTICE — same folder chrome,
-    // nothing to decide. Added here rather than as a second dialog so there stays one
-    // modal implementation; a second one is how two copies of the folder styling drift.
-    //
-    // Re-set on EVERY open rather than toggled, for exactly the reason the class resets
-    // below say: leaving `display: none` behind would silently remove the cancel button
-    // from the next ABANDON PROTOCOL dialog — a destructive prompt with no way out but
-    // to accept it.
-    cancelBtn.style.display = noticeOnly ? 'none' : '';
-
-    // Patch 92: `danger` defaults TRUE, so the original ABANDON PROTOCOL dialog is
-    // byte-identical to before. The backup prompt passes false — it is an offer, not
-    // a destructive action, and a red accept button reads as a warning. Both classes
-    // are re-set on every open rather than toggled, so the modal cannot inherit the
-    // previous caller's tone.
-    const accent = danger ? 'var(--ui-red)' : 'var(--ui-gold)';
-    acceptBtn.className = danger ? 'file-btn danger' : 'file-btn primary';
-    cancelBtn.className = danger ? 'file-btn primary' : 'file-btn';
-    const titleEl = document.getElementById('confirm-title');
-    if (titleEl) titleEl.style.color = accent;
-    // The red frame is set inline in the markup, so it has to be re-stated for BOTH
-    // tones — assigning only the non-danger colour would leave the next destructive
-    // dialog wearing gold.
-    const modalFolder = modal.querySelector('.medical-folder');
-    const modalHeader = modal.querySelector('.folder-header');
-    if (modalFolder) modalFolder.style.borderColor = accent;
-    if (modalHeader) modalHeader.style.borderBottomColor = accent;
-
-    const onKey = (e) => {
-        // Escape cancels. Safe to bind globally: main.js's own Escape handler acts
-        // only on PLAYING/PAUSED, and every caller of this dialog opens it from
-        // TITLE, DEAD or HUB — none of which that handler touches. (Patch 92 added
-        // the DEAD/HUB callers; the original comment said TITLE only.)
-        if (e.key === 'Escape') close();
-    };
-    function close() {
-        modal.style.display = 'none';
-        window.removeEventListener('keydown', onKey);
-    }
-
-    // Assigned with onclick rather than addEventListener so reopening the dialog
-    // replaces the handlers instead of stacking a second copy that would fire the
-    // destructive action twice. Click SFX comes free — UIManager wires every
-    // .file-btn on construction, and these buttons exist in the markup by then.
-    acceptBtn.onclick = () => { close(); onConfirm(); };
-    cancelBtn.onclick = () => { close(); };
-    window.addEventListener('keydown', onKey);
-
-    modal.style.display = 'flex';
-}
+// showConfirm moved to src/ui/Dialog.js (Patch 103) — imported at the top of this file.
 
 /** Shared final step for every launch: show the HUD, place the player, start play. */
 function enterPlayingState() {
@@ -1004,6 +1232,8 @@ function maybeShowBackupPrompt() {
 }
 
 function initEngine() {
+    reloadSettingsFromPortal();   // Patch 106: before anything reads gameSettings.
+
     // The ENTIRE dev toolkit (floor override, skip-to-boss, lucidity/patient-level
     // grants, unlock forcing, build-log dump, visual test bench, telemetry overlay)
     // is gated on import.meta.env.DEV. Vite substitutes that with a literal `false`
@@ -1334,7 +1564,15 @@ function initEngine() {
                         Photosensitivity Mode
                     </label>
                     <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Disables strobing lights, camera flashes, and softens glitch overlays.</p>
-                    
+
+                    <label for="select-quality" style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem;">Graphics Quality</label>
+                    <select id="select-quality" style="margin-top: -12px; font-family: inherit; font-size: 1rem; padding: 8px; min-height: 44px; background: var(--paper-bg); color: var(--ink-black); border: 1px solid var(--ink-black);">
+                        <option value="auto">AUTO (recommended)</option>
+                        <option value="high">HIGH</option>
+                        <option value="low">LOW (smoother on older devices)</option>
+                    </select>
+                    <p class="typewriter-text" id="quality-note" style="color: #666; font-size: 0.9rem; margin-top: -15px;">AUTO lowers detail by itself if the game runs slowly.</p>
+
                     <button class="file-btn primary" id="btn-close-settings" style="margin-top: 20px;">APPLY & CLOSE</button>
                 </div>
             </div>
@@ -1486,6 +1724,29 @@ function initEngine() {
 
         toggleShake.checked = gameSettings.screenShake;
         togglePhoto.checked = gameSettings.photosensitive;
+
+        // Patch 115: graphics tier. Applied immediately on change (like the sliders), so
+        // the player can see the difference without closing the panel.
+        const selectQuality = document.getElementById('select-quality');
+        const qualityNote = document.getElementById('quality-note');
+        const paintQualityNote = () => {
+            if (!qualityNote) return;
+            qualityNote.innerText = gameSettings.quality === 'auto'
+                ? `AUTO lowers detail by itself if the game runs slowly. Currently: ${(gameSettings.autoQuality || 'high').toUpperCase()}.`
+                : 'Fixed by you. AUTO lets the game choose.';
+        };
+        if (selectQuality) {
+            selectQuality.value = ['auto', 'high', 'low'].includes(gameSettings.quality) ? gameSettings.quality : 'auto';
+            paintQualityNote();
+            selectQuality.addEventListener('change', () => {
+                gameSettings.quality = selectQuality.value;
+                // Choosing AUTO again gives the device a fresh evaluation.
+                if (gameSettings.quality === 'auto') { gameSettings.autoQuality = 'high'; qualityProbe.done = false; }
+                applyQualityTier();
+                saveSettings();
+                paintQualityNote();
+            });
+        }
 
         // --- VOLUME SLIDERS (Patch 80) ---
         // Applied and persisted on 'input', not on APPLY & CLOSE like the toggles.
@@ -1675,6 +1936,22 @@ function initEngine() {
     levelUpUI = new LevelUpUI(audioEngine, saveManager);
 
     game.audioEngine = audioEngine;
+    applyQualityTier();   // Patch 115: renderer + Director caps from the saved tier
+
+    // V2 plan G1: a DEV-ONLY inspection hook for the headless Playwright checks
+    // (entity/orb counts, sprite-cache size, driving a death). `import.meta.env.DEV` is
+    // statically false in `vite build`, so this whole block is dropped from every
+    // shipped bundle — same guarantee as the dev panel.
+    if (import.meta.env.DEV) {
+        window.__fractured = {
+            get game() { return game; },
+            get renderer() { return renderer; },
+            get saveManager() { return saveManager; },
+            get gameState() { return gameState; },
+            setQuality(q) { gameSettings.quality = q; applyQualityTier(); },   // Patch 115
+            get qualityTier() { return currentQualityTier(); }
+        };
+    }
 
     // Patch 49: respect the platform's own mute setting (distinct from Patch 47's
     // ad-muting — see AudioEngine.setMuted's reason-tracking). No-ops off-portal.
@@ -1751,14 +2028,28 @@ function initEngine() {
         // player has already stopped here, which is the pacing CrazyGames asks for.
         // NEVER mid-run. Off-portal showMidgameAd() invokes its completion callback
         // synchronously, so this is a plain function call with no ad and no delay.
+        //
+        // Patch 104: a run that was revived by a rewarded ad ends WITHOUT a midgame ad
+        // (CrazyGames: never a midgame plus a "watch to keep playing" offer between the
+        // same two levels). The 5-minute cooldown in showAdThen applies on top.
+        const revived = !!(game.state && game.state.reviveUsed);
+        deathSettlement = null;
+        const rewardBox = document.getElementById('death-rewarded');
+        if (rewardBox) rewardBox.style.display = 'none';
         showAdThen(() => {
             game.init(saveManager);
             game.state.player.x = 0;
             game.state.player.y = 0;
             if (audioEngine) audioEngine.playMenuTheme();
             gameState = 'HUB';
-        });
+        }, { allowAd: !revived });
     });
+
+    // Patch 104: rewarded offers on the death screen.
+    const btnRevive = document.getElementById('btn-revive');
+    const btnRecover = document.getElementById('btn-recover-lucidity');
+    if (btnRevive) btnRevive.addEventListener('click', () => runDeathReward('revive'));
+    if (btnRecover) btnRecover.addEventListener('click', () => runDeathReward('recover'));
     
     // --- TITLE SCREEN ACTIONS (Patch 52) ---
     //
@@ -1852,6 +2143,22 @@ function initEngine() {
         if (document.visibilityState === 'hidden') autoSaveRun();
     });
 
+    // Patch 105 (V2 plan A4): a hidden tab is silent. Uses AudioEngine.setMuted's
+    // reason tracking ('hidden'), so it composes with the 'ad' and 'platform' mutes —
+    // coming back never un-mutes audio that the portal or an ad still holds muted.
+    //
+    // Auto-pause is OFF-PORTAL ONLY. CrazyGames: "Don't call [gameplayStop] when the
+    // user switches focus or leaves the game area (we handle this on our side)", and
+    // our PAUSED state emits gameplayStop through syncPortalGameplayState. Off-portal
+    // (itch.io / self-hosted) a returning player would otherwise land mid-combat; the
+    // simulation itself already stops while hidden (no rAF), so on the portal they
+    // resume exactly where they left, just with sound restored.
+    document.addEventListener('visibilitychange', () => {
+        const hidden = document.visibilityState === 'hidden';
+        if (audioEngine) audioEngine.setMuted('hidden', hidden);
+        if (hidden && !portalSDK.available && gameState === 'PLAYING') togglePause();
+    });
+
     const pauseMenu = document.getElementById('pause-menu');
     const pauseTitle = document.getElementById('pause-title');
     const btnDescend = document.getElementById('btn-descend');
@@ -1876,6 +2183,26 @@ function initEngine() {
     // at once there. P is offered as a fullscreen-safe alternate; Escape stays
     // bound because players expect it (Patch 45).
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape' || e.key.toLowerCase() === 'p') togglePause(); });
+
+    // Patch 105 (V2 plan A5): during live play, keys the game owns must not also do
+    // their browser default. Space would "press" whatever button still holds focus
+    // (e.g. a mouse-clicked PAUSE button: dash -> pause), and Space/arrows scroll the
+    // host page around an iframe embed. Scoped to PLAYING so menus keep native
+    // keyboard navigation (Tab/Space/Enter on buttons).
+    const GAMEPLAY_OWNED_KEYS = new Set([' ', 'Spacebar', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+    window.addEventListener('keydown', (e) => {
+        if (gameState === 'PLAYING' && GAMEPLAY_OWNED_KEYS.has(e.key)) e.preventDefault();
+    });
+    // A pointer-activated button gives focus back immediately, so it cannot be
+    // re-triggered by the next Space/Enter. `e.detail > 0` means a real mouse/touch
+    // click; keyboard activation (detail 0) keeps focus, preserving keyboard
+    // navigation and the :focus-visible ring.
+    document.addEventListener('click', (e) => {
+        if (e.detail > 0 && e.target && typeof e.target.closest === 'function') {
+            const btn = e.target.closest('button');
+            if (btn && typeof btn.blur === 'function') btn.blur();
+        }
+    }, true);
     document.getElementById('btn-unpause').addEventListener('click', togglePause);
 
     document.getElementById('btn-awaken').addEventListener('click', () => {
@@ -1884,6 +2211,7 @@ function initEngine() {
 
         let earnedLucidity = 0;
         let retainedTokens = [];
+        let suspendBanked = 0;   // Patch 108: what a mid-floor Awaken actually banked
 
         if (isExitReached) {
             saveManager.logRunBuild(buildDiversitySnapshot(game));
@@ -1902,8 +2230,17 @@ function initEngine() {
                 });
             }
         } else if (isMidFloor) {
-            saveManager.addLucidity(Math.floor(game.state.lucidity * (game.state.lucidityBonusMultiplier || 1)));
+            suspendBanked = Math.floor(game.state.lucidity * (game.state.lucidityBonusMultiplier || 1));
+            saveManager.addLucidity(suspendBanked);
             const stateToSave = game.getCarriedState();
+            // Patch 108 (V2 plan A8): the Lucidity double-bank. That Lucidity is now in
+            // the bank, so the suspended run carries none of it — otherwise suspend ->
+            // resume -> Awaken paid the same Lucidity out again on every cycle (a known
+            // issue since Patch 54). XP, level, weapons, floor and room still carry, so
+            // the run itself resumes exactly as it was; only the already-paid currency
+            // is spent. Death (50%) and extraction (100%) after a resume therefore pay
+            // out only what was earned SINCE the resume.
+            stateToSave.lucidity = 0;
             writeSuspendedRun(JSON.stringify(stateToSave));
 
             const resumeBtn = document.getElementById('btn-resume-run');
@@ -1924,6 +2261,10 @@ function initEngine() {
 
         pauseMenu.style.display = 'none';
         document.getElementById('ui-layer').style.display = 'none';
+        // Patch 104: AWAKEN reuses the death screen; its rewarded offers are death-only.
+        const awakenRewardBox = document.getElementById('death-rewarded');
+        if (awakenRewardBox) awakenRewardBox.style.display = 'none';
+        deathSettlement = null;
         document.getElementById('death-screen').style.display = 'flex';
         
         const deathScreen = document.getElementById('death-screen');
@@ -1954,14 +2295,17 @@ function initEngine() {
             if (header) header.style.borderBottomColor = 'var(--ui-red)';
             if (title) {
                 title.style.color = 'var(--ui-red)';
-                title.innerText = 'PROTOCOL ABORTED';
+                title.innerText = 'SESSION SUSPENDED';
             }
             if (btn) btn.innerText = 'RETURN TO WARD';
 
+            // Patch 108: this screen used to say "Earned 0 Lucidity (Aborted) /
+            // Retained 0%", while the handler above had in fact banked all of it and
+            // saved the run for RESUME DESCENT. Say what actually happened.
             document.getElementById('final-stats').innerHTML = `
-                Cowardice detected on <strong>Floor ${game.state.floor}</strong>.<br><br>
-                Earned <strong>0</strong> Lucidity (Aborted).<br>
-                Retained <strong>0%</strong> of gathered resources.<br>
+                Session suspended on <strong>Floor ${game.state.floor}</strong>.<br><br>
+                Banked <strong>${suspendBanked}</strong> Lucidity.<br>
+                Your descent is saved: <strong>RESUME DESCENT</strong> picks it up from this room.<br>
                 Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
                 ${buildRunSummaryHtml(game)}
             `;
@@ -1973,6 +2317,9 @@ function initEngine() {
     });
 
     document.getElementById('btn-descend').addEventListener('click', () => {
+      // Patch 104: a floor transition is a CrazyGames-sanctioned midgame slot. Gated by
+      // the 5-minute cooldown in showAdThen, so most descents still show nothing.
+      showAdThen(() => {
         const carryData = game.getCarriedState();
         carryData.floor += 1;
         // Patch 53: a NEW floor always starts at room 1. getCarriedState() now
@@ -1993,6 +2340,7 @@ function initEngine() {
         game.state.player.y = canvas.height / 2;
         pauseMenu.style.display = 'none';
         gameState = 'PLAYING';
+      });
     });
 
     game.onDeath = () => {
@@ -2041,6 +2389,14 @@ function initEngine() {
         }
         if (btn) btn.innerText = 'RECONSTRUCT FILE';
 
+        // Patch 104: what this death banked and lost, for the rewarded offers.
+        deathSettlement = {
+            recovered,
+            lost: Math.max(0, Math.floor(game.state.lucidity - recovered)),
+            floor: game.state.floor
+        };
+        setupDeathRewards();
+
         document.getElementById('final-stats').innerHTML = `
             Died on <strong>Floor ${game.state.floor}</strong>.<br><br>
             Earned <strong>${game.state.lucidity}</strong> Lucidity.<br>
@@ -2085,6 +2441,7 @@ function initEngine() {
 
     game.onFloorComplete = () => {
         gameState = 'EXIT_REACHED';
+        maybeHappytimeForBossKill(game.state.floor);   // Patch 104
         pauseTitle.innerText = "THE DESCENT CALLS";
         pauseTitle.style.color = "var(--ui-red)";
         
@@ -2150,13 +2507,22 @@ const MAX_LOGGED_LOOP_CRASHES = 20;
  */
 const pacing = new Pacing();
 let lastBreakdown = false;
+// Patch 114: what the last drawn frame was drawn for (see the draw skip in gameLoop).
+let lastDrawSizeKey = '';
+let lastDrawState = '';
 
 function gameLoop(time) {
+    // G2 instrumentation (dev only, stripped from builds): CPU time spent inside one
+    // loop iteration — simulation + render — independent of vsync quantisation, for
+    // qa/soak_check.cjs. Frame-to-frame intervals only move in 16.7 ms steps.
+    const loopT0 = import.meta.env.DEV ? performance.now() : 0;
     try {
         // Accumulate before anything else, so a slow branch below cannot lose time.
         pacing.addFrame(time);
+        probeQuality(time);   // Patch 115
 
         syncPortalGameplayState();
+        syncPortalContext();   // Patch 119
 
         if (import.meta.env.DEV) {
         // Patch 50: one-shot in-loop throw for the FORCE TEST ERROR button. Cleared
@@ -2290,17 +2656,17 @@ function gameLoop(time) {
                 const sanityBar = document.getElementById('sanity-bar');
                 let ratio = game.state.sanity / game.state.player.maxHp;
                 if (!Number.isFinite(ratio)) ratio = 0;
-                sanityBar.style.width = Math.max(0, ratio) * 100 + '%';
+                hudStyle(sanityBar, 'width', hudPct(Math.max(0, ratio)));
                 
-                if (isBreakdown) { sanityBar.style.backgroundColor = 'var(--ui-red)'; sanityBar.style.boxShadow = '0 0 15px var(--ui-red)'; }
-                else if (ratio < 0.3) { sanityBar.style.backgroundColor = '#ffaa00'; sanityBar.style.boxShadow = '0 0 10px #ffaa00'; }
-                else { sanityBar.style.backgroundColor = 'var(--hud-green)'; sanityBar.style.boxShadow = '0 0 10px var(--hud-green)'; }
+                if (isBreakdown) { hudStyle(sanityBar, 'backgroundColor', 'var(--ui-red)'); hudStyle(sanityBar, 'boxShadow', '0 0 15px var(--ui-red)'); }
+                else if (ratio < 0.3) { hudStyle(sanityBar, 'backgroundColor', '#ffaa00'); hudStyle(sanityBar, 'boxShadow', '0 0 10px #ffaa00'); }
+                else { hudStyle(sanityBar, 'backgroundColor', 'var(--hud-green)'); hudStyle(sanityBar, 'boxShadow', '0 0 10px var(--hud-green)'); }
                 
                 const dashBar = document.getElementById('dash-bar');
                 if (dashBar && game.state.player.dash) {
                     const dashReady = game.state.player.dash.cooldown <= 0;
-                    dashBar.style.width = dashReady ? '100%' : ((1 - (game.state.player.dash.cooldown / 90)) * 100) + '%';
-                    dashBar.style.background = dashReady ? '#88aaff' : '#555';
+                    hudStyle(dashBar, 'width', dashReady ? '100%' : hudPct(1 - (game.state.player.dash.cooldown / 90)));
+                    hudStyle(dashBar, 'background', dashReady ? '#88aaff' : '#555');
                 }
 
                 const conBar = document.getElementById('convergence-bar');
@@ -2311,7 +2677,7 @@ function gameLoop(time) {
 
                 if (activeBoss) {
                     let hpRatio = Math.max(0, activeBoss.hp / activeBoss.maxHp);
-                    conBar.style.width = (hpRatio * 100) + '%';
+                    hudStyle(conBar, 'width', hudPct(hpRatio));
                     
                     let bossName = 'SUBJECT: SPHERE HEAD';
                     if (activeBoss.type === 'RORSCHACH') bossName = 'SUBJECT: RORSCHACH';
@@ -2319,28 +2685,28 @@ function gameLoop(time) {
                     if (activeBoss.type === 'AMALGAMATION') bossName = 'SUBJECT: THE AMALGAMATION';
                     if (activeBoss.type === 'ARCHITECT') bossName = 'SUBJECT: THE ARCHITECT';
 
-                    conText.innerText = `${bossName} - VITAL SIGNS: ${Math.ceil(hpRatio * 100)}%`;
-                    conBar.style.background = 'linear-gradient(90deg, #8b0000, #ff0000)';
-                    conText.style.color = 'var(--ui-red)';
-                    conContainer.style.borderColor = 'var(--ui-red)';
-                    conContainer.style.boxShadow = '0 0 20px rgba(139, 0, 0, 0.8)';
+                    hudText(conText, `${bossName} - VITAL SIGNS: ${Math.ceil(hpRatio * 100)}%`);
+                    hudStyle(conBar, 'background', 'linear-gradient(90deg, #8b0000, #ff0000)');
+                    hudStyle(conText, 'color', 'var(--ui-red)');
+                    hudStyle(conContainer, 'borderColor', 'var(--ui-red)');
+                    hudStyle(conContainer, 'boxShadow', '0 0 20px rgba(139, 0, 0, 0.8)');
                 } else if (conBar && game.state.maxRoomsPerFloor) {
                     let bossRatio = Math.min(1, game.state.roomNumber / game.state.maxRoomsPerFloor);
-                    conBar.style.width = (bossRatio * 100) + '%';
-                    conText.innerText = bossRatio >= 1 ? "ANOMALY DETECTED" : `NIGHTMARE PROGRESS: ${Math.floor(bossRatio * 100)}%`;
+                    hudStyle(conBar, 'width', hudPct(bossRatio));
+                    hudText(conText, bossRatio >= 1 ? "ANOMALY DETECTED" : `NIGHTMARE PROGRESS: ${Math.floor(bossRatio * 100)}%`);
                     
                     if (bossRatio >= 1) {
-                        conBar.style.background = 'var(--ui-gold)';
-                        conText.style.color = 'var(--ui-gold)';
-                        conText.style.textShadow = '0 0 10px var(--ui-gold)';
-                        conContainer.style.borderColor = 'var(--ui-gold)';
-                        conContainer.style.boxShadow = '0 0 15px var(--ui-gold)';
+                        hudStyle(conBar, 'background', 'var(--ui-gold)');
+                        hudStyle(conText, 'color', 'var(--ui-gold)');
+                        hudStyle(conText, 'textShadow', '0 0 10px var(--ui-gold)');
+                        hudStyle(conContainer, 'borderColor', 'var(--ui-gold)');
+                        hudStyle(conContainer, 'boxShadow', '0 0 15px var(--ui-gold)');
                     } else {
-                        conBar.style.background = 'linear-gradient(90deg, #555, #aaa)';
-                        conText.style.color = 'rgba(255,255,255,0.7)';
-                        conText.style.textShadow = '1px 1px 0 #000';
-                        conContainer.style.borderColor = '#555';
-                        conContainer.style.boxShadow = '0 0 15px rgba(0, 0, 0, 0.5)';
+                        hudStyle(conBar, 'background', 'linear-gradient(90deg, #555, #aaa)');
+                        hudStyle(conText, 'color', 'rgba(255,255,255,0.7)');
+                        hudStyle(conText, 'textShadow', '1px 1px 0 #000');
+                        hudStyle(conContainer, 'borderColor', '#555');
+                        hudStyle(conContainer, 'boxShadow', '0 0 15px rgba(0, 0, 0, 0.5)');
                     }
                 }
 
@@ -2348,17 +2714,17 @@ function gameLoop(time) {
                 if (enemyCounter) {
                     if (game.state.combatActive && !activeBoss) {
                         let totalRemaining = game.state.enemyBudget + game.state.entities.length;
-                        enemyCounter.innerText = `NIGHTMARES LEFT: ${totalRemaining}`;
-                        enemyCounter.style.display = 'block';
+                        hudText(enemyCounter, `NIGHTMARES LEFT: ${totalRemaining}`);
+                        hudStyle(enemyCounter, 'display', 'block');
                     } else {
-                        enemyCounter.style.display = 'none';
+                        hudStyle(enemyCounter, 'display', 'none');
                     }
                 }
 
                 // Smoothly dim glitch overlay if photosensitive mode is active
                 let targetGlitchOpacity = isBreakdown ? '1' : '0';
                 if (isBreakdown && gameSettings.photosensitive) targetGlitchOpacity = '0.3'; 
-                document.getElementById('glitch-overlay').style.opacity = targetGlitchOpacity;
+                hudStyle(document.getElementById('glitch-overlay'), 'opacity', targetGlitchOpacity);
                 
                 // Patch 98: the cycle is named on floors 6+ only, so the Cycle I HUD is
                 // byte-identical to before. Without it the readout says FLOOR 13 with
@@ -2366,7 +2732,7 @@ function gameLoop(time) {
                 const floorReadout = isEndless(game.state.floor)
                     ? `CYCLE ${cycleLabel(game.state.floor)} - FLOOR: ${game.state.floor} - ROOM: ${game.state.roomNumber}`
                     : `FLOOR: ${game.state.floor} - ROOM: ${game.state.roomNumber}`;
-                document.getElementById('score').innerHTML = `LUCIDITY: ${game.state.lucidity} <br> ${floorReadout}`;
+                hudHtml(document.getElementById('score'), `LUCIDITY: ${game.state.lucidity} <br> ${floorReadout}`);
 
                 // Patch 25: screen-fixed tutorial banner, driven off the same
                 // state.isTutorial gate Director.spawnRoom/Combat.js already use.
@@ -2386,21 +2752,34 @@ function gameLoop(time) {
                         // instruction is visibly new. The class has to be removed and a
                         // reflow forced before re-adding, or the animation never
                         // re-triggers. It runs at most once per tutorial step.
-                        if (tutorialBannerText.innerText !== tutorialLine) {
-                            tutorialBannerText.innerText = tutorialLine;
+                        if (tutorialBannerText.textContent !== tutorialLine) {   // Patch 117: textContent, no forced layout
+                            tutorialBannerText.textContent = tutorialLine;
                             tutorialBanner.classList.remove('tut-in');
                             void tutorialBanner.offsetWidth;
                             tutorialBanner.classList.add('tut-in');
                         }
-                        tutorialBanner.style.display = 'block';
+                        hudStyle(tutorialBanner, 'display', 'block');
                     } else {
-                        tutorialBanner.style.display = 'none';
+                        hudStyle(tutorialBanner, 'display', 'none');
                     }
                 }
             }
             
-            // Send the gameState so the renderer knows to bypass the Void code!
-            renderer.drawGame(game.state, audioEngine, gameState);
+            // Patch 114 (V2 plan B6): skip the draw on a frame where no simulation step
+            // ran. The sim is a fixed 60 Hz (Patch 74) with no interpolation, so on a
+            // 120/144 Hz screen roughly half the frames would redraw an identical world
+            // — full-screen fills, fog, the light mask — for nothing, costing battery
+            // and heat on exactly the phones that have such screens. The canvas keeps
+            // its last image. Always drawn when the canvas was resized (which clears
+            // it) or the game state changed, so a transition never shows a stale frame.
+            const sizeKey = canvas.width + 'x' + canvas.height;
+            const mustDraw = simSteps > 0 || sizeKey !== lastDrawSizeKey || gameState !== lastDrawState;
+            if (mustDraw) {
+                lastDrawSizeKey = sizeKey;
+                lastDrawState = gameState;
+                // Send the gameState so the renderer knows to bypass the Void code!
+                renderer.drawGame(game.state, audioEngine, gameState);
+            }
         }
     } catch (e) {
         // Patch 50: this catch is why the platform's gameplay crash rate has been
@@ -2431,6 +2810,11 @@ function gameLoop(time) {
                 'background:#8b0000; color:#fff; font-weight:bold;', 'color:#ff8888;'
             );
         }
+    }
+    if (import.meta.env.DEV && window.__fractured) {
+        const ring = window.__fractured.loopMs || (window.__fractured.loopMs = []);
+        ring.push(performance.now() - loopT0);
+        if (ring.length > 4000) ring.splice(0, ring.length - 4000);
     }
     requestAnimationFrame(gameLoop);
 }

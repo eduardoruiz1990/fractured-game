@@ -99,6 +99,7 @@ The analysis below combines five reviews: gamer, UI/UX, story designer, mobile, 
 **B2. Stop the per-entity scans of the whole list.**
 - `Scavenger.js:28,45`, `Predator.js:26,60`, `Parasite.js:61`, `Enemy.js:268` and `Combat.js:393` each loop over every entity.
 - Add a simple uniform spatial grid, rebuilt once per sim step in `Game.processGameLogic`, for entity, orb and puddle queries.
+- **Closed without a grid (2026-11-15, measured).** With the Patch 110 live-entity cap the list never exceeds ~65, so these scans are ~4k distance checks a step. `qa/sim_cost_check.cjs` times `processGameLogic` alone under the soak scenario (all 5 bosses, floor 9): mean 0.38–0.45 ms with weapons on, 0.31 ms with the crowd held at the cap (`--no-weapons`), against ~6 ms for the whole loop. Render is the budget; a grid would save well under 0.1 ms and add a second source of truth for positions. Revisit only if the cap is raised or D4 adds a type that queries neighbours every step.
 
 **B3. Fix the `drawGlow` cache leak.**
 - `Renderer.js:240`: quantize alpha into about 16 steps. The tutorial cue at :1813 currently creates a new 64 KB canvas almost every frame.
@@ -169,7 +170,7 @@ The analysis below combines five reviews: gamer, UI/UX, story designer, mobile, 
 - Secondary: REVIVE (rewarded ad), DOUBLE LUCIDITY (rewarded ad), and RETURN TO HUB.
 
 **C5. Shorter session units.**
-- Floors go from 10 rooms to **6** (`Game.js:137`): about 3–4 minutes a floor, and about 20 minutes for a full clear.
+- Floors go from 10 rooms to **5** (`Game.js:137`, decided 2026-11-15): about 3 minutes a floor, and about 15–18 minutes for a full clear.
 - `test_endless.js` and `test_fuzz_runs.js` need to keep passing. Update the cadence assertions that are tied to room count.
 - **Needs approval:** this is a balance change that affects every existing player.
 
@@ -350,9 +351,34 @@ The analysis below combines five reviews: gamer, UI/UX, story designer, mobile, 
 - At the end of each phase, a `vite build` and checking `dist` size against the 2.5 MB target.
 - Before resubmitting: run the whole G4 checklist in the CrazyGames preview.
 
-## Open decisions to confirm while implementing
+## Decisions (confirmed 2026-11-15)
 
-- C5: floor length goes from 10 rooms to 6.
-- B11: which endpoint receives remote errors.
-- D6: how to resolve the Panopticon telegraph.
-- A3: how often midgame ads may play.
+- **C5:** floors go from 10 rooms to **5**, not 6.
+- **B11:** use only what CrazyGames already provides. There is no error-reporting API in the SDK docs, and the dashboard computes crash rates itself. So: no third-party sink. Instead, attach a compact diagnostic to `SDK.game.setGameContext(...)`, which feeds the player-feedback reports: build id, floor and room, error count, and the last error's signature. Check that signature against the live docs before writing the patch. **Done in Patch 119:** docs.crazygames.com/sdk/game confirms `SDK.game.setGameContext({...})` (flat key/value; C# binding is `Dictionary<string,string>`, so values are sent as strings) attaches data to player feedback, which reaches the developer by email and on the Developer Portal. The context carries screen, floor, room, quality tier, weapons, Sanity %, error count, last error and coarse device class (touch/pointer, never the user agent). Verified by `qa/context_check.cjs`.
+- **D6:** widen the Panopticon's tell to match its ±0.5 rad hitbox, and give the hitbox a range limit.
+- **A3:** midgame ads at most **once every 5 minutes**, enforced by us. The SDK's own floor is 3 minutes.
+
+## Findings from the CrazyGames docs that change Phase A
+
+Source: docs.crazygames.com `sdk/video-ads`, `sdk/game`, `sdk/data`, `requirements/ads|quality|technical|gameplay`.
+
+**Rewarded ads**
+- A rewarded button must **not appear on an active gameplay screen**, so the level-up "free reroll" ad is **dropped**. Revive and double-Lucidity both live on the death screen.
+- Grant the reward only in `adFinished`, never on `adError`.
+- No chaining: offer one rewarded ad per death.
+- Never a midgame ad **and** a "watch to keep playing" offer between the same two levels. If the player revives, that death gets no midgame ad.
+- Basic Launch disables ads (`adsDisabled`). Rewarded buttons must disappear cleanly, not appear broken.
+
+**`happytime()`**
+- Sparingly, for achievements: a boss kill and a new deepest floor. Not for completing a level, and not for synergies.
+
+**Escape key and focus**
+- **Restricted keys:** avoid Escape, which exits fullscreen. Add **P** as the primary pause key and keep Escape as a secondary binding.
+- **Focus changes:** "Don't call [gameplayStop] when the user switches focus (we handle this)." So A4 suspends audio on tab hide everywhere, but auto-pauses only when no portal is present. On the portal, focus is CrazyGames' job.
+
+**Platform mute and saves**
+- `settings.muteAudio` takes priority over in-game volume. That is already done.
+- The data module is the save of record. It covers guests (a localStorage mirror that transfers to the account on login) and is limited to 1 MB with a 1 s debounce. The submission form must tick **"Progress Save"**, or the module is disabled.
+
+**Download size**
+- Initial download must be ≤ 20 MB for the mobile homepage. We are well under.

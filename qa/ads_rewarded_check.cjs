@@ -1,0 +1,41 @@
+const { chromium } = require('playwright');
+const S = process.argv[2] || __dirname;
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  page.on('dialog', d => { errors.push('NATIVE DIALOG'); d.dismiss(); });
+  await page.addInitScript({ path: S + '/sdkmock.js' });
+  await page.goto('http://localhost:5199/', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1200);
+  await page.click('#btn-title-begin');
+  await page.waitForTimeout(1500);
+  const st = () => page.evaluate(() => window.__fractured.gameState);
+  console.log('state after begin:', await st());
+  const kill = () => page.evaluate(() => { const g = window.__fractured.game; g.state.lucidity = 200; g.state.sanity = 0; });
+  await kill(); await page.waitForTimeout(400);
+  console.log('state after kill:', await st());
+  const vis = id => page.evaluate(i => { const e = document.getElementById(i); return e && getComputedStyle(e).display !== 'none' && e.offsetParent !== null; }, id);
+  console.log('rewarded box visible:', await vis('death-rewarded'), 'revive:', await vis('btn-revive'), 'recover:', await vis('btn-recover-lucidity'));
+  const bankBefore = await page.evaluate(() => window.__fractured.saveManager.metaState.lucidityBank);
+  await page.screenshot({ path: S + '/death_rewarded.png' });
+  await page.click('#btn-revive'); await page.waitForTimeout(400);
+  const after = await page.evaluate(() => { const f = window.__fractured; return { st: f.gameState, sanity: f.game.state.sanity, iframes: f.game.state.player.iframes, bank: f.saveManager.metaState.lucidityBank, reviveUsed: f.game.state.reviveUsed }; });
+  console.log('bank before revive:', bankBefore, 'after revive:', after);
+  // die again: revive must not be offered; recover should be
+  await kill(); await page.waitForTimeout(400);
+  console.log('2nd death -> revive visible:', await vis('btn-revive'), 'recover visible:', await vis('btn-recover-lucidity'));
+  const b2 = await page.evaluate(() => window.__fractured.saveManager.metaState.lucidityBank);
+  await page.click('#btn-recover-lucidity'); await page.waitForTimeout(400);
+  const b3 = await page.evaluate(() => window.__fractured.saveManager.metaState.lucidityBank);
+  console.log('bank after 2nd death:', b2, 'after recover:', b3, 'box visible:', await vis('death-rewarded'));
+  await page.click('#btn-restart'); await page.waitForTimeout(400);
+  console.log('after restart state:', await st());
+  const calls = await page.evaluate(() => window.__sdkCalls.map(c => c[0] + (c[1] ? ':' + c[1] : '')));
+  console.log('sdk calls:', calls.join(' '));
+  // Basic Launch: adsDisabled -> box hides for the session
+  await page.click('#btn-title-begin').catch(() => {});
+  console.log('errors:', errors);
+  await browser.close();
+})();

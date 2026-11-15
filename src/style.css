@@ -214,9 +214,43 @@ canvas { display: block; }
 #confirm-modal .folder-content > div:last-child {
     background: var(--paper-bg);
 }
+
+/* Patch 103: the dialog's text field (save import/export). Typed-record look on the
+   paper. `user-select: text` is required — body sets `user-select: none` globally,
+   which would otherwise make the export string impossible to select and copy. */
+#confirm-input {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 96px;
+    max-height: 30vh;
+    margin: 0 0 24px 0;
+    padding: 10px;
+    resize: vertical;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    color: #111;
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px dashed #777;
+    word-break: break-all;
+    -webkit-user-select: text;
+    user-select: text;
+}
+#confirm-input:focus-visible { outline: 2px solid var(--ui-gold); outline-offset: 2px; }
 #death-screen #btn-restart {
     box-shadow: 0 -18px 18px -8px var(--paper-bg), 2px 2px 5px rgba(0, 0, 0, 0.2);
 }
+
+/* Patch 104: rewarded-ad offers on the death screen. Stacked, centred, separated from
+   the stats by a dashed rule so they read as an offer, not as part of the record. */
+#death-rewarded {
+    flex-direction: column; align-items: center; gap: 10px;
+    margin: 0 0 16px 0; padding: 0 0 14px 0;
+    border-bottom: 1px dashed #999;
+}
+#death-rewarded .file-btn { min-height: 44px; }
+#death-rewarded .file-btn:disabled { opacity: 0.45; cursor: default; }
+#death-rewarded-note { margin: 0; font-size: 0.8rem; color: #555; min-height: 1em; }
 
 /* Sized here rather than inline so the media queries below can actually shrink them —
    an inline font-size wins over every stylesheet rule that is not !important. */

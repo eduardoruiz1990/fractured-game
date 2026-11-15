@@ -5,7 +5,7 @@ import { TOKENS, getActiveSynergies } from '../data/Manifestations.js';
 import { HubWorld } from '../systems/HubWorld.js';
 import { Tutorial } from '../systems/Tutorial.js';
 import { EventBus } from './EventBus.js';
-import { getXPRequiredForLevel, ARENA_VOID_RADIUS } from '../data/Config.js';
+import { getXPRequiredForLevel, ARENA_VOID_RADIUS, isBossType } from '../data/Config.js';
 // Patch 96 — the biome palettes cycle past floor 5. See src/core/Endless.js.
 import { paletteIndexForFloor } from './Endless.js';
 
@@ -25,6 +25,13 @@ export class Game {
     init(saveManager, carriedState = null) {
         this.saveManager = saveManager;
         const meta = saveManager.metaState;
+
+        // Patch 116: hand the outgoing run's pooled objects back before the state is
+        // rebuilt (runs, floor descents, resume, hub entry all come through here).
+        // carriedState is plain data from getCarriedState(), never pooled objects.
+        if (this.state && this.director && typeof this.director.releaseAll === 'function') {
+            this.director.releaseAll(this.state);
+        }
 
         // Patch 29.5: read the Synapse Tree resolver instead of meta.upgrades
         // directly, so legacy upgrades AND tree nodes both feed these buffs.
@@ -731,7 +738,7 @@ export class Game {
 
         if (isHub) return; 
 
-        this.state.activeBoss = this.state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type)) || null;
+        this.state.activeBoss = this.state.entities.find(e => isBossType(e.type)) || null;
     
         const mapCenterX = this.state.mapOriginX;
         const mapCenterY = this.state.mapOriginY;

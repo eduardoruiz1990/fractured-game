@@ -7,11 +7,15 @@
 import { errorLog } from './ErrorLog.js';
 // The arena wall drawn below is the same boundary Game.js drains Sanity past and
 // Director.js clamps spawns inside — see the note on ARENA_VOID_RADIUS in Config.js.
-import { ARENA_VOID_RADIUS } from '../data/Config.js';
+import { ARENA_VOID_RADIUS, isBossType } from '../data/Config.js';
 // Patch 96 — THE RECURSION's look: the five biomes cycle past floor 5, with a capped
 // depth escalation layered over them. The cap is a memory bound, not a taste one —
 // see CYCLE_VISUAL_CAP in src/core/Endless.js.
 import { paletteIndexForFloor, visualCycle, cycleGrade } from './Endless.js';
+
+// Patch 109: upper bound on Renderer.spriteCache (see cacheSprite). Comfortably above
+// the real working set — entity bodies x phase buckets x variants, glows per colour.
+const SPRITE_CACHE_MAX = 768;
 
 export class Renderer {
     constructor(canvas, ctx) {
@@ -29,6 +33,7 @@ export class Renderer {
 
         this.lightCanvas = document.createElement('canvas');
         this.lightCtx = this.lightCanvas.getContext('2d');
+        this.setQuality('high');   // Patch 115; main.js applies the player's tier at boot
         
         // Camera zoom. 1.3 is the desktop look and the MAXIMUM — updateZoom() only
         // ever scales DOWN, on viewports too small to show a usable amount of world.
@@ -222,8 +227,25 @@ export class Renderer {
         drawFn(cx);
 
         sprite = { canvas: c, w, h };
-        this.spriteCache.set(key, sprite);
+        this.cacheSprite(key, sprite);
         return sprite;
+    }
+
+    // Patch 109 (V2 plan B3): every spriteCache insert goes through here. The cache
+    // was unbounded, so any caller whose key varied continuously (see drawGlow) grew it
+    // by one canvas per frame for the whole session. Keys are supposed to be drawn from
+    // small finite sets, so in normal play this never trips; it is the backstop that
+    // turns a future key mistake into a little re-rendering instead of a memory leak.
+    // A Map iterates in insertion order, so dropping from the front evicts the oldest.
+    cacheSprite(key, sprite) {
+        if (this.spriteCache.size >= SPRITE_CACHE_MAX) {
+            let toDrop = Math.ceil(SPRITE_CACHE_MAX / 4);
+            for (const k of this.spriteCache.keys()) {
+                this.spriteCache.delete(k);
+                if (--toDrop <= 0) break;
+            }
+        }
+        this.spriteCache.set(key, sprite);
     }
 
     drawSprite(sprite, x = 0, y = 0) {
@@ -234,10 +256,19 @@ export class Renderer {
     // one sprite per (colour, alpha) scales to any radius: the pulse stays fully live
     // via the destination rect, while createRadialGradient() runs once instead of
     // once per entity per frame. Still faux-glow — no shadowBlur.
+    //
+    // Patch 109 (V2 plan B3): the sprite is baked at FULL alpha and the caller's alpha
+    // is applied with globalAlpha at draw time. The key used to be colour + alpha, so a
+    // caller passing a continuously varying alpha — the tutorial cue's `0.22 * fade` —
+    // minted a new 128x128 canvas (64 KB) almost every frame and kept it forever, on
+    // exactly the low-end phones a first-time player is most likely to be on. A linear
+    // ramp from a@1 to 0 drawn at globalAlpha=a is the same image as a ramp from a to
+    // 0, so this is visually identical and the cache is now one sprite per colour.
     drawGlow(x, y, radius, color, alpha) {
         if (!Number.isFinite(radius) || radius <= 0) return;
+        if (!Number.isFinite(alpha) || alpha <= 0) return;
 
-        const key = `glow|${color}|${alpha}`;
+        const key = `glow|${color}`;
         let sprite = this.spriteCache.get(key);
         if (!sprite) {
             const R = 64;
@@ -245,14 +276,18 @@ export class Renderer {
             c.width = c.height = R * 2;
             const cx = c.getContext('2d');
             const g = cx.createRadialGradient(R, R, 0, R, R, R);
-            g.addColorStop(0, this.hexToRgba(color, alpha));
+            g.addColorStop(0, this.hexToRgba(color, 1));
             g.addColorStop(1, this.hexToRgba(color, 0));
             cx.fillStyle = g;
             cx.fillRect(0, 0, R * 2, R * 2);
             sprite = { canvas: c };
-            this.spriteCache.set(key, sprite);
+            this.cacheSprite(key, sprite);
         }
+        // Multiplied into, not assigned: several callers draw inside a faded group.
+        const prevAlpha = this.ctx.globalAlpha;
+        this.ctx.globalAlpha = prevAlpha * Math.min(1, alpha);
         this.ctx.drawImage(sprite.canvas, x - radius, y - radius, radius * 2, radius * 2);
+        this.ctx.globalAlpha = prevAlpha;
     }
 
     // `offset` shifts this call relative to the entity's own phase, for parts that
@@ -261,6 +296,38 @@ export class Renderer {
         const p = ((ent && Number.isFinite(ent.phase)) ? ent.phase : 0) + offset;
         return Math.sin(this.renderFrame * speed + p)
              + Math.sin(this.renderFrame * speed * 3.7 + p) * 0.3;
+    }
+
+    // Patch 112 (V2 plan B4): the visible world rectangle, padded, for culling cheap
+    // high-count draws (XP orbs, ink puddles, particles) that used to be drawn even when
+    // nowhere near the screen. Mirrors the camera transform in drawGame exactly —
+    // cameraCenter is where the player is drawn, and the world is scaled by zoom — so
+    // it is right on every layout including the portrait band. The pad covers camera
+    // shake and the largest culled radius; anything partly visible is still drawn.
+    updateCullRect(state) {
+        const z = (Number.isFinite(this.zoom) && this.zoom > 0) ? this.zoom : 1;
+        const px = state.player.x, py = state.player.y;
+        const pad = 120 + (Number.isFinite(state.cameraShake) ? state.cameraShake : 0);
+        this.cullL = px - this.cameraCenterX / z - pad;
+        this.cullR = px + (this.canvas.width - this.cameraCenterX) / z + pad;
+        this.cullT = py - this.cameraCenterY / z - pad;
+        this.cullB = py + (this.canvas.height - this.cameraCenterY) / z + pad;
+    }
+
+    /**
+     * Patch 114 (V2 plan B6): how many simulation steps this draw represents, for the
+     * few timers that live in the renderer. At least 1 — main.js skips the draw
+     * entirely on a frame with no sim step, so a draw always covers >= 1 step.
+     */
+    drawSteps() {
+        const n = this.simStepsThisFrame;
+        return (Number.isFinite(n) && n >= 1) ? n : 1;
+    }
+
+    /** Patch 112: true unless (x, y) is certainly off screen. Fails open on bad data. */
+    inView(x, y) {
+        if (!Number.isFinite(this.cullL)) return true;
+        return x >= this.cullL && x <= this.cullR && y >= this.cullT && y <= this.cullB;
     }
 
     // Patch 17: per-entity hit squash/recoil, driven off flashTime (set to 5 on
@@ -857,7 +924,8 @@ export class Renderer {
             this.ctx.translate(this.cameraCenterX, this.cameraCenterY);
             this.ctx.scale(this.zoom, this.zoom);
             this.ctx.translate(-state.player.x, -state.player.y);
-            
+            this.updateCullRect(state);   // Patch 112
+
             let curShakeX = 0, curShakeY = 0;
             if (state.cameraShake > 0) {
                 curShakeX = (Math.random() - 0.5) * state.cameraShake;
@@ -871,14 +939,10 @@ export class Renderer {
                     state.hubWorld.draw(this.ctx, state, this);
                     this.drawPlayer(state, audioEngine);
                     
-                    if (this.lightCanvas.width !== this.canvas.width || this.lightCanvas.height !== this.canvas.height) {
-                        this.lightCanvas.width = this.canvas.width;
-                        this.lightCanvas.height = this.canvas.height;
-                    } else {
-                        this.lightCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                    }
+                    const hubLs = this.prepareLightCanvas();   // Patch 115
 
                     this.lightCtx.save();
+                    this.lightCtx.scale(hubLs, hubLs);
                     this.lightCtx.translate(this.cameraCenterX, this.cameraCenterY);
                     this.lightCtx.scale(this.zoom, this.zoom);
                     this.lightCtx.translate(-state.player.x, -state.player.y);
@@ -938,7 +1002,7 @@ export class Renderer {
                     this.ctx.save();
                     this.ctx.setTransform(1, 0, 0, 1, 0, 0); 
                     this.ctx.globalCompositeOperation = 'source-over';
-                    this.ctx.drawImage(this.lightCanvas, 0, 0);
+                    this.ctx.drawImage(this.lightCanvas, 0, 0, this.canvas.width, this.canvas.height);
                     this.ctx.restore();
 
                     this.ctx.save();
@@ -1020,10 +1084,13 @@ export class Renderer {
                         console.warn("Recoverable Boss Intro error:", e);
                         errorLog.capture(e, 'renderer-boss-intro');
                     }
-                    this.bossAnnouncementTimer--; 
+                    // Patch 114: in sim steps, matching the 240-frame hitStop it
+                    // announces. Per-draw, the banner ended after ~1.7 s on a 144 Hz
+                    // screen while the game stayed frozen for the full 4 s.
+                    this.bossAnnouncementTimer = Math.max(0, this.bossAnnouncementTimer - this.drawSteps());
                 }
                 
-                this.drawFilmGrain();
+                if (this.filmGrainEnabled !== false) this.drawFilmGrain();   // Patch 115: off on LOW
             } else {
                 this.ctx.globalAlpha = 0.08; 
                 this.drawFilmGrain();
@@ -1031,10 +1098,43 @@ export class Renderer {
             }
 
         } catch (e) {
-            console.error("CRITICAL RENDERER CRASH PREVENTED:", e);
             errorLog.capture(e, 'renderer');
+            // Patch 113: once per distinct message. Every frame of a persistent fault
+            // used to console.error with Chrome's full async rAF stack — the same flood
+            // main.js already avoids for its own loop. ErrorLog keeps the full count.
+            const key = (e && e.message) ? String(e.message) : String(e);
+            if (!this._loggedRenderCrashes) this._loggedRenderCrashes = new Set();
+            if (!this._loggedRenderCrashes.has(key) && this._loggedRenderCrashes.size < 20) {
+                this._loggedRenderCrashes.add(key);
+                console.log('CRITICAL RENDERER CRASH PREVENTED: ' + key + '\n' + ((e && e.stack) || ''));
+            }
+            // Patch 113 (V2 plan B5): an exception skipped every ctx.restore() between
+            // where it threw and the end of the frame. The old finally only reset the
+            // transform, so each failing frame leaked save() levels and could leave
+            // globalCompositeOperation = 'screen' (or a lowered globalAlpha) in force
+            // for the NEXT frame — where the black clear at the top of drawGame then
+            // does nothing and the screen smears. Unwind both contexts to base state.
+            this.recoverContexts();
         } finally {
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        }
+    }
+
+    /**
+     * Patch 113: return ctx and lightCtx to their base drawing state after a throw.
+     * restore() on an empty stack is a no-op, so a bounded loop needs no depth
+     * bookkeeping. NOT ctx.reset(): that would also discard base-level settings made
+     * outside any save() (the Patch 67 image-smoothing setup).
+     */
+    recoverContexts() {
+        for (const c of [this.ctx, this.lightCtx]) {
+            if (!c) continue;
+            try {
+                for (let i = 0; i < 64; i++) c.restore();
+                c.globalCompositeOperation = 'source-over';
+                c.globalAlpha = 1;
+                c.setTransform(1, 0, 0, 1, 0, 0);
+            } catch (e) { /* a context that cannot be restored has nothing left to leak */ }
         }
     }
 
@@ -1081,7 +1181,7 @@ export class Renderer {
         let boss = null;
         for (let i = 0; i < state.entities.length; i++) {
             let e = state.entities[i];
-            if (['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type) && e.hp > 0) {
+            if (isBossType(e.type) && e.hp > 0) {
                 boss = e;
                 break;
             }
@@ -1130,13 +1230,16 @@ export class Renderer {
         // Every other system freezes during hitStop (that pause is the whole
         // point of the impact feel), so the fog now actually holds with them.
         const frozen = state.hitStop > 0;
+        const fogSprite = this.getFogSprite(atmo.fog);   // Patch 115
+        let drawn = 0;
 
         this.ctx.globalAlpha = atmo.haze;
+        const fogSteps = this.drawSteps();   // Patch 114: drift per sim step, not per draw
         this.fogClouds.forEach(cloud => {
             if (!frozen) {
-                cloud.x += cloud.vx;
-                cloud.y += cloud.vy;
-                cloud.phase = (cloud.phase || 0) + (cloud.driftRate || 0.006);
+                cloud.x += cloud.vx * fogSteps;
+                cloud.y += cloud.vy * fogSteps;
+                cloud.phase = (cloud.phase || 0) + (cloud.driftRate || 0.006) * fogSteps;
             }
 
             let dx = (cloud.x - state.player.x) % 2000;
@@ -1154,27 +1257,82 @@ export class Renderer {
             const core = (cloud.density || 0.5) * 0.5;
             if (!Number.isFinite(r) || r <= 0) return;
 
-            const fGrad = this.ctx.createRadialGradient(drawX, drawY, 0, drawX, drawY, r);
-            fGrad.addColorStop(0, `rgba(${atmo.fog}, ${core})`);
-            fGrad.addColorStop(0.55, `rgba(${atmo.fog}, ${core * 0.4})`);
-            fGrad.addColorStop(1, `rgba(${atmo.fog}, 0)`);
-            this.ctx.fillStyle = fGrad;
-            this.ctx.beginPath();
-            this.ctx.arc(drawX, drawY, r, 0, Math.PI * 2);
-            this.ctx.fill();
+            // Patch 115 (V2 plan B7): a cached sprite instead of a live gradient. This
+            // was 30 createRadialGradient + arc + fill per frame — the largest single
+            // per-frame cost the Patch 66b review found. The ramp is the same three
+            // stops baked at full alpha and drawn at haze * core, the drawGlow method
+            // (identical for a linear ramp). Clouds wholly off screen are skipped, and
+            // the low tier draws fewer of them.
+            if (drawn >= this.fogCloudLimit) return;
+            if (drawX + r < this.cullL || drawX - r > this.cullR ||
+                drawY + r < this.cullT || drawY - r > this.cullB) return;
+            drawn++;
+            this.ctx.globalAlpha = atmo.haze * Math.min(1, core);
+            this.ctx.drawImage(fogSprite, drawX - r, drawY - r, r * 2, r * 2);
         });
         this.ctx.globalAlpha = 1.0;
     }
 
-    drawLightingMasks(state, curShakeX, curShakeY) {
-        if (this.lightCanvas.width !== this.canvas.width || this.lightCanvas.height !== this.canvas.height) {
-            this.lightCanvas.width = this.canvas.width;
-            this.lightCanvas.height = this.canvas.height;
-        } else {
-            this.lightCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    /** Patch 115: one soft fog disc per floor fog colour, baked at full alpha. */
+    getFogSprite(fogRgb) {
+        const key = `fog|${fogRgb}`;
+        let sprite = this.spriteCache.get(key);
+        if (!sprite) {
+            const R = 128;
+            const c = document.createElement('canvas');
+            c.width = c.height = R * 2;
+            const cx = c.getContext('2d');
+            const g = cx.createRadialGradient(R, R, 0, R, R, R);
+            g.addColorStop(0, `rgba(${fogRgb}, 1)`);
+            g.addColorStop(0.55, `rgba(${fogRgb}, 0.4)`);
+            g.addColorStop(1, `rgba(${fogRgb}, 0)`);
+            cx.fillStyle = g;
+            cx.fillRect(0, 0, R * 2, R * 2);
+            sprite = { canvas: c };
+            this.cacheSprite(key, sprite);
         }
+        return sprite.canvas;
+    }
+
+    /**
+     * Patch 115 (V2 plan B7): sizes and clears the offscreen darkness mask, and
+     * returns the scale it is stored at. The mask is soft by design (penumbra, faux
+     * glows), so the LOW tier keeps it at half resolution — a quarter of the fill and
+     * composite cost — and drawImage scales it back up to the canvas. Callers apply
+     * the returned scale before the camera transform.
+     */
+    prepareLightCanvas() {
+        const ls = (Number.isFinite(this.lightScale) && this.lightScale > 0) ? this.lightScale : 1;
+        const w = Math.max(1, Math.round(this.canvas.width * ls));
+        const h = Math.max(1, Math.round(this.canvas.height * ls));
+        if (this.lightCanvas.width !== w || this.lightCanvas.height !== h) {
+            this.lightCanvas.width = w;
+            this.lightCanvas.height = h;
+        } else {
+            this.lightCtx.clearRect(0, 0, w, h);
+        }
+        return ls;
+    }
+
+    /**
+     * Patch 115 (V2 plan B7): graphics quality tier. 'high' is the game exactly as it
+     * was (bar the fog sprite, which is the same image). 'low' trades soft detail for
+     * frame time on weak devices. Simulation caps live on the Director and are set
+     * alongside this by main.js (applyQualityTier), so the renderer stays sim-free.
+     */
+    setQuality(tier) {
+        this.quality = tier === 'low' ? 'low' : 'high';
+        const low = this.quality === 'low';
+        this.lightScale = low ? 0.5 : 1;
+        this.fogCloudLimit = low ? 12 : 30;
+        this.filmGrainEnabled = !low;
+    }
+
+    drawLightingMasks(state, curShakeX, curShakeY) {
+        const ls = this.prepareLightCanvas();   // Patch 115
 
         this.lightCtx.save();
+        this.lightCtx.scale(ls, ls);
         this.lightCtx.translate(this.cameraCenterX, this.cameraCenterY);
         this.lightCtx.scale(this.zoom, this.zoom);
         this.lightCtx.translate(-state.player.x, -state.player.y);
@@ -1304,7 +1462,8 @@ export class Renderer {
 
         this.ctx.save();
         this.ctx.setTransform(1, 0, 0, 1, 0, 0); 
-        this.ctx.drawImage(this.lightCanvas, 0, 0);
+        // Patch 115: drawn to the full canvas — the mask may be stored at reduced size.
+        this.ctx.drawImage(this.lightCanvas, 0, 0, this.canvas.width, this.canvas.height);
         this.ctx.restore(); 
     }
 
@@ -2092,6 +2251,7 @@ export class Renderer {
 
         if (state.inkPuddles) {
             state.inkPuddles.forEach(p => {
+                if (!this.inView(p.x, p.y)) return;   // Patch 112
                 const lifeRatio = p.life / 300;
                 
                 this.ctx.save();
@@ -2130,6 +2290,7 @@ export class Renderer {
 
         if (state.xpDrops) {
             state.xpDrops.forEach(xp => {
+                if (!this.inView(xp.x, xp.y)) return;   // Patch 112
                 this.ctx.save();
                 this.ctx.translate(xp.x, xp.y);
                 
@@ -2738,8 +2899,14 @@ export class Renderer {
                     // cheap two-draw element that isn't worth caching.
                     const lunging = ent.attackState === 'lunging';
                     let stretch = lunging ? 5 : 0;
-                    let pulseA = Math.round(this.entPulse(ent, 0.2) * 2 * 2) / 2;
-                    let pulseB = Math.round(this.entPulse(ent, 0.2, Math.PI/2) * 2 * 2) / 2;
+                    // Patch 111: whole-unit buckets (were half-unit). entPulse mixes two
+                    // frequencies, so A and B do not trace a circle — they fill the whole
+                    // square, and at 0.5 steps that was 11x11 = 121 sprites (64 KB each)
+                    // per flag combination: the headless soak held ~340 predator sprites,
+                    // ~21 MB, and still climbing. Whole units give 7x7 = 49 per combination
+                    // for a 1px-vs-0.5px step in the body-edge breathing.
+                    let pulseA = Math.round(this.entPulse(ent, 0.2) * 2);
+                    let pulseB = Math.round(this.entPulse(ent, 0.2, Math.PI/2) * 2);
                     const predColor = isFlashed ? '#ddaaaa' : (ent.buffed ? '#3a0a0a' : '#111111');
 
                     const predSprite = this.getSprite(
@@ -3028,7 +3195,7 @@ export class Renderer {
                     }
                 }
 
-                if (ent.hp < ent.maxHp && ent.flashTime <= 0 && !['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(ent.type)) {
+                if (ent.hp < ent.maxHp && ent.flashTime <= 0 && !isBossType(ent.type)) {
                     let barW = 24;
                     let yOffset = 20;
                     
@@ -3051,6 +3218,7 @@ export class Renderer {
             // settling embers as the new drag takes hold, and bright particles
             // get a cached faux-glow head.
             state.particles.forEach(p => {
+                if (!this.inView(p.x, p.y)) return;   // Patch 112
                 const life = Math.max(0, Math.min(1, p.life));
                 if (life <= 0) return;
                 const speed = Math.hypot(p.vx, p.vy);
@@ -3708,7 +3876,7 @@ export class Renderer {
         if (state.playerAfterimages) {
             for (let i = state.playerAfterimages.length - 1; i >= 0; i--) {
                 let img = state.playerAfterimages[i];
-                img.life -= 0.1;
+                img.life -= 0.1 * this.drawSteps();   // Patch 114: per sim step
                 if (img.life <= 0) {
                     state.playerAfterimages.splice(i, 1);
                     continue;
@@ -3738,8 +3906,11 @@ export class Renderer {
 
         let moveX = 0, moveY = 0;
         if (isMoving || (state.player.dash && state.player.dash.active)) {
-            let globalVx = state.player.x - this.lastPx;
-            let globalVy = state.player.y - this.lastPy;
+            // Patch 114: per-step velocity — a draw can cover 2-3 sim steps on a slow
+            // device, which used to double or triple the body lean.
+            const dSteps = this.drawSteps();
+            let globalVx = (state.player.x - this.lastPx) / dSteps;
+            let globalVy = (state.player.y - this.lastPy) / dSteps;
             if (state.player.dash && state.player.dash.active) {
                 globalVx = state.player.dash.dx * 10;
                 globalVy = state.player.dash.dy * 10;
@@ -3754,7 +3925,7 @@ export class Renderer {
         this.lastPy = state.player.y;
 
         if (isMoving) {
-            this.legPhase += 0.3 + (panic * 0.4);
+            this.legPhase += (0.3 + (panic * 0.4)) * this.drawSteps();   // Patch 114
             
             if (Math.abs(Math.sin(this.legPhase)) > 0.9 && Math.abs(Math.sin(this.lastFootstepPhase)) <= 0.9) {
                 if (audioEngine && (!state.player.dash || !state.player.dash.active)) {

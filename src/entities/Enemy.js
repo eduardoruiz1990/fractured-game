@@ -1,3 +1,4 @@
+import { isBossType } from '../data/Config.js';   // Patch 117
 // src/entities/Enemy.js
 export class Enemy {
     constructor(type, damage, color, painSound = 'damage') {
@@ -225,7 +226,7 @@ export class Enemy {
         const HARD_LEASH = isTutorial ? safeR * 2.2 : Math.max(600, visible * 2.2);
         const RETURN_RADIUS = isTutorial ? safeR : visible * 0.8;
         const STRAY_GRACE = isTutorial ? 45 : 90;            // tutorial gets help twice as fast
-        const isLeashable = !['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(this.type);
+        const isLeashable = !isBossType(this.type);
 
         if (isLeashable) {
             if (distToPlayer > SOFT_LEASH) {

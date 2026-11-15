@@ -53,7 +53,9 @@ export class Amalgamation extends Enemy {
             this.actionTimer--;
             
             // Vomit enemies periodically during this phase
-            if (this.actionTimer % 15 === 0) {
+            // Patch 110: adds respect the global live-enemy ceiling. The vomit beat
+            // (shake, particles, SFX below) still plays only when something spawns.
+            if (this.actionTimer % 15 === 0 && game.director.hasRoomForEnemy()) {
                 let spawnType = Math.random() < 0.3 ? 'PARASITE' : 'SCAVENGER';
                 // Spawn them slightly offset from the boss center
                 let sAngle = Math.random() * Math.PI * 2;

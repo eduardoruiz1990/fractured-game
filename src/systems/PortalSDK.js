@@ -311,6 +311,101 @@ class PortalSDK {
     }
 
     // ---------------------------------------------------------------------
+    // Rewarded ads + happytime (Patch 104, V2 plan A3)
+    //
+    // CrazyGames rules (requirements/ads, sdk/video-ads), verified 2026-11-15:
+    //   - grant the reward ONLY in adFinished; on adError "do NOT reward the player";
+    //   - the request button must not appear on an active gameplay screen;
+    //   - Basic Launch has ads disabled -> adError with code 'adsDisabled'.
+    // ---------------------------------------------------------------------
+
+    /**
+     * True when a rewarded offer may be SHOWN. False off-portal, and false for the
+     * rest of the session once the portal has said ads are disabled or blocked —
+     * so a Basic Launch build never shows a button that can only fail.
+     */
+    canOfferRewarded() {
+        return this.available && !this._rewardedUnavailable;
+    }
+
+    /**
+     * Same total contract as showMidgameAd: `onComplete` fires exactly once on every
+     * path. `onRewarded` fires at most once, only from adFinished, and always BEFORE
+     * onComplete, so a caller can apply the reward and then resume in one place.
+     * `onComplete` receives `{ rewarded, errorCode }`.
+     */
+    showRewardedAd({ onStart, onRewarded, onComplete } = {}) {
+        let settled = false;
+        let watchdog = null;
+        const complete = (rewarded, errorCode = null) => {
+            if (settled) return;
+            settled = true;
+            if (watchdog !== null) clearTimeout(watchdog);
+            this.adPlaying = false;
+            if (rewarded) { try { if (onRewarded) onRewarded(); } catch (e) {} }
+            try { if (onComplete) onComplete({ rewarded: !!rewarded, errorCode }); } catch (e) {}
+        };
+
+        if (!this.canOfferRewarded()) { complete(false, 'unavailable'); return; }
+
+        try {
+            // A watchdog completes WITHOUT reward: we cannot prove the ad was watched.
+            watchdog = setTimeout(() => complete(false, 'timeout'), AD_WATCHDOG_MS);
+            window.CrazyGames.SDK.ad.requestAd('rewarded', {
+                adStarted: () => {
+                    this.adPlaying = true;
+                    try { if (onStart) onStart(); } catch (e) {}
+                },
+                adFinished: () => complete(true),
+                adError: (error) => {
+                    const code = (error && (error.code || error.message)) || 'other';
+                    // These will not change during this session, so stop offering.
+                    // 'unfilled' and 'adCooldown' are transient and keep the offer.
+                    if (code === 'adsDisabled' || code === 'adblock') this._rewardedUnavailable = true;
+                    complete(false, code);
+                }
+            });
+        } catch (e) {
+            complete(false, 'other');
+        }
+    }
+
+    /**
+     * Signals a moment of player delight. CrazyGames: use for achievements (boss
+     * kill, new highscore), "sparingly", and NOT for ordinary level completion.
+     */
+    happytime() {
+        if (!this.available) return;
+        try { window.CrazyGames.SDK.game.happytime(); } catch (e) {}
+    }
+
+    /**
+     * Patch 119 (V2 plan B11): attaches a flat key/value snapshot to any feedback
+     * report the player files through the CrazyGames UI (docs: "Game context" —
+     * `SDK.game.setGameContext({ level: 12 })`; reports reach the developer by
+     * email and on the Developer Portal). This is the portal's own diagnostics
+     * path, so no third-party error sink is needed: the context carries the last
+     * recorded error, and a player saying "it froze" arrives with the floor, room,
+     * screen and error that went with it. Values are stringified because the
+     * documented C# form is Dictionary<string,string>, the strictest of the
+     * engine bindings. Callers must not send anything identifying.
+     */
+    setGameContext(ctx) {
+        if (!this.available || !ctx || typeof ctx !== 'object') return;
+        try {
+            const g = window.CrazyGames.SDK.game;
+            if (!g || typeof g.setGameContext !== 'function') return;
+            const flat = {};
+            for (const k of Object.keys(ctx)) {
+                const v = ctx[k];
+                if (v === undefined || v === null) continue;
+                flat[k] = String(v).slice(0, 200);
+            }
+            g.setGameContext(flat);
+        } catch (e) {}
+    }
+
+    // ---------------------------------------------------------------------
     // Platform-forced mute (Patch 49)
     //
     // Separate from ad muting: `game.settings.muteAudio` reflects the PLAYER's

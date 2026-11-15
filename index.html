@@ -2,13 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- Patch 107: viewport-fit=cover makes iOS report real env(safe-area-inset-*)
+         values (without it they are 0, and the HUD/joystick insets in style.css did
+         nothing on notched iPhones). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0a0505">
     <title>FRACTURED</title>
     <meta name="description" content="Sanity is your HP. Every kill feeds Lucidity, the currency of your own unraveling. FRACTURED is a psychiatric horror roguelite where you can adopt Intrusive Thoughts as permanent curses for greater power — if you dare.">
     <meta property="og:title" content="FRACTURED">
     <meta property="og:description" content="Sanity is your HP. Every kill feeds Lucidity, the currency of your own unraveling. FRACTURED is a psychiatric horror roguelite where you can adopt Intrusive Thoughts as permanent curses for greater power — if you dare.">
     <meta property="og:type" content="website">
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <!-- Portal SDK — INJECTED AT BUILD TIME (Patch 102, 2026-11-15). This file must
          not carry the tag itself: vite.config.js adds the CrazyGames SDK v3 script
          only in `--mode crazygames` (npm run build, npm run dev:crazygames), and
@@ -579,6 +583,10 @@
             <div class="folder-content" style="text-align: center;">
                 <p id="confirm-body" class="typewriter-text" style="font-size: 1.1rem; margin: 0 0 14px 0; color: #111;"></p>
                 <p id="confirm-note" class="typewriter-text" style="font-size: 0.85rem; color: #666; margin: 0 0 30px 0; line-height: 1.5;"></p>
+                <!-- Patch 103: text field for save import/export (src/ui/Dialog.js). A
+                     <textarea>, NOT a <div>: style.css pins `.folder-content > div:last-child`
+                     as the sticky button row, so this must never become a div. -->
+                <textarea id="confirm-input" spellcheck="false" autocomplete="off" style="display: none;"></textarea>
                 <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
                     <button class="file-btn danger" id="btn-confirm-accept">ABANDON &amp; BEGIN ANEW</button>
                     <button class="file-btn primary" id="btn-confirm-cancel">RETURN</button>
@@ -594,6 +602,14 @@
                 <div class="title-typewriter" style="color: var(--ui-red);">MIND BROKEN</div>
             </div>
             <div class="folder-content" style="text-align: center;">
+                <!-- Patch 104: rewarded-ad offers (CrazyGames only). Above the stats so
+                     they are visible without scrolling; shown by main.js
+                     (setupDeathRewards) only when portalSDK.canOfferRewarded(). -->
+                <div id="death-rewarded" style="display: none;">
+                    <button class="file-btn primary" id="btn-revive">REVIVE AT 50% SANITY (AD)</button>
+                    <button class="file-btn" id="btn-recover-lucidity">RECOVER LOST LUCIDITY (AD)</button>
+                    <p id="death-rewarded-note" class="typewriter-text"></p>
+                </div>
                 <div id="final-stats" class="typewriter-text" style="color: #111;"></div>
                 <button class="file-btn primary" id="btn-restart">RECONSTRUCT FILE</button>
             </div>
