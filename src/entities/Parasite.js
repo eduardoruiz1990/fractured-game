@@ -45,7 +45,7 @@ export class Parasite extends Enemy {
                         
                         let distToPlayer = Math.max(Math.hypot(state.player.x - this.x, state.player.y - this.y), 0.001);
                         if (distToPlayer < 80 && (!state.player.dash || !state.player.dash.active)) {
-                             game.takeDamage(5);
+                             game.takeDamage(5, this.type);
                         }
                         
                         this.hp = 0; 

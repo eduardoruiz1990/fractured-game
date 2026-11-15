@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–123)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–124)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1624,6 +1624,44 @@ regular room), not straight into the boss. The resume prompt shows the room the 
 actually resume in. `test_endless` gains 4 assertions for this.
 
 The HUD now reads `ROOM: n/5`. Fuzz: 200/200 runs clean.
+
+**Patch 124 — death screen, PLAY AGAIN first (C4).** In v1 every death went through an
+ad, then the walkable hub, a walk to the machine, a folder, and AUTHORIZE: 4–5 actions
+before the next attempt. Now it takes one tap.
+
+- **PLAY AGAIN** is the primary button. It runs the same `showAdThen` rules as before:
+  no midgame ad after a rewarded revive, and the 5-minute floor applies. It then calls
+  `startNewRun()`, the one launch path every other route uses.
+- **RETURN TO WARD** (the old RECONSTRUCT FILE, `#btn-restart`) is secondary.
+- Both buttons sit in a sticky `#death-actions` bar. In short landscape they share one
+  row.
+- **What killed you.** `Game.takeDamage(amount, source)` records
+  `state.lastDamageSource` whenever a hit lands.
+  - Every entity passes its `type`.
+  - Boss projectiles pass the boss type.
+  - VOLATILE passes `'VOLATILE'`.
+  - The Void drain records `'VOID'`.
+  - Ambient drain records `'DRAIN'`, but only when nothing has hit yet.
+  - The death screen names the bestiary entry, for example "Broken by HALL MONITORS".
+- **The run in four numbers:** TIME, KILLS, LEVEL and BANKED.
+  - `runKills` and `runFrames` are new whole-run counters, carried across floors.
+  - `runFrames` counts sim ticks, not rAF frames, so it is right at 144 Hz.
+  - Suspended runs from older builds start both at 0.
+- **Records and economy text.**
+  - "NEW DEEPEST FLOOR" appears when the floor beats `bestFloorAtStart`. That is the
+    record taken at `Game.init`, before the run can raise it, and it is carried.
+  - The Lucidity text is down to one line.
+  - The full run summary is folded into a `<details>` "CASE FILE — THIS ATTEMPT".
+- **AWAKEN** reuses the folder. It calls `setDeathLayout(false)`, so it gets the
+  pre-124 layout back: no cause, no stats, no PLAY AGAIN, and `#btn-restart` as primary.
+
+New `qa/death_screen_check.cjs` (assertion-based, 384×717, 915×412 and 1280×720) checks:
+- the cause, place, time and record text, and the stats strip;
+- PLAY AGAIN is on screen without scrolling and at least 44 px tall;
+- PLAY AGAIN lands in a fresh PLAYING run;
+- AWAKEN gets the old layout back.
+
+`ads_rewarded`, `suspend_bank`, `ads_cooldown` and `focus_keys` still pass.
 
 ---
 

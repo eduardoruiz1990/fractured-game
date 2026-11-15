@@ -42,7 +42,7 @@ export class Boss extends Enemy {
                 if (game.audioEngine) game.audioEngine.playSFX('boss_intro', 0.8); 
                 
                 if (distToTarget <= this.maxPulseRadius && (!state.player.dash || !state.player.dash.active)) {
-                     game.takeDamage(this.damage * 1.5); 
+                     game.takeDamage(this.damage * 1.5, this.type); 
                 }
             }
         } else if (this.pulseState === 'pulsing') {
@@ -88,7 +88,7 @@ export class Boss extends Enemy {
 
             if (distToTarget < 40) { 
                 if (!state.player.dash || !state.player.dash.active) {
-                    game.takeDamage(this.damage); 
+                    game.takeDamage(this.damage, this.type); 
                     this.x -= this.vx * 5; 
                     this.y -= this.vy * 5; 
                 }

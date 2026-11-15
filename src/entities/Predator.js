@@ -100,7 +100,7 @@ export class Predator extends Enemy {
 
         if (distToTarget < 20 && targetX === state.player.x) { 
             if (!state.player.dash || !state.player.dash.active) {
-                game.takeDamage(this.damage); 
+                game.takeDamage(this.damage, this.type); 
                 
                 this.x -= this.vx * 10; 
                 this.y -= this.vy * 10; 

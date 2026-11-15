@@ -122,7 +122,7 @@ export class Rorschach {
         }
         
         if (dist < this.radius + state.player.radius && state.sanity > 0 && this.confused <= 0) {
-            if (state.frame % 30 === 0) game.takeDamage(20 / this.generation);
+            if (state.frame % 30 === 0) game.takeDamage(20 / this.generation, this.type);
         }
     }
 

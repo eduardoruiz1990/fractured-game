@@ -196,7 +196,7 @@ body.quality-low #crt-scanlines { display: none; }
 #confirm-modal .folder-content {
     display: flex; flex-direction: column;
 }
-#death-screen #btn-restart,
+#death-screen #death-actions,
 #confirm-modal .folder-content > div:last-child {
     position: sticky; bottom: 0;
     align-self: center;
@@ -239,8 +239,43 @@ body.quality-low #crt-scanlines { display: none; }
     user-select: text;
 }
 #confirm-input:focus-visible { outline: 2px solid var(--ui-gold); outline-offset: 2px; }
-#death-screen #btn-restart {
-    box-shadow: 0 -18px 18px -8px var(--paper-bg), 2px 2px 5px rgba(0, 0, 0, 0.2);
+/* Patch 124: the sticky bar is now #death-actions (PLAY AGAIN + RETURN TO WARD on
+   death, btn-restart alone on AWAKEN). The paper fade sits on the bar, not a button. */
+#death-screen #death-actions {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    width: 100%; padding-top: 6px;
+    background: var(--paper-bg);
+    box-shadow: 0 -18px 18px -8px var(--paper-bg);
+}
+#death-actions .file-btn { min-height: 44px; }
+#death-screen #btn-play-again { font-size: 1.5rem; padding: 14px 30px; letter-spacing: 0.08em; }
+#death-actions #btn-restart.secondary { font-size: 1rem; padding: 8px 20px; background: transparent; box-shadow: none; }
+
+/* Patch 124: the cause line and the four-number strip at the top of the death file. */
+#death-cause { color: #111; font-size: 1.15rem; line-height: 1.4; margin: 0 0 12px; }
+#death-cause strong { color: var(--ui-red); }
+#death-cause .death-where { display: block; font-size: 0.9rem; color: #444; margin-top: 4px; }
+#death-cause .death-record { display: block; font-size: 0.9rem; color: #7a5a10; margin-top: 4px; font-weight: bold; }
+#death-stats {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
+    margin: 0 0 14px; padding: 8px 0; border-top: 1px dashed #999; border-bottom: 1px dashed #999;
+    font-family: var(--ui-font); color: #111;
+}
+#death-stats .stat-value { display: block; font-size: 1.35rem; font-weight: bold; font-variant-numeric: tabular-nums; }
+#death-stats .stat-label { display: block; font-size: 0.72rem; letter-spacing: 0.08em; color: #555; }
+.death-file { text-align: left; margin-top: 10px; }
+.death-file summary { cursor: pointer; font-size: 0.9rem; color: #555; letter-spacing: 0.06em; min-height: 32px; }
+.death-file .run-summary { margin-top: 8px; }
+/* Short landscape (phones on their side, small iframes): actions side by side so the
+   sticky bar is one row, not a third of the screen over the rewarded offers. */
+@media (max-height: 560px) and (orientation: landscape) {
+    #death-screen #death-actions { flex-direction: row; justify-content: center; gap: 10px; padding-top: 4px; }
+    #death-screen #btn-play-again { font-size: 1.1rem; padding: 9px 24px; }
+    #death-actions #btn-restart.secondary { padding: 8px 16px; }
+    #death-cause { font-size: 1rem; margin-bottom: 6px; }
+    #death-cause .death-where, #death-cause .death-record { font-size: 0.8rem; margin-top: 2px; }
+    #death-stats { margin-bottom: 8px; padding: 4px 0; }
+    #death-stats .stat-value { font-size: 1.1rem; }
 }
 
 /* Patch 104: rewarded-ad offers on the death screen. Stacked, centred, separated from

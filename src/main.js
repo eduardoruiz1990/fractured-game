@@ -6,7 +6,7 @@ import { Renderer } from './core/Renderer.js';
 import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
-import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies } from './data/Manifestations.js';
+import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies, ENEMY_BESTIARY } from './data/Manifestations.js';
 import { portalSDK } from './systems/PortalSDK.js';
 import { showConfirm } from './ui/Dialog.js';
 import { errorLog } from './core/ErrorLog.js';
@@ -389,7 +389,8 @@ function runDeathReward(kind) {
     if (gameState !== 'DEAD' || !deathSettlement) return;
     // Lock every exit while the ad request is in flight, so a double tap cannot
     // request twice and RECONSTRUCT cannot tear the run down under a pending revive.
-    [reviveBtn, recoverBtn, restartBtn].forEach(b => { if (b) b.disabled = true; });
+    const playAgainBtn = document.getElementById('btn-play-again');
+    [reviveBtn, recoverBtn, restartBtn, playAgainBtn].forEach(b => { if (b) b.disabled = true; });
 
     portalSDK.showRewardedAd({
         onStart: () => { noteAdShown(); if (audioEngine) audioEngine.setMuted('ad', true); },
@@ -400,6 +401,7 @@ function runDeathReward(kind) {
         onComplete: ({ rewarded, errorCode }) => {
             if (audioEngine) audioEngine.setMuted('ad', false);
             if (restartBtn) restartBtn.disabled = false;
+            if (playAgainBtn) playAgainBtn.disabled = false;
             if (rewarded) {
                 noteAdShown();
                 if (box) box.style.display = 'none';   // one rewarded ad per death
@@ -467,6 +469,49 @@ function performRevive() {
 }
 
 // BOSS_TYPE_SET now lives in data/Config.js (Patch 117).
+
+// ---------------------------------------------------------------------------
+// Patch 124 (V2 plan C4) — the death screen says what broke you and offers
+// PLAY AGAIN first. v1 sent every death through ad -> hub -> walk to the machine ->
+// folder -> AUTHORIZE; a player who wants another go now gets one in one tap.
+// ---------------------------------------------------------------------------
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/** state.lastDamageSource -> a phrase for "Broken by ...". */
+function describeDamageSource(source) {
+    if (source === 'VOID') return 'the Void beyond the ward';
+    if (source === 'DRAIN') return 'the dark, slowly';
+    if (source === 'VOLATILE') return 'a VOLATILE blast';
+    const entry = source && ENEMY_BESTIARY.find(e => e.id === source);
+    if (entry) return entry.name;
+    return 'something in the dark';
+}
+
+/** Sim frames (60 per second) -> "m:ss". */
+function formatRunTime(frames) {
+    const secs = Math.max(0, Math.floor((Number.isFinite(frames) ? frames : 0) / 60));
+    return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Shows or hides the death-only parts of the shared #death-screen folder. AWAKEN
+ * reuses the folder, so it calls this with false to get the pre-124 layout back
+ * (btn-restart alone, as the primary).
+ */
+function setDeathLayout(isDeath) {
+    const cause = document.getElementById('death-cause');
+    const stats = document.getElementById('death-stats');
+    const playAgain = document.getElementById('btn-play-again');
+    const restart = document.getElementById('btn-restart');
+    if (cause) cause.style.display = isDeath ? 'block' : 'none';
+    if (stats) stats.style.display = isDeath ? 'grid' : 'none';
+    if (playAgain) { playAgain.style.display = isDeath ? '' : 'none'; playAgain.disabled = false; }
+    if (restart) {
+        restart.classList.toggle('primary', !isDeath);
+        restart.classList.toggle('secondary', isDeath);
+        restart.disabled = false;
+    }
+}
 
 // happytime() (Patch 104): CrazyGames asks for it "sparingly", on achievements such
 // as beating a boss — not on ordinary level completion. We fire it when a boss falls
@@ -2073,6 +2118,22 @@ function initEngine() {
         }, { allowAd: !revived });
     });
 
+    // Patch 124 (C4): straight back into a fresh run — same ad rules as RETURN TO
+    // WARD (a natural break; none after a rewarded revive; the 5-minute cooldown),
+    // then the one launch path every other route uses.
+    document.getElementById('btn-play-again').addEventListener('click', () => {
+        if (gameState !== 'DEAD') return;
+        const revived = !!(game.state && game.state.reviveUsed);
+        deathSettlement = null;
+        document.getElementById('death-screen').style.display = 'none';
+        const rewardBox = document.getElementById('death-rewarded');
+        if (rewardBox) rewardBox.style.display = 'none';
+        showAdThen(() => {
+            resumeAudioForGameplay();
+            startNewRun();
+        }, { allowAd: !revived });
+    });
+
     // Patch 104: rewarded offers on the death screen.
     const btnRevive = document.getElementById('btn-revive');
     const btnRecover = document.getElementById('btn-recover-lucidity');
@@ -2293,6 +2354,7 @@ function initEngine() {
         const awakenRewardBox = document.getElementById('death-rewarded');
         if (awakenRewardBox) awakenRewardBox.style.display = 'none';
         deathSettlement = null;
+        setDeathLayout(false);   // Patch 124: no cause/stats/PLAY AGAIN on AWAKEN
         document.getElementById('death-screen').style.display = 'flex';
         
         const deathScreen = document.getElementById('death-screen');
@@ -2415,7 +2477,27 @@ function initEngine() {
             title.style.color = 'var(--ui-red)';
             title.innerText = 'MIND BROKEN';
         }
-        if (btn) btn.innerText = 'RECONSTRUCT FILE';
+        if (btn) btn.innerText = 'RETURN TO WARD';
+
+        // Patch 124: cause, place and the run in four numbers, above everything else.
+        setDeathLayout(true);
+        const st = game.state;
+        const causeEl = document.getElementById('death-cause');
+        if (causeEl) {
+            const where = st.floor > 0
+                ? `Floor ${st.floor}, room ${Math.min(st.roomNumber || 1, st.maxRoomsPerFloor || ROOMS_PER_FLOOR)}/${st.maxRoomsPerFloor || ROOMS_PER_FLOOR}`
+                : 'Orientation';
+            const record = st.floor > (st.bestFloorAtStart || 1)
+                ? `<span class="death-record">NEW DEEPEST FLOOR: ${st.floor}</span>` : '';
+            causeEl.innerHTML = `Broken by <strong>${escapeHtml(describeDamageSource(st.lastDamageSource))}</strong>` +
+                `<span class="death-where">${where} · ${formatRunTime(st.runFrames)} survived</span>${record}`;
+        }
+        const statsEl = document.getElementById('death-stats');
+        if (statsEl) {
+            const cell = (v, l) => `<div><span class="stat-value">${v}</span><span class="stat-label">${l}</span></div>`;
+            statsEl.innerHTML = cell(formatRunTime(st.runFrames), 'TIME') + cell(st.runKills || 0, 'KILLS') +
+                cell(st.level || 1, 'LEVEL') + cell(recovered, 'BANKED');
+        }
 
         // Patch 104: what this death banked and lost, for the rewarded offers.
         deathSettlement = {
@@ -2425,13 +2507,15 @@ function initEngine() {
         };
         setupDeathRewards();
 
+        // Patch 124: one line of economy, tokens, and the full case file folded away.
         document.getElementById('final-stats').innerHTML = `
-            Died on <strong>Floor ${game.state.floor}</strong>.<br><br>
-            Earned <strong>${game.state.lucidity}</strong> Lucidity.<br>
-            Lost to the Void: <strong>${game.state.lucidity - recovered}</strong>.<br>
+            Kept <strong>${recovered}</strong> of <strong>${game.state.lucidity}</strong> Lucidity
+            (lost <strong>${game.state.lucidity - recovered}</strong>).
             Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
             ${tokenHtml}
+            <details class="death-file"><summary>CASE FILE — THIS ATTEMPT</summary>
             ${buildRunSummaryHtml(game)}
+            </details>
         `;
         inputManager.hideJoysticks();
 

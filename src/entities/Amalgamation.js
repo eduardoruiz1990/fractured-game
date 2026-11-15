@@ -85,7 +85,7 @@ export class Amalgamation extends Enemy {
 
         // Contact damage
         if (distToPlayer < 70 && (!state.player.dash || !state.player.dash.active)) {
-            if (state.frame % 15 === 0) game.takeDamage(this.damage);
+            if (state.frame % 15 === 0) game.takeDamage(this.damage, this.type);
         }
 
         this.applyMovement(state, game);

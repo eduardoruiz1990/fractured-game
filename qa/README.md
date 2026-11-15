@@ -12,6 +12,7 @@ node qa/dialog_check.cjs           # in-world dialog: export field, import value
 node qa/focus_keys_check.cjs [portal]  # tab-hide mute (+ auto-pause off-portal), Space vs focused buttons
 node qa/settings_check.cjs         # settings migrate from localStorage into the portal store
 node qa/suspend_bank_check.cjs     # mid-floor Awaken banks once; resume cannot re-bank
+node qa/death_screen_check.cjs     # cause/stats, PLAY AGAIN on screen + into a fresh run, AWAKEN layout (Patch 124)
 node qa/sprite_cache_check.cjs     # sprite cache plateaus while the tutorial cue fades (Patch 109)
 node qa/soak_check.cjs [--seconds 45] [--throttle 4] [--phone] [--floor 9]   # perf soak: all bosses + capped crowd; exits 1 on invariant breaks
 node qa/render_recovery_check.cjs   # injected render faults do not leak canvas state (Patch 113)
