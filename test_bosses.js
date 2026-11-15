@@ -482,5 +482,39 @@ console.log('\nPatch 110 — global live-enemy ceiling, boss fights included');
 }
 
 // ---------------------------------------------------------------------------
+console.log('\nPatch 116 — pooled objects go back to their pools');
+{
+    const g = freshGame();
+    const P = g.director.pools;
+    const sc0 = P.scavenger.pool.length, xp0 = P.xpDrop.pool.length, pu0 = P.inkPuddle.pool.length;
+    for (let i = 0; i < 10; i++) g.director.spawnEntity('SCAVENGER', 1920, 1080);
+    g.director.spawnXP(0, 0, 20);
+    g.director.spawnInkPuddle(0, 0, 40, 5);
+    check('spawning draws from the pools', P.scavenger.pool.length === sc0 - 10 && P.xpDrop.pool.length === xp0 - 20);
+    g.director.releaseRoomState(g.state);
+    check('releaseRoomState returns entities, orbs and puddles',
+          P.scavenger.pool.length === sc0 && P.xpDrop.pool.length === xp0 && P.inkPuddle.pool.length === pu0,
+          `scav ${P.scavenger.pool.length}/${sc0}, xp ${P.xpDrop.pool.length}/${xp0}, puddle ${P.inkPuddle.pool.length}/${pu0}`);
+    check('...and empties the arrays in place', g.state.entities.length === 0 && g.state.xpDrops.length === 0);
+
+    const item = P.xpDrop.get();
+    P.xpDrop.release(item); P.xpDrop.release(item);
+    const a = P.xpDrop.get(), b = P.xpDrop.get();
+    check('a double release cannot hand one object to two owners', a !== b);
+    P.xpDrop.release(a); P.xpDrop.release(b);
+
+    for (let i = 0; i < 5; i++) g.director.spawnEntity('PREDATOR', 1920, 1080);
+    const pr = P.predator.pool.length;
+    g.init(mockSave);
+    check('Game.init releases the outgoing run', P.predator.pool.length === pr + 5, `${pr} -> ${P.predator.pool.length}`);
+
+    // Dust from Renderer is a plain literal with pooled:false — never injected into a pool.
+    const pa0 = P.particle.pool.length;
+    g.state.particles.push({ x: 0, y: 0, pooled: false });
+    g.director.releaseAll(g.state);
+    check('non-pooled particles are not injected into the particle pool', P.particle.pool.length === pa0);
+}
+
+// ---------------------------------------------------------------------------
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

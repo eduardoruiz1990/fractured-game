@@ -277,12 +277,14 @@ export class Combat {
                         state.player.x = 0;
                         state.player.y = 0;
                         
-                        state.entities = [];
-                        state.projectiles = [];
-                        state.xpDrops = [];
-                        state.tokenDrops = [];
-                        state.inkPuddles = [];
-                        state.safeZones = [];
+                        // Patch 116: released to their pools, not dropped (see
+                        // Director.releaseArrays). interactables are not pooled.
+                        if (game.director && typeof game.director.releaseRoomState === 'function') {
+                            game.director.releaseRoomState(state);
+                        } else {
+                            state.entities = []; state.projectiles = []; state.xpDrops = [];
+                            state.tokenDrops = []; state.inkPuddles = []; state.safeZones = [];
+                        }
                         state.interactables = [];
                         
                         if (game.director) {

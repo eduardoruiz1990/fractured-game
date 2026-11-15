@@ -1591,7 +1591,7 @@ run end whether you extract or break).
 
 - ~~**Lucidity double-bank.**~~ **Fixed in Patch 108**: a mid-floor Awaken banks, then
   saves the suspended run with `lucidity: 0`.
-- **Pooled arrays cleared without release.** `Combat.js`'s `ROOM_DOOR` transition
+- ~~**Pooled arrays cleared without release.**~~ **Fixed in Patch 116** (`Director.releaseArrays`). `Combat.js`'s `ROOM_DOOR` transition
   does `state.projectiles = []`, `xpDrops`, `tokenDrops`, `inkPuddles`, `safeZones`
   — all pooled types. `ObjectPool.release` is just a push, so these objects never
   return and `get()` falls back to allocating. Violates the golden rule in

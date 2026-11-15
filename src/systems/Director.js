@@ -542,6 +542,56 @@ export class Director {
         ent.aggression = isBoss ? s.aggression : 1;
     }
 
+    /**
+     * Patch 116 (V2 plan B8): return every pooled object in a run's arrays to its pool
+     * and empty the arrays in place. Room transitions and Game.init used to replace the
+     * arrays with fresh [] literals, dropping everything in them on the floor: no leak
+     * (ObjectPool.get allocates when empty) but the pools drained a little every room,
+     * and the GC churn they exist to prevent came back. A CHANGELOG known issue since
+     * the Basic Launch work.
+     *
+     * Entities go to the pool named by their type; particles only when they carry the
+     * `pooled` provenance flag (footstep dust is a plain literal, Patch 39).
+     */
+    releaseArrays(state, keys) {
+        if (!state) return;
+        const P = this.pools;
+        const poolFor = {
+            projectiles: P.projectile, xpDrops: P.xpDrop, tokenDrops: P.tokenDrop,
+            inkPuddles: P.inkPuddle, safeZones: P.safeZone, damageTexts: P.damageText,
+            meleeSwings: P.meleeSwing
+        };
+        for (const key of keys) {
+            const arr = state[key];
+            if (!Array.isArray(arr)) continue;
+            for (let i = 0; i < arr.length; i++) {
+                const item = arr[i];
+                if (!item) continue;
+                item.active = false;
+                if (key === 'entities') {
+                    const pool = P[String(item.type || '').toLowerCase()];
+                    if (pool) pool.release(item);
+                } else if (key === 'particles') {
+                    if (item.pooled) P.particle.release(item);
+                } else if (poolFor[key]) {
+                    poolFor[key].release(item);
+                }
+            }
+            arr.length = 0;
+        }
+    }
+
+    /** Patch 116: what a room transition clears (particles and texts play out). */
+    releaseRoomState(state) {
+        this.releaseArrays(state, ['entities', 'projectiles', 'xpDrops', 'tokenDrops', 'inkPuddles', 'safeZones']);
+    }
+
+    /** Patch 116: everything pooled — used when Game.init discards a whole run state. */
+    releaseAll(state) {
+        this.releaseArrays(state, ['entities', 'projectiles', 'particles', 'xpDrops', 'tokenDrops',
+                                   'damageTexts', 'safeZones', 'inkPuddles', 'meleeSwings']);
+    }
+
     /** Patch 110: regular (non-boss) enemies currently alive. */
     liveRegularEnemyCount() {
         const ents = this.game.state.entities;

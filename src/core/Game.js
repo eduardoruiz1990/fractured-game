@@ -26,6 +26,13 @@ export class Game {
         this.saveManager = saveManager;
         const meta = saveManager.metaState;
 
+        // Patch 116: hand the outgoing run's pooled objects back before the state is
+        // rebuilt (runs, floor descents, resume, hub entry all come through here).
+        // carriedState is plain data from getCarriedState(), never pooled objects.
+        if (this.state && this.director && typeof this.director.releaseAll === 'function') {
+            this.director.releaseAll(this.state);
+        }
+
         // Patch 29.5: read the Synapse Tree resolver instead of meta.upgrades
         // directly, so legacy upgrades AND tree nodes both feed these buffs.
         // Defensive fallback reproduces the exact pre-29.5 legacy-only math for
