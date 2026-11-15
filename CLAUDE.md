@@ -9,10 +9,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev       # start Vite dev server
-npm run build     # production build to dist/
-npm run preview   # preview the production build
+npm run dev              # start Vite dev server (no portal SDK)
+npm run dev:crazygames   # dev server WITH the CrazyGames SDK tag (placeholder ads on localhost)
+npm run build            # production build to dist/ — the CrazyGames target (SDK tag injected)
+npm run build:itch       # production build without the SDK tag (itch.io / self-hosted)
+npm run preview          # preview the production build
 ```
+
+The SDK `<script>` is injected by `vite.config.js` per Vite mode (Patch 102) — never add
+it to `index.html` by hand. **The v2 resubmission roadmap is `V2_PLAN.md`** (phases A–G,
+patches numbered from 102).
 
 There is no test runner configured (no `test` script, no framework installed). The `test_*.js` scripts at the repo root are standalone Node scripts that mock `document`/`window`/`localStorage` and exercise the real modules directly — run them with `node test_bosses.js` etc.
 

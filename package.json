@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "dev:crazygames": "vite --mode crazygames",
+    "build": "vite build --mode crazygames",
+    "build:itch": "vite build --mode itch",
     "preview": "vite preview"
   },
   "devDependencies": {
