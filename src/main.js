@@ -419,11 +419,10 @@ function maybeHappytimeForBossKill(floor) {
 // what they heard yesterday, and a saved settings blob written before this patch
 // simply lacks the keys, so the spread below leaves the defaults in place.
 //
-// NOTE: this store is RAW localStorage, unlike the suspended-run storage below,
-// which goes through portalSDK for the blocked-iframe reasons documented there.
-// It is at least try/caught in both directions, so a SecurityError degrades to
-// default settings rather than killing boot. Left as-is deliberately — migrating
-// it is a separate change with its own save-compatibility question.
+// Patch 106: this import-time read is raw localStorage because it runs before
+// portalSDK.init(); reloadSettingsFromPortal() re-reads through the portal once init
+// has resolved, and saveSettings() writes through it. Try/caught, so a SecurityError
+// degrades to default settings rather than killing boot.
 let gameSettings = { screenShake: true, photosensitive: false, musicVolume: 1, sfxVolume: 1 };
 try {
     const savedSettings = localStorage.getItem('fractured_settings');
@@ -438,7 +437,35 @@ function safeVolume(v) {
 }
 
 function saveSettings() {
-    try { localStorage.setItem('fractured_settings', JSON.stringify(gameSettings)); } catch(e) {}
+    // Patch 106 (V2 plan A6): through portalSDK, so on CrazyGames settings follow the
+    // player's account like the rest of the save (the data module is the save of
+    // record there). Off-portal portalSDK.setItem IS localStorage.setItem on the same
+    // key, so itch/self-hosted storage is byte-for-byte unchanged. Never throws.
+    portalSDK.setItem('fractured_settings', JSON.stringify(gameSettings));
+}
+
+/**
+ * Patch 106: the module-level read above runs at import time, BEFORE portalSDK.init()
+ * resolves, so it can only see raw localStorage. Called first thing in initEngine()
+ * (after init), it re-reads through the portal and merges over the defaults.
+ *
+ * Migration: a player whose settings only exist in raw localStorage (every v1 player
+ * on the portal) has them copied into the portal store once, so a volume they turned
+ * down yesterday is not reset to full by the move. Off-portal both reads hit the same
+ * key and this is a no-op.
+ */
+function reloadSettingsFromPortal() {
+    if (!portalSDK.available) return;
+    try {
+        const fromPortal = portalSDK.getItem('fractured_settings');
+        if (fromPortal) {
+            gameSettings = { ...gameSettings, ...JSON.parse(fromPortal) };
+        } else {
+            saveSettings();   // migrate whatever the import-time localStorage read found
+        }
+    } catch (e) {
+        errorLog.capture(e, 'settings-portal-load');
+    }
 }
 
 /** Pushes the persisted volumes into the audio graph. Safe to call before the
@@ -1088,6 +1115,8 @@ function maybeShowBackupPrompt() {
 }
 
 function initEngine() {
+    reloadSettingsFromPortal();   // Patch 106: before anything reads gameSettings.
+
     // The ENTIRE dev toolkit (floor override, skip-to-boss, lucidity/patient-level
     // grants, unlock forcing, build-log dump, visual test bench, telemetry overlay)
     // is gated on import.meta.env.DEV. Vite substitutes that with a literal `false`

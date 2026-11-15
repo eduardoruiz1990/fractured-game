@@ -10,6 +10,7 @@ node qa/ads_cooldown_check.cjs     # adsDisabled hides offers; 5-minute midgame 
 node qa/happy_check.cjs            # happytime once per floor per session
 node qa/dialog_check.cjs           # in-world dialog: export field, import value, no native dialogs
 node qa/focus_keys_check.cjs [portal]  # tab-hide mute (+ auto-pause off-portal), Space vs focused buttons
+node qa/settings_check.cjs         # settings migrate from localStorage into the portal store
 ```
 
 `sdkmock.js` is a minimal CrazyGames SDK v3 stand-in, injected with `addInitScript`.
