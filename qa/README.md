@@ -42,3 +42,12 @@ Screenshots land next to the scripts and are gitignored.
 | 2026-11-15, after P111 | `--seconds 30 --phone --throttle 4` | 116.7 / 166.6 | 40 (60) | 587 | +0.1 MB | 294 |
 | 2026-11-15, after P115 | `--seconds 25 --quality high` | 50.0 / 66.8 (loop CPU mean 6.6) | — | — | — | — |
 | 2026-11-15, after P115 | `--seconds 25 --quality low` | 33.3 / 50.0 (loop CPU mean 3.6) | — | — | — | — |
+
+## Real-device baselines (playtest build, PERF → RUN BENCHMARK)
+
+| Date / patch | Device | LOW sustained 60 s | HIGH | Notes |
+|---|---|---|---|---|
+| 2026-11-15, P120 | Samsung A56, Claude app WebView, 384×717 portrait, dpr 2.8, 120 Hz | 60 fps at start, slowed later in the run | 26 fps | AUTO picked LOW correctly; the slowdown made the rows hard to read |
+| 2026-11-15, P121 | same | not measured | 25 fps → 11 fps after ~8 s | the fog buffer stalled JS for 68 ms; removed in P122 |
+| 2026-11-15, P122 | same | **60 fps in all six 10 s windows**, p95 ≤ 22 ms | 33 fps | drift check matched the first window; every LOW-minus row ran at 60 |
+

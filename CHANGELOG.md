@@ -1578,6 +1578,18 @@ changes under load:
   LOW again.
 - HIGH runs **last**, so it cannot heat the phone before the rows that matter.
 
+**Result on the Samsung A56 (Claude app WebView, portrait, 120 Hz), benchmark v3:**
+- **LOW held 60 fps (16.7 ms) in every 10 s window for 60 s.** p95 stayed ≤ 22 ms, and
+  JS per draw was about 1.2 ms.
+- **The drift check matched the first window,** so the phone never entered the slow
+  state.
+- **Every LOW-minus row and the everything-off row also ran at 60 fps.** LOW has
+  headroom, and no single effect is the limit any more.
+- **HIGH ran at 33 fps (30.6 ms),** up from 25–26 fps in the earlier reports. That is
+  still over budget on this phone, which is why AUTO picks LOW there.
+
+Closed for this device class. Baselines are in `qa/README.md`.
+
 **B2 (spatial grid) — closed, not built.** `qa/sim_cost_check.cjs` times
 `processGameLogic` alone under the soak scenario. It costs 0.31–0.45 ms per step against
 ~6 ms for the whole loop, because the Patch 110 cap bounds the list. A grid would save
