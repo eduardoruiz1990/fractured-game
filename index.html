@@ -2,13 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- Patch 107: viewport-fit=cover makes iOS report real env(safe-area-inset-*)
+         values (without it they are 0, and the HUD/joystick insets in style.css did
+         nothing on notched iPhones). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0a0505">
     <title>FRACTURED</title>
     <meta name="description" content="Sanity is your HP. Every kill feeds Lucidity, the currency of your own unraveling. FRACTURED is a psychiatric horror roguelite where you can adopt Intrusive Thoughts as permanent curses for greater power — if you dare.">
     <meta property="og:title" content="FRACTURED">
     <meta property="og:description" content="Sanity is your HP. Every kill feeds Lucidity, the currency of your own unraveling. FRACTURED is a psychiatric horror roguelite where you can adopt Intrusive Thoughts as permanent curses for greater power — if you dare.">
     <meta property="og:type" content="website">
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <!-- Portal SDK — INJECTED AT BUILD TIME (Patch 102, 2026-11-15). This file must
          not carry the tag itself: vite.config.js adds the CrazyGames SDK v3 script
          only in `--mode crazygames` (npm run build, npm run dev:crazygames), and
