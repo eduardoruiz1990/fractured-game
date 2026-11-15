@@ -19,7 +19,7 @@ import {
     ENDLESS_START_FLOOR, endlessDraftXP, isRecursionUnlocked,
     cycleLabel, isEndless
 } from './core/Endless.js';
-import { getXPRequiredForLevel, BOSS_TYPE_SET } from './data/Config.js';
+import { getXPRequiredForLevel, BOSS_TYPE_SET, ROOMS_PER_FLOOR } from './data/Config.js';
 
 // Patch 50: installed before ANYTHING else in this module runs, including the
 // canvas lookup below. A throw during boot is invisible to the log unless the
@@ -1112,7 +1112,11 @@ function refreshTitleActions() {
         try {
             const parsed = JSON.parse(raw);
             if (parsed && typeof parsed === 'object') {
-                summary = `FLOOR ${parsed.floor || 1}, ROOM ${parsed.roomNumber || 1}`;
+                // Patch 123: show the room the run will ACTUALLY resume in (Game.init
+                // moves a pre-5-room save past room 5 back to the last regular room).
+                const savedRoom = parsed.roomNumber || 1;
+                const resumeRoom = savedRoom > ROOMS_PER_FLOOR ? ROOMS_PER_FLOOR - 1 : savedRoom;
+                summary = `FLOOR ${parsed.floor || 1}, ROOM ${resumeRoom}/${ROOMS_PER_FLOOR}`;
             }
         } catch (e) {
             // Corrupt payload: treated as "no suspended run" here. It is cleared for
@@ -2759,9 +2763,12 @@ function gameLoop(time) {
                 // Patch 98: the cycle is named on floors 6+ only, so the Cycle I HUD is
                 // byte-identical to before. Without it the readout says FLOOR 13 with
                 // the Wastes on screen and nothing connects the two.
+                // Patch 123: ROOM n/5 — with five rooms the count is short enough to
+                // be worth showing, and it tells a new player the boss is close.
+                const roomReadout = `${game.state.roomNumber}/${game.state.maxRoomsPerFloor || ROOMS_PER_FLOOR}`;
                 const floorReadout = isEndless(game.state.floor)
-                    ? `CYCLE ${cycleLabel(game.state.floor)} - FLOOR: ${game.state.floor} - ROOM: ${game.state.roomNumber}`
-                    : `FLOOR: ${game.state.floor} - ROOM: ${game.state.roomNumber}`;
+                    ? `CYCLE ${cycleLabel(game.state.floor)} - FLOOR: ${game.state.floor} - ROOM: ${roomReadout}`
+                    : `FLOOR: ${game.state.floor} - ROOM: ${roomReadout}`;
                 hudHtml(document.getElementById('score'), `LUCIDITY: ${game.state.lucidity} <br> ${floorReadout}`);
 
                 // Patch 25: screen-fixed tutorial banner, driven off the same

@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–122)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–123)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1595,6 +1595,36 @@ Closed for this device class. Baselines are in `qa/README.md`.
 ~6 ms for the whole loop, because the Patch 110 cap bounds the list. A grid would save
 under 0.1 ms. See `V2_PLAN.md` B2 for when to revisit.
 
+### Phase C — the first session (Patches 123+)
+
+**Patch 123 — 5-room floors (C5, the user's call).** `Config.ROOMS_PER_FLOOR = 5`, boss
+room included; the old value was 10.
+
+Cutting the rooms alone would have left only rooms 1–4 for combat. Floor 1's total
+enemy budget would have dropped from 225 to 80 (36%), and every boss would be fought
+underleveled. So the within-floor ramp is compressed instead.
+
+`ROOM_PACE = 10 / ROOMS_PER_FLOOR` (= 2) multiplies the room term in three places:
+- the room budget: `10 + floor·5 + room·2·ROOM_PACE`
+- `stress`: `1 + room·0.1·ROOM_PACE`
+- the spawn-rate ramp
+
+Room 4 of 5 now plays like room 8 of 10 did. Floor *f* budget is `80 + 20f`, against
+`180 + 45f` before.
+
+A regular kill orb is worth `ROOM_PACE` XP and Lucidity instead of 1. That puts per-floor
+XP and Lucidity at about 89% of the old 10-room floor, with no extra orbs on screen.
+Massive orbs (bosses, the tutorial kill, interactables) are unchanged.
+
+**Door rewards are deliberately not scaled.** A floor now has 4 doors instead of 9, as
+part of the shorter floor.
+
+Saves suspended under 10-room floors can carry room 6–9. These resume in room 4 (the last
+regular room), not straight into the boss. The resume prompt shows the room the run will
+actually resume in. `test_endless` gains 4 assertions for this.
+
+The HUD now reads `ROOM: n/5`. Fuzz: 200/200 runs clean.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -1814,6 +1844,9 @@ under 0.1 ms. See `V2_PLAN.md` B2 for when to revisit.
     === 'playtest'`, never through a const (Patch 120).** Only the inline literal
     comparison is folded away. After touching any of it, build all three modes and
     `grep -l __fractured dist/assets/*.js`: it must be empty for crazygames and itch.
+42. **Anything that scales with the room number uses `roomNumber * ROOM_PACE`, and the
+    room count comes from `ROOMS_PER_FLOOR` (Patch 123).** Never hardcode 10 or 5. A raw
+    `roomNumber` in a ramp silently halves that ramp on 5-room floors.
 
 ---
 

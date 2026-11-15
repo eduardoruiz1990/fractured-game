@@ -12,7 +12,7 @@ import { Architect } from '../entities/Architect.js';
 import { errorLog } from '../core/ErrorLog.js';
 // The spawn clamp is derived from the arena's void radius rather than repeated as a
 // literal — see the note on ARENA_VOID_RADIUS in Config.js for why the two must agree.
-import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE, isBossType } from '../data/Config.js';
+import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE, isBossType, ROOM_PACE } from '../data/Config.js';
 // Patch 93/94 — the boss rotation past floor 5, and the escalation curves that make
 // endless floors mean something. See src/core/Endless.js.
 import {
@@ -133,7 +133,8 @@ export class Director {
         }
         
         state.isTutorial = false;
-        state.enemyBudget = Math.floor(10 + (floor * 5) + (roomNumber * 2));
+        // Patch 123: the room term runs at ROOM_PACE (see Config.ROOMS_PER_FLOOR).
+        state.enemyBudget = Math.floor(10 + (floor * 5) + (roomNumber * 2 * ROOM_PACE));
         state.budgetTimer = 0;
 
         // Room modifiers: rolled once per room, never for the boss room. Pure
@@ -341,9 +342,11 @@ export class Director {
 
         if (state.enemyBudget > 0 || bossAlive) {
             state.budgetTimer++;
-            state.stress = 1.0 + (state.roomNumber * 0.1);
+            // Patch 123: both ramps run at ROOM_PACE, so the last room before the boss
+            // is as tense as it was on a 10-room floor.
+            state.stress = 1.0 + (state.roomNumber * 0.1 * ROOM_PACE);
 
-            let spawnRate = bossAlive ? 120 : Math.max(15, 60 - (state.roomNumber * 2));
+            let spawnRate = bossAlive ? 120 : Math.max(15, 60 - (state.roomNumber * 2 * ROOM_PACE));
             if (!bossAlive) {
                 if (state.roomModifier === 'BLACKOUT') spawnRate = Math.max(8, Math.floor(spawnRate * 0.6));
                 else if (state.roomModifier === 'SWARM') spawnRate = Math.max(8, Math.floor(spawnRate * 0.5));
@@ -810,7 +813,7 @@ export class Director {
         if (amount > 1 && state.xpDrops.length + amount > this.xpOrbSoftCap) {
             const xp = this.pools.xpDrop.get();
             xp.x = x; xp.y = y;
-            xp.value = (isMassive ? 25 : 1) * amount;
+            xp.value = (isMassive ? 25 : ROOM_PACE) * amount;   // Patch 123
             xp.collected = false;
             xp.active = true;
             state.xpDrops.push(xp);
@@ -820,7 +823,9 @@ export class Director {
             let xp = this.pools.xpDrop.get();
             xp.x = x + (Math.random() * (isMassive ? 100 : 20) - (isMassive ? 50 : 10));
             xp.y = y + (Math.random() * (isMassive ? 100 : 20) - (isMassive ? 50 : 10));
-            xp.value = isMassive ? 25 : 1;
+            // Patch 123: a regular kill orb is worth ROOM_PACE (see Config.ROOM_PACE);
+            // massive orbs (bosses, the tutorial kill, interactables) are unchanged.
+            xp.value = isMassive ? 25 : ROOM_PACE;
             xp.collected = false;
             xp.active = true;
             state.xpDrops.push(xp);

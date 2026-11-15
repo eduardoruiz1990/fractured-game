@@ -5,7 +5,7 @@ import { TOKENS, getActiveSynergies } from '../data/Manifestations.js';
 import { HubWorld } from '../systems/HubWorld.js';
 import { Tutorial } from '../systems/Tutorial.js';
 import { EventBus } from './EventBus.js';
-import { getXPRequiredForLevel, ARENA_VOID_RADIUS, isBossType } from '../data/Config.js';
+import { getXPRequiredForLevel, ARENA_VOID_RADIUS, isBossType, ROOMS_PER_FLOOR } from '../data/Config.js';
 // Patch 96 — the biome palettes cycle past floor 5. See src/core/Endless.js.
 import { paletteIndexForFloor } from './Endless.js';
 
@@ -140,8 +140,15 @@ export class Game {
             // no roomNumber in its carried state, and letting `undefined` through here
             // would poison every `roomNumber` comparison in Director/Renderer with NaN
             // on the first resume after this update.
-            roomNumber: (carriedState && carriedState.roomNumber) || 1,
-            maxRoomsPerFloor: 10,
+            //
+            // Patch 123: a run suspended under 10-room floors can carry room 6-9. Past
+            // the new cap it resumes in the last regular room, not straight into the
+            // boss it would otherwise meet without warning.
+            roomNumber: (() => {
+                const r = (carriedState && carriedState.roomNumber) || 1;
+                return r > ROOMS_PER_FLOOR ? ROOMS_PER_FLOOR - 1 : r;
+            })(),
+            maxRoomsPerFloor: ROOMS_PER_FLOOR,
             combatActive: true,
             roomCleared: false,
             convergence: 0,
