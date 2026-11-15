@@ -424,5 +424,63 @@ console.log('\nSpawn ring clears the view (Patch 70)');
 }
 
 // ---------------------------------------------------------------------------
+console.log('\nPatch 110 — global live-enemy ceiling, boss fights included');
+{
+    const BOSS = new Set(['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT']);
+    const regulars = g => g.state.entities.filter(e => !BOSS.has(e.type)).length;
+    const setup = (floor) => {
+        const g = freshGame();
+        g.state.floor = floor;
+        g.state.isTutorial = false;
+        g.state.player.x = 0; g.state.player.y = 0;
+        g.state.mapOriginX = 0; g.state.mapOriginY = 0;
+        g.state.combatActive = true;
+        g.state.enemyBudget = 500;
+        g.state.budgetTimer = 0;   // spawnRoom sets this in the real game; init() does not
+        g.state.roomNumber = 1;
+        return g;
+    };
+
+    // 1. Floor 4 boss fight with the room already full: spawnWave must hold.
+    const g = setup(4);
+    const cap = g.director.liveEntityCap;
+    check('the default ceiling is 60', cap === 60, `got ${cap}`);
+    g.director.spawnEntity('AMALGAMATION', 1920, 1080);
+    while (regulars(g) < cap) g.director.spawnEntity('SCAVENGER', 1920, 1080);
+    for (let i = 0; i < 1200; i++) g.director.spawnWave(1920, 1080);
+    check('spawnWave adds nothing past the ceiling during a boss fight (floor 4)',
+          regulars(g) === cap, `regulars ${regulars(g)}`);
+
+    // 2. The Amalgamation's add phase respects the same ceiling.
+    const boss = g.state.entities.find(e => e.type === 'AMALGAMATION');
+    const before = regulars(g);
+    boss.actionState = 'spawning'; boss.actionTimer = 60;
+    for (let i = 0; i < 60; i++) boss.update(g.state, g);
+    check('Amalgamation adds are held while the room is full',
+          regulars(g) === before, `${before} -> ${regulars(g)}`);
+
+    // 3. Below the ceiling both still spawn — the cap defers, it does not disable.
+    while (regulars(g) > 10) {
+        const i = g.state.entities.findIndex(e => !BOSS.has(e.type));
+        g.state.entities.splice(i, 1);   // test-only removal; pools are irrelevant here
+    }
+    boss.actionState = 'spawning'; boss.actionTimer = 60;
+    for (let i = 0; i < 60; i++) boss.update(g.state, g);
+    check('Amalgamation still vomits adds when there is room', regulars(g) > 10, `regulars ${regulars(g)}`);
+
+    // 4. Budget is not spent while held (deferred, not lost).
+    const g2 = setup(1);
+    while (regulars(g2) < cap) g2.director.spawnEntity('SCAVENGER', 1920, 1080);
+    g2.state.enemyBudget = 30;
+    for (let i = 0; i < 600; i++) g2.director.spawnWave(1920, 1080);
+    check('held spawns spend no budget', g2.state.enemyBudget === 30, `budget ${g2.state.enemyBudget}`);
+    // Non-vacuous: the same setup with room to spare DOES spawn and spend.
+    g2.state.entities.length = 0;
+    for (let i = 0; i < 600; i++) g2.director.spawnWave(1920, 1080);
+    check('...and with room, the same setup spawns and spends budget',
+          g2.state.enemyBudget < 30 && regulars(g2) > 0, `budget ${g2.state.enemyBudget}, regulars ${regulars(g2)}`);
+}
+
+// ---------------------------------------------------------------------------
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

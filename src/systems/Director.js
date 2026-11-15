@@ -33,6 +33,20 @@ const BOSS_TYPES = ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITEC
  */
 const ENDLESS_MAX_LIVE_ENTITIES = 60;
 
+// Patch 110 (V2 plan B1, QA P0): the ceiling above only applied in endless rooms with
+// NO boss alive. Boss fights are exactly where bodies pile up — spawnWave keeps adding
+// one regular enemy every 120 frames without spending budget, and the Amalgamation
+// adds four per cycle, faster with depth — and several enemy updates scan the whole
+// entity list per entity, so the cost grows with the square of the crowd. The ceiling
+// now applies on EVERY floor and during boss fights, counting regular enemies only
+// (bosses and Rorschach's splits are never held). `liveEntityCap` is an instance field
+// so the quality tier (B7) can lower it on weak devices.
+//
+// Floors 1-5 outside boss fights top out around 55 budget points and spawn over
+// time, so in normal play they do not reach 60 and behave as before; when a room
+// does, the spawn is deferred, not dropped (budget is only spent on a real spawn).
+const DEFAULT_LIVE_ENTITY_CAP = ENDLESS_MAX_LIVE_ENTITIES;
+
 /**
  * Patch 96 — per-biome enemy tints, [scavenger, everything else], indexed by the
  * cycled palette. Exactly the five pairs the old if/else chain held inline.
@@ -65,6 +79,7 @@ function recursionTint(hex, floor) {
 export class Director {
     constructor(game) {
         this.game = game;
+        this.liveEntityCap = DEFAULT_LIVE_ENTITY_CAP;   // Patch 110
         
         this.pools = {
             scavenger: new ObjectPool(() => new Scavenger(), 100),
@@ -330,11 +345,11 @@ export class Director {
             // read: the pressure is sustained instead of arriving all at once.
             //
             // Budget is not consumed while held, so nothing is lost — only deferred.
-            const liveEnemies = state.entities.length;
-            const atLiveCeiling = isEndless(state.floor) && !bossAlive &&
-                                  liveEnemies >= ENDLESS_MAX_LIVE_ENTITIES;
-
-            if (!atLiveCeiling && state.budgetTimer % spawnRate === 0) {
+            // Patch 110: counted only on the frames a spawn would actually fire, and over
+            // regular enemies on every floor (see DEFAULT_LIVE_ENTITY_CAP).
+            if (state.budgetTimer % spawnRate === 0 && !this.hasRoomForEnemy()) {
+                // Held: no spawn, no budget spent this tick.
+            } else if (state.budgetTimer % spawnRate === 0) {
                 // Determine spawn pools by biome (Floor)
                 let spawnType = 'SCAVENGER';
                 let roll = Math.random();
@@ -510,6 +525,22 @@ export class Director {
         // Read by each boss's update() through Endless.cadence(). Set on every entity
         // (harmlessly 1 for non-bosses) so nothing has to ask whether the field exists.
         ent.aggression = isBoss ? s.aggression : 1;
+    }
+
+    /** Patch 110: regular (non-boss) enemies currently alive. */
+    liveRegularEnemyCount() {
+        const ents = this.game.state.entities;
+        let n = 0;
+        for (let i = 0; i < ents.length; i++) {
+            if (!BOSS_TYPES.includes(ents[i].type)) n++;
+        }
+        return n;
+    }
+
+    /** Patch 110: whether one more regular enemy may spawn (spawnWave, boss adds). */
+    hasRoomForEnemy() {
+        const cap = Number.isFinite(this.liveEntityCap) ? this.liveEntityCap : DEFAULT_LIVE_ENTITY_CAP;
+        return this.liveRegularEnemyCount() < cap;
     }
 
     spawnEntity(type, canvasWidth, canvasHeight, forceX = null, forceY = null, generation = 1, minSpawnRadius = 0) {
