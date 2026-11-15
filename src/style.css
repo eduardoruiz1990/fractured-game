@@ -214,6 +214,29 @@ canvas { display: block; }
 #confirm-modal .folder-content > div:last-child {
     background: var(--paper-bg);
 }
+
+/* Patch 103: the dialog's text field (save import/export). Typed-record look on the
+   paper. `user-select: text` is required — body sets `user-select: none` globally,
+   which would otherwise make the export string impossible to select and copy. */
+#confirm-input {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 96px;
+    max-height: 30vh;
+    margin: 0 0 24px 0;
+    padding: 10px;
+    resize: vertical;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    color: #111;
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px dashed #777;
+    word-break: break-all;
+    -webkit-user-select: text;
+    user-select: text;
+}
+#confirm-input:focus-visible { outline: 2px solid var(--ui-gold); outline-offset: 2px; }
 #death-screen #btn-restart {
     box-shadow: 0 -18px 18px -8px var(--paper-bg), 2px 2px 5px rgba(0, 0, 0, 0.2);
 }

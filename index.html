@@ -579,6 +579,10 @@
             <div class="folder-content" style="text-align: center;">
                 <p id="confirm-body" class="typewriter-text" style="font-size: 1.1rem; margin: 0 0 14px 0; color: #111;"></p>
                 <p id="confirm-note" class="typewriter-text" style="font-size: 0.85rem; color: #666; margin: 0 0 30px 0; line-height: 1.5;"></p>
+                <!-- Patch 103: text field for save import/export (src/ui/Dialog.js). A
+                     <textarea>, NOT a <div>: style.css pins `.folder-content > div:last-child`
+                     as the sticky button row, so this must never become a div. -->
+                <textarea id="confirm-input" spellcheck="false" autocomplete="off" style="display: none;"></textarea>
                 <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
                     <button class="file-btn danger" id="btn-confirm-accept">ABANDON &amp; BEGIN ANEW</button>
                     <button class="file-btn primary" id="btn-confirm-cancel">RETURN</button>

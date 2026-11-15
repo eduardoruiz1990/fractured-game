@@ -2,6 +2,7 @@
 import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS, MANIFESTATIONS, PLAYER_WEAPON_IDS, ENEMY_BESTIARY } from '../data/Manifestations.js';
 import { SynapseTree } from './SynapseTree.js';
 import { GuideUI } from './GuideUI.js';
+import { showConfirm } from './Dialog.js';
 import { BOONS } from './LevelUpUI.js';
 // Patch 98 — the roadmap reports depth past floor 5. See src/core/Endless.js.
 import { isEndless, cycleLabel } from '../core/Endless.js';
@@ -344,24 +345,20 @@ export class UIManager {
         // falls through to the same prompt() path a rejection already used.
 
         if (this.btnImportSave) {
-            this.btnImportSave.addEventListener('click', () => {
-                const encoded = prompt("Paste your exported clinical file string here:");
-                if (encoded) {
-                    const success = this.saveManager.importSave(encoded);
-                    if (success) {
-                        alert("Clinical file successfully reconstructed. Reloading UI.");
-                        window.location.reload();
-                    } else {
-                        alert("ERROR: File corruption detected. Import failed.");
-                    }
-                }
-            });
+            // Patch 103: in-world dialogs, no native prompt()/alert() (V2 plan A2).
+            this.btnImportSave.addEventListener('click', () => this.runImportSave());
         }
 
         if (this.btnWipeSave) {
             this.btnWipeSave.addEventListener('click', () => {
-                const isConfirmed = confirm("WARNING: This will completely erase your clinical file, destroying all tokens, upgrades, and banked lucidity. Do you wish to proceed?");
-                if (isConfirmed) this.saveManager.wipeSave();
+                showConfirm({
+                    title: 'DESTROY CLINICAL FILE?',
+                    body: 'This will completely erase your clinical file.',
+                    note: 'All tokens, upgrades and banked Lucidity are destroyed. This cannot be undone.',
+                    confirmLabel: 'ERASE EVERYTHING',
+                    cancelLabel: 'KEEP MY FILE',
+                    onConfirm: () => this.saveManager.wipeSave()
+                });
             });
         }
 
@@ -423,7 +420,7 @@ export class UIManager {
     }
 
     /**
-     * Exports the clinical file to the clipboard, with a copyable prompt() fallback.
+     * Exports the clinical file to the clipboard, with an in-world copyable fallback (Patch 103).
      *
      * Patch 92: extracted verbatim from the EXPORT button's click handler so the
      * milestone backup prompt can call the same path. Callers are the EVALUATION
@@ -434,23 +431,79 @@ export class UIManager {
     runExportSave() {
         const encoded = this.saveManager.exportSave();
         if (!encoded) {
-            alert("ERROR: The clinical file could not be read for export.");
+            showConfirm({
+                noticeOnly: true, title: 'EXPORT FAILED',
+                body: 'The clinical file could not be read for export.',
+                confirmLabel: 'UNDERSTOOD'
+            });
             return false;
         }
+        // Patch 103: the manual-copy fallback is now an in-world read-only field,
+        // opened pre-selected, instead of a native prompt() (blocked in many iframes).
+        const showManualCopy = () => showConfirm({
+            danger: false, noticeOnly: true,
+            title: 'BACK UP FILE',
+            body: 'Copy this text and keep it somewhere safe.',
+            note: 'Paste it into RESTORE FILE to recover your progress on any browser.',
+            confirmLabel: 'DONE',
+            input: { value: encoded, readOnly: true }
+        });
         // Guarded because `navigator.clipboard` is undefined outside a secure context
         // and in several in-app webviews; calling through it there throws
         // synchronously, which the .catch below cannot see.
         const clip = (typeof navigator !== 'undefined' && navigator.clipboard) ? navigator.clipboard : null;
         if (!clip || typeof clip.writeText !== 'function') {
-            prompt("Copy this text to save your file:", encoded);
+            showManualCopy();
             return true;
         }
         clip.writeText(encoded).then(() => {
-            alert("Clinical file copied to clipboard! Keep it safe.");
-        }).catch(() => {
-            prompt("Copy this text to save your file:", encoded);
-        });
+            showConfirm({
+                danger: false, noticeOnly: true,
+                title: 'FILE COPIED',
+                body: 'Clinical file copied to your clipboard.',
+                note: 'Paste it somewhere safe. RESTORE FILE brings it back.',
+                confirmLabel: 'UNDERSTOOD'
+            });
+        }).catch(showManualCopy);
         return true;
+    }
+
+    /**
+     * Patch 103: save import through the in-world dialog (was native prompt/alert).
+     * SaveManager.importSave() is untouched — same base64 format, same validation.
+     */
+    runImportSave() {
+        showConfirm({
+            danger: false,
+            title: 'RESTORE FILE',
+            body: 'Paste your exported clinical file below.',
+            note: 'This replaces the file currently in use.',
+            confirmLabel: 'RECONSTRUCT FILE',
+            cancelLabel: 'RETURN',
+            input: { value: '', placeholder: 'Paste the file text here' },
+            onConfirm: (raw) => {
+                const encoded = (raw || '').trim();
+                if (!encoded) return;
+                if (this.saveManager.importSave(encoded)) {
+                    showConfirm({
+                        danger: false, noticeOnly: true,
+                        title: 'FILE RECONSTRUCTED',
+                        body: 'Clinical file successfully reconstructed.',
+                        confirmLabel: 'RELOAD',
+                        // Escape too: the save is already replaced, so every exit reloads.
+                        onConfirm: () => window.location.reload(),
+                        onCancel: () => window.location.reload()
+                    });
+                } else {
+                    showConfirm({
+                        noticeOnly: true,
+                        title: 'IMPORT FAILED',
+                        body: 'File corruption detected. Nothing was changed.',
+                        confirmLabel: 'UNDERSTOOD'
+                    });
+                }
+            }
+        });
     }
 
     updateMenuUI() {

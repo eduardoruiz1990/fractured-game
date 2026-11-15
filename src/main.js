@@ -8,6 +8,7 @@ import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
 import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies } from './data/Manifestations.js';
 import { portalSDK } from './systems/PortalSDK.js';
+import { showConfirm } from './ui/Dialog.js';
 import { errorLog } from './core/ErrorLog.js';
 import { Tutorial } from './systems/Tutorial.js';
 import { isPortraitLayout } from './core/Layout.js';
@@ -512,87 +513,7 @@ function resumeAudioForGameplay() {
     }
 }
 
-/**
- * In-world confirmation dialog (Patch 52b), replacing window.confirm() for
- * destructive choices. Callback-based rather than a returned promise, because the
- * caller has to be able to simply do nothing on cancel.
- *
- * Falls back to the native confirm() if the markup is somehow absent — losing the
- * dialog entirely would mean silently destroying a run without asking, which is
- * far worse than an ugly prompt.
- */
-function showConfirm({ title, body, note, confirmLabel, cancelLabel, onConfirm, danger = true, noticeOnly = false }) {
-    const modal = document.getElementById('confirm-modal');
-    const acceptBtn = document.getElementById('btn-confirm-accept');
-    const cancelBtn = document.getElementById('btn-confirm-cancel');
-
-    if (!modal || !acceptBtn || !cancelBtn) {
-        // Patch 101: a notice has nothing to decide, so asking for a yes/no here would
-        // invent a choice that does not exist.
-        if (noticeOnly) { window.alert(`${body}\n\n${note || ''}`); return; }
-        if (window.confirm(`${body}\n\n${note || ''}`)) onConfirm();
-        return;
-    }
-
-    document.getElementById('confirm-title').innerText = title;
-    document.getElementById('confirm-body').innerText = body;
-    document.getElementById('confirm-note').innerText = note || '';
-    acceptBtn.innerText = confirmLabel;
-    // Defaulted rather than assigned raw: a noticeOnly caller has no cancel button to
-    // label, and `innerText = undefined` writes the literal string "undefined" into it —
-    // invisible today only because the button is hidden, and a trap for the next caller.
-    cancelBtn.innerText = cancelLabel || 'RETURN';
-
-    // Patch 101: `noticeOnly` turns this into a one-button NOTICE — same folder chrome,
-    // nothing to decide. Added here rather than as a second dialog so there stays one
-    // modal implementation; a second one is how two copies of the folder styling drift.
-    //
-    // Re-set on EVERY open rather than toggled, for exactly the reason the class resets
-    // below say: leaving `display: none` behind would silently remove the cancel button
-    // from the next ABANDON PROTOCOL dialog — a destructive prompt with no way out but
-    // to accept it.
-    cancelBtn.style.display = noticeOnly ? 'none' : '';
-
-    // Patch 92: `danger` defaults TRUE, so the original ABANDON PROTOCOL dialog is
-    // byte-identical to before. The backup prompt passes false — it is an offer, not
-    // a destructive action, and a red accept button reads as a warning. Both classes
-    // are re-set on every open rather than toggled, so the modal cannot inherit the
-    // previous caller's tone.
-    const accent = danger ? 'var(--ui-red)' : 'var(--ui-gold)';
-    acceptBtn.className = danger ? 'file-btn danger' : 'file-btn primary';
-    cancelBtn.className = danger ? 'file-btn primary' : 'file-btn';
-    const titleEl = document.getElementById('confirm-title');
-    if (titleEl) titleEl.style.color = accent;
-    // The red frame is set inline in the markup, so it has to be re-stated for BOTH
-    // tones — assigning only the non-danger colour would leave the next destructive
-    // dialog wearing gold.
-    const modalFolder = modal.querySelector('.medical-folder');
-    const modalHeader = modal.querySelector('.folder-header');
-    if (modalFolder) modalFolder.style.borderColor = accent;
-    if (modalHeader) modalHeader.style.borderBottomColor = accent;
-
-    const onKey = (e) => {
-        // Escape cancels. Safe to bind globally: main.js's own Escape handler acts
-        // only on PLAYING/PAUSED, and every caller of this dialog opens it from
-        // TITLE, DEAD or HUB — none of which that handler touches. (Patch 92 added
-        // the DEAD/HUB callers; the original comment said TITLE only.)
-        if (e.key === 'Escape') close();
-    };
-    function close() {
-        modal.style.display = 'none';
-        window.removeEventListener('keydown', onKey);
-    }
-
-    // Assigned with onclick rather than addEventListener so reopening the dialog
-    // replaces the handlers instead of stacking a second copy that would fire the
-    // destructive action twice. Click SFX comes free — UIManager wires every
-    // .file-btn on construction, and these buttons exist in the markup by then.
-    acceptBtn.onclick = () => { close(); onConfirm(); };
-    cancelBtn.onclick = () => { close(); };
-    window.addEventListener('keydown', onKey);
-
-    modal.style.display = 'flex';
-}
+// showConfirm moved to src/ui/Dialog.js (Patch 103) — imported at the top of this file.
 
 /** Shared final step for every launch: show the HUD, place the player, start play. */
 function enterPlayingState() {
