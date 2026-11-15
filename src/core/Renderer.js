@@ -1088,10 +1088,43 @@ export class Renderer {
             }
 
         } catch (e) {
-            console.error("CRITICAL RENDERER CRASH PREVENTED:", e);
             errorLog.capture(e, 'renderer');
+            // Patch 113: once per distinct message. Every frame of a persistent fault
+            // used to console.error with Chrome's full async rAF stack — the same flood
+            // main.js already avoids for its own loop. ErrorLog keeps the full count.
+            const key = (e && e.message) ? String(e.message) : String(e);
+            if (!this._loggedRenderCrashes) this._loggedRenderCrashes = new Set();
+            if (!this._loggedRenderCrashes.has(key) && this._loggedRenderCrashes.size < 20) {
+                this._loggedRenderCrashes.add(key);
+                console.log('CRITICAL RENDERER CRASH PREVENTED: ' + key + '\n' + ((e && e.stack) || ''));
+            }
+            // Patch 113 (V2 plan B5): an exception skipped every ctx.restore() between
+            // where it threw and the end of the frame. The old finally only reset the
+            // transform, so each failing frame leaked save() levels and could leave
+            // globalCompositeOperation = 'screen' (or a lowered globalAlpha) in force
+            // for the NEXT frame — where the black clear at the top of drawGame then
+            // does nothing and the screen smears. Unwind both contexts to base state.
+            this.recoverContexts();
         } finally {
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        }
+    }
+
+    /**
+     * Patch 113: return ctx and lightCtx to their base drawing state after a throw.
+     * restore() on an empty stack is a no-op, so a bounded loop needs no depth
+     * bookkeeping. NOT ctx.reset(): that would also discard base-level settings made
+     * outside any save() (the Patch 67 image-smoothing setup).
+     */
+    recoverContexts() {
+        for (const c of [this.ctx, this.lightCtx]) {
+            if (!c) continue;
+            try {
+                for (let i = 0; i < 64; i++) c.restore();
+                c.globalCompositeOperation = 'source-over';
+                c.globalAlpha = 1;
+                c.setTransform(1, 0, 0, 1, 0, 0);
+            } catch (e) { /* a context that cannot be restored has nothing left to leak */ }
         }
     }
 
