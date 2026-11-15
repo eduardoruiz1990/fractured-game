@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–120)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–121)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1519,6 +1519,41 @@ Supporting changes:
 - The gate is written inline, not as a module-level const. A const is not constant-
   folded, and in that form the inert hook shipped to players. That was caught by
   grepping all three builds.
+
+**Patch 121 — the A56 report: safe render savings, and a benchmark that can tell.**
+The first playtest report (Samsung A56, Claude app WebView, portrait 384×717, 120 Hz):
+- **AUTO worked:** it chose LOW, and LOW ran at 60 fps.
+- **HIGH was over budget:** with every effect on it ran at 26 fps. With fog, darkness,
+  vignette and grain all off it held 60.
+- **Two rows contradicted the rest:** darkness off was *slower*, and LOW ran at 21 fps in
+  one row and 60 in another.
+- **A stall inside the game's JS:** 35 ms per draw, only with darkness and fog both on.
+
+Shipped:
+- **Vignette** is baked into a quarter-resolution `vigCanvas` and rebuilt only when the
+  canvas size, camera centre, palette, or Sanity (in 1/40 steps) changes. It used to be
+  a fresh full-screen radial gradient on every drawn frame.
+- **LOW's darkness mask** drops from 0.5 to 0.35 of full resolution.
+- Seeded before/after screenshots differ by about 1/255 on average; the look is
+  unchanged.
+
+Built, but **opt-in (`renderer.fogBuffered`, default off)**: fog drawn into a buffer at
+0.5 (HIGH) or 0.25 (LOW) scale, under the main canvas's own transform (`getTransform`).
+The reason it is off: in a headless A/B the offscreen round trip (clear, draw, composite)
+cost more than the fog it replaced, about +2.4 ms at half size and +11 ms at full size,
+against ~0.5 ms for drawing the fog directly. The darkness mask uses the same pattern,
+and that is where the A56 stalled. So it may help or hurt a phone GPU, and only the
+device can say.
+
+**Benchmark v2** (`src/dev/PerfOverlay.js`) runs 13 setups:
+- REF (HIGH, all on) first, and again near the end to catch drift from heat or clocks;
+- each other row changes one thing from REF;
+- darkness at 1/2 and at 0.35;
+- fog buffered at 1/2 and 1/4;
+- LOW, and everything off.
+
+It reports a "vs REF" column and adds a FOG BUFFER switch to the panel. The soak gains a
+`FRACTURED_PRE` env hook for in-page A/B runs.
 
 **B2 (spatial grid) — closed, not built.** `qa/sim_cost_check.cjs` times
 `processGameLogic` alone under the soak scenario. It costs 0.31–0.45 ms per step against

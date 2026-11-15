@@ -45,6 +45,9 @@ const URL = process.env.FRACTURED_URL || 'http://localhost:5199/';
   await page.goto(URL, { waitUntil: 'networkidle' });
   await page.waitForTimeout(800);
   await page.evaluate(q => { window.__fractured.saveManager.metaState.tutorialCompleted = true; window.__fractured.setQuality && window.__fractured.setQuality(q); }, QUALITY);
+  // Optional A/B hook: FRACTURED_PRE is evaluated in the page after the tier is set,
+  // e.g. FRACTURED_PRE='window.__fractured.renderer.diag.vignette=false'.
+  if (process.env.FRACTURED_PRE) await page.evaluate(process.env.FRACTURED_PRE);
   await page.click('#btn-title-begin');
   await page.waitForTimeout(500);
 

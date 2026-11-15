@@ -26,6 +26,10 @@ node qa/context_check.cjs          # portal feedback context: sent on change onl
 the CRT overlay, the HUD and both tiers on the phone's own GPU, and prints a copyable
 report. The headless checks can't measure this, because they draw in software.
 
+**A/B in the soak:** `FRACTURED_PRE='<js>' node qa/soak_check.cjs ...` evaluates the snippet
+in the page after the tier is set, e.g. `window.__fractured.renderer.fogBuffered=true`.
+Headless runs drift by ±1–2 ms between sessions, so always run both sides back to back.
+
 `sdkmock.js` is a minimal CrazyGames SDK v3 stand-in, injected with `addInitScript`.
 Set `window.__adMode` to `'finish'` or `'error:<code>'` (e.g. `error:adsDisabled`).
 Screenshots land next to the scripts and are gitignored.
