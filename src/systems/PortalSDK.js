@@ -379,6 +379,32 @@ class PortalSDK {
         try { window.CrazyGames.SDK.game.happytime(); } catch (e) {}
     }
 
+    /**
+     * Patch 119 (V2 plan B11): attaches a flat key/value snapshot to any feedback
+     * report the player files through the CrazyGames UI (docs: "Game context" —
+     * `SDK.game.setGameContext({ level: 12 })`; reports reach the developer by
+     * email and on the Developer Portal). This is the portal's own diagnostics
+     * path, so no third-party error sink is needed: the context carries the last
+     * recorded error, and a player saying "it froze" arrives with the floor, room,
+     * screen and error that went with it. Values are stringified because the
+     * documented C# form is Dictionary<string,string>, the strictest of the
+     * engine bindings. Callers must not send anything identifying.
+     */
+    setGameContext(ctx) {
+        if (!this.available || !ctx || typeof ctx !== 'object') return;
+        try {
+            const g = window.CrazyGames.SDK.game;
+            if (!g || typeof g.setGameContext !== 'function') return;
+            const flat = {};
+            for (const k of Object.keys(ctx)) {
+                const v = ctx[k];
+                if (v === undefined || v === null) continue;
+                flat[k] = String(v).slice(0, 200);
+            }
+            g.setGameContext(flat);
+        } catch (e) {}
+    }
+
     // ---------------------------------------------------------------------
     // Platform-forced mute (Patch 49)
     //

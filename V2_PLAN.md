@@ -353,7 +353,7 @@ The analysis below combines five reviews: gamer, UI/UX, story designer, mobile, 
 ## Decisions (confirmed 2026-11-15)
 
 - **C5:** floors go from 10 rooms to **5**, not 6.
-- **B11:** use only what CrazyGames already provides. There is no error-reporting API in the SDK docs, and the dashboard computes crash rates itself. So: no third-party sink. Instead, attach a compact diagnostic to `SDK.game.setGameContext(...)`, which feeds the player-feedback reports: build id, floor and room, error count, and the last error's signature. Check that signature against the live docs before writing the patch.
+- **B11:** use only what CrazyGames already provides. There is no error-reporting API in the SDK docs, and the dashboard computes crash rates itself. So: no third-party sink. Instead, attach a compact diagnostic to `SDK.game.setGameContext(...)`, which feeds the player-feedback reports: build id, floor and room, error count, and the last error's signature. Check that signature against the live docs before writing the patch. **Done in Patch 119:** docs.crazygames.com/sdk/game confirms `SDK.game.setGameContext({...})` (flat key/value; C# binding is `Dictionary<string,string>`, so values are sent as strings) attaches data to player feedback, which reaches the developer by email and on the Developer Portal. The context carries screen, floor, room, quality tier, weapons, Sanity %, error count, last error and coarse device class (touch/pointer, never the user agent). Verified by `qa/context_check.cjs`.
 - **D6:** widen the Panopticon's tell to match its ±0.5 rad hitbox, and give the hitbox a range limit.
 - **A3:** midgame ads at most **once every 5 minutes**, enforced by us. The SDK's own floor is 3 minutes.
 

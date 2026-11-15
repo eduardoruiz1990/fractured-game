@@ -14,7 +14,7 @@
         cb.adStarted && cb.adStarted(); setTimeout(() => cb.adFinished && cb.adFinished(), 50); }, 20); } },
     game: { gameplayStart: () => rec('gameplayStart'), gameplayStop: () => rec('gameplayStop'),
       loadingStart: () => rec('loadingStart'), loadingStop: () => rec('loadingStop'),
-      happytime: () => rec('happytime'), settings: { muteAudio: false },
+      happytime: () => rec('happytime'), setGameContext: c => { rec('setGameContext', c); window.__gameContext = c; }, settings: { muteAudio: false },
       addSettingsChangeListener: () => {} },
     data: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } },
     user: { isUserAccountAvailable: false, addAuthListener: () => {}, getUser: async () => null }

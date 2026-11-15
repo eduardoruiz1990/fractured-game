@@ -213,6 +213,45 @@ function syncPortalGameplayState() {
     else portalSDK.gameplayStop();
 }
 
+// Patch 119 (V2 plan B11): keeps the portal's feedback-report context current (see
+// PortalSDK.setGameContext). Observed once per frame like the gameplay events above,
+// but the comparison is on primitives and the payload is only built when one of
+// them moved — screen, floor, room, quality tier or the error count — which is a
+// handful of times per run, never per frame. Weapons are read at those moments, and
+// a level-up always passes through LEVEL_UP and back, so they stay current too.
+// Nothing identifying is sent: the coarse device class, never the user agent.
+const portalCtx = { state: '', floor: -1, room: -1, tier: '', errors: -1 };
+function syncPortalContext() {
+    if (!portalSDK.available) return;
+    const st = (game && game.state) || null;
+    const floor = st ? (st.floor | 0) : 0;
+    const room = st ? (st.roomNumber | 0) : 0;
+    const tier = currentQualityTier();
+    const errCount = errorLog.entries.length;   // the live array: no per-frame copy
+    if (portalCtx.state === gameState && portalCtx.floor === floor && portalCtx.room === room &&
+        portalCtx.tier === tier && portalCtx.errors === errCount) return;
+    portalCtx.state = gameState; portalCtx.floor = floor; portalCtx.room = room;
+    portalCtx.tier = tier; portalCtx.errors = errCount;
+    const errs = errorLog.getEntries();
+
+    const ctx = { screen: gameState, quality: tier, errors: errs.length };
+    if (st && gameState !== 'TITLE' && gameState !== 'MENU') {
+        ctx.floor = floor;
+        ctx.room = room;
+        const w = (st.player && st.player.weapons) || {};
+        ctx.weapons = Object.keys(w).filter(k => w[k] && w[k].level > 0).map(k => k + w[k].level).join(',');
+        if (st.player && Number.isFinite(st.player.maxHp) && st.player.maxHp > 0 && Number.isFinite(st.sanity)) {
+            ctx.sanityPct = Math.round(100 * st.sanity / st.player.maxHp);
+        }
+    }
+    const last = errs[errs.length - 1];
+    if (last) ctx.lastError = `${last.src}: ${last.msg}${last.n > 1 ? ' (x' + last.n + ')' : ''}`;
+    try {
+        ctx.device = (coarsePointerHint || (inputManager && inputManager.isTouchDevice)) ? 'touch' : 'pointer';
+    } catch (e) { /* inputManager not built yet */ }
+    portalSDK.setGameContext(ctx);
+}
+
 /**
  * Shows a midgame ad (when a portal offers one) and then runs `next` (Patch 47b).
  *
@@ -2483,6 +2522,7 @@ function gameLoop(time) {
         probeQuality(time);   // Patch 115
 
         syncPortalGameplayState();
+        syncPortalContext();   // Patch 119
 
         if (import.meta.env.DEV) {
         // Patch 50: one-shot in-loop throw for the FORCE TEST ERROR button. Cleared
