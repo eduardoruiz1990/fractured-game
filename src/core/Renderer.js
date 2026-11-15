@@ -7,7 +7,7 @@
 import { errorLog } from './ErrorLog.js';
 // The arena wall drawn below is the same boundary Game.js drains Sanity past and
 // Director.js clamps spawns inside — see the note on ARENA_VOID_RADIUS in Config.js.
-import { ARENA_VOID_RADIUS } from '../data/Config.js';
+import { ARENA_VOID_RADIUS, isBossType } from '../data/Config.js';
 // Patch 96 — THE RECURSION's look: the five biomes cycle past floor 5, with a capped
 // depth escalation layered over them. The cap is a memory bound, not a taste one —
 // see CYCLE_VISUAL_CAP in src/core/Endless.js.
@@ -1181,7 +1181,7 @@ export class Renderer {
         let boss = null;
         for (let i = 0; i < state.entities.length; i++) {
             let e = state.entities[i];
-            if (['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type) && e.hp > 0) {
+            if (isBossType(e.type) && e.hp > 0) {
                 boss = e;
                 break;
             }
@@ -3195,7 +3195,7 @@ export class Renderer {
                     }
                 }
 
-                if (ent.hp < ent.maxHp && ent.flashTime <= 0 && !['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(ent.type)) {
+                if (ent.hp < ent.maxHp && ent.flashTime <= 0 && !isBossType(ent.type)) {
                     let barW = 24;
                     let yOffset = 20;
                     

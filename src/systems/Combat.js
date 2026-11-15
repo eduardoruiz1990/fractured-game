@@ -38,6 +38,7 @@ export function coneFalloff(angleDiff, hitAngle) {
 // on the hottest gameplay path there is, so anything failing there is exactly what
 // the crash telemetry needs to see. Only touched when something already threw.
 import { errorLog } from '../core/ErrorLog.js';
+import { isBossType } from '../data/Config.js';   // Patch 117
 
 // Patch 16: generic tag-scaled knockback, consumed by Enemy.takeDamage's
 // optional knockbackForce param. Only wired at call sites with no existing
@@ -319,7 +320,7 @@ export class Combat {
                     let dx = ent.x - state.player.x;
                     let dy = ent.y - state.player.y;
                     let dist = Math.hypot(dx, dy);
-                    let isBoss = ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(ent.type);
+                    let isBoss = isBossType(ent.type);
                     let canTakeDamage = !(isBoss && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
                     if (canTakeDamage && dist < camera.radius) {
@@ -363,7 +364,7 @@ export class Combat {
             for (let i = state.entities.length - 1; i >= 0; i--) {
                 let ent = state.entities[i];
                 let dist = Math.hypot(ent.x - state.player.x, ent.y - state.player.y);
-                let isBoss = ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(ent.type);
+                let isBoss = isBossType(ent.type);
                 let canTakeDamage = !(isBoss && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
                 if (canTakeDamage && dist > spinner.baseRadius - 15 && dist < spinner.baseRadius + 15) {
@@ -418,7 +419,7 @@ export class Combat {
                 for (let i = state.entities.length - 1; i >= 0; i--) {
                     let ent = state.entities[i];
                     let d = Math.max(Math.hypot(ent.x - state.player.x, ent.y - state.player.y), 0.001);
-                    let isBoss = ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(ent.type);
+                    let isBoss = isBossType(ent.type);
                     let canTakeDamage = !(isBoss && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
                     if (canTakeDamage && d <= pipe.radius) {
@@ -568,7 +569,7 @@ export class Combat {
             if (state.player.boons && state.player.boons.includes('glass_cannon')) dmgMult *= 2.0;
 
 
-            let isBoss = ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(ent.type);
+            let isBoss = isBossType(ent.type);
             let canTakeDamage = !(isBoss && state.sanity <= 0 && Math.sin(ent.phase * 10) < 0.5);
 
             if (canTakeDamage) {
@@ -721,7 +722,7 @@ export class Combat {
                     const tokenY = ent.y + Math.sin(dropAngle) * dropDist;
                     game.spawnTokenDrop(tokenX, tokenY);
                     
-                    const otherBosses = state.entities.filter(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type) && e.id !== ent.id);
+                    const otherBosses = state.entities.filter(e => isBossType(e.type) && e.id !== ent.id);
                     
                     if (otherBosses.length === 0) {
                         state.cameraShake = 50;

@@ -12,7 +12,7 @@ import { Architect } from '../entities/Architect.js';
 import { errorLog } from '../core/ErrorLog.js';
 // The spawn clamp is derived from the arena's void radius rather than repeated as a
 // literal — see the note on ARENA_VOID_RADIUS in Config.js for why the two must agree.
-import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE } from '../data/Config.js';
+import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE, isBossType } from '../data/Config.js';
 // Patch 93/94 — the boss rotation past floor 5, and the escalation curves that make
 // endless floors mean something. See src/core/Endless.js.
 import {
@@ -21,7 +21,7 @@ import {
 } from '../core/Endless.js';
 
 /** Boss types, in one place — this list was previously repeated inline four times. */
-const BOSS_TYPES = ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'];
+// BOSS_TYPES: replaced by isBossType() from data/Config.js (Patch 117).
 
 /**
  * Patch 94 — the live-entity ceiling, endless only.
@@ -189,7 +189,7 @@ export class Director {
             // 240-frame hitStop that early-returns out of update() before it can catch
             // up — leaving activeBoss null for the whole banner, which made
             // drawBossAnnouncement() fall back to 'BOSS' for every floor.
-            state.activeBoss = state.entities.find(e => ['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT'].includes(e.type)) || null;
+            state.activeBoss = state.entities.find(e => isBossType(e.type)) || null;
 
 
             try {
@@ -510,7 +510,7 @@ export class Director {
     applyEndlessScaling(ent, state) {
         if (!ent || !isEndless(state.floor)) return;
 
-        const isBoss = BOSS_TYPES.includes(ent.type);
+        const isBoss = isBossType(ent.type);
         const s = isBoss ? bossScaling(state.floor) : enemyScaling(state.floor);
 
         if (Number.isFinite(ent.hp)) {
@@ -597,7 +597,7 @@ export class Director {
         const ents = this.game.state.entities;
         let n = 0;
         for (let i = 0; i < ents.length; i++) {
-            if (!BOSS_TYPES.includes(ents[i].type)) n++;
+            if (!isBossType(ents[i].type)) n++;
         }
         return n;
     }
@@ -749,7 +749,7 @@ export class Director {
             // Patch 94: before the ELITE/variant branch, so those compound onto it.
             this.applyEndlessScaling(ent, state);
 
-            if (!BOSS_TYPES.includes(ent.type)) {
+            if (!isBossType(ent.type)) {
                 // Patch 96: the same five biome tints, indexed by the cycled palette
                 // rather than by an if/else whose tail was `floor >= 5`, and then
                 // darkened per cycle so a Cycle III scavenger reads as a corrupted

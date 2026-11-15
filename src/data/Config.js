@@ -8,6 +8,16 @@ export const GAME_CONFIG = {
     LEVEL_XP_GROWTH_RATE: 1.12
 };
 
+/**
+ * Patch 117 (V2 plan B9): the boss types, as ONE shared Set. Eleven call sites used to
+ * build `['BOSS', 'RORSCHACH', ...].includes(type)` inline — a fresh array per entity
+ * per check, several times per entity per simulation step, on the hottest paths in the
+ * game (weapon hit resolution, the leash, the HP-bar pass). Keep in step with
+ * Endless.BOSS_ORDER, which is the dispatch ORDER and must stay an array.
+ */
+export const BOSS_TYPE_SET = new Set(['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT']);
+export function isBossType(type) { return BOSS_TYPE_SET.has(type); }
+
 export function getXPRequiredForLevel(level) {
     return Math.floor(GAME_CONFIG.BASE_XP_REQ * Math.pow(GAME_CONFIG.LEVEL_XP_GROWTH_RATE, level - 1));
 }

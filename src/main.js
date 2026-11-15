@@ -19,7 +19,7 @@ import {
     ENDLESS_START_FLOOR, endlessDraftXP, isRecursionUnlocked,
     cycleLabel, isEndless
 } from './core/Endless.js';
-import { getXPRequiredForLevel } from './data/Config.js';
+import { getXPRequiredForLevel, BOSS_TYPE_SET } from './data/Config.js';
 
 // Patch 50: installed before ANYTHING else in this module runs, including the
 // canvas lookup below. A throw during boot is invisible to the log unless the
@@ -266,6 +266,36 @@ function showAdThen(next, { allowAd = true } = {}) {
     });
 }
 
+// --- HUD WRITES ONLY ON CHANGE (Patch 117, V2 plan B9) ------------------------------
+//
+// The HUD block in gameLoop rewrote ~25 inline styles, several innerTexts and #score's
+// innerHTML every frame, each an invalidation the browser then had to process, and
+// the tutorial banner READ innerText per frame (a forced layout). These compare
+// against the element's LIVE value, not a private cache, so a write made elsewhere
+// (onDeath zeroing the glitch overlay, the pause menu) is never masked. Inline style
+// and textContent reads do not force layout. A value the browser normalises on read
+// (a hex colour read back as rgb()) simply writes as before — never worse than it was.
+function hudStyle(el, prop, value) {
+    if (!el) return;
+    const v = String(value);
+    if (el.style[prop] !== v) el.style[prop] = v;
+}
+function hudText(el, value) {
+    if (!el) return;
+    const v = String(value);
+    if (el.textContent !== v) el.textContent = v;
+}
+let lastScoreHtml = null;
+function hudHtml(el, html) {
+    if (!el || html === lastScoreHtml) return;   // #score is written only from here
+    lastScoreHtml = html;
+    el.innerHTML = html;
+}
+function hudPct(ratio) {
+    const r = Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : 0;
+    return (Math.round(r * 1000) / 10) + '%';
+}
+
 // --- REWARDED ADS ON THE DEATH SCREEN (Patch 104, V2 plan A3) ---------------------
 //
 // CrazyGames rules this is built to: reward only on adFinished; never a rewarded
@@ -397,7 +427,7 @@ function performRevive() {
     syncPortalGameplayState();   // gameplayStart on revive, as the SDK docs list
 }
 
-const BOSS_TYPE_SET = new Set(['BOSS', 'RORSCHACH', 'PANOPTICON', 'AMALGAMATION', 'ARCHITECT']);
+// BOSS_TYPE_SET now lives in data/Config.js (Patch 117).
 
 // happytime() (Patch 104): CrazyGames asks for it "sparingly", on achievements such
 // as beating a boss — not on ordinary level completion. We fire it when a boss falls
@@ -2586,17 +2616,17 @@ function gameLoop(time) {
                 const sanityBar = document.getElementById('sanity-bar');
                 let ratio = game.state.sanity / game.state.player.maxHp;
                 if (!Number.isFinite(ratio)) ratio = 0;
-                sanityBar.style.width = Math.max(0, ratio) * 100 + '%';
+                hudStyle(sanityBar, 'width', hudPct(Math.max(0, ratio)));
                 
-                if (isBreakdown) { sanityBar.style.backgroundColor = 'var(--ui-red)'; sanityBar.style.boxShadow = '0 0 15px var(--ui-red)'; }
-                else if (ratio < 0.3) { sanityBar.style.backgroundColor = '#ffaa00'; sanityBar.style.boxShadow = '0 0 10px #ffaa00'; }
-                else { sanityBar.style.backgroundColor = 'var(--hud-green)'; sanityBar.style.boxShadow = '0 0 10px var(--hud-green)'; }
+                if (isBreakdown) { hudStyle(sanityBar, 'backgroundColor', 'var(--ui-red)'); hudStyle(sanityBar, 'boxShadow', '0 0 15px var(--ui-red)'); }
+                else if (ratio < 0.3) { hudStyle(sanityBar, 'backgroundColor', '#ffaa00'); hudStyle(sanityBar, 'boxShadow', '0 0 10px #ffaa00'); }
+                else { hudStyle(sanityBar, 'backgroundColor', 'var(--hud-green)'); hudStyle(sanityBar, 'boxShadow', '0 0 10px var(--hud-green)'); }
                 
                 const dashBar = document.getElementById('dash-bar');
                 if (dashBar && game.state.player.dash) {
                     const dashReady = game.state.player.dash.cooldown <= 0;
-                    dashBar.style.width = dashReady ? '100%' : ((1 - (game.state.player.dash.cooldown / 90)) * 100) + '%';
-                    dashBar.style.background = dashReady ? '#88aaff' : '#555';
+                    hudStyle(dashBar, 'width', dashReady ? '100%' : hudPct(1 - (game.state.player.dash.cooldown / 90)));
+                    hudStyle(dashBar, 'background', dashReady ? '#88aaff' : '#555');
                 }
 
                 const conBar = document.getElementById('convergence-bar');
@@ -2607,7 +2637,7 @@ function gameLoop(time) {
 
                 if (activeBoss) {
                     let hpRatio = Math.max(0, activeBoss.hp / activeBoss.maxHp);
-                    conBar.style.width = (hpRatio * 100) + '%';
+                    hudStyle(conBar, 'width', hudPct(hpRatio));
                     
                     let bossName = 'SUBJECT: SPHERE HEAD';
                     if (activeBoss.type === 'RORSCHACH') bossName = 'SUBJECT: RORSCHACH';
@@ -2615,28 +2645,28 @@ function gameLoop(time) {
                     if (activeBoss.type === 'AMALGAMATION') bossName = 'SUBJECT: THE AMALGAMATION';
                     if (activeBoss.type === 'ARCHITECT') bossName = 'SUBJECT: THE ARCHITECT';
 
-                    conText.innerText = `${bossName} - VITAL SIGNS: ${Math.ceil(hpRatio * 100)}%`;
-                    conBar.style.background = 'linear-gradient(90deg, #8b0000, #ff0000)';
-                    conText.style.color = 'var(--ui-red)';
-                    conContainer.style.borderColor = 'var(--ui-red)';
-                    conContainer.style.boxShadow = '0 0 20px rgba(139, 0, 0, 0.8)';
+                    hudText(conText, `${bossName} - VITAL SIGNS: ${Math.ceil(hpRatio * 100)}%`);
+                    hudStyle(conBar, 'background', 'linear-gradient(90deg, #8b0000, #ff0000)');
+                    hudStyle(conText, 'color', 'var(--ui-red)');
+                    hudStyle(conContainer, 'borderColor', 'var(--ui-red)');
+                    hudStyle(conContainer, 'boxShadow', '0 0 20px rgba(139, 0, 0, 0.8)');
                 } else if (conBar && game.state.maxRoomsPerFloor) {
                     let bossRatio = Math.min(1, game.state.roomNumber / game.state.maxRoomsPerFloor);
-                    conBar.style.width = (bossRatio * 100) + '%';
-                    conText.innerText = bossRatio >= 1 ? "ANOMALY DETECTED" : `NIGHTMARE PROGRESS: ${Math.floor(bossRatio * 100)}%`;
+                    hudStyle(conBar, 'width', hudPct(bossRatio));
+                    hudText(conText, bossRatio >= 1 ? "ANOMALY DETECTED" : `NIGHTMARE PROGRESS: ${Math.floor(bossRatio * 100)}%`);
                     
                     if (bossRatio >= 1) {
-                        conBar.style.background = 'var(--ui-gold)';
-                        conText.style.color = 'var(--ui-gold)';
-                        conText.style.textShadow = '0 0 10px var(--ui-gold)';
-                        conContainer.style.borderColor = 'var(--ui-gold)';
-                        conContainer.style.boxShadow = '0 0 15px var(--ui-gold)';
+                        hudStyle(conBar, 'background', 'var(--ui-gold)');
+                        hudStyle(conText, 'color', 'var(--ui-gold)');
+                        hudStyle(conText, 'textShadow', '0 0 10px var(--ui-gold)');
+                        hudStyle(conContainer, 'borderColor', 'var(--ui-gold)');
+                        hudStyle(conContainer, 'boxShadow', '0 0 15px var(--ui-gold)');
                     } else {
-                        conBar.style.background = 'linear-gradient(90deg, #555, #aaa)';
-                        conText.style.color = 'rgba(255,255,255,0.7)';
-                        conText.style.textShadow = '1px 1px 0 #000';
-                        conContainer.style.borderColor = '#555';
-                        conContainer.style.boxShadow = '0 0 15px rgba(0, 0, 0, 0.5)';
+                        hudStyle(conBar, 'background', 'linear-gradient(90deg, #555, #aaa)');
+                        hudStyle(conText, 'color', 'rgba(255,255,255,0.7)');
+                        hudStyle(conText, 'textShadow', '1px 1px 0 #000');
+                        hudStyle(conContainer, 'borderColor', '#555');
+                        hudStyle(conContainer, 'boxShadow', '0 0 15px rgba(0, 0, 0, 0.5)');
                     }
                 }
 
@@ -2644,17 +2674,17 @@ function gameLoop(time) {
                 if (enemyCounter) {
                     if (game.state.combatActive && !activeBoss) {
                         let totalRemaining = game.state.enemyBudget + game.state.entities.length;
-                        enemyCounter.innerText = `NIGHTMARES LEFT: ${totalRemaining}`;
-                        enemyCounter.style.display = 'block';
+                        hudText(enemyCounter, `NIGHTMARES LEFT: ${totalRemaining}`);
+                        hudStyle(enemyCounter, 'display', 'block');
                     } else {
-                        enemyCounter.style.display = 'none';
+                        hudStyle(enemyCounter, 'display', 'none');
                     }
                 }
 
                 // Smoothly dim glitch overlay if photosensitive mode is active
                 let targetGlitchOpacity = isBreakdown ? '1' : '0';
                 if (isBreakdown && gameSettings.photosensitive) targetGlitchOpacity = '0.3'; 
-                document.getElementById('glitch-overlay').style.opacity = targetGlitchOpacity;
+                hudStyle(document.getElementById('glitch-overlay'), 'opacity', targetGlitchOpacity);
                 
                 // Patch 98: the cycle is named on floors 6+ only, so the Cycle I HUD is
                 // byte-identical to before. Without it the readout says FLOOR 13 with
@@ -2662,7 +2692,7 @@ function gameLoop(time) {
                 const floorReadout = isEndless(game.state.floor)
                     ? `CYCLE ${cycleLabel(game.state.floor)} - FLOOR: ${game.state.floor} - ROOM: ${game.state.roomNumber}`
                     : `FLOOR: ${game.state.floor} - ROOM: ${game.state.roomNumber}`;
-                document.getElementById('score').innerHTML = `LUCIDITY: ${game.state.lucidity} <br> ${floorReadout}`;
+                hudHtml(document.getElementById('score'), `LUCIDITY: ${game.state.lucidity} <br> ${floorReadout}`);
 
                 // Patch 25: screen-fixed tutorial banner, driven off the same
                 // state.isTutorial gate Director.spawnRoom/Combat.js already use.
@@ -2682,15 +2712,15 @@ function gameLoop(time) {
                         // instruction is visibly new. The class has to be removed and a
                         // reflow forced before re-adding, or the animation never
                         // re-triggers. It runs at most once per tutorial step.
-                        if (tutorialBannerText.innerText !== tutorialLine) {
-                            tutorialBannerText.innerText = tutorialLine;
+                        if (tutorialBannerText.textContent !== tutorialLine) {   // Patch 117: textContent, no forced layout
+                            tutorialBannerText.textContent = tutorialLine;
                             tutorialBanner.classList.remove('tut-in');
                             void tutorialBanner.offsetWidth;
                             tutorialBanner.classList.add('tut-in');
                         }
-                        tutorialBanner.style.display = 'block';
+                        hudStyle(tutorialBanner, 'display', 'block');
                     } else {
-                        tutorialBanner.style.display = 'none';
+                        hudStyle(tutorialBanner, 'display', 'none');
                     }
                 }
             }
