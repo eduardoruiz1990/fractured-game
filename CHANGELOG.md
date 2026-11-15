@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–101)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–102)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1314,6 +1314,32 @@ being there is proof on its own.
   *display* was clamped. This deliberately avoids the Keep-clause-2 surface entirely.
 - `maxConvergence = 100 * 1.3^(floor-1)` left alone — nothing reads it, and it stays
   finite past floor 2000.
+
+---
+
+## V2 — the CrazyGames resubmission (Patches 102+, 2026-11-15)
+
+**Driver:** v1 was rejected after Basic Launch (Day-1: 1m36s average playtime, 31.89%
+conversion, both bottom 20%). The full analysis and phased roadmap is **`V2_PLAN.md`**
+(phases A–G). Patch numbers below match source comments.
+
+### Patch 102 — build target switch (plan item A1)
+
+The CrazyGames SDK v3 tag is now injected by a `transformIndexHtml` plugin in
+`vite.config.js`, keyed on the Vite **mode** — not written into `index.html`:
+
+| Script | Mode | SDK tag |
+|---|---|---|
+| `npm run dev` | development | no |
+| `npm run dev:crazygames` | crazygames | yes — localhost shows the SDK's placeholder ads |
+| `npm run build` | crazygames | yes — **the default build is now the CrazyGames build** |
+| `npm run build:itch` | itch | no |
+
+`PortalSDK.js` is untouched; its runtime probe still decides everything else.
+`showStorageNoticeIfNeeded()` and `maybeShowBackupPrompt()` now return early when
+`portalSDK.available` — on the portal the save goes through the data module, so "this
+browser only" would be false. The backup prompt returns *before*
+`markBackupPromptShown()`, so the one-time offer is not spent on a portal session.
 
 ---
 

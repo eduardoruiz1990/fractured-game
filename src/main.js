@@ -937,6 +937,11 @@ function applyStorageNoticeLayout() {
 function showStorageNoticeIfNeeded() {
     const el = document.getElementById('storage-notice');
     if (!el || !saveManager) return;
+    // Patch 102: itch-only. On a live portal the save goes through the portal's data
+    // module (PortalSDK storage backend), so "this browser only" would be false, and
+    // a backup nag is the portal's account prompt's job, not ours. Not acknowledged
+    // here: if the same player later opens the itch build, they still see it once.
+    if (portalSDK.available) return;
     if (saveManager.metaState.storageNoticeAcknowledged === true) return;
     el.classList.add('is-visible');
     applyStorageNoticeLayout();
@@ -973,6 +978,9 @@ function hideStorageNotice() {
  */
 function maybeShowBackupPrompt() {
     if (!saveManager || !uiManager) return;
+    // Patch 102: itch-only, same reasoning as showStorageNoticeIfNeeded. Returns
+    // BEFORE markBackupPromptShown(), so the one-time offer is not spent on a portal.
+    if (portalSDK.available) return;
     if (saveManager.metaState.backupPromptShown === true) return;
     if (!saveManager.isBackupWorthPrompting()) return;
 
