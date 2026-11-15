@@ -760,10 +760,13 @@ body.quality-low #crt-scanlines { display: none; }
     padding: 40px; display: none; flex-direction: column; align-items: center; gap: 30px;
     pointer-events: auto; z-index: 99999;
     box-shadow: 0 0 50px rgba(197, 160, 89, 0.2);
+    /* Patch 125: an absolutely positioned box at left:50% shrink-wraps to HALF the
+       viewport, which wrapped the third (now 180px) card onto its own row. */
+    width: max-content; max-width: calc(100vw - 24px); box-sizing: border-box;
 }
 .cards-container { display: flex; gap: 25px; flex-wrap: wrap; justify-content: center; perspective: 1000px; }
 .card {
-    position: relative; background: #eee; color: #111; padding: 10px 10px 25px 10px; width: 160px; height: 240px;
+    position: relative; background: #eee; color: #111; padding: 10px 10px 16px 10px; width: 180px; min-height: 240px; height: auto;
     box-shadow: 5px 10px 20px rgba(0,0,0,0.8); cursor: pointer; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); text-align: center;
     display: flex; flex-direction: column; justify-content: flex-start; border-radius: 2px;
 }
@@ -781,13 +784,44 @@ body.quality-low #crt-scanlines { display: none; }
 .banish-btn:hover { transform: scale(1.2); background: #ff3333; }
 
 .polaroid-photo {
-    background: #111; height: 130px; width: 100%; border: 1px solid #333;
+    background: #111; height: 96px; width: 100%; border: 1px solid #333; flex-shrink: 0;
     display: flex; justify-content: center; align-items: center; font-size: 3.5rem; overflow: hidden;
     box-shadow: inset 0 0 20px #000; margin-bottom: 10px;
 }
 .card h3 { margin: 0; font-size: 1rem; border-bottom: 1px solid #ccc; padding-bottom: 5px; font-weight: 900; }
 .card p { font-size: 0.75rem; flex-grow: 1; display: flex; align-items: center; justify-content: center; font-family: sans-serif; line-height: 1.2; margin: 5px 0;}
 .card .lvl { font-weight: bold; font-size: 0.9rem; }
+
+/* Patch 125 (V2 plan C2): cards that explain themselves. */
+.card-body { display: flex; flex-direction: column; flex-grow: 1; gap: 4px; min-width: 0; }
+.card-badges { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.card-badge {
+    font-family: var(--ui-font); font-size: 0.7rem; font-weight: bold; letter-spacing: 0.06em;
+    padding: 1px 6px; border: 1px solid currentColor; border-radius: 2px; line-height: 1.4;
+}
+.card-badge-new { color: #7CFFB2; }
+.card-badge-max { color: var(--ui-gold); }
+.card-badge-boon { color: #9fb3c8; }
+.card-badge-synergy { color: #ff7ad9; background: rgba(255, 122, 217, 0.12); }
+.card-stats {
+    list-style: none; margin: 2px 0; padding: 0; text-align: left;
+    font-family: sans-serif; font-size: 0.78rem; line-height: 1.35; color: #cbd5e1;
+    font-variant-numeric: tabular-nums;
+}
+.card-stats li::before { content: '▸ '; color: var(--ui-gold); }
+.card-pair { font-size: 0.72rem; color: #ff9be6; font-family: sans-serif; }
+.card .card-body > p.card-desc { flex-grow: 0; }
+.card-key { display: none; }
+.card-svg { display: block; }
+/* Keys 1/2/3 only mean something with a keyboard; touch never sees the hint. */
+@media (hover: hover) and (pointer: fine) {
+    .card-key {
+        display: block; position: absolute; top: 4px; left: 6px; z-index: 2;
+        font-family: var(--ui-font); font-size: 0.8rem; font-weight: bold; color: #888;
+    }
+}
+/* Patch 125: the mis-tap guard (LevelUpUI.LEVEL_UP_ARM_MS) shows as a short fade-in. */
+.cards-container.cards-arming .card { opacity: 0.6; cursor: default; }
 
 /* Level-up modal on phones (Patch 67).
    This screen had NO mobile rules at all. Three fixed 160x240 cards plus 40px of
@@ -828,13 +862,40 @@ body.quality-low #crt-scanlines { display: none; }
         font-size: clamp(1.5rem, 7vw, 3rem);
         margin-bottom: 6px;
     }
-    .card h3 { font-size: 0.72rem; padding-bottom: 3px; }
-    .card p { font-size: 0.62rem; margin: 4px 0; }
+    /* Patch 125: floors raised to the 11px minimum (V2 plan C7) — was 0.62rem. */
+    .card h3 { font-size: 0.78rem; padding-bottom: 3px; }
+    .card p { font-size: 0.7rem; margin: 2px 0; }
     .card .lvl { font-size: 0.7rem; }
+    .card-stats { font-size: 0.72rem; }
+    .card-badge { font-size: 0.7rem; padding: 0 4px; }
     /* Pulled in from -15px: the modal is a scroll container now, and a child hanging
        outside its padding box gets clipped by it. */
     .banish-btn { top: -6px; right: -6px; width: 28px; height: 28px; font-size: 0.85rem; border-width: 1px; }
     #btn-reroll { margin-top: 10px !important; font-size: 0.75rem; padding: 8px 12px; }
+}
+
+/* Patch 125: short landscape — the photo slot gives its height to the text. */
+@media (max-height: 500px) and (orientation: landscape) {
+    .polaroid-photo { height: 44px; font-size: 1.7rem; }
+    .card { padding-top: 6px; }
+}
+
+/* Patch 125: PORTRAIT phones get three full-width rows instead of three ~107px
+   columns of 10px text. Still three side-by-side-comparable options — stacked —
+   with room for the stat lines. */
+@media (max-width: 600px) and (orientation: portrait) {
+    .level-up-modal { width: calc(100vw - 12px); box-sizing: border-box; }
+    .cards-container { flex-direction: column; flex-wrap: nowrap; width: 100%; gap: 8px; }
+    .card {
+        width: auto; max-width: none; min-height: 0; flex-direction: row; align-items: stretch;
+        gap: 10px; padding: 8px 10px; text-align: left; transform: none !important;
+    }
+    .polaroid-photo { width: 60px; height: auto; min-height: 60px; flex: 0 0 60px; margin: 0; font-size: 2rem; }
+    .card-badges { justify-content: flex-start; }
+    .card h3 { font-size: 0.9rem; }
+    .card p { font-size: 0.75rem; justify-content: flex-start; }
+    .card-stats { font-size: 0.75rem; }
+    .card-pair { font-size: 0.75rem; }
 }
 
 /* Portrait control band (Patch 71).

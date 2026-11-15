@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–124)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–125)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1662,6 +1662,58 @@ New `qa/death_screen_check.cjs` (assertion-based, 384×717, 915×412 and 1280×7
 - AWAKEN gets the old layout back.
 
 `ads_rewarded`, `suspend_bank`, `ads_cooldown` and `focus_keys` still pass.
+
+**Patch 125 — level-up cards that explain themselves (C2, plus C1's synergy tag).**
+A weapon card used to read "FLASHLIGHT / Upgrade this weapon." with a 🔧. The name was
+the id run through `replace('_',' ')`, which only replaces the first underscore.
+
+- **Weapon levels are data.** The `if/else` chain in `selectCard()` is now an exported
+  table, `WEAPON_LEVEL_UPS`, with these helpers:
+  - `applyWeaponLevelUp()` applies the same steps in the same order with the same
+    `Math.max` floors, so results are identical. `test_content` runs the old chain as an
+    oracle over 8 levels, from starting values and from values already pushed below their
+    floors.
+  - `describeWeaponLevelUp()` turns the same steps into card lines built from the
+    weapon's *current* values, e.g. "Damage 15 → 20", "Beam 69° → 75°", "Swing every
+    1.5s → 1.33s". A step that would not change anything (a cooldown already at its
+    floor) is left off.
+- **Card content.**
+  - Display names come from `MANIFESTATIONS`, and each weapon has its own icon.
+  - A new weapon gets **NEW** and its description. The last level before the cap gets
+    **MAX**, and the label reads `LVL n → n+1`.
+  - **Synergy tag (C1).** "🔗 pairs with Heavy Lead Pipe" appears when the player owns
+    the other weapon. **SYNERGY READY: <name>** appears when this exact pick completes a
+    synergy. `synergyHintsFor()` runs the real `getActiveSynergies()` on a copy of the
+    levels.
+- **Picking.**
+  - Keys **1/2/3** pick a card. The listener is inert unless the modal is open, and the
+    key hints show only with a fine pointer.
+  - A **300 ms mis-tap guard** (`LEVEL_UP_ARM_MS`) ignores clicks and keys right after
+    the cards appear, and the cards fade in over it. The modal opens mid-fight, with the
+    touch thumb still on the aim stick under the cards.
+  - Every way the modal closes now goes through `close()`.
+- **Icons.** The RECURSION cards' alchemical icons (🜂🜃🜁🜄🝊, U+1F700–1F77F, which no
+  Android or Windows font carries) are now inline SVG in `currentColor`. `test_content`
+  forbids that range.
+- **Layout.**
+  - **Portrait phones** get three full-width rows instead of three ~107 px columns.
+  - Card text is now at least 11 px; it was 0.62rem.
+  - Desktop cards are 180 px, and the modal is `width: max-content`. A box positioned at
+    `left: 50%` shrink-wraps to half the viewport, which had wrapped the third card onto
+    its own row.
+- **Not done:** the plan's "banish button ≥ 44 px". `.banish-btn` CSS exists, but no code
+  renders a banish button, and `state.banished` is never read. That is a dormant
+  feature, not a small target.
+
+New `qa/levelup_check.cjs` (384×717, 915×412, 1280×720) checks:
+- 3 cards, with no generic copy;
+- every card fully on screen;
+- text at least 11 px;
+- a key inside 300 ms is ignored, after it `2` picks exactly one level or boon, and
+  1/2/3 are inert while playing;
+- the static card shows SYNERGY READY next to a level-5 flashlight.
+
+`test_content` is up to 225 passing. The dev hook gains `levelUpUI`.
 
 ---
 
