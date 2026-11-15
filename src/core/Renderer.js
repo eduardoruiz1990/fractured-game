@@ -33,21 +33,16 @@ export class Renderer {
 
         this.lightCanvas = document.createElement('canvas');
         this.lightCtx = this.lightCanvas.getContext('2d');
-        // Patch 121: reduced-resolution buffers for the two other soft full-screen
-        // layers (see drawFog and drawVignette). Plain canvases, not spriteCache
-        // entries: each is one buffer, resized with the screen, never per key.
-        this.fogCanvas = document.createElement('canvas');
-        this.fogCtx = this.fogCanvas.getContext('2d');
+        // Patch 121: the vignette's quarter-resolution buffer (see drawVignette). A
+        // plain canvas, not a spriteCache entry: one buffer, rebuilt in place.
+        // NOTE (Patch 122): fog must NOT get the same treatment. A per-frame offscreen
+        // round trip (clear, draw, composite) was built and measured in Patch 121: it
+        // was slower headless, and on a Samsung A56 it stalled each frame for 68 ms
+        // and pushed the phone into a slowdown that lasted the rest of the session.
+        // A buffer pays off only when it is redrawn rarely, as the vignette is.
         this.vigCanvas = document.createElement('canvas');
         this.vigCtx = this.vigCanvas.getContext('2d');
         this.vigKey = '';
-        // Patch 121: fog through fogCanvas is OPT-IN. Headless A/B showed the round
-        // trip (clear, draw, composite into the main canvas) costs more than the 30
-        // direct cloud blits it replaces (+2.4 ms at 0.5 scale, +11 ms at 1.0, vs
-        // ~0.5 ms for the fog itself), and on a real Samsung A56 the same pattern in
-        // the darkness mask is where a 35 ms stall appeared. Off until the playtest
-        // benchmark shows it winning on real GPUs.
-        this.fogBuffered = false;
         this.setQuality('high');   // Patch 115; main.js applies the player's tier at boot
         // Patch 120: per-effect switches for the playtest perf panel (src/dev/PerfOverlay.js).
         // Always all-true in shipped builds; nothing outside that panel writes them.
@@ -1251,30 +1246,7 @@ export class Renderer {
         const fogSprite = this.getFogSprite(atmo.fog);   // Patch 115
         let drawn = 0;
 
-        // Patch 121: the clouds go into fogCanvas at fogScale, under the SAME camera
-        // transform the main canvas has right now (read back with getTransform, so
-        // zoom, the portrait band and shake all match), and the buffer is composited
-        // once. Source-over is associative, so stacking the clouds in a transparent
-        // buffer first gives the same image, only softer-sampled, which a fog bank
-        // cannot show. Up to 30 near-full-screen blends become 30 at 1/4 (HIGH) or
-        // 1/16 (LOW) of the pixels, plus one upscale. OPT-IN (fogBuffered, see the
-        // constructor): the default, and any engine without getTransform, draws
-        // straight onto the main canvas exactly as before.
-        const fs = (Number.isFinite(this.fogScale) && this.fogScale > 0) ? this.fogScale : 1;
-        let fctx = this.ctx;
-        if (this.fogBuffered && this.fogCtx && typeof this.ctx.getTransform === 'function') {
-            const fw = Math.max(1, Math.round(this.canvas.width * fs));
-            const fh = Math.max(1, Math.round(this.canvas.height * fs));
-            if (this.fogCanvas.width !== fw || this.fogCanvas.height !== fh) {
-                this.fogCanvas.width = fw; this.fogCanvas.height = fh;
-            } else {
-                this.fogCtx.setTransform(1, 0, 0, 1, 0, 0);
-                this.fogCtx.clearRect(0, 0, fw, fh);
-            }
-            const m = this.ctx.getTransform();
-            this.fogCtx.setTransform(m.a * fs, m.b * fs, m.c * fs, m.d * fs, m.e * fs, m.f * fs);
-            fctx = this.fogCtx;
-        }
+        this.ctx.globalAlpha = atmo.haze;
         const fogSteps = this.drawSteps();   // Patch 114: drift per sim step, not per draw
         this.fogClouds.forEach(cloud => {
             if (!frozen) {
@@ -1308,17 +1280,10 @@ export class Renderer {
             if (drawX + r < this.cullL || drawX - r > this.cullR ||
                 drawY + r < this.cullT || drawY - r > this.cullB) return;
             drawn++;
-            fctx.globalAlpha = atmo.haze * Math.min(1, core);
-            fctx.drawImage(fogSprite, drawX - r, drawY - r, r * 2, r * 2);
+            this.ctx.globalAlpha = atmo.haze * Math.min(1, core);
+            this.ctx.drawImage(fogSprite, drawX - r, drawY - r, r * 2, r * 2);
         });
-        fctx.globalAlpha = 1.0;
-        if (fctx !== this.ctx && drawn > 0) {
-            this.ctx.save();
-            this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-            this.ctx.globalAlpha = 1.0;
-            this.ctx.drawImage(this.fogCanvas, 0, 0, this.canvas.width, this.canvas.height);
-            this.ctx.restore();
-        }
+        this.ctx.globalAlpha = 1.0;
     }
 
     /** Patch 115: one soft fog disc per floor fog colour, baked at full alpha. */
@@ -1371,12 +1336,10 @@ export class Renderer {
     setQuality(tier) {
         this.quality = tier === 'low' ? 'low' : 'high';
         const low = this.quality === 'low';
-        // Patch 121: LOW's mask 0.5 -> 0.35 and fog drawn into a buffer at 0.5 / 0.25
-        // scale. A real Samsung A56 (portrait, 120 Hz) ran HIGH at 26 fps with fog,
-        // darkness, vignette and grain on, and 60 fps with them off: these soft layers
-        // are pure fill cost, and they look the same at a fraction of the resolution.
+        // Patch 121: LOW's darkness mask 0.5 -> 0.35 of full resolution. A real
+        // Samsung A56 (portrait, 120 Hz) ran HIGH at 25-26 fps with fog, darkness,
+        // vignette and grain on, and 60 fps with them off.
         this.lightScale = low ? 0.35 : 1;
-        this.fogScale = low ? 0.25 : 0.5;
         this.fogCloudLimit = low ? 12 : 30;
         this.filmGrainEnabled = !low;
     }

@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–121)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–122)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1554,6 +1554,29 @@ device can say.
 
 It reports a "vs REF" column and adds a FOG BUFFER switch to the panel. The soak gains a
 `FRACTURED_PRE` env hook for in-page A/B runs.
+
+**Patch 122 — the A56 v2 report: the phone slows down and stays slow; LOW must stay
+well under budget.** The v2 benchmark's drift check found that the phone itself
+changes under load:
+- **The reference setup did not hold its speed.** It ran at 40 ms/frame first and at
+  91 ms/frame when repeated near the end. After ~8 s of heavy load the phone slows down
+  and stays slow, either GPU throttling (heat or Samsung's power management) or Chrome
+  falling back to slower canvas drawing. That state is reached sooner from the HIGH tier.
+- **The fog buffer was harmful.** It stalled JS for 68 ms per frame (37 ms on LOW) and
+  the slowdown began when it was first enabled. It is **removed**, and `drawFog` is back
+  to its Patch 115 code byte for byte. A comment at the vignette buffer records why fog
+  must not be buffered.
+- **The CRT scanline overlay was the only cut that still helped in the slow state**
+  (about 15 ms with the HUD). It is a full-screen DOM layer over a canvas that changes
+  every frame, so the compositor blends it at the device's resolution (2.8× there). LOW
+  now hides it: `applyQualityTier()` toggles `body.quality-low`, and `style.css` hides
+  `#crt-scanlines` under it.
+
+**Benchmark v3** asks the question that matters now: does LOW hold for minutes?
+- It holds LOW for 60 s and reports it in 10 s windows.
+- It then runs LOW minus fog, darkness, vignette and HUD, an everything-off floor, and
+  LOW again.
+- HIGH runs **last**, so it cannot heat the phone before the rows that matter.
 
 **B2 (spatial grid) — closed, not built.** `qa/sim_cost_check.cjs` times
 `processGameLogic` alone under the soak scenario. It costs 0.31–0.45 ms per step against

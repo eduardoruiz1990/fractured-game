@@ -67,6 +67,8 @@ canvas { display: block; }
     background-size: 100% 2px, 3px 100%;
     pointer-events: none; z-index: 100; opacity: 0.8;
 }
+/* Patch 122: the LOW graphics tier drops the overlay (see applyQualityTier in main.js). */
+body.quality-low #crt-scanlines { display: none; }
 
 /* Full Screen Menus - Base */
 .fullscreen-menu {

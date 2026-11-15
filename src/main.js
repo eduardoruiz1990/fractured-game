@@ -545,6 +545,12 @@ function applyQualityTier() {
     const tier = currentQualityTier();
     if (renderer && typeof renderer.setQuality === 'function') renderer.setQuality(tier);
     if (game && game.director) Object.assign(game.director, QUALITY_CAPS[tier]);
+    // Patch 122: LOW also drops the CRT scanline overlay (style.css, body.quality-low).
+    // It is a full-screen DOM layer over a canvas that repaints every frame, so the
+    // compositor blends it at the DEVICE resolution (2.8x on the Samsung A56 that
+    // reported this), and it was the one switch that still saved ~15 ms per frame
+    // once that phone had slowed down.
+    try { document.body.classList.toggle('quality-low', tier === 'low'); } catch (e) {}
 }
 
 // AUTO's probe (Patch 115, corrected in Patch 120): mean interval between DRAWN

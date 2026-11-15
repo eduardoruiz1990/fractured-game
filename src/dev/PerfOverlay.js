@@ -15,7 +15,7 @@
  *   - a panel with per-effect switches (fog, darkness mask, vignette, film grain,
  *     CRT scanline overlay, DOM HUD) and the quality tier;
  *   - RUN BENCHMARK: holds a busy room (crowd at the live cap, player immortal)
- *     and measures 13 setups (drift-checked, one change each) for 4 s each, then prints a plain-text report
+ *     and holds LOW for 60 s in 10 s windows, then measures one-change variants, then prints a plain-text report
  *     with a COPY button, to paste into a chat or an issue.
  *
  * It reads and wraps only what window.__fractured exposes (renderer.drawGame and
@@ -145,11 +145,11 @@ export function installPerfOverlay() {
   <div class="row" id="perf-quality"></div>
   <div class="row" id="perf-toggles"></div>
   <div class="row">
-    <button id="perf-bench" class="primary">RUN BENCHMARK (~55 s)</button>
+    <button id="perf-bench" class="primary">RUN BENCHMARK (~1.5 min)</button>
     <button id="perf-copy">COPY REPORT</button>
     <button id="perf-close">CLOSE</button>
   </div>
-  <p class="note" id="perf-hint">Start a run first. The benchmark fills the room to the enemy cap, keeps you alive, and measures 13 setups for 4 s each. Hands off the screen while it runs.</p>
+  <p class="note" id="perf-hint">Start a run first. The benchmark fills the room to the enemy cap, keeps you alive, and holds LOW for 60 s, then measures 7 more setups. Hands off the screen while it runs.</p>
   <textarea id="perf-report" readonly spellcheck="false" hidden></textarea>
 </div>`;
     document.body.appendChild(panel);
@@ -168,8 +168,7 @@ export function installPerfOverlay() {
         lights:   { label: 'DARKNESS',   get: () => R.diag.lights,   set: v => { R.diag.lights = v; } },
         vignette: { label: 'VIGNETTE',   get: () => R.diag.vignette, set: v => { R.diag.vignette = v; } },
         grain:    { label: 'FILM GRAIN', get: () => R.filmGrainEnabled !== false, set: v => { R.filmGrainEnabled = v; } },
-        fogbuf:   { label: 'FOG BUFFER', get: () => !!R.fogBuffered, set: v => { R.fogBuffered = v; } },
-        crt:      { label: 'CRT LINES',  get: () => !scan() || scan().style.display !== 'none', set: v => { if (scan()) scan().style.display = v ? '' : 'none'; } },
+        crt:      { label: 'CRT LINES',  get: () => !scan() || getComputedStyle(scan()).display !== 'none', set: v => { if (scan()) scan().style.display = v ? '' : 'none'; } },
         hud:      { label: 'HUD',        get: () => !hud() || hud().style.visibility !== 'hidden', set: v => { if (hud()) hud().style.visibility = v ? '' : 'hidden'; } }
     };
     function setQuality(q) {
@@ -242,34 +241,34 @@ export function installPerfOverlay() {
     // ---- benchmark -------------------------------------------------------------
     let report = '';
     let running = false;
-    // Patch 121, benchmark v2. v1 (one switch at a time, single pass) produced
-    // non-monotonic rows on a Samsung A56 (darkness OFF slower than ON; LOW 60 fps at
-    // the start and 21 fps later), so v2 controls for drift: the reference setup runs
-    // FIRST and again near the END, and every other row removes or swaps ONE thing
-    // from that over-budget reference, so each row reads as that thing's marginal
-    // cost. It also tries the two candidate optimisations (fog buffer, darkness-mask
-    // resolution) on the device itself, because headless Chromium cannot model a
-    // phone GPU (there the fog buffer measured slower than direct fog).
-    const ALL = { q: 'high', fog: 1, lights: 1, vignette: 1, grain: 1, crt: 1, hud: 1, fogBuf: 0, ls: null };
+    // Benchmark v3 (Patch 122). v2 on the Samsung A56 showed the real problem: the
+    // phone ran its reference setup at 40 ms/frame at the start and 91 ms when the
+    // same setup was repeated near the end. After ~8 s of heavy load it slowed down
+    // and stayed slow (GPU throttling, or a fallback to slower canvas drawing), so
+    // most v2 rows measured that state instead of the effect named. What matters is
+    // therefore whether LOW stays fast for MINUTES, not which effect is cheapest for
+    // a few seconds. v3 holds LOW for 60 s in 10 s windows, then tries a few one-change
+    // variants of LOW, an everything-off floor, LOW again, and puts the heavy HIGH
+    // reference LAST so it cannot heat the phone before the rows that matter.
+    const LOW = { q: 'low', fog: 1, lights: 1, vignette: 1, grain: 0, crt: 0, hud: 1, ls: null };
     const STEPS = [
-        { name: 'REF: HIGH all on',       cfg: { ...ALL } },
-        { name: 'REF minus fog',          cfg: { ...ALL, fog: 0 } },
-        { name: 'REF, fog buffered 1/2',  cfg: { ...ALL, fogBuf: 1 } },
-        { name: 'REF minus darkness',     cfg: { ...ALL, lights: 0 } },
-        { name: 'REF, darkness at 1/2',   cfg: { ...ALL, ls: 0.5 } },
-        { name: 'REF, darkness at 0.35',  cfg: { ...ALL, ls: 0.35 } },
-        { name: 'REF minus vignette',     cfg: { ...ALL, vignette: 0 } },
-        { name: 'REF minus film grain',   cfg: { ...ALL, grain: 0 } },
-        { name: 'REF minus CRT and HUD',  cfg: { ...ALL, crt: 0, hud: 0 } },
-        { name: 'LOW as shipped',         cfg: { ...ALL, q: 'low', grain: 0 } },
-        { name: 'LOW, fog buffered 1/4',  cfg: { ...ALL, q: 'low', grain: 0, fogBuf: 1 } },
-        { name: 'REF again (drift check)',cfg: { ...ALL } },
-        { name: 'everything off',         cfg: { q: 'low', fog: 0, lights: 0, vignette: 0, grain: 0, crt: 0, hud: 0, fogBuf: 0, ls: null } }
+        { name: 'LOW   0-10 s',            cfg: { ...LOW }, ms: 10000, warm: WARM_MS },
+        { name: 'LOW  10-20 s',            cfg: null,       ms: 10000, warm: 0 },
+        { name: 'LOW  20-30 s',            cfg: null,       ms: 10000, warm: 0 },
+        { name: 'LOW  30-40 s',            cfg: null,       ms: 10000, warm: 0 },
+        { name: 'LOW  40-50 s',            cfg: null,       ms: 10000, warm: 0 },
+        { name: 'LOW  50-60 s',            cfg: null,       ms: 10000, warm: 0 },
+        { name: 'LOW minus fog',           cfg: { ...LOW, fog: 0 } },
+        { name: 'LOW minus darkness',      cfg: { ...LOW, lights: 0 } },
+        { name: 'LOW minus vignette',      cfg: { ...LOW, vignette: 0 } },
+        { name: 'LOW minus HUD',           cfg: { ...LOW, hud: 0 } },
+        { name: 'everything off',          cfg: { ...LOW, fog: 0, lights: 0, vignette: 0, hud: 0 } },
+        { name: 'LOW again (drift check)', cfg: { ...LOW }, ms: 6000 },
+        { name: 'HIGH all on (last)',      cfg: { q: 'high', fog: 1, lights: 1, vignette: 1, grain: 1, crt: 1, hud: 1, ls: null } }
     ];
     function apply(cfg) {
         F.setQuality(cfg.q);
         if (cfg.ls) R.lightScale = cfg.ls;
-        R.fogBuffered = !!cfg.fogBuf;
         for (const k of ['fog', 'lights', 'vignette', 'grain', 'crt', 'hud']) sw[k].set(!!cfg[k]);
     }
 
@@ -280,7 +279,7 @@ export function installPerfOverlay() {
             return;
         }
         running = true;
-        const saved = { q: F.qualitySetting || 'auto', fogBuf: !!R.fogBuffered };
+        const saved = { q: F.qualitySetting || 'auto' };
         for (const k of Object.keys(sw)) saved[k] = sw[k].get();
         panel.hidden = true;
         const banner = document.createElement('div');
@@ -315,13 +314,13 @@ export function installPerfOverlay() {
             const t0 = performance.now();
             setTimeout(() => {
                 const now = performance.now();
-                const s = stats(t0 + WARM_MS, now);
+                const s = stats(t0 + (step.warm ?? WARM_MS), now);
                 s.ents = (G.state.entities || []).length;
                 s.tier = String(F.qualityTier).toUpperCase();
                 rows.push({ name: step.name, s });
                 i++;
                 next();
-            }, STEP_MS);
+            }, step.ms || STEP_MS);
         };
         const finish = () => {
             clearInterval(keep);
@@ -329,16 +328,15 @@ export function installPerfOverlay() {
             if (G.state) G.state.xp = 0;
             banner.remove();
             F.setQuality(saved.q);
-            R.fogBuffered = saved.fogBuf;
             for (const k of Object.keys(sw)) sw[k].set(saved[k]);
             running = false;
             const pad = (v, n) => String(v).padStart(n);
-            const refMs = rows.length ? rows[0].s.intMean : NaN;
+            const refMs = rows.length ? rows[0].s.intMean : NaN;   // vs the first 10 s of LOW
             const lines = [
-                'FRACTURED perf report v2 · playtest build (Patch 121)',
+                'FRACTURED perf report v3 · playtest build (Patch 122)',
                 deviceText(),
                 '',
-                'setup                    tier  fps  int ms  vs REF  p95 ms  js ms  sim ms  ents',
+                'setup                    tier  fps  int ms  vs 1st  p95 ms  js ms  sim ms  ents',
                 ...rows.map(({ name, s }) =>
                     name.padEnd(24) + pad(s.tier, 5) + pad(f0(s.fps), 5) + pad(f1(s.intMean), 8) +
                     pad((s.intMean - refMs >= 0 ? '+' : '') + f1(s.intMean - refMs), 8) +
