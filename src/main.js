@@ -547,21 +547,32 @@ function applyQualityTier() {
     if (game && game.director) Object.assign(game.director, QUALITY_CAPS[tier]);
 }
 
-// AUTO's probe: mean frame interval over ~3 s of live PLAYING, after a 2 s warm-up
-// (asset decode and first-room spawns are not representative). Intervals over 100 ms
-// are ignored — a backgrounded tab or a GC pause is not the device's steady state.
-// Below ~40 fps (25 ms) it drops to LOW and remembers it for the next session, so a
-// weak phone does not pay the slow first minute again.
-const qualityProbe = { lastTime: 0, playingMs: 0, sum: 0, n: 0, done: false };
-function probeQuality(time) {
-    const dt = time - qualityProbe.lastTime;
-    qualityProbe.lastTime = time;
+// AUTO's probe (Patch 115, corrected in Patch 120): mean interval between DRAWN
+// frames over 2 s of live PLAYING (at least 30 draws), after a 2 s warm-up (asset decode and first-room
+// spawns are not representative). Above 25 ms (under ~40 drawn fps) it drops to LOW
+// and remembers it for the next session, so a weak phone does not pay the slow first
+// minute again.
+//
+// Patch 120 fixed two ways the first version missed exactly the phones it was for
+// (reported from a Samsung A56): it timed rAF callbacks, and on a 120 Hz screen the
+// Patch 114 draw-skip interleaves ~8 ms empty callbacks that pulled the mean under
+// the threshold however slow the real draws were; and it DISCARDED intervals over
+// 100 ms as "gaps", so a device running at under 10 fps never accumulated a sample.
+// Called from the draw branch only, and the clock advances on every draw (menus
+// included), so only intervals between consecutive draws count. Intervals over 1 s
+// are still skipped: a backgrounded tab or a one-off hitch is not the steady state.
+const qualityProbe = { lastDraw: 0, playingMs: 0, sum: 0, n: 0, done: false };
+function probeQualityOnDraw(time) {
+    const dt = time - qualityProbe.lastDraw;
+    qualityProbe.lastDraw = time;
     if (qualityProbe.done || gameSettings.quality !== 'auto' || currentQualityTier() === 'low') return;
-    if (gameState !== 'PLAYING' || !(dt > 0) || dt > 100) return;
+    if (gameState !== 'PLAYING' || !(dt > 0) || dt > 1000) return;
     qualityProbe.playingMs += dt;
     if (qualityProbe.playingMs < 2000) return;
     qualityProbe.sum += dt; qualityProbe.n++;
-    if (qualityProbe.n < 180) return;
+    // Decide after 2 s of sampled play, not after N draws: a fixed count takes 2 s at
+    // 60 fps but 12+ s at 10 fps, so the slowest phones would wait longest for help.
+    if (qualityProbe.sum < 2000 || qualityProbe.n < 30) return;
     const mean = qualityProbe.sum / qualityProbe.n;
     qualityProbe.done = true;
     if (mean > 25) {
@@ -1942,15 +1953,22 @@ function initEngine() {
     // (entity/orb counts, sprite-cache size, driving a death). `import.meta.env.DEV` is
     // statically false in `vite build`, so this whole block is dropped from every
     // shipped bundle — same guarantee as the dev panel.
-    if (import.meta.env.DEV) {
+    if ((import.meta.env.DEV || import.meta.env.MODE === 'playtest')) {
         window.__fractured = {
             get game() { return game; },
             get renderer() { return renderer; },
             get saveManager() { return saveManager; },
             get gameState() { return gameState; },
             setQuality(q) { gameSettings.quality = q; applyQualityTier(); },   // Patch 115
-            get qualityTier() { return currentQualityTier(); }
+            get qualityTier() { return currentQualityTier(); },
+            get qualitySetting() { return gameSettings.quality; }   // Patch 120
         };
+        // Patch 120: the on-screen perf panel, playtest builds only. MODE is a string
+        // literal after Vite's replacement, so every other build drops this branch and
+        // never emits the chunk.
+        if (import.meta.env.MODE === 'playtest') {
+            import('./dev/PerfOverlay.js').then(m => m.installPerfOverlay()).catch(() => {});
+        }
     }
 
     // Patch 49: respect the platform's own mute setting (distinct from Patch 47's
@@ -2511,15 +2529,21 @@ let lastBreakdown = false;
 let lastDrawSizeKey = '';
 let lastDrawState = '';
 
+// Patch 120: the inspection hook and loop timing exist in dev AND in the `playtest`
+// build (npm run build:playtest), which ships the on-screen perf panel for testing on
+// real phones. The condition is written out INLINE at each site, deliberately not
+// hoisted into a const: Vite replaces `import.meta.env.*` with literals and the
+// minifier folds the inline form to `false` and drops the branch, but it does not
+// fold through a module-level const, which shipped the (inert) hook to players.
+
 function gameLoop(time) {
     // G2 instrumentation (dev only, stripped from builds): CPU time spent inside one
     // loop iteration — simulation + render — independent of vsync quantisation, for
     // qa/soak_check.cjs. Frame-to-frame intervals only move in 16.7 ms steps.
-    const loopT0 = import.meta.env.DEV ? performance.now() : 0;
+    const loopT0 = (import.meta.env.DEV || import.meta.env.MODE === 'playtest') ? performance.now() : 0;
     try {
         // Accumulate before anything else, so a slow branch below cannot lose time.
         pacing.addFrame(time);
-        probeQuality(time);   // Patch 115
 
         syncPortalGameplayState();
         syncPortalContext();   // Patch 119
@@ -2779,6 +2803,7 @@ function gameLoop(time) {
                 lastDrawState = gameState;
                 // Send the gameState so the renderer knows to bypass the Void code!
                 renderer.drawGame(game.state, audioEngine, gameState);
+                probeQualityOnDraw(time);   // Patch 115/120
             }
         }
     } catch (e) {
@@ -2811,7 +2836,7 @@ function gameLoop(time) {
             );
         }
     }
-    if (import.meta.env.DEV && window.__fractured) {
+    if ((import.meta.env.DEV || import.meta.env.MODE === 'playtest') && window.__fractured) {
         const ring = window.__fractured.loopMs || (window.__fractured.loopMs = []);
         ring.push(performance.now() - loopT0);
         if (ring.length > 4000) ring.splice(0, ring.length - 4000);

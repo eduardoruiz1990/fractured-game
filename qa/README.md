@@ -17,8 +17,14 @@ node qa/soak_check.cjs [--seconds 45] [--throttle 4] [--phone] [--floor 9]   # p
 node qa/render_recovery_check.cjs   # injected render faults do not leak canvas state (Patch 113)
 node qa/highrefresh_check.cjs      # ~144 Hz rAF: idle frames skipped; boss banner ends with its freeze (Patch 114)
 node qa/sim_cost_check.cjs [--no-weapons]  # processGameLogic alone, soak scenario (B2 measurement)
+node qa/auto_quality_check.cjs [--fast]  # AUTO steps down on a slow run and persists; --fast must stay HIGH (Patch 120)
 node qa/context_check.cjs          # portal feedback context: sent on change only, carries last error, no UA (Patch 119)
 ```
+
+**Real devices:** `npm run build:playtest` builds the game with an on-screen PERF panel
+(`src/dev/PerfOverlay.js`). RUN BENCHMARK there measures fog, darkness, vignette, grain,
+the CRT overlay, the HUD and both tiers on the phone's own GPU, and prints a copyable
+report. The headless checks can't measure this, because they draw in software.
 
 `sdkmock.js` is a minimal CrazyGames SDK v3 stand-in, injected with `addInitScript`.
 Set `window.__adMode` to `'finish'` or `'error:<code>'` (e.g. `error:adsDisabled`).

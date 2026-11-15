@@ -34,6 +34,9 @@ export class Renderer {
         this.lightCanvas = document.createElement('canvas');
         this.lightCtx = this.lightCanvas.getContext('2d');
         this.setQuality('high');   // Patch 115; main.js applies the player's tier at boot
+        // Patch 120: per-effect switches for the playtest perf panel (src/dev/PerfOverlay.js).
+        // Always all-true in shipped builds; nothing outside that panel writes them.
+        this.diag = { fog: true, lights: true, vignette: true };
         
         // Camera zoom. 1.3 is the desktop look and the MAXIMUM — updateZoom() only
         // ever scales DOWN, on viewports too small to show a usable amount of world.
@@ -1064,8 +1067,8 @@ export class Renderer {
                 }
             } else {
                 this.drawWorldItems(state, audioEngine);
-                this.drawFog(state);
-                this.drawLightingMasks(state, curShakeX, curShakeY);
+                if (this.diag.fog) this.drawFog(state);
+                if (this.diag.lights) this.drawLightingMasks(state, curShakeX, curShakeY);
                 this.drawEffectsAndAuras(state);
                 this.drawPlayer(state, audioEngine);
                 this.drawDamageText(state);
@@ -1075,7 +1078,7 @@ export class Renderer {
             this.ctx.restore(); 
 
             if (gameState !== 'HUB') {
-                this.drawVignette(state);
+                if (this.diag.vignette) this.drawVignette(state);
 
                 if (this.bossAnnouncementTimer > 0) {
                     try {

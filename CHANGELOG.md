@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–119)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–120)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1486,6 +1486,40 @@ player feedback reports. Those reach the developer by email and on the Developer
 - It never sends the user agent or any identifier.
 - Covered by `qa/context_check.cjs`.
 
+**Patch 120 — AUTO actually catches slow phones; a perf panel for real devices.**
+*(Player report: "performance was terrible" on a Samsung A56, a 120 Hz mid-range
+Android phone.)*
+
+The Patch 115 probe had three faults, and each one made it miss the phones it was
+written for:
+1. **It timed rAF callbacks.** On a 120 Hz screen the Patch 114 draw-skip puts ~8 ms
+   empty callbacks between the real draws, which pulled the mean under 25 ms however
+   slow the draws were.
+2. **It discarded intervals over 100 ms as "gaps".** A phone running under 10 fps
+   therefore never collected a sample.
+3. **It waited for 120 samples.** At 10 fps that takes 12+ s.
+
+It now times consecutive **drawn** frames, skips only intervals over 1 s, and decides
+after 2 s of sampled play (at least 30 draws). `qa/auto_quality_check.cjs` checks both
+directions: a slow run drops to LOW and persists it, and a ~50 fps run stays on HIGH.
+
+Headless Chromium draws canvas in software, so it cannot show what a phone GPU
+spends. A CPU profile of the throttled soak put 76% of the time in native drawing and
+under 5% in game JS. To measure on the real device there is now a **playtest build**:
+- `npm run build:playtest` (Vite mode `playtest`, no SDK tag).
+- It adds `src/dev/PerfOverlay.js`: a live PERF strip, plus a panel with switches for
+  fog, the darkness mask, vignette, film grain, the CRT overlay, the DOM HUD and the
+  quality tier.
+- **RUN BENCHMARK** holds a busy room and measures 7 setups for 4 s each, then prints a
+  copyable text report.
+
+Supporting changes:
+- `Renderer.diag` holds the per-effect switches. They are always on outside that panel.
+- The `window.__fractured` hook and the loop timing now exist in dev **and** playtest.
+- The gate is written inline, not as a module-level const. A const is not constant-
+  folded, and in that form the inert hook shipped to players. That was caught by
+  grepping all three builds.
+
 **B2 (spatial grid) — closed, not built.** `qa/sim_cost_check.cjs` times
 `processGameLogic` alone under the soak scenario. It costs 0.31–0.45 ms per step against
 ~6 ms for the whole loop, because the Patch 110 cap bounds the list. A grid would save
@@ -1706,6 +1740,10 @@ under 0.1 ms. See `V2_PLAN.md` B2 for when to revisit.
     and nothing identifying in the context.** The payload is built only when a compared
     value changes. Add a field to the compare list only if it changes a few times per
     run.
+41. **Diagnostic code is gated INLINE on `import.meta.env.DEV || import.meta.env.MODE
+    === 'playtest'`, never through a const (Patch 120).** Only the inline literal
+    comparison is folded away. After touching any of it, build all three modes and
+    `grep -l __fractured dist/assets/*.js`: it must be empty for crazygames and itch.
 
 ---
 
