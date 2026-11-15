@@ -1963,6 +1963,22 @@ function initEngine() {
         if (document.visibilityState === 'hidden') autoSaveRun();
     });
 
+    // Patch 105 (V2 plan A4): a hidden tab is silent. Uses AudioEngine.setMuted's
+    // reason tracking ('hidden'), so it composes with the 'ad' and 'platform' mutes —
+    // coming back never un-mutes audio that the portal or an ad still holds muted.
+    //
+    // Auto-pause is OFF-PORTAL ONLY. CrazyGames: "Don't call [gameplayStop] when the
+    // user switches focus or leaves the game area (we handle this on our side)", and
+    // our PAUSED state emits gameplayStop through syncPortalGameplayState. Off-portal
+    // (itch.io / self-hosted) a returning player would otherwise land mid-combat; the
+    // simulation itself already stops while hidden (no rAF), so on the portal they
+    // resume exactly where they left, just with sound restored.
+    document.addEventListener('visibilitychange', () => {
+        const hidden = document.visibilityState === 'hidden';
+        if (audioEngine) audioEngine.setMuted('hidden', hidden);
+        if (hidden && !portalSDK.available && gameState === 'PLAYING') togglePause();
+    });
+
     const pauseMenu = document.getElementById('pause-menu');
     const pauseTitle = document.getElementById('pause-title');
     const btnDescend = document.getElementById('btn-descend');
@@ -1987,6 +2003,26 @@ function initEngine() {
     // at once there. P is offered as a fullscreen-safe alternate; Escape stays
     // bound because players expect it (Patch 45).
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape' || e.key.toLowerCase() === 'p') togglePause(); });
+
+    // Patch 105 (V2 plan A5): during live play, keys the game owns must not also do
+    // their browser default. Space would "press" whatever button still holds focus
+    // (e.g. a mouse-clicked PAUSE button: dash -> pause), and Space/arrows scroll the
+    // host page around an iframe embed. Scoped to PLAYING so menus keep native
+    // keyboard navigation (Tab/Space/Enter on buttons).
+    const GAMEPLAY_OWNED_KEYS = new Set([' ', 'Spacebar', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+    window.addEventListener('keydown', (e) => {
+        if (gameState === 'PLAYING' && GAMEPLAY_OWNED_KEYS.has(e.key)) e.preventDefault();
+    });
+    // A pointer-activated button gives focus back immediately, so it cannot be
+    // re-triggered by the next Space/Enter. `e.detail > 0` means a real mouse/touch
+    // click; keyboard activation (detail 0) keeps focus, preserving keyboard
+    // navigation and the :focus-visible ring.
+    document.addEventListener('click', (e) => {
+        if (e.detail > 0 && e.target && typeof e.target.closest === 'function') {
+            const btn = e.target.closest('button');
+            if (btn && typeof btn.blur === 'function') btn.blur();
+        }
+    }, true);
     document.getElementById('btn-unpause').addEventListener('click', togglePause);
 
     document.getElementById('btn-awaken').addEventListener('click', () => {

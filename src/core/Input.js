@@ -1,6 +1,13 @@
 // src/core/Input.js
 // Handles Keyboard, Mouse, and Mobile Dual-Joystick input.
 
+/** Patch 105: true when keyboard focus is in a field the player is typing into. */
+function Input_isTextEntry(el) {
+    if (!el || !el.tagName) return false;
+    const tag = el.tagName.toUpperCase();
+    return tag === 'TEXTAREA' || (tag === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes(el.type)) || !!el.isContentEditable;
+}
+
 export class InputManager {
     constructor(canvas) {
         this.canvas = canvas;
@@ -42,6 +49,10 @@ export class InputManager {
     bindEvents() {
         // Keyboard
         window.addEventListener('keydown', (e) => {
+            // Patch 105: typing into a text field (the save-import dialog, Patch 103)
+            // is not movement. Without this, pasting/typing a save string in the hub
+            // walked the player around behind the dialog.
+            if (Input_isTextEntry(e.target)) return;
             const key = this.normalizeKey(e);
             if (key) { this.usedKeyboard = true; }
             if (['w', 'a', 's', 'd'].includes(key)) { this.keys[key] = true; this.updateKeyboardInput(); }
