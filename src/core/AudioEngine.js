@@ -88,7 +88,7 @@ export class AudioEngine {
         };
 
         // Loaded in the background AFTER the loading window closes — see
-        // loadDeferredAssets(). game_drone.mp3 is ~4.3MB, over half the entire
+        // loadDeferredAssets(). game_drone.mp3 is ~1.9MB (Patch 118 re-encode), the largest file in the
         // download, and is not audible until a run starts.
         this.deferredAssetUrls = {
             game_drone: "sounds/game_drone.mp3"
