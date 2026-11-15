@@ -13,6 +13,10 @@ import { ARENA_VOID_RADIUS } from '../data/Config.js';
 // see CYCLE_VISUAL_CAP in src/core/Endless.js.
 import { paletteIndexForFloor, visualCycle, cycleGrade } from './Endless.js';
 
+// Patch 109: upper bound on Renderer.spriteCache (see cacheSprite). Comfortably above
+// the real working set — entity bodies x phase buckets x variants, glows per colour.
+const SPRITE_CACHE_MAX = 768;
+
 export class Renderer {
     constructor(canvas, ctx) {
         this.canvas = canvas;
@@ -222,8 +226,25 @@ export class Renderer {
         drawFn(cx);
 
         sprite = { canvas: c, w, h };
-        this.spriteCache.set(key, sprite);
+        this.cacheSprite(key, sprite);
         return sprite;
+    }
+
+    // Patch 109 (V2 plan B3): every spriteCache insert goes through here. The cache
+    // was unbounded, so any caller whose key varied continuously (see drawGlow) grew it
+    // by one canvas per frame for the whole session. Keys are supposed to be drawn from
+    // small finite sets, so in normal play this never trips; it is the backstop that
+    // turns a future key mistake into a little re-rendering instead of a memory leak.
+    // A Map iterates in insertion order, so dropping from the front evicts the oldest.
+    cacheSprite(key, sprite) {
+        if (this.spriteCache.size >= SPRITE_CACHE_MAX) {
+            let toDrop = Math.ceil(SPRITE_CACHE_MAX / 4);
+            for (const k of this.spriteCache.keys()) {
+                this.spriteCache.delete(k);
+                if (--toDrop <= 0) break;
+            }
+        }
+        this.spriteCache.set(key, sprite);
     }
 
     drawSprite(sprite, x = 0, y = 0) {
@@ -234,10 +255,19 @@ export class Renderer {
     // one sprite per (colour, alpha) scales to any radius: the pulse stays fully live
     // via the destination rect, while createRadialGradient() runs once instead of
     // once per entity per frame. Still faux-glow — no shadowBlur.
+    //
+    // Patch 109 (V2 plan B3): the sprite is baked at FULL alpha and the caller's alpha
+    // is applied with globalAlpha at draw time. The key used to be colour + alpha, so a
+    // caller passing a continuously varying alpha — the tutorial cue's `0.22 * fade` —
+    // minted a new 128x128 canvas (64 KB) almost every frame and kept it forever, on
+    // exactly the low-end phones a first-time player is most likely to be on. A linear
+    // ramp from a@1 to 0 drawn at globalAlpha=a is the same image as a ramp from a to
+    // 0, so this is visually identical and the cache is now one sprite per colour.
     drawGlow(x, y, radius, color, alpha) {
         if (!Number.isFinite(radius) || radius <= 0) return;
+        if (!Number.isFinite(alpha) || alpha <= 0) return;
 
-        const key = `glow|${color}|${alpha}`;
+        const key = `glow|${color}`;
         let sprite = this.spriteCache.get(key);
         if (!sprite) {
             const R = 64;
@@ -245,14 +275,18 @@ export class Renderer {
             c.width = c.height = R * 2;
             const cx = c.getContext('2d');
             const g = cx.createRadialGradient(R, R, 0, R, R, R);
-            g.addColorStop(0, this.hexToRgba(color, alpha));
+            g.addColorStop(0, this.hexToRgba(color, 1));
             g.addColorStop(1, this.hexToRgba(color, 0));
             cx.fillStyle = g;
             cx.fillRect(0, 0, R * 2, R * 2);
             sprite = { canvas: c };
-            this.spriteCache.set(key, sprite);
+            this.cacheSprite(key, sprite);
         }
+        // Multiplied into, not assigned: several callers draw inside a faded group.
+        const prevAlpha = this.ctx.globalAlpha;
+        this.ctx.globalAlpha = prevAlpha * Math.min(1, alpha);
         this.ctx.drawImage(sprite.canvas, x - radius, y - radius, radius * 2, radius * 2);
+        this.ctx.globalAlpha = prevAlpha;
     }
 
     // `offset` shifts this call relative to the entity's own phase, for parts that

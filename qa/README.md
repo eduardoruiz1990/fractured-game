@@ -12,6 +12,7 @@ node qa/dialog_check.cjs           # in-world dialog: export field, import value
 node qa/focus_keys_check.cjs [portal]  # tab-hide mute (+ auto-pause off-portal), Space vs focused buttons
 node qa/settings_check.cjs         # settings migrate from localStorage into the portal store
 node qa/suspend_bank_check.cjs     # mid-floor Awaken banks once; resume cannot re-bank
+node qa/sprite_cache_check.cjs     # sprite cache plateaus while the tutorial cue fades (Patch 109)
 ```
 
 `sdkmock.js` is a minimal CrazyGames SDK v3 stand-in, injected with `addInitScript`.
