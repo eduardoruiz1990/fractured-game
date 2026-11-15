@@ -3,7 +3,7 @@
 // Drives the real game in Chromium under a worst-case load and reports frame time,
 // heap growth, sprite-cache size, live entity counts and page errors.
 //
-//   node qa/soak_check.cjs [--seconds 60] [--throttle 4] [--phone] [--floor 9] [--baseline]
+//   node qa/soak_check.cjs [--seconds 60] [--throttle 4] [--phone] [--floor 9] [--quality high|low|auto]
 //
 // Scenario: tutorial skipped, floor N (default 9, i.e. endless Cycle II), every weapon
 // at level 5, all five bosses alive at once, room budget topped up continuously, the
@@ -27,6 +27,8 @@ const SECONDS = arg('seconds', 45);
 const THROTTLE = arg('throttle', 1);
 const FLOOR = arg('floor', 9);
 const PHONE = flag('phone');
+const qi = args.indexOf('--quality');
+const QUALITY = qi >= 0 ? args[qi + 1] : 'high';   // pin the tier: AUTO would drop to LOW under software rendering
 const URL = process.env.FRACTURED_URL || 'http://localhost:5199/';
 
 (async () => {
@@ -42,7 +44,7 @@ const URL = process.env.FRACTURED_URL || 'http://localhost:5199/';
 
   await page.goto(URL, { waitUntil: 'networkidle' });
   await page.waitForTimeout(800);
-  await page.evaluate(() => { window.__fractured.saveManager.metaState.tutorialCompleted = true; });
+  await page.evaluate(q => { window.__fractured.saveManager.metaState.tutorialCompleted = true; window.__fractured.setQuality && window.__fractured.setQuality(q); }, QUALITY);
   await page.click('#btn-title-begin');
   await page.waitForTimeout(500);
 
@@ -122,7 +124,7 @@ const URL = process.env.FRACTURED_URL || 'http://localhost:5199/';
   await browser.close();
 
   const fmt = n => Number.isFinite(n) ? n.toFixed(1) : String(n);
-  console.log(`soak: ${SECONDS}s, ${PHONE ? 'phone 844x390' : 'desktop 1280x720'}, CPU throttle x${THROTTLE}, floor ${FLOOR}`);
+  console.log(`soak: ${SECONDS}s, ${PHONE ? 'phone 844x390' : 'desktop 1280x720'}, CPU throttle x${THROTTLE}, floor ${FLOOR}, quality ${QUALITY}`);
   console.log(`  frames ${r.frames}  frame ms p50 ${fmt(r.p50)}  p95 ${fmt(r.p95)}  p99 ${fmt(r.p99)}  worst ${fmt(r.worst)}`);
   console.log(`  loop CPU ms (sim+render, no vsync) mean ${fmt(r.loopMean)}  p50 ${fmt(r.loop50)}  p95 ${fmt(r.loop95)}`);
   console.log(`  entities max ${r.maxTotal} (regular ${r.maxRegular}, seeded ${r.seeded}, cap ${r.cap})  orbs max ${r.maxOrbs}  particles max ${r.maxParticles}  puddles max ${r.maxPuddles}`);

@@ -423,7 +423,9 @@ function maybeHappytimeForBossKill(floor) {
 // portalSDK.init(); reloadSettingsFromPortal() re-reads through the portal once init
 // has resolved, and saveSettings() writes through it. Try/caught, so a SecurityError
 // degrades to default settings rather than killing boot.
-let gameSettings = { screenShake: true, photosensitive: false, musicVolume: 1, sfxVolume: 1 };
+let gameSettings = { screenShake: true, photosensitive: false, musicVolume: 1, sfxVolume: 1,
+                     // Patch 115: 'auto' | 'high' | 'low'; autoQuality is what AUTO settled on.
+                     quality: 'auto', autoQuality: 'high' };
 try {
     const savedSettings = localStorage.getItem('fractured_settings');
     if (savedSettings) gameSettings = { ...gameSettings, ...JSON.parse(savedSettings) };
@@ -454,6 +456,52 @@ function saveSettings() {
  * down yesterday is not reset to full by the move. Off-portal both reads hit the same
  * key and this is a no-op.
  */
+// --- GRAPHICS QUALITY TIER (Patch 115, V2 plan B7) --------------------------------
+//
+// HIGH is the game as it was. LOW: darkness mask at half resolution, 12 fog clouds
+// instead of 30, no film grain, and lower simulation ceilings (45 live enemies, 200
+// particles). AUTO starts at whatever it last settled on and steps DOWN once per
+// session if live gameplay is slow; it never steps back up on its own (that would
+// flap), but choosing AUTO again in Settings re-evaluates from HIGH.
+const QUALITY_CAPS = {
+    high: { liveEntityCap: 60, particleCap: 450 },
+    low:  { liveEntityCap: 45, particleCap: 200 }
+};
+function currentQualityTier() {
+    const q = gameSettings.quality;
+    if (q === 'high' || q === 'low') return q;
+    return gameSettings.autoQuality === 'low' ? 'low' : 'high';
+}
+function applyQualityTier() {
+    const tier = currentQualityTier();
+    if (renderer && typeof renderer.setQuality === 'function') renderer.setQuality(tier);
+    if (game && game.director) Object.assign(game.director, QUALITY_CAPS[tier]);
+}
+
+// AUTO's probe: mean frame interval over ~3 s of live PLAYING, after a 2 s warm-up
+// (asset decode and first-room spawns are not representative). Intervals over 100 ms
+// are ignored — a backgrounded tab or a GC pause is not the device's steady state.
+// Below ~40 fps (25 ms) it drops to LOW and remembers it for the next session, so a
+// weak phone does not pay the slow first minute again.
+const qualityProbe = { lastTime: 0, playingMs: 0, sum: 0, n: 0, done: false };
+function probeQuality(time) {
+    const dt = time - qualityProbe.lastTime;
+    qualityProbe.lastTime = time;
+    if (qualityProbe.done || gameSettings.quality !== 'auto' || currentQualityTier() === 'low') return;
+    if (gameState !== 'PLAYING' || !(dt > 0) || dt > 100) return;
+    qualityProbe.playingMs += dt;
+    if (qualityProbe.playingMs < 2000) return;
+    qualityProbe.sum += dt; qualityProbe.n++;
+    if (qualityProbe.n < 180) return;
+    const mean = qualityProbe.sum / qualityProbe.n;
+    qualityProbe.done = true;
+    if (mean > 25) {
+        gameSettings.autoQuality = 'low';
+        applyQualityTier();
+        saveSettings();
+    }
+}
+
 function reloadSettingsFromPortal() {
     if (!portalSDK.available) return;
     try {
@@ -1447,7 +1495,15 @@ function initEngine() {
                         Photosensitivity Mode
                     </label>
                     <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Disables strobing lights, camera flashes, and softens glitch overlays.</p>
-                    
+
+                    <label for="select-quality" style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem;">Graphics Quality</label>
+                    <select id="select-quality" style="margin-top: -12px; font-family: inherit; font-size: 1rem; padding: 8px; min-height: 44px; background: var(--paper-bg); color: var(--ink-black); border: 1px solid var(--ink-black);">
+                        <option value="auto">AUTO (recommended)</option>
+                        <option value="high">HIGH</option>
+                        <option value="low">LOW (smoother on older devices)</option>
+                    </select>
+                    <p class="typewriter-text" id="quality-note" style="color: #666; font-size: 0.9rem; margin-top: -15px;">AUTO lowers detail by itself if the game runs slowly.</p>
+
                     <button class="file-btn primary" id="btn-close-settings" style="margin-top: 20px;">APPLY & CLOSE</button>
                 </div>
             </div>
@@ -1599,6 +1655,29 @@ function initEngine() {
 
         toggleShake.checked = gameSettings.screenShake;
         togglePhoto.checked = gameSettings.photosensitive;
+
+        // Patch 115: graphics tier. Applied immediately on change (like the sliders), so
+        // the player can see the difference without closing the panel.
+        const selectQuality = document.getElementById('select-quality');
+        const qualityNote = document.getElementById('quality-note');
+        const paintQualityNote = () => {
+            if (!qualityNote) return;
+            qualityNote.innerText = gameSettings.quality === 'auto'
+                ? `AUTO lowers detail by itself if the game runs slowly. Currently: ${(gameSettings.autoQuality || 'high').toUpperCase()}.`
+                : 'Fixed by you. AUTO lets the game choose.';
+        };
+        if (selectQuality) {
+            selectQuality.value = ['auto', 'high', 'low'].includes(gameSettings.quality) ? gameSettings.quality : 'auto';
+            paintQualityNote();
+            selectQuality.addEventListener('change', () => {
+                gameSettings.quality = selectQuality.value;
+                // Choosing AUTO again gives the device a fresh evaluation.
+                if (gameSettings.quality === 'auto') { gameSettings.autoQuality = 'high'; qualityProbe.done = false; }
+                applyQualityTier();
+                saveSettings();
+                paintQualityNote();
+            });
+        }
 
         // --- VOLUME SLIDERS (Patch 80) ---
         // Applied and persisted on 'input', not on APPLY & CLOSE like the toggles.
@@ -1788,6 +1867,7 @@ function initEngine() {
     levelUpUI = new LevelUpUI(audioEngine, saveManager);
 
     game.audioEngine = audioEngine;
+    applyQualityTier();   // Patch 115: renderer + Director caps from the saved tier
 
     // V2 plan G1: a DEV-ONLY inspection hook for the headless Playwright checks
     // (entity/orb counts, sprite-cache size, driving a death). `import.meta.env.DEV` is
@@ -1798,7 +1878,9 @@ function initEngine() {
             get game() { return game; },
             get renderer() { return renderer; },
             get saveManager() { return saveManager; },
-            get gameState() { return gameState; }
+            get gameState() { return gameState; },
+            setQuality(q) { gameSettings.quality = q; applyQualityTier(); },   // Patch 115
+            get qualityTier() { return currentQualityTier(); }
         };
     }
 
@@ -2368,6 +2450,7 @@ function gameLoop(time) {
     try {
         // Accumulate before anything else, so a slow branch below cannot lose time.
         pacing.addFrame(time);
+        probeQuality(time);   // Patch 115
 
         syncPortalGameplayState();
 

@@ -33,6 +33,7 @@ export class Renderer {
 
         this.lightCanvas = document.createElement('canvas');
         this.lightCtx = this.lightCanvas.getContext('2d');
+        this.setQuality('high');   // Patch 115; main.js applies the player's tier at boot
         
         // Camera zoom. 1.3 is the desktop look and the MAXIMUM — updateZoom() only
         // ever scales DOWN, on viewports too small to show a usable amount of world.
@@ -938,14 +939,10 @@ export class Renderer {
                     state.hubWorld.draw(this.ctx, state, this);
                     this.drawPlayer(state, audioEngine);
                     
-                    if (this.lightCanvas.width !== this.canvas.width || this.lightCanvas.height !== this.canvas.height) {
-                        this.lightCanvas.width = this.canvas.width;
-                        this.lightCanvas.height = this.canvas.height;
-                    } else {
-                        this.lightCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                    }
+                    const hubLs = this.prepareLightCanvas();   // Patch 115
 
                     this.lightCtx.save();
+                    this.lightCtx.scale(hubLs, hubLs);
                     this.lightCtx.translate(this.cameraCenterX, this.cameraCenterY);
                     this.lightCtx.scale(this.zoom, this.zoom);
                     this.lightCtx.translate(-state.player.x, -state.player.y);
@@ -1005,7 +1002,7 @@ export class Renderer {
                     this.ctx.save();
                     this.ctx.setTransform(1, 0, 0, 1, 0, 0); 
                     this.ctx.globalCompositeOperation = 'source-over';
-                    this.ctx.drawImage(this.lightCanvas, 0, 0);
+                    this.ctx.drawImage(this.lightCanvas, 0, 0, this.canvas.width, this.canvas.height);
                     this.ctx.restore();
 
                     this.ctx.save();
@@ -1093,7 +1090,7 @@ export class Renderer {
                     this.bossAnnouncementTimer = Math.max(0, this.bossAnnouncementTimer - this.drawSteps());
                 }
                 
-                this.drawFilmGrain();
+                if (this.filmGrainEnabled !== false) this.drawFilmGrain();   // Patch 115: off on LOW
             } else {
                 this.ctx.globalAlpha = 0.08; 
                 this.drawFilmGrain();
@@ -1233,6 +1230,8 @@ export class Renderer {
         // Every other system freezes during hitStop (that pause is the whole
         // point of the impact feel), so the fog now actually holds with them.
         const frozen = state.hitStop > 0;
+        const fogSprite = this.getFogSprite(atmo.fog);   // Patch 115
+        let drawn = 0;
 
         this.ctx.globalAlpha = atmo.haze;
         const fogSteps = this.drawSteps();   // Patch 114: drift per sim step, not per draw
@@ -1258,27 +1257,82 @@ export class Renderer {
             const core = (cloud.density || 0.5) * 0.5;
             if (!Number.isFinite(r) || r <= 0) return;
 
-            const fGrad = this.ctx.createRadialGradient(drawX, drawY, 0, drawX, drawY, r);
-            fGrad.addColorStop(0, `rgba(${atmo.fog}, ${core})`);
-            fGrad.addColorStop(0.55, `rgba(${atmo.fog}, ${core * 0.4})`);
-            fGrad.addColorStop(1, `rgba(${atmo.fog}, 0)`);
-            this.ctx.fillStyle = fGrad;
-            this.ctx.beginPath();
-            this.ctx.arc(drawX, drawY, r, 0, Math.PI * 2);
-            this.ctx.fill();
+            // Patch 115 (V2 plan B7): a cached sprite instead of a live gradient. This
+            // was 30 createRadialGradient + arc + fill per frame — the largest single
+            // per-frame cost the Patch 66b review found. The ramp is the same three
+            // stops baked at full alpha and drawn at haze * core, the drawGlow method
+            // (identical for a linear ramp). Clouds wholly off screen are skipped, and
+            // the low tier draws fewer of them.
+            if (drawn >= this.fogCloudLimit) return;
+            if (drawX + r < this.cullL || drawX - r > this.cullR ||
+                drawY + r < this.cullT || drawY - r > this.cullB) return;
+            drawn++;
+            this.ctx.globalAlpha = atmo.haze * Math.min(1, core);
+            this.ctx.drawImage(fogSprite, drawX - r, drawY - r, r * 2, r * 2);
         });
         this.ctx.globalAlpha = 1.0;
     }
 
-    drawLightingMasks(state, curShakeX, curShakeY) {
-        if (this.lightCanvas.width !== this.canvas.width || this.lightCanvas.height !== this.canvas.height) {
-            this.lightCanvas.width = this.canvas.width;
-            this.lightCanvas.height = this.canvas.height;
-        } else {
-            this.lightCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    /** Patch 115: one soft fog disc per floor fog colour, baked at full alpha. */
+    getFogSprite(fogRgb) {
+        const key = `fog|${fogRgb}`;
+        let sprite = this.spriteCache.get(key);
+        if (!sprite) {
+            const R = 128;
+            const c = document.createElement('canvas');
+            c.width = c.height = R * 2;
+            const cx = c.getContext('2d');
+            const g = cx.createRadialGradient(R, R, 0, R, R, R);
+            g.addColorStop(0, `rgba(${fogRgb}, 1)`);
+            g.addColorStop(0.55, `rgba(${fogRgb}, 0.4)`);
+            g.addColorStop(1, `rgba(${fogRgb}, 0)`);
+            cx.fillStyle = g;
+            cx.fillRect(0, 0, R * 2, R * 2);
+            sprite = { canvas: c };
+            this.cacheSprite(key, sprite);
         }
+        return sprite.canvas;
+    }
+
+    /**
+     * Patch 115 (V2 plan B7): sizes and clears the offscreen darkness mask, and
+     * returns the scale it is stored at. The mask is soft by design (penumbra, faux
+     * glows), so the LOW tier keeps it at half resolution — a quarter of the fill and
+     * composite cost — and drawImage scales it back up to the canvas. Callers apply
+     * the returned scale before the camera transform.
+     */
+    prepareLightCanvas() {
+        const ls = (Number.isFinite(this.lightScale) && this.lightScale > 0) ? this.lightScale : 1;
+        const w = Math.max(1, Math.round(this.canvas.width * ls));
+        const h = Math.max(1, Math.round(this.canvas.height * ls));
+        if (this.lightCanvas.width !== w || this.lightCanvas.height !== h) {
+            this.lightCanvas.width = w;
+            this.lightCanvas.height = h;
+        } else {
+            this.lightCtx.clearRect(0, 0, w, h);
+        }
+        return ls;
+    }
+
+    /**
+     * Patch 115 (V2 plan B7): graphics quality tier. 'high' is the game exactly as it
+     * was (bar the fog sprite, which is the same image). 'low' trades soft detail for
+     * frame time on weak devices. Simulation caps live on the Director and are set
+     * alongside this by main.js (applyQualityTier), so the renderer stays sim-free.
+     */
+    setQuality(tier) {
+        this.quality = tier === 'low' ? 'low' : 'high';
+        const low = this.quality === 'low';
+        this.lightScale = low ? 0.5 : 1;
+        this.fogCloudLimit = low ? 12 : 30;
+        this.filmGrainEnabled = !low;
+    }
+
+    drawLightingMasks(state, curShakeX, curShakeY) {
+        const ls = this.prepareLightCanvas();   // Patch 115
 
         this.lightCtx.save();
+        this.lightCtx.scale(ls, ls);
         this.lightCtx.translate(this.cameraCenterX, this.cameraCenterY);
         this.lightCtx.scale(this.zoom, this.zoom);
         this.lightCtx.translate(-state.player.x, -state.player.y);
@@ -1408,7 +1462,8 @@ export class Renderer {
 
         this.ctx.save();
         this.ctx.setTransform(1, 0, 0, 1, 0, 0); 
-        this.ctx.drawImage(this.lightCanvas, 0, 0);
+        // Patch 115: drawn to the full canvas — the mask may be stored at reduced size.
+        this.ctx.drawImage(this.lightCanvas, 0, 0, this.canvas.width, this.canvas.height);
         this.ctx.restore(); 
     }
 

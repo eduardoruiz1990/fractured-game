@@ -28,3 +28,5 @@ Screenshots land next to the scripts and are gitignored.
 |---|---|---|---|---|---|---|
 | 2026-11-15, after P111 | `--seconds 30` | 33.4 / 50.1 | 60 (60) | 633 | +0.3 MB | 306 |
 | 2026-11-15, after P111 | `--seconds 30 --phone --throttle 4` | 116.7 / 166.6 | 40 (60) | 587 | +0.1 MB | 294 |
+| 2026-11-15, after P115 | `--seconds 25 --quality high` | 50.0 / 66.8 (loop CPU mean 6.6) | — | — | — | — |
+| 2026-11-15, after P115 | `--seconds 25 --quality low` | 33.3 / 50.0 (loop CPU mean 3.6) | — | — | — | — |
