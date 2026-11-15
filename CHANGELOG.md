@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–102)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–108)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1341,6 +1341,54 @@ The CrazyGames SDK v3 tag is now injected by a `transformIndexHtml` plugin in
 browser only" would be false. The backup prompt returns *before*
 `markBackupPromptShown()`, so the one-time offer is not spent on a portal session.
 
+### Patch 103 — in-world dialogs only (A2)
+
+`showConfirm` moved to **`src/ui/Dialog.js`** (same signature; `main.js` imports it) and
+gained `input` (a `<textarea id="confirm-input">` in the modal) and `onCancel`. Save
+import, export and wipe in `UIManager` use it; export falls back to a pre-selected
+read-only field when the Clipboard API is missing. There is **no** native
+`alert`/`confirm`/`prompt` anywhere in `src/` — the missing-markup fallback now logs and
+does nothing. The textarea must stay a non-`div`: `#confirm-modal .folder-content >
+div:last-child` is the sticky button row.
+
+### Patch 104 — ads (A3)
+
+- `PortalSDK.showRewardedAd` (reward **only** from `adFinished`) and `happytime()`.
+  `adsDisabled`/`adblock` latch `canOfferRewarded()` false for the session.
+- Death screen: **REVIVE AT 50% SANITY (AD)** (once per floor — `reviveUsed` lives on
+  `game.state`, which `Game.init` rebuilds per floor) or **RECOVER N LUCIDITY (AD)**. One
+  rewarded ad per death.
+- Revive undoes the settlement: `SaveManager.removeLucidity(recovered)` takes back the
+  provisional 50% payout, then 180 i-frames and a knockback ring (bosses excluded).
+- Midgame: at most one per **5 minutes**, clock from page load, reset by any ad. A
+  revived run ends without one. DESCEND is now a cooldown-gated midgame slot.
+- `happytime()` when a boss falls on the deepest floor so far, once per floor per session.
+- `window.__fractured` (dev-only, stripped from builds) and the `qa/` Playwright checks.
+
+### Patch 105 — focus and keys (A4, A5)
+
+Hidden tab → `audioEngine.setMuted('hidden', …)`; auto-pause **off-portal only**
+(CrazyGames handles focus and asks games not to emit `gameplayStop` for it). During
+`PLAYING`, Space/arrows `preventDefault`; pointer-clicked buttons blur; `Input` ignores
+keys typed into text fields.
+
+### Patch 106 — settings through the portal (A6)
+
+`saveSettings()` writes via `portalSDK`; `initEngine()` re-reads through it first and
+migrates localStorage-only settings once. ErrorLog stays local on purpose.
+
+### Patch 107 — cleanup (A7)
+
+Removed template leftovers and the unused `heartbeat.mp3`; SVG favicon, `theme-color`,
+`viewport-fit=cover` (iOS safe-area insets now real); Vite pinned to stable `~8.3.8`.
+
+### Patch 108 — economy and copy truth (A8)
+
+The Lucidity double-bank is fixed (see Known issues). The mid-floor Awaken screen said
+"Earned 0 Lucidity (Aborted)" while banking all of it — it now reads **SESSION
+SUSPENDED / Banked N**. The token door's copy now matches behaviour (tokens decrypt at
+run end whether you extract or break).
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -1541,9 +1589,8 @@ browser only" would be false. The backup prompt returns *before*
 
 ## Known issues — deliberately NOT fixed
 
-- **Lucidity double-bank.** Awaken banks `state.lucidity` *and* saves it into the
-  carried run, so suspend → resume → suspend banks the same Lucidity each cycle.
-  Pre-existing; fixing it changes the reward economy, so it needs a design decision.
+- ~~**Lucidity double-bank.**~~ **Fixed in Patch 108**: a mid-floor Awaken banks, then
+  saves the suspended run with `lucidity: 0`.
 - **Pooled arrays cleared without release.** `Combat.js`'s `ROOM_DOOR` transition
   does `state.projectiles = []`, `xpDrops`, `tokenDrops`, `inkPuddles`, `safeZones`
   — all pooled types. `ObjectPool.release` is just a push, so these objects never

@@ -2060,6 +2060,7 @@ function initEngine() {
 
         let earnedLucidity = 0;
         let retainedTokens = [];
+        let suspendBanked = 0;   // Patch 108: what a mid-floor Awaken actually banked
 
         if (isExitReached) {
             saveManager.logRunBuild(buildDiversitySnapshot(game));
@@ -2078,8 +2079,17 @@ function initEngine() {
                 });
             }
         } else if (isMidFloor) {
-            saveManager.addLucidity(Math.floor(game.state.lucidity * (game.state.lucidityBonusMultiplier || 1)));
+            suspendBanked = Math.floor(game.state.lucidity * (game.state.lucidityBonusMultiplier || 1));
+            saveManager.addLucidity(suspendBanked);
             const stateToSave = game.getCarriedState();
+            // Patch 108 (V2 plan A8): the Lucidity double-bank. That Lucidity is now in
+            // the bank, so the suspended run carries none of it — otherwise suspend ->
+            // resume -> Awaken paid the same Lucidity out again on every cycle (a known
+            // issue since Patch 54). XP, level, weapons, floor and room still carry, so
+            // the run itself resumes exactly as it was; only the already-paid currency
+            // is spent. Death (50%) and extraction (100%) after a resume therefore pay
+            // out only what was earned SINCE the resume.
+            stateToSave.lucidity = 0;
             writeSuspendedRun(JSON.stringify(stateToSave));
 
             const resumeBtn = document.getElementById('btn-resume-run');
@@ -2134,14 +2144,17 @@ function initEngine() {
             if (header) header.style.borderBottomColor = 'var(--ui-red)';
             if (title) {
                 title.style.color = 'var(--ui-red)';
-                title.innerText = 'PROTOCOL ABORTED';
+                title.innerText = 'SESSION SUSPENDED';
             }
             if (btn) btn.innerText = 'RETURN TO WARD';
 
+            // Patch 108: this screen used to say "Earned 0 Lucidity (Aborted) /
+            // Retained 0%", while the handler above had in fact banked all of it and
+            // saved the run for RESUME DESCENT. Say what actually happened.
             document.getElementById('final-stats').innerHTML = `
-                Cowardice detected on <strong>Floor ${game.state.floor}</strong>.<br><br>
-                Earned <strong>0</strong> Lucidity (Aborted).<br>
-                Retained <strong>0%</strong> of gathered resources.<br>
+                Session suspended on <strong>Floor ${game.state.floor}</strong>.<br><br>
+                Banked <strong>${suspendBanked}</strong> Lucidity.<br>
+                Your descent is saved: <strong>RESUME DESCENT</strong> picks it up from this room.<br>
                 Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
                 ${buildRunSummaryHtml(game)}
             `;

@@ -43,7 +43,7 @@ export const DOOR_REWARDS = [
     { id: 'LUCIDITY',       name: 'LUCIDITY',        effect: '+50 Lucidity and +50 XP, banked into this run.', color: '#ffddaa' },
     { id: 'HEAL',           name: 'RECOVERY',        effect: 'Restores 50 Sanity you have already lost. Does NOT raise your maximum, and cannot take you above it.', color: '#aaffaa' },
     { id: 'WEAPON_UPGRADE', name: 'WEAPON UPGRADE',  effect: 'Levels one random weapon that is not yet at 5. If everything is maxed, pays +50 Lucidity instead.', color: '#c5a059' },
-    { id: 'TOKEN_DOOR',     name: 'CONFISCATED ITEM', effect: 'Drops a Token on the spot. Tokens are only kept if you survive or extract.', color: '#ff8c00' },
+    { id: 'TOKEN_DOOR',     name: 'CONFISCATED ITEM', effect: 'Drops a Token on the spot. It is decrypted into your inventory when the run ends, whether you extract or break.', color: '#ff8c00' },
     { id: 'RISK_REWARD',    name: 'RISK PROTOCOL',   effect: '+150 Lucidity, +150 XP and a Token — at a flat cost of 30 current Sanity. The cost cannot kill you (it floors at 1) and ignores shields and curses.', color: '#ff3333' }
 ];
 
