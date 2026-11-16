@@ -168,5 +168,86 @@ ok(turnTowards(NaN, 1) === 1 && turnTowards(1, NaN) === 1, 'non-finite angles ar
     ok(buzz.filter(k => k === 'telegraph').length === 1, `a held wind-up buzzes once (${buzz})`);
 }
 
+// --- Patch 161: twin sticks route by finger, not by screen half --------------------------------
+{
+    const { InputManager } = await import('./src/core/Input.js');
+    const el = () => ({ style: {}, offsetParent: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 384 }) }, addEventListener: () => {} });
+    const els = { 'joy-left': el(), 'knob-left': el(), 'joy-right': el(), 'knob-right': el(), 'btn-dash': el() };
+    const savedGet = document.getElementById;
+    const mk = () => { document.getElementById = id => els[id] || null; const m = new InputManager({ addEventListener: () => {} }); document.getElementById = savedGet; m.doubleTapDash = false; return m; };
+    // a 384 px-wide portrait screen: the midline is x = 192
+    const live = new Map();
+    const T = (id, x, y) => ({ identifier: id, clientX: x, clientY: y });
+    const ev = (m, type, ...ts) => {
+        for (const t of ts) { if (type === 'touchend') live.delete(t.identifier); else live.set(t.identifier, t); }
+        const e = { type, target: { id: 'game' }, preventDefault: () => {}, changedTouches: ts, touches: [...live.values()] };
+        if (type === 'touchend') m.handleTouchEnd(e); else m.handleTouch(e);
+    };
+
+    // 1. the move thumb drifts across the midline: it keeps moving, the aim stick is not stolen
+    let m = mk(); live.clear();
+    ev(m, 'touchstart', T(1, 150, 600));
+    ev(m, 'touchmove', T(1, 230, 600));                 // 80 px right, now past the midline
+    ok(m.leftTouch.id === 1 && m.rightTouch.id === null, 'a move thumb crossing the midline keeps the move stick (aim not stolen)');
+    ok(m.state.isMoving && m.state.moveX > 0.9, `...and keeps steering (moveX ${m.state.moveX.toFixed(2)})`);
+    ev(m, 'touchmove', T(1, 230, 680));
+    ok(m.state.moveY > 0.3, 'it still answers a new direction after crossing');
+
+    // 2. the aim thumb drifts left across the midline: it keeps aiming, movement is not hijacked
+    m = mk(); live.clear();
+    ev(m, 'touchstart', T(2, 260, 600));
+    ev(m, 'touchmove', T(2, 160, 600));
+    ok(m.rightTouch.id === 2 && m.leftTouch.id === null && !m.state.isMoving, 'an aim thumb crossing left keeps aiming; the player does not start walking');
+    ok(near(Math.abs(m.state.aimAngle), Math.PI, 1e-6), 'and the aim follows it');
+
+    // 3. both thumbs on the same half: the leftmost moves, the other aims (none ignored)
+    m = mk(); live.clear();
+    ev(m, 'touchstart', T(3, 120, 620));
+    ev(m, 'touchstart', T(4, 180, 600));                // also left of the midline
+    ok(m.leftTouch.id === 3 && m.rightTouch.id === 4, 'two thumbs left of the midline: one moves, one aims');
+    m = mk(); live.clear();
+    ev(m, 'touchstart', T(5, 300, 620));
+    ev(m, 'touchstart', T(6, 220, 600));                // both on the right half
+    ok(m.leftTouch.id === 6 && m.rightTouch.id === 5, 'two thumbs right of the midline: the leftmost moves');
+
+    // 4. the second thumb lands on the far side of the first: they sort by position (swap)
+    m = mk(); live.clear();
+    ev(m, 'touchstart', T(7, 170, 620));                // lands left: move
+    ev(m, 'touchstart', T(8, 100, 600));                // further left still
+    ok(m.leftTouch.id === 8 && m.rightTouch.id === 7, 'a thumb landing left of the move thumb takes movement; the other becomes aim');
+    ok(!m.state.isMoving && m.rightTouch.ox === 170, 'the swapped thumb is re-centred where it is (no jump)');
+    ev(m, 'touchmove', T(8, 100, 660));
+    ok(m.state.isMoving && m.state.moveY > 0.9, 'the new move thumb steers');
+
+    // 5. a third finger is ignored; lifting one thumb frees only its stick
+    ev(m, 'touchstart', T(9, 200, 500));
+    ok(m.leftTouch.id === 8 && m.rightTouch.id === 7, 'a third finger changes nothing');
+    ev(m, 'touchend', T(8, 100, 660));
+    ok(m.leftTouch.id === null && !m.state.isMoving && m.rightTouch.id === 7, 'lifting the move thumb stops movement and leaves aim held');
+
+    // 6. a stick whose finger vanished (touchend lost behind a menu) is freed by the next touch
+    m = mk(); live.clear();
+    ev(m, 'touchstart', T(10, 100, 600));
+    ev(m, 'touchmove', T(10, 100, 660));
+    live.delete(10);                                    // its touchend never reached the canvas
+    ev(m, 'touchstart', T(11, 120, 600));
+    ok(m.leftTouch.id === 11 && m.rightTouch.id === null, 'a lost touch is reclaimed: the new thumb gets the move stick');
+    ok(!m.state.isMoving, '...and the old movement is not left running');
+
+    // 7. past full pull the base trails the thumb, so reversing answers at once
+    m = mk(); live.clear();
+    ev(m, 'touchstart', T(12, 100, 600));
+    ev(m, 'touchmove', T(12, 100, 760));                // 160 px down: base dragged to 50 px behind
+    ok(near(m.leftTouch.oy, 710, 1e-6), `the base trails the thumb at full pull (oy ${m.leftTouch.oy})`);
+    ev(m, 'touchmove', T(12, 100, 680));                // 80 px back up
+    ok(m.state.moveY < -0.5, `reversing moves the other way at once (moveY ${m.state.moveY.toFixed(2)})`);
+
+    // 8. the double-tap dash still works on the move stick
+    m = mk(); m.doubleTapDash = true; live.clear();
+    ev(m, 'touchstart', T(13, 100, 600)); ev(m, 'touchend', T(13, 100, 600));
+    ev(m, 'touchstart', T(14, 104, 602));
+    ok(m.state.dashPulse === true, 'a double tap on the move side still dashes');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

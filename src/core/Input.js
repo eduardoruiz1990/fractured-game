@@ -62,7 +62,7 @@ export class InputManager {
         // onDashGesture is told when one fires (for the haptic).
         this.doubleTapDash = true;
         this.onDashGesture = null;
-        this.leftTap = { startAt: 0, travel: 0, prev: null };
+        this.leftTap = { startAt: 0, travel: 0, prev: null, sx: 0, sy: 0 };
         this.lastMoveAngle = null;
         this.rightTouch = { id: null, ox: 0, oy: 0, cx: 0, cy: 0 };
 
@@ -231,44 +231,107 @@ export class InputManager {
         // both from the same box means they cannot drift apart again.
         const halfWidth = originRect.left + (originRect.width || window.innerWidth) / 2;
 
-        for (let i = 0; i < e.changedTouches.length; i++) {
-            const t = e.changedTouches[i];
-            if (t.clientX < halfWidth) {
-                if (this.leftTouch.id === null) {
-                    // Patch 149: a second quick touch after a tap is a dash.
-                    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-                    if (this.doubleTapDash && isDoubleTap(this.leftTap.prev, now, t.clientX, t.clientY)) {
-                        this.state.dashPulse = true;
-                        this.state.dashAngle = this.lastMoveAngle;
-                        this.leftTap.prev = null;
-                        if (typeof this.onDashGesture === 'function') { try { this.onDashGesture(); } catch (err) { /* cosmetic */ } }
-                    }
-                    this.leftTap.startAt = now;
-                    this.leftTap.travel = 0;
-                    this.leftTouch.id = t.identifier;
-                    this.leftTouch.ox = t.clientX; this.leftTouch.oy = t.clientY;
-                    this.joyLeft.style.display = 'block';
-                    this.joyLeft.style.left = (localX(t.clientX) - 60) + 'px';
-                    this.joyLeft.style.top = (localY(t.clientY) - 60) + 'px';
-                }
+        // Patch 161: route by FINGER, not by screen half. Only a touchstart picks a stick;
+        // a touchmove updates whichever stick that finger already owns. Before, every
+        // touchmove was re-sorted by which half it was on, so a move thumb drifting past
+        // the midline (easy in portrait, where both thumbs sit near the middle) was
+        // adopted by the free aim stick: the move stick stopped updating and the player
+        // walked on, or stood, at the last value while the same thumb turned the light.
+        // And a second thumb landing on an occupied half was ignored outright.
+        if (e.type === 'touchstart') {
+            this.reclaimLostTouches(e.touches);
+            const geo = { halfWidth, localX, localY };
+            for (let i = 0; i < e.changedTouches.length; i++) this.startTouch(e.changedTouches[i], geo);
+        } else {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
                 if (this.leftTouch.id === t.identifier) {
                     this.leftTouch.cx = t.clientX; this.leftTouch.cy = t.clientY;
-                    this.leftTap.travel = Math.max(this.leftTap.travel, Math.hypot(t.clientX - this.leftTouch.ox, t.clientY - this.leftTouch.oy));
-                }
-            } else {
-                if (this.rightTouch.id === null) {
-                    this.rightTouch.id = t.identifier;
-                    this.rightTouch.ox = t.clientX; this.rightTouch.oy = t.clientY;
-                    this.joyRight.style.display = 'block';
-                    this.joyRight.style.left = (localX(t.clientX) - 60) + 'px';
-                    this.joyRight.style.top = (localY(t.clientY) - 60) + 'px';
-                }
-                if (this.rightTouch.id === t.identifier) {
+                    this.leftTap.travel = Math.max(this.leftTap.travel, Math.hypot(t.clientX - this.leftTap.sx, t.clientY - this.leftTap.sy));
+                } else if (this.rightTouch.id === t.identifier) {
                     this.rightTouch.cx = t.clientX; this.rightTouch.cy = t.clientY;
                 }
             }
         }
+        this._geo = { localX, localY };
         this.processJoysticks();
+    }
+
+    /**
+     * Patch 161: a new finger picks its stick. Its half of the screen is only the
+     * preference. With one stick already held, the two thumbs are sorted by position
+     * instead: the LEFTMOST finger moves, the other aims. So any two thumbs anywhere on
+     * the glass give one of each, the same way round, and a thumb that lands on the
+     * "wrong" half still gets the free stick instead of being ignored. If the new
+     * finger lands on the far side of the held one, the held finger swaps sticks,
+     * re-centred where it is now. A third finger is ignored.
+     */
+    startTouch(t, geo) {
+        const L = this.leftTouch, R = this.rightTouch, x = t.clientX;
+        if (L.id !== null && R.id !== null) return;
+        let side;
+        if (L.id === null && R.id === null) side = x < geo.halfWidth ? 'left' : 'right';
+        else if (L.id === null) {               // aim held: the new finger moves if it is left of it
+            if (x <= R.cx) side = 'left';
+            else { this.claimStick('left', R.id, R.cx, R.cy, geo, false); this.releaseStick('rightSlotOnly'); side = 'right'; }
+        } else {                                // move held: the new finger aims if it is right of it
+            if (x >= L.cx) side = 'right';
+            else { this.claimStick('right', L.id, L.cx, L.cy, geo, false); this.releaseStick('leftSlotOnly'); side = 'left'; }
+        }
+        this.claimStick(side, t.identifier, t.clientX, t.clientY, geo, true);
+    }
+
+    /** Patch 161: give stick `side` to finger `id`, centred at (x, y). */
+    claimStick(side, id, x, y, geo, isNewFinger) {
+        const slot = side === 'left' ? this.leftTouch : this.rightTouch;
+        const ring = side === 'left' ? this.joyLeft : this.joyRight;
+        if (side === 'left' && isNewFinger) {
+            // Patch 149: a second quick touch after a tap is a dash.
+            const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+            if (this.doubleTapDash && isDoubleTap(this.leftTap.prev, now, x, y)) {
+                this.state.dashPulse = true;
+                this.state.dashAngle = this.lastMoveAngle;
+                this.leftTap.prev = null;
+                if (typeof this.onDashGesture === 'function') { try { this.onDashGesture(); } catch (err) { /* cosmetic */ } }
+            }
+            this.leftTap.startAt = now;
+        }
+        // A finger swapped onto the move stick mid-touch is never the first half of a tap.
+        if (side === 'left') { this.leftTap.travel = 0; this.leftTap.sx = x; this.leftTap.sy = y; if (!isNewFinger) this.leftTap.startAt = -1e9; }
+        slot.id = id; slot.ox = x; slot.oy = y; slot.cx = x; slot.cy = y;
+        if (ring) {
+            ring.style.display = 'block';
+            ring.style.left = (geo.localX(x) - 60) + 'px';
+            ring.style.top = (geo.localY(y) - 60) + 'px';
+        }
+    }
+
+    /** Patch 161: free a stick and zero what it drove (no stale movement or aim). */
+    releaseStick(which) {
+        if (which === 'left' || which === 'leftSlotOnly') {
+            this.leftTouch.id = null;
+            this.state.moveX = 0; this.state.moveY = 0; this.state.isMoving = false;
+            if (which === 'left' && this.joyLeft) this.joyLeft.style.display = 'none';
+            if (this.knobLeft) this.knobLeft.style.transform = 'translate(-50%, -50%)';
+        } else {
+            this.rightTouch.id = null;
+            this.state.aimHeld = false;
+            if (which === 'right' && this.joyRight) this.joyRight.style.display = 'none';
+            if (this.knobRight) this.knobRight.style.transform = 'translate(-50%, -50%)';
+        }
+    }
+
+    /**
+     * Patch 161: a stick whose finger is no longer on the glass (its touchend went to
+     * a menu, or the system took the touch) is freed on the next touchstart, so it can
+     * never stay claimed by a finger that has lifted. `touches` is every current touch.
+     */
+    reclaimLostTouches(touches) {
+        if (!touches) return;
+        const live = new Set();
+        for (let i = 0; i < touches.length; i++) live.add(touches[i].identifier);
+        if (this.leftTouch.id !== null && !live.has(this.leftTouch.id)) this.releaseStick('left');
+        if (this.rightTouch.id !== null && !live.has(this.rightTouch.id)) this.releaseStick('right');
     }
 
     handleTouchEnd(e) {
@@ -279,20 +342,35 @@ export class InputManager {
             if (t.identifier === this.leftTouch.id) {
                 // Patch 149: remember whether this was a tap, for a double-tap dash.
                 const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-                this.leftTap.prev = { wasTap: wasTap(now - this.leftTap.startAt, this.leftTap.travel), endAt: now, x: this.leftTouch.ox, y: this.leftTouch.oy };
-                this.leftTouch.id = null; this.joyLeft.style.display = 'none';
-                this.state.moveX = 0; this.state.moveY = 0; this.state.isMoving = false; 
-                this.knobLeft.style.transform = `translate(-50%, -50%)`;
+                this.leftTap.prev = { wasTap: wasTap(now - this.leftTap.startAt, this.leftTap.travel), endAt: now, x: this.leftTap.sx, y: this.leftTap.sy };
+                this.releaseStick('left');
             } else if (t.identifier === this.rightTouch.id) {
-                this.rightTouch.id = null; this.joyRight.style.display = 'none'; 
-                this.knobRight.style.transform = `translate(-50%, -50%)`;
-                this.state.aimHeld = false;   // Patch 148: assist takes over again
+                this.releaseStick('right');   // Patch 148: aimHeld off, assist takes over again
             }
+        }
+    }
+
+    /**
+     * Patch 161: past full pull the stick's base trails the thumb (it is dragged along,
+     * staying MAX_PULL behind). A thumb that creeps keeps a stick that answers at once
+     * when it reverses, instead of a base left far behind, and the two rings stay under
+     * their thumbs instead of drifting into each other.
+     */
+    followThumb(slot, ring, MAX_PULL) {
+        const dx = slot.cx - slot.ox, dy = slot.cy - slot.oy, d = Math.hypot(dx, dy);
+        if (!(d > MAX_PULL)) return;
+        const k = (d - MAX_PULL) / d;
+        slot.ox += dx * k; slot.oy += dy * k;
+        if (ring && this._geo) {
+            ring.style.left = (this._geo.localX(slot.ox) - 60) + 'px';
+            ring.style.top = (this._geo.localY(slot.oy) - 60) + 'px';
         }
     }
 
     processJoysticks() {
         const MAX_PULL = 50;
+        if (this.leftTouch.id !== null) this.followThumb(this.leftTouch, this.joyLeft, MAX_PULL);
+        if (this.rightTouch.id !== null) this.followThumb(this.rightTouch, this.joyRight, MAX_PULL);
         if (this.leftTouch.id !== null) {
             let dx = this.leftTouch.cx - this.leftTouch.ox, dy = this.leftTouch.cy - this.leftTouch.oy;
             let dist = Math.max(Math.hypot(dx, dy), 0.001);

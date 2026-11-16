@@ -1,4 +1,4 @@
-# FRACTURED: CrazyGames submission sheet (v2.0.0)
+# FRACTURED: Second Opinion: CrazyGames submission sheet (v2.0.0)
 
 Draft text for the developer-portal form, written from the game as built (Patch 159).
 Check every line against the uploaded build before pasting, and tick
@@ -26,7 +26,7 @@ All of these are in `marketing/`; see `marketing/README.md` for the rules they f
 | Cover, square 1:1 | `marketing/covers/cover_square_800x800.png` |
 | Preview video, landscape | `marketing/videos/preview_landscape_1920x1080.mp4` (16 s, no audio) |
 | Preview video, portrait | `marketing/videos/preview_portrait_1080x1620.mp4` (16 s, no audio) |
-| Logo, if asked | `marketing/logo/fractured_logo_1600x400.png` (transparent) |
+| Logo, if asked | `marketing/logo/fractured_logo_1600x520.png` (transparent) |
 
 **Cover click-through rate** becomes a Basic Launch metric for games that start Basic Launch on or after 23 November 2026, so the covers count as much as the build.
 - Upload all three covers.
@@ -34,7 +34,11 @@ All of these are in `marketing/`; see `marketing/README.md` for the rules they f
 
 ## Title
 
-FRACTURED
+FRACTURED: Second Opinion
+
+The v2 name (Patch 163). It is the same game as the declined v1, reworked.
+- If the portal treats the title as the game's identity, keep it as the resubmission's title, and say in the notes that v1 was "FRACTURED".
+- The subtitle appears on the title screen, the covers, the logo and the page title.
 
 ## Short description (one line)
 
@@ -113,7 +117,7 @@ recovery. A short content note is in the Clinical Guide.
 
 ## Notes to the CrazyGames team (resubmission)
 
-v1 was declined after Basic Launch (average playtime 1m36s, gameplay conversion 32%).
+v1 (as "FRACTURED") was declined after Basic Launch (average playtime 1m36s, gameplay conversion 32%). v2 is "FRACTURED: Second Opinion".
 What v2 changes, in the order a new player meets it:
 
 - **First minute:**

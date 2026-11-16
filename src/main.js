@@ -63,6 +63,7 @@ const ctx = canvas ? canvas.getContext('2d') : null;
 // initEngine() never ran at all.
 let saveManager, inputManager, renderer, audioEngine, game, levelUpUI, uiManager;
 let gameState = 'TITLE';
+let titleAnchorAt = -Infinity;   // Patch 162
 
 // Patch 50: registered HERE, immediately after the `let`s above, and deliberately
 // not next to errorLog.install(). The provider closes over `game`/`gameState`, and
@@ -738,6 +739,7 @@ function applyAccessibility() {
         document.body.classList.toggle('cb-assist', !!gameSettings.colorAssist);
         if (renderer) {
             renderer.cbAssist = !!gameSettings.colorAssist;
+            renderer.calmMotion = !!gameSettings.photosensitive;   // Patch 162: the title scene's sweep and blinks
             renderer.textScale = gameSettings.textSize === 'larger' ? 1.25 : (gameSettings.textSize === 'large' ? 1.12 : 1);
         }
     } catch (e) { /* cosmetic */ }
@@ -3270,6 +3272,15 @@ function gameLoop(time) {
         if (gameState === 'MENU' || gameState === 'TITLE') {
             // Patch 151: on a phone the folder covers every pixel, so the storm behind
             // it was drawn each frame for nobody to see.
+            // Patch 162: the title scene centres its eye on the DOM title. A layout READ
+            // (no writes), twice a second: the title moves only on resize or when the
+            // returning-player rows appear.
+            if (gameState === 'TITLE' && !(time - titleAnchorAt < 500)) {
+                titleAnchorAt = time;
+                const el = document.querySelector('#title-screen .title-glitch');
+                const r = el && el.getBoundingClientRect();
+                renderer.titleAnchor = (r && r.width > 0) ? { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width } : null;
+            }
             if (!(gameState === 'MENU' && folderHidesCanvas(time))) renderer.drawMenuBackground(time, gameState);
         } 
         else if (gameState === 'PLAYING' || gameState === 'LEVEL_UP' || gameState === 'PAUSED' || gameState === 'EXIT_REACHED' || gameState === 'HUB') {

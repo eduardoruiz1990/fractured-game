@@ -1227,16 +1227,70 @@ body.quality-low #crt-scanlines { display: none; }
    is a fixed size with extra steps.
    The floor is now genuinely small and the tracking scales with the font, so the
    title fills the width at every size rather than only above ~800px. */
+/* Patch 162: the title is the store logo: Special Elite (Astigmatic, Apache-2.0; the
+   licence ships as licenses/LICENSE-SpecialElite.txt), subset to A-Z, 0-9 and a few
+   marks (19 KB), cream letters on red and gold offsets, cracked in two. The element
+   itself only carries the dark halo (its letters are transparent); ::before and
+   ::after draw the two halves from data-text, so the halo is never clipped into a box.
+   The glitch animation is gone: the bottom half drifts on its crack, slowly. */
+@font-face {
+    font-family: 'FracturedTitle';
+    src: url('./assets/fonts/special-elite-title.woff2') format('woff2');
+    font-display: swap;
+}
 #title-screen .title-glitch {
-    font-size: clamp(2rem, 11.5vw, 15rem) !important;
-    letter-spacing: clamp(2px, 1.5vw, 15px);
-    /* Sized in em so the offsets shrink with the text — at 96px on a phone these
-       were a fixed 10px each side, i.e. part of the overflow. */
-    text-shadow: 0.09em 0 var(--ui-red), -0.09em 0 var(--ui-gold);
-    animation: aggressive-glitch 1.5s infinite alternate;
-    margin-bottom: 2vh !important;
-    line-height: 1;
+    position: relative;
+    font-family: 'FracturedTitle', 'Courier New', Courier, monospace;
+    font-size: clamp(2.4rem, min(13vw, 17vh), 8rem) !important;
+    letter-spacing: 0.05em;
+    color: transparent;
+    text-shadow: 0 0.06em 0.25em rgba(0, 0, 0, 0.95), 0 0 0.5em rgba(0, 0, 0, 0.8);
+    animation: none;
+    margin-bottom: calc(2vh + 0.4em) !important;   /* room for the stamp (Patch 163) */
+    line-height: 1.05;
     max-width: 100%;
+    white-space: nowrap;
+}
+#title-screen .title-glitch::before,
+#title-screen .title-glitch::after {
+    content: attr(data-text);
+    position: absolute; left: 0; top: 0; width: 100%; z-index: 1;
+    color: #f4ead6;
+    text-shadow: 0.055em 0 #b0001c, -0.055em 0 var(--ui-gold);
+}
+#title-screen .title-glitch::before {
+    clip-path: polygon(-10% -30%, 110% -30%, 110% 38%, 100% 38%, 64% 46%, 52% 58%, 30% 52%, 0 64%, -10% 64%);
+}
+#title-screen .title-glitch::after {
+    clip-path: polygon(-10% 64%, 0 64%, 30% 52%, 52% 58%, 64% 46%, 100% 38%, 110% 38%, 110% 130%, -10% 130%);
+    transform: translate(0.035em, 0.05em) rotate(0.6deg);
+    animation: title-crack 7s ease-in-out infinite;
+}
+/* Patch 163: the drift, then every 7 s the crack jolts open and settles. */
+@keyframes title-crack {
+    0%, 100% { transform: translate(0.035em, 0.05em) rotate(0.6deg); }
+    45% { transform: translate(0.05em, 0.07em) rotate(0.9deg); }
+    88% { transform: translate(0.035em, 0.05em) rotate(0.6deg); }
+    90% { transform: translate(0.1em, 0.12em) rotate(1.8deg); }
+    92.5% { transform: translate(0.015em, 0.035em) rotate(0.2deg); }
+    95% { transform: translate(0.035em, 0.05em) rotate(0.6deg); }
+}
+/* Patch 163: the name is FRACTURED: Second Opinion. The subtitle is a red clinic
+   stamp slammed across the title's corner, sized in em with the title (min 11 px). */
+#title-screen .title-stamp {
+    position: absolute; right: 0.15em; bottom: -0.55em; z-index: 2;   /* over the letters' halves */
+    font-family: var(--ui-font); font-weight: bold;
+    font-size: max(12px, 0.21em); letter-spacing: 0.16em; line-height: 1;
+    color: #e0283f; border: 0.14em solid #e0283f; border-radius: 0.15em;
+    padding: 0.32em 0.55em 0.26em;
+    background: rgba(12, 4, 6, 0.6);
+    text-shadow: none; white-space: nowrap; pointer-events: none;
+    transform: rotate(-7deg);
+    animation: stamp-in 0.45s 0.6s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+@keyframes stamp-in {
+    from { opacity: 0; transform: rotate(-7deg) scale(2.4); }
+    to { opacity: 1; transform: rotate(-7deg) scale(1); }
 }
 
 /* Same failure, smaller: 31 characters at a fixed 1.2rem with 8px of tracking is
@@ -2074,11 +2128,13 @@ body.quality-low #crt-scanlines { display: none; }
 /* F3: the title stops glitching for OS reduced motion and for the photosensitivity
    setting (body.calm-motion, set by main.js applyAccessibility). */
 @media (prefers-reduced-motion: reduce) {
-    .title-glitch, #title-screen .title-glitch { animation: none !important; }
+    .title-glitch, #title-screen .title-glitch, #title-screen .title-glitch::after, #title-screen .title-stamp { animation: none !important; }
     .story-hint, .story-card.story-in, .story-ending-text.story-in { animation: none !important; }
 }
 body.calm-motion .title-glitch,
 body.calm-motion #title-screen .title-glitch,
+body.calm-motion #title-screen .title-glitch::after,
+body.calm-motion #title-screen .title-stamp,
 body.calm-motion .story-hint { animation: none !important; }
 
 /* F4: Text Size. Everything sized in rem (menus, HUD, notices, story) scales. */

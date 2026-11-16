@@ -2924,6 +2924,95 @@ Until now the submission was a zip and some text. CrazyGames asks for three cove
 - **Check:** `marketing/README.md` lists each portal rule the assets follow, the layer recipes and the rebuild commands.
 - **Not covered:** none of this is checked by a script. Look at the covers and videos before uploading (`QA_CHECKLIST.md` §8).
 
+**Patch 161: twin sticks that work wherever the thumbs are (portrait fix).**
+
+Reported on the A56 in portrait: the two sticks could "overlap", and the player would seem frozen in place while the light kept turning. The cause was in `InputManager.handleTouch`:
+- **Moves were assigned by screen half.** Every `touchmove`, not only `touchstart`, was assigned to a stick by which half of the screen it was on. On a 384 px-wide portrait screen both thumbs sit near the midline. A move thumb that drifted past it was adopted by the free aim stick: the move stick stopped updating and froze at its last value, often 0, while the same thumb turned the light. An aim thumb drifting left was likewise taken by a free move stick and walked the player.
+- **A second thumb could be ignored.** A thumb landing on a half whose stick was already held did nothing.
+
+The fix:
+- **Route by finger.** Only `touchstart` picks a stick (`startTouch`). A `touchmove` updates the stick that finger already owns, wherever it is.
+- **Sort two thumbs by position.** The first thumb picks by half, as before. A second thumb takes the free stick, sorted so that the leftmost finger moves and the other aims. If it lands on the far side of the held thumb, the two swap, and the held one is re-centred where it is, so the stick doesn't jump. A third finger is ignored.
+- **The stick base follows the thumb.** Past full pull, the base is dragged to stay 50 px behind the thumb (`followThumb`). Reversing answers at once, and the rings stay under their thumbs instead of drifting into each other.
+- **Lost touches are reclaimed.** A stick whose finger is no longer in `e.touches` (its touchend went to a menu, or the system took the touch) is freed on the next touchstart, with its movement or aim zeroed (`reclaimLostTouches`, `releaseStick`).
+- **Double-tap dash is unchanged.** It now measures a tap from the touch's start point rather than the stick's base, since the base can move. A thumb swapped onto the move stick never counts as a tap.
+
+Tests:
+- `test_input.js` gains 17 twin-stick assertions:
+  - a move thumb crossing the midline, and an aim thumb crossing it;
+  - two thumbs on one half, on either side;
+  - the swap;
+  - a third finger;
+  - lifting one thumb;
+  - a lost touch;
+  - the base following the thumb;
+  - the double tap.
+  
+  16 of them fail on the old code, including "moveX 0.00" after crossing: the reported freeze.
+- `qa/aim_check.cjs` repeats the crossing with real CDP multi-touch at 384×717: both thumbs keep their sticks, and the player walks 105 px right while the other thumb aims.
+- All Node suites pass, as do `hud`, `sizes`, `levelup`, `death_screen`, `hub` and `focus_keys`.
+
+New Keep clause 52.
+
+**Patch 162: the title screen becomes the store cover, alive. The playtest link drops the perf panel.**
+
+The user didn't like the title screen's background. It was red fog ellipses, spinning outlines, embers and heavy grain behind a plain white glitching "FRACTURED". It now matches the store covers (Patch 160), so a player who clicked a cover lands in the same picture.
+
+- **`Renderer.drawTitleScene`** replaces `drawTitleSilhouettes`. The layers, back to front:
+  - near-black ground with the floor-3 rings faintly under it (skipped on LOW);
+  - the Panopticon's eye, large and dim behind the title. Its iris follows where the flashlight points, and it blinks every ~7 s;
+  - pairs of yellow eyes opening in the dark at the edges, which shut when the beam reaches them;
+  - the Subject at the bottom edge, with its beam sweeping slowly upward (additive), and dust that shows only inside the beam;
+  - a vignette, and grain at 45% (off on LOW).
+
+  Performance:
+  - Static parts are sprites built once: the eye body, two glows and the beam. The vignette is rebuilt only on resize.
+  - A frame is about 10 `drawImage` calls plus a few dozen small fills.
+  - No `shadowBlur`. The composite operation and alpha are reset before returning, and nothing is read back (Keep clause 51).
+
+  Placement and motion:
+  - `main.js` measures the DOM title twice a second (a read, never a write) into `renderer.titleAnchor`. The eye sits just above the letters, and stays partly on screen when a returning player's taller menu pushes the title to the top.
+  - With Photosensitivity or OS reduced motion, the sweep halves and nothing blinks.
+- **The title text is the store logo.**
+  - **Font:** Special Elite by Astigmatic (Apache-2.0), subset to A–Z, 0–9 and a few marks with `pyftsubset`: 19 KB, `src/assets/fonts/special-elite-title.woff2`. `font-display: swap` falls back to Courier.
+  - **Look:** cream letters on red and gold offsets, cracked in two. The element carries only the dark halo, and `::before`/`::after` draw the halves from `data-text`, so the halo isn't clipped into a box.
+  - **Motion:** the glitch animation is gone. The lower half drifts on its crack over 7 s, and stops under reduced motion and Photosensitivity.
+  - **Sizing:** `clamp(2.4rem, min(13vw, 17vh), 8rem)`. The short-landscape rule still overrides it.
+- **Licence:** `public/licenses/LICENSE-SpecialElite.txt` ships in the bundle, and the credits gain a "TITLE LETTERING" line.
+- **Perf panel:** the CrazyGames and itch builds never contained it.
+  - It loads only in `npm run build:playtest`.
+  - `npm run package` refuses a bundle containing it (Keep clause 41).
+  - The playtest artifact link was built in playtest mode, which is why it showed. From now on that link is built in itch mode: the same game as the upload, minus the SDK tag, with no panel. Use `build:playtest` only when a phone benchmark is needed.
+- **Checks:**
+  - `qa/access_check.cjs` reads the title animation from `::after`, where it now lives.
+  - Run and passing: `sizes`, `text`, `story`, `settings`, `focus_keys`, `render_recovery`, `access`, `smoke`, and all Node suites.
+  - Screenshots for new and returning players at 384×717, 1280×720, 915×412 and 960×540 were checked by eye.
+
+**Patch 163: FRACTURED: Second Opinion. The title screen fights back.**
+
+The user asked for a title screen that is "dynamic and moving", and a new name for v2. From the options offered, they chose the name **FRACTURED: Second Opinion** and the motion "creatures vs. the light".
+
+- **Name.**
+  - On the title screen, the subtitle is a red clinic stamp, SECOND OPINION, across the corner of the cracked title (`.title-stamp`, a child of `.title-glitch`). It is sized in em with a 12 px minimum and stamps in after 0.6 s; the stamp-in doesn't run under reduced motion or Photosensitivity. The title's bottom margin makes room for it, and `z-index` puts it above the letters' halves.
+  - Also renamed: the `<title>`, `og:title`, and the meta and og descriptions (new pitch); the credits heading; the `SUBMISSION.md` title and resubmission note (v1 was "FRACTURED"); and `marketing/README.md`.
+  - The covers and logo carry the stamp too (`marketing/tools/cover.cjs`). The logo is now `fractured_logo_1600x520.png`, and both preview videos were re-encoded to open on the new covers.
+- **Motion (`Renderer.drawTitleScene`, with its own clock and dt clamped to 50 ms):**
+  - **Creatures.** The game's Janitors, Hall Monitors and Photocopies (sprites built once by `titleCreatureSprites`) come in from the sides and the top edge and weave toward the Subject.
+    - In the dark only their eyes show clearly; in the beam they show in full, are pushed back, whiten and shake.
+    - After 0.75 s in the light they burst into sparks: a pooled particle list capped at 120.
+    - One that reaches the Subject bursts too, and the Subject's ring flinches red.
+    - Up to 7–12 on screen, depending on screen area.
+  - **The beam hunts.** It turns toward the nearest creature in front of it (2 rad/s, 0.9 under calm motion), clamped to the upper half-plane, and sweeps when there are none.
+  - **The Subject** paces the bottom edge.
+  - **The eye** has a heartbeat: its red bloom swells, its pupil tightens and it grows 2% on each beat. Its iris follows the beam, and it drifts half as much as the scene, for depth.
+  - **The camera** drifts a few pixels, and the floor rings scroll slowly.
+  - **The title crack** jolts open every 7 s and settles (`@keyframes title-crack`).
+  - Calm motion keeps the creatures, but drops the drift, the blink, the jitter and the jolt, and slows the beam.
+- **Checks:**
+  - Passing: `sizes`, `text`, `access`, `focus_keys`, `render_recovery`, and the Node suites.
+  - A virtual-clock 10 s capture at 384×717 was reviewed frame by frame.
+  - The headless draw cost is noisy (0.05–5 ms a frame with the same settings); a phone check is still needed.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -3183,6 +3272,14 @@ Until now the submission was a zip and some text. CrazyGames asks for three cove
     the Mind Hub at 26–28 fps for the rest of the visit, against 60 before. The
     browser demotes a read-back canvas to a slow path, and nothing in JS says so. If
     pixels are needed, read them from a separate scratch canvas made for that.
+52. **Touch sticks belong to fingers, not to screen halves (Patch 161).**
+    - Only a `touchstart` chooses a stick. A `touchmove` updates the stick its finger
+      already owns, wherever that finger now is.
+    - With two thumbs down, the leftmost moves and the other aims.
+    - A stick whose finger is missing from `e.touches` is freed on the next touchstart.
+    - Re-sorting moves by half is what froze the player in portrait: the aim stick
+      adopted a move thumb that crossed the midline. `test_input.js` and
+      `qa/aim_check.cjs` assert the crossing.
 
 ---
 

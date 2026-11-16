@@ -32,9 +32,10 @@ export const STRINGS = {
 };
 
 export const CREDITS = [
-    { h: 'FRACTURED', t: 'A game about grief, and about getting better.' },
+    { h: 'FRACTURED: SECOND OPINION', t: 'A game about grief, and about getting better.' },
     { h: 'MADE BY', t: 'The FRACTURED team' },
     { h: 'BUILT WITH', t: 'HTML5 Canvas, the Web Audio API and Vite. Every sprite is drawn in code.' },
+    { h: 'TITLE LETTERING', t: 'Special Elite by Astigmatic, used under the Apache License 2.0.' },   // Patch 162 (licence ships in licenses/)
     { h: 'THANK YOU', t: 'For playing, and for staying with it.' },
     { h: '', t: 'If any of this was close to home: talking helps. findahelpline.com' }
 ];
