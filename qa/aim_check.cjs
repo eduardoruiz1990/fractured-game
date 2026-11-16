@@ -97,6 +97,21 @@ const near = (a, b, eps = 0.2) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(
     const nd = await page.evaluate(() => { const p = window.__fractured.game.state.player; return p.dash.charges === p.dash.maxCharges; });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     ok(nd, 'touch: a hold then a touch is not a dash');
+    // Patch 161: twin sticks in portrait. Both thumbs down; the move thumb drags right
+    // ACROSS the midline (x 192) and keeps going. Before, the aim stick adopted it there
+    // and the player froze; now the player keeps walking and the aim thumb keeps aiming.
+    await page.waitForTimeout(300);
+    const two = (mx, my, ax, ay) => [{ x: mx, y: my, id: 11 }, { x: ax, y: ay, id: 12 }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 110, y: 600, id: 11 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: two(110, 600, 320, 560) });
+    for (let i = 1; i <= 6; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: two(110 + i * 25, 600, 320, 560 - i * 8) }); await page.waitForTimeout(20); }
+    const x0 = await page.evaluate(() => window.__fractured.game.state.player.x);
+    await page.waitForTimeout(500);
+    const tw = await page.evaluate(() => { const f = window.__fractured, im = f.inputManager; return { x: f.game.state.player.x, l: im.leftTouch.id, r: im.rightTouch.id, mx: im.state.moveX, held: im.state.aimHeld }; });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    ok(tw.l === 11 && tw.r === 12, `touch: each thumb keeps its own stick after the move thumb crosses the midline (${tw.l}/${tw.r})`);
+    ok(tw.mx > 0.9 && tw.x - x0 > 40, `touch: and the player keeps walking right (moveX ${tw.mx.toFixed(2)}, +${(tw.x - x0).toFixed(0)} px)`);
+    ok(tw.held === true, 'touch: while the other thumb still aims');
     ok(errors.length === 0, `touch: no page errors ${JSON.stringify(errors)}`);
     await ctx.close();
   }

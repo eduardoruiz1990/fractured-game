@@ -2924,6 +2924,36 @@ Until now the submission was a zip and some text. CrazyGames asks for three cove
 - **Check:** `marketing/README.md` lists each portal rule the assets follow, the layer recipes and the rebuild commands.
 - **Not covered:** none of this is checked by a script. Look at the covers and videos before uploading (`QA_CHECKLIST.md` §8).
 
+**Patch 161: twin sticks that work wherever the thumbs are (portrait fix).**
+
+Reported on the A56 in portrait: the two sticks could "overlap", and the player would seem frozen in place while the light kept turning. The cause was in `InputManager.handleTouch`:
+- **Moves were assigned by screen half.** Every `touchmove`, not only `touchstart`, was assigned to a stick by which half of the screen it was on. On a 384 px-wide portrait screen both thumbs sit near the midline. A move thumb that drifted past it was adopted by the free aim stick: the move stick stopped updating and froze at its last value, often 0, while the same thumb turned the light. An aim thumb drifting left was likewise taken by a free move stick and walked the player.
+- **A second thumb could be ignored.** A thumb landing on a half whose stick was already held did nothing.
+
+The fix:
+- **Route by finger.** Only `touchstart` picks a stick (`startTouch`). A `touchmove` updates the stick that finger already owns, wherever it is.
+- **Sort two thumbs by position.** The first thumb picks by half, as before. A second thumb takes the free stick, sorted so that the leftmost finger moves and the other aims. If it lands on the far side of the held thumb, the two swap, and the held one is re-centred where it is, so the stick doesn't jump. A third finger is ignored.
+- **The stick base follows the thumb.** Past full pull, the base is dragged to stay 50 px behind the thumb (`followThumb`). Reversing answers at once, and the rings stay under their thumbs instead of drifting into each other.
+- **Lost touches are reclaimed.** A stick whose finger is no longer in `e.touches` (its touchend went to a menu, or the system took the touch) is freed on the next touchstart, with its movement or aim zeroed (`reclaimLostTouches`, `releaseStick`).
+- **Double-tap dash is unchanged.** It now measures a tap from the touch's start point rather than the stick's base, since the base can move. A thumb swapped onto the move stick never counts as a tap.
+
+Tests:
+- `test_input.js` gains 17 twin-stick assertions:
+  - a move thumb crossing the midline, and an aim thumb crossing it;
+  - two thumbs on one half, on either side;
+  - the swap;
+  - a third finger;
+  - lifting one thumb;
+  - a lost touch;
+  - the base following the thumb;
+  - the double tap.
+  
+  16 of them fail on the old code, including "moveX 0.00" after crossing: the reported freeze.
+- `qa/aim_check.cjs` repeats the crossing with real CDP multi-touch at 384×717: both thumbs keep their sticks, and the player walks 105 px right while the other thumb aims.
+- All Node suites pass, as do `hud`, `sizes`, `levelup`, `death_screen`, `hub` and `focus_keys`.
+
+New Keep clause 52.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -3183,6 +3213,14 @@ Until now the submission was a zip and some text. CrazyGames asks for three cove
     the Mind Hub at 26–28 fps for the rest of the visit, against 60 before. The
     browser demotes a read-back canvas to a slow path, and nothing in JS says so. If
     pixels are needed, read them from a separate scratch canvas made for that.
+52. **Touch sticks belong to fingers, not to screen halves (Patch 161).**
+    - Only a `touchstart` chooses a stick. A `touchmove` updates the stick its finger
+      already owns, wherever that finger now is.
+    - With two thumbs down, the leftmost moves and the other aims.
+    - A stick whose finger is missing from `e.touches` is freed on the next touchstart.
+    - Re-sorting moves by half is what froze the player in portrait: the aim stick
+      adopted a move thumb that crossed the midline. `test_input.js` and
+      `qa/aim_check.cjs` assert the crossing.
 
 ---
 
