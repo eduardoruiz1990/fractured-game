@@ -1961,6 +1961,54 @@ Tests:
   card reads "Damage 14 → 20 / Pulse reach 200 → 230 / LVL 2 → 3"; no NEW card in 40
   draws with six owned, and NEW cards return at five.
 
+**Patch 133 — named elites and chests (D4, first half).**
+
+- **Elites.** Most rooms now promote ONE regular enemy into a named elite: the spawn
+  that brings the room's budget down to half (`state.eliteAt`, rolled in
+  `Director.spawnRoom`). Chance by room (`eliteChanceForRoom`): never in the tutorial,
+  the boss room or floor 1 room 1; 45% on the rest of floor 1; 55% on floor 2, rising
+  5% a floor to a cap of 75%.
+  - **Stats:** 6x hp, 1.35x damage, a 22 px hit radius, and drawn 1.45x larger. The
+    promotion runs after the floor/Recursion scaling, the ELITE room buff and any
+    variant, so it compounds on them.
+  - **Look:** a gold double ring, its name ("THE TRUANT OFFICER", "THE HEAD
+    JANITOR"…, `ELITE_NAMES` per type) and its own gold health bar.
+  - **Pooling:** `Enemy.initBase` clears `elite`, `eliteName` and the radius, so a
+    promoted body never comes back from the pool still promoted.
+  - **Kill:** drops the chest, a heavy orb, +5 convergence, a short freeze, and
+    "<NAME> DISPERSED". It is counted as `killCounts.ELITE` and emits `elite_killed`.
+- **`recordKill` counts any type** (it ignored anything outside the original eight,
+  which would have silently dropped ELITE and the Phase D enemies).
+- **Chests** are `CHEST` interactables (`src/systems/Elites.js`). Walk in and there is
+  a 26-step opening beat: the lid rattles harder and lifts, the shake builds. Then the
+  burst (freeze, ~0.4 s of slow motion, gold particles) and the reward, in this order:
+  1. an **evolution** if one is available (`game.chestEvolve`; Patch 134 plugs into it);
+  2. otherwise **1–3 levels** (70 / 25 / 5%) spread over weapons the player owns,
+     through `applyWeaponLevelUp`, so a chest level is exactly a card level;
+  3. otherwise +100 Lucidity and +30 Sanity.
+
+  A chest is lit through the darkness, has an off-screen pointer like the doors, and
+  is labelled CHEST until opened. This is the C8 "chest moment" the juice patch had to
+  put on token pickups.
+- **The notice.** `SynergyBanner.pushNotice()` is now the generic path (`push(id)`
+  uses it), so a chest's "CHEST OPENED / 2 WEAPON LEVELS / Pill Bottle → LVL 3" uses
+  the same card and queue as a synergy, in a gold tone (`data-tone="chest"`, plus an
+  `evolution` tone for Patch 134). It is driven by `game.onChestOpened` in `main.js`.
+- `Director.spawnEntity` now returns the body it spawned (it returned nothing).
+
+Tests:
+- `test_content.js` +13:
+  - elite chance rules and names;
+  - promotion stats;
+  - the pooled reset;
+  - the Director promotes exactly one elite at half budget;
+  - a dead elite drops a chest, and walking in opens it after the beat;
+  - levels go to owned weapons only;
+  - an empty chest pays Lucidity;
+  - the evolution hook takes priority.
+- New `qa/elite_check.cjs` (phone and desktop): elite spawned and named, chest
+  dropped, chest opened with its notice, no page errors.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

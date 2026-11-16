@@ -52,6 +52,8 @@ import { errorLog } from '../core/ErrorLog.js';
 import { isBossType, MAX_WEAPON_SLOTS, ownedWeaponCount } from '../data/Config.js';   // Patch 117, 132
 // Patch 132 (V2 plan D3): the four Phase D weapons. See src/systems/Arsenal.js.
 import { resolveArsenal, applyArsenalStatus } from './Arsenal.js';
+// Patch 133 (V2 plan D4): named elites drop chests. See src/systems/Elites.js.
+import { dropChest, resolveChest, CHEST_OPEN_STEPS } from './Elites.js';
 
 // Patch 16: generic tag-scaled knockback, consumed by Enemy.takeDamage's
 // optional knockbackForce param. Only wired at call sites with no existing
@@ -189,6 +191,35 @@ export class Combat {
                             
                             game.spawnParticles(obj.x, obj.y, '#55ff55', 30);
                             game.spawnDamageText(obj.x, obj.y - 30, "SUPPLIES RECOVERED!", '#55ff55', 1.5, 2.0);
+                        }
+                    }
+                } else if (obj.type === 'CHEST') {
+                    // Patch 133: walk in, a short opening beat (the lid rattles and the
+                    // shake builds), then the burst and the reward. Counted in sim steps.
+                    if (!obj.opening) {
+                        const d = Math.hypot(obj.x - state.player.x, obj.y - state.player.y);
+                        if (d < obj.radius + state.player.radius) {
+                            obj.opening = 1;
+                            if (game.audioEngine) game.audioEngine.playSFX('backpack', 0.7);
+                        }
+                    } else {
+                        obj.opening++;
+                        state.cameraShake = Math.max(state.cameraShake, 2 + obj.opening * 0.25);
+                        if (obj.opening % 6 === 0) game.spawnParticles(obj.x, obj.y, '#d9a441', 2);
+                        if (obj.opening >= CHEST_OPEN_STEPS) {
+                            obj.dead = true;
+                            const result = resolveChest(state, { evolve: game.chestEvolve });
+                            if (typeof game.refreshSynergies === 'function') game.refreshSynergies();
+                            state.hitStop = Math.max(state.hitStop || 0, 8);
+                            state.slowMo = Math.max(state.slowMo || 0, 24);
+                            state.cameraShake = Math.max(state.cameraShake, 18);
+                            game.spawnParticles(obj.x, obj.y, '#ffd27f', 40);
+                            game.spawnParticles(obj.x, obj.y, '#ffffff', 20);
+                            game.spawnDamageText(obj.x, obj.y - 30, result.title, '#ffd27f', 1.5, 2.2);
+                            if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 1.0);
+                            if (typeof game.onChestOpened === 'function') {
+                                try { game.onChestOpened(result); } catch (e) { console.error(e); }
+                            }
                         }
                     }
                 } else if (obj.type === 'EXIT_ELEVATOR') {
@@ -781,6 +812,19 @@ export class Combat {
                     }
                     
                 } else {
+                    // Patch 133: a named elite drops the room's chest, a heavy orb, and
+                    // lands with a beat of its own.
+                    if (ent.elite) {
+                        dropChest(state, ent.x, ent.y);
+                        game.spawnXP(ent.x + 30, ent.y, 2, true);
+                        game.spawnParticles(ent.x, ent.y, '#ffd27f', 40);
+                        game.spawnDamageText(ent.x, ent.y - 40, `${ent.eliteName || 'ELITE'} DISPERSED`, '#ffd27f', 1.4, 2.4);
+                        state.hitStop = Math.max(state.hitStop || 0, 6);
+                        state.cameraShake = Math.max(state.cameraShake, 16);
+                        if (!state.bossSpawned) state.convergence += 5;
+                        try { if (game.saveManager && game.saveManager.recordKill) game.saveManager.recordKill('ELITE'); } catch (e) { /* counted below */ }
+                        if (game.eventBus) game.eventBus.emit('elite_killed', ent.type);
+                    }
                     let dropAmount = ent.type === 'SCAVENGER' ? 2 : (ent.type === 'PREDATOR' ? 5 : 1);
                     if (ent.maxHp > 30) dropAmount += 5; 
                     if (ent.type === 'SCAVENGER' && state.player.curses && state.player.curses.includes('compulsive_cleaner')) {

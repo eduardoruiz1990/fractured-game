@@ -2629,6 +2629,22 @@ function initEngine() {
         // The codex itself re-renders with the Mind Palace in updateMenuUI().
     };
 
+    // Patch 133 (V2 plan D4): a chest opened. Combat already did the in-world burst;
+    // this is the notice (same card and queue as the synergy one) and the buzz.
+    game.onChestOpened = (result) => {
+        if (!result) return;
+        const evo = result.kind === 'evolution';
+        synergyBanner.pushNotice({
+            stamp: evo ? 'EVOLUTION' : 'CHEST OPENED',
+            name: result.title,
+            recipe: evo && result.evolution ? result.evolution.recipe : '',
+            lines: result.lines,
+            tone: evo ? 'evolution' : 'chest',
+            calm: !!gameSettings.photosensitive
+        });
+        try { if (navigator.vibrate) navigator.vibrate(evo ? [40, 40, 120] : [30, 30, 60]); } catch (e) {}
+    };
+
     game.onFloorComplete = () => {
         gameState = 'EXIT_REACHED';
         maybeHappytimeForBossKill(game.state.floor);   // Patch 104

@@ -1380,6 +1380,15 @@ export class Renderer {
                     this.lightCtx.beginPath();
                     this.lightCtx.arc(obj.x, obj.y, 120, 0, Math.PI * 2);
                     this.lightCtx.fill();
+                } else if (obj.type === 'CHEST') {
+                    // Patch 133: a chest is lit, so it is never lost in the dark.
+                    const chestHole = this.lightCtx.createRadialGradient(obj.x, obj.y, 0, obj.x, obj.y, 110);
+                    chestHole.addColorStop(0, 'rgba(255, 220, 140, 0.7)');
+                    chestHole.addColorStop(1, 'rgba(255, 220, 140, 0)');
+                    this.lightCtx.fillStyle = chestHole;
+                    this.lightCtx.beginPath();
+                    this.lightCtx.arc(obj.x, obj.y, 110, 0, Math.PI * 2);
+                    this.lightCtx.fill();
                 } else if (obj.type === 'EXIT_ELEVATOR') {
                     const exitHole = this.lightCtx.createRadialGradient(obj.x, obj.y, 10, obj.x, obj.y, 150);
                     exitHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
@@ -1872,7 +1881,7 @@ export class Renderer {
     drawObjectivePointers(state) {
         if (state.interactables) {
             state.interactables.forEach(obj => {
-                if (obj.type === 'OBJECTIVE_BACKPACK' || obj.type === 'EXIT_ELEVATOR' || obj.type === 'ROOM_DOOR') {
+                if (obj.type === 'OBJECTIVE_BACKPACK' || obj.type === 'EXIT_ELEVATOR' || obj.type === 'ROOM_DOOR' || (obj.type === 'CHEST' && !obj.opening)) {
                     let dx = obj.x - state.player.x;
                     let dy = obj.y - state.player.y;
                     let dist = Math.hypot(dx, dy);
@@ -1907,6 +1916,13 @@ export class Renderer {
                             this.ctx.fillStyle = `rgba(200, 200, 255, ${0.4 + pulse * 0.6})`;
                             this.ctx.beginPath();
                             this.ctx.moveTo(20, 0); this.ctx.lineTo(-15, 15); this.ctx.lineTo(-10, 0); this.ctx.lineTo(-15, -15);
+                            this.ctx.closePath();
+                            this.ctx.fill();
+                        } else if (obj.type === 'CHEST') {
+                            let pulse = Math.sin(this.renderFrame * 0.2) * 0.5 + 0.5;
+                            this.ctx.fillStyle = `rgba(255, 210, 127, ${0.4 + pulse * 0.6})`;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(18, 0); this.ctx.lineTo(-12, 12); this.ctx.lineTo(-8, 0); this.ctx.lineTo(-12, -12);
                             this.ctx.closePath();
                             this.ctx.fill();
                         } else if (obj.type === 'ROOM_DOOR') {
@@ -2314,6 +2330,31 @@ export class Renderer {
                     this.ctx.textBaseline = 'middle';
                     this.ctx.font = "bold 14px 'Courier New', Courier, monospace";
                     this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, -35); 
+                } else if (obj.type === 'CHEST') {
+                    // Patch 133: an evidence locker — a squat box with a brass hasp. It
+                    // rattles harder through the opening beat (obj.opening counts up).
+                    const t = obj.opening ? obj.opening / 26 : 0;
+                    const rattle = obj.opening ? Math.sin(this.renderFrame * 1.7) * (1 + t * 3) : 0;
+                    const bob = obj.opening ? 0 : Math.sin(this.renderFrame * 0.08) * 2;
+                    this.drawGlow(0, 0, 46 + t * 20, '#ffd27f', 0.35 + t * 0.3);
+                    this.ctx.translate(rattle, bob);
+                    this.ctx.fillStyle = '#3b2a17';
+                    this.ctx.fillRect(-20, -10, 40, 24);
+                    this.ctx.fillStyle = '#5a4022';
+                    this.ctx.fillRect(-21, -18 - t * 6, 42, 10);   // the lid lifts as it opens
+                    this.ctx.strokeStyle = '#d9a441';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeRect(-20, -10, 40, 24);
+                    this.ctx.strokeRect(-21, -18 - t * 6, 42, 10);
+                    this.ctx.fillStyle = '#ffd27f';
+                    this.ctx.fillRect(-4, -6, 8, 9);
+                    if (!obj.opening) {
+                        this.ctx.fillStyle = '#ffd27f';
+                        this.ctx.textAlign = 'center';
+                        this.ctx.textBaseline = 'middle';
+                        this.ctx.font = "bold 12px 'Courier New', Courier, monospace";
+                        this.ctx.fillText('CHEST', 0, -32);
+                    }
                 } else if (obj.type === 'EXIT_ELEVATOR') {
                     let pulse = Math.sin(this.renderFrame * 0.1) * 20;
                     
@@ -2505,6 +2546,34 @@ export class Renderer {
                     this.ctx.beginPath();
                     this.ctx.arc(0, 0, vr, 0, Math.PI * 2);
                     this.ctx.stroke();
+                }
+
+                // Patch 133 (V2 plan D4): a named elite — gold double ring, its name and
+                // its own health bar above it, and the body drawn ELITE_SCALE larger
+                // (the scale is undone right after the per-type dispatch below).
+                const isElite = !!ent.elite;
+                if (isElite) {
+                    const er = (ent.radius || 22) + 10;
+                    this.drawGlow(0, 0, er + 16, '#ffd27f', 0.3);
+                    this.ctx.strokeStyle = '#ffd27f';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.beginPath(); this.ctx.arc(0, 0, er, 0, Math.PI * 2); this.ctx.stroke();
+                    this.ctx.strokeStyle = 'rgba(255, 210, 127, 0.45)';
+                    this.ctx.beginPath(); this.ctx.arc(0, 0, er + 5, 0, Math.PI * 2); this.ctx.stroke();
+                    const barW = 64, barY = -er - 14;
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                    this.ctx.fillRect(-barW / 2, barY, barW, 5);
+                    this.ctx.fillStyle = '#d9a441';
+                    this.ctx.fillRect(-barW / 2, barY, barW * Math.max(0, Math.min(1, ent.hp / (ent.maxHp || 1))), 5);
+                    this.ctx.font = "bold 14px 'Courier New', Courier, monospace";
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'bottom';
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+                    this.ctx.fillText(ent.eliteName || 'ELITE', 1, barY - 2);
+                    this.ctx.fillStyle = '#ffd27f';
+                    this.ctx.fillText(ent.eliteName || 'ELITE', 0, barY - 3);
+                    this.ctx.save();
+                    this.ctx.scale(1.45, 1.45);
                 }
 
                 if (ent.type === 'ARCHITECT') {
@@ -3311,7 +3380,9 @@ export class Renderer {
                     }
                 }
 
-                if (ent.hp < ent.maxHp && ent.flashTime <= 0 && !isBossType(ent.type)) {
+                if (isElite) this.ctx.restore();   // Patch 133: undo the elite scale
+
+                if (!isElite && ent.hp < ent.maxHp && ent.flashTime <= 0 && !isBossType(ent.type)) {
                     let barW = 24;
                     let yOffset = 20;
                     

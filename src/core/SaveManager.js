@@ -362,8 +362,11 @@ export class SaveManager {
         if (!this.metaState.killCounts) {
             this.metaState.killCounts = { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 };
         }
-        if (this.metaState.killCounts[type] !== undefined) {
-            this.metaState.killCounts[type]++;
+        // Patch 133: any type is counted, not just the eight seeded above — the
+        // Phase D enemies and ELITE (counted alongside the base type) would otherwise
+        // be silently dropped. Renderers read known keys with `|| 0`.
+        if (typeof type === 'string' && type) {
+            this.metaState.killCounts[type] = (this.metaState.killCounts[type] || 0) + 1;
         }
     }
 

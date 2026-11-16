@@ -41,6 +41,12 @@ export class Enemy {
         // Patch 132: statuses from the Phase D weapons (Arsenal.js). Pooled, so reset.
         this.drowsy = 0;
         this.held = 0;
+        // Patch 133: a promoted elite (Elites.js) must not come back from the pool
+        // still promoted. Only elites set `radius` among the regular types (Rorschach
+        // sets its own, but is never promoted), so clearing it here is safe.
+        if (this.elite) this.radius = undefined;
+        this.elite = false;
+        this.eliteName = null;
         this.damageAccumulator = 0;
         this.damageTick = 0;
         this.painCooldown = 0; // NEW: Audio throttle for individual enemy hits

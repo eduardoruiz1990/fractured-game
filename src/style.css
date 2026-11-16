@@ -925,6 +925,18 @@ body.quality-low #crt-scanlines { display: none; }
     font-weight: bold;
     letter-spacing: 0.14em;
 }
+/* Patch 133: the same card carries chest and evolution notices. */
+#synergy-banner .syn-lines {
+    margin: 8px auto 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+#synergy-banner[data-tone="chest"] { border-color: #d9a441; }
+#synergy-banner[data-tone="chest"] .syn-stamp { border-color: #d9a441; color: #f0c060; }
+#synergy-banner[data-tone="evolution"] { border-color: #b388ff; }
+#synergy-banner[data-tone="evolution"] .syn-stamp { border-color: #b388ff; color: #cfb4ff; }
 #synergy-banner.syn-in { animation: synergyBanner 3600ms ease-out forwards; }
 #synergy-banner.syn-in .syn-stamp { animation: synergyStamp 420ms cubic-bezier(.2,1.6,.4,1) both; }
 #synergy-banner.calm.syn-in .syn-stamp { animation: none; }

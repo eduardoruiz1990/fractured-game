@@ -538,6 +538,71 @@ console.log('\nPhase D weapons (Patch 132)');
     check('transient caps are set', ARSENAL_CAPS.playerShots > 0 && ARSENAL_CAPS.lullabyNotes > 0);
 }
 
+// ---------------------------------------------------------------------------
+// Patch 133 (V2 plan D4): named elites and chests.
+console.log('\nElites and chests (Patch 133)');
+{
+    const E = await import('./src/systems/Elites.js');
+    const { Combat } = await import('./src/systems/Combat.js');
+
+    check('no elite in the tutorial, the boss room, or floor 1 room 1',
+          E.eliteChanceForRoom(1, 1, false, true) === 0 && E.eliteChanceForRoom(2, 5, true, false) === 0 && E.eliteChanceForRoom(1, 1, false, false) === 0);
+    check('elites become likelier deeper, capped', E.eliteChanceForRoom(1, 2, false, false) > 0
+          && E.eliteChanceForRoom(4, 2, false, false) > E.eliteChanceForRoom(2, 2, false, false)
+          && E.eliteChanceForRoom(40, 2, false, false) <= 0.75);
+    for (const t of ['SCAVENGER', 'PREDATOR', 'PARASITE']) check(`${t} elites have names`, E.ELITE_NAMES[t].length > 0);
+
+    const fresh = () => { const g = new Game(); g.init(mockSave); g.state.isTutorial = false; g.state.stress = 1; return g; };
+    let g = fresh();
+    const ent = g.director.spawnEntity('PREDATOR', null, null, 300, 0);
+    const hp = ent.hp, dmg = ent.damage;
+    E.promoteToElite(ent, () => 0);
+    check('promotion: x6 hp, harder hits, a name, a bigger radius',
+          ent.elite && ent.hp === hp * 6 && ent.maxHp === ent.hp && ent.damage > dmg && ent.eliteName === 'THE TRUANT OFFICER' && ent.radius === E.ELITE_RADIUS, JSON.stringify({hp, h: ent.hp, dmg, d: ent.damage, n: ent.eliteName, r: ent.radius}));
+    ent.init(Math.random(), 0, 0, 1);
+    check('a pooled elite comes back plain', !ent.elite && !ent.eliteName && ent.radius === undefined);
+
+    // Director promotes the spawn that halves the budget.
+    g = fresh();
+    g.director.spawnRoom(2, 2);
+    g.state.eliteAt = Math.floor(g.state.enemyBudget * 0.5);
+    let guard = 0;
+    while (!g.state.eliteSpawned && g.state.enemyBudget > 0 && guard++ < 5000) { g.state.budgetTimer = -1; g.director.spawnWave(1280, 720); }
+    check('the room promotes exactly one elite at half budget', g.state.eliteSpawned && g.state.entities.filter(e => e.elite).length === 1,
+          `budget ${g.state.enemyBudget}, elites ${g.state.entities.filter(e => e.elite).length}`);
+
+    // Killing it drops a chest; walking in opens it after the beat.
+    g = fresh();
+    g.state.player.weapons.static.level = 2; g.state.player.weapons.static.active = true;
+    const el = E.promoteToElite(g.director.spawnEntity('SCAVENGER', null, null, 200, 0));
+    el.hp = 0;
+    Combat.resolveWeapons(g);
+    const chest = g.state.interactables.find(o => o.type === 'CHEST');
+    check('a dead elite drops a chest', !!chest && !g.state.entities.includes(el));
+    let opened = null;
+    g.onChestOpened = (r) => { opened = r; };
+    const lv0 = { fl: g.state.player.weapons.flashlight.level, st: g.state.player.weapons.static.level };
+    g.state.player.x = chest.x; g.state.player.y = chest.y;
+    for (let i = 0; i < E.CHEST_OPEN_STEPS + 2; i++) { g.state.hitStop = 0; Combat.resolveWeapons(g); }
+    const lv1 = { fl: g.state.player.weapons.flashlight.level, st: g.state.player.weapons.static.level };
+    const gained = (lv1.fl - lv0.fl) + (lv1.st - lv0.st);
+    check('walking in opens it after the beat, and it reports', opened && opened.kind === 'levels' && !g.state.interactables.some(o => o.type === 'CHEST'),
+          JSON.stringify(opened));
+    check('the levels went to owned weapons only', gained === opened.lines.length && gained >= 1
+          && Object.entries(g.state.player.weapons).every(([id, w]) => ['flashlight', 'static'].includes(id) || w.level === 0));
+
+    // Nothing owned can level: Lucidity instead.
+    g = fresh();
+    for (const w of Object.values(g.state.player.weapons)) w.level = 0;
+    g.state.player.weapons.flashlight.level = 5;
+    const luc = g.state.lucidity;
+    const r = E.resolveChest(g.state);
+    check('a chest with nothing to level pays Lucidity', r.kind === 'lucidity' && g.state.lucidity === luc + 100);
+    // The evolution hook wins when it returns something.
+    const r2 = E.resolveChest(g.state, { evolve: () => ({ id: 'x', name: 'X', desc: 'd' }) });
+    check('an available evolution takes the chest', r2.kind === 'evolution' && r2.title === 'X');
+}
+
 console.log('\nSynergy discovery (Patch 126)');
 {
     const { SaveManager } = await import('./src/core/SaveManager.js');

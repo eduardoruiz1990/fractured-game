@@ -10,6 +10,7 @@ import { Amalgamation } from '../entities/Amalgamation.js';
 import { Architect } from '../entities/Architect.js';
 // Patch 51c: reports the swallowed boss-roadmap failure below into the crash log.
 import { errorLog } from '../core/ErrorLog.js';
+import { eliteChanceForRoom, promoteToElite } from './Elites.js';   // Patch 133
 // The spawn clamp is derived from the arena's void radius rather than repeated as a
 // literal — see the note on ARENA_VOID_RADIUS in Config.js for why the two must agree.
 import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE, isBossType, ROOM_PACE } from '../data/Config.js';
@@ -162,6 +163,12 @@ export class Director {
                 state.hazardPuddleTimer = 0;
             }
         }
+
+        // Patch 133 (V2 plan D4): a named elite, promoted from the regular spawn that
+        // takes the budget to half (see spawnWave). -1 = none this room.
+        state.eliteSpawned = false;
+        state.eliteAt = Math.random() < eliteChanceForRoom(floor, roomNumber, isBossRoom, false)
+            ? Math.floor(state.enemyBudget * 0.5) : -1;
 
         if (roomNumber >= state.maxRoomsPerFloor && !state.bossSpawned) {
             state.enemyBudget = 0;
@@ -426,6 +433,19 @@ export class Director {
                     if (spawnType === 'SCAVENGER') state.enemyBudget -= 1;
                     else if (spawnType === 'PREDATOR') state.enemyBudget -= 2;
                     else if (spawnType === 'PARASITE') state.enemyBudget -= 3;
+
+                    // Patch 133: the spawn that brings the budget to half becomes the
+                    // room's named elite. Promoted after spawnEntity, so it compounds
+                    // onto the floor/Recursion scaling, ELITE room buff and variant.
+                    if (!state.isTutorial && !state.eliteSpawned && state.eliteAt >= 0
+                        && state.enemyBudget <= state.eliteAt) {
+                        const last = state.entities[state.entities.length - 1];
+                        if (last && !isBossType(last.type)) {
+                            promoteToElite(last);
+                            state.eliteSpawned = true;
+                            if (this.game.audioEngine) this.game.audioEngine.playSFX('boss_intro', 0.45);
+                        }
+                    }
                 }
             }
         } else if (state.entities.length === 0 && !state.roomCleared && !state.bossSpawned) {
@@ -799,6 +819,7 @@ export class Director {
             if (this.game.audioEngine && Math.random() < 0.3) {                this.game.audioEngine.playSFX('enemy_spawn', 0.3);
             }
         }
+        return ent || null;   // Patch 133: callers (elite promotion, tests) can hold the body
     }
 
     spawnProjectile(x, y, vx, vy, radius, damage, color, life) {

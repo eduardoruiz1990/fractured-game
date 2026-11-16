@@ -59,7 +59,24 @@ export class SynergyBanner {
     push(id, opts = {}) {
         const syn = SYNERGIES[id];
         if (!syn) return;
-        this.queue.push({ syn, opts });
+        const total = Object.keys(SYNERGIES).length;
+        this.pushNotice({
+            stamp: 'SYNERGY FORMED', name: syn.name, recipe: synergyRecipe(syn), desc: syn.desc,
+            foot: opts.isNew ? `NEW CODEX ENTRY · ${Number(opts.discovered) || 1} / ${total}` : '',
+            calm: opts.calm
+        });
+    }
+
+    /**
+     * Patch 133: any stamped notice in the same card and the same queue — chests
+     * (and, from Patch 134, evolutions) reuse it, so two rewards landing together are
+     * shown one after the other instead of on top of each other.
+     * @param {{stamp:string, name:string, recipe?:string, desc?:string, lines?:string[],
+     *          foot?:string, calm?:boolean, tone?:string}} n
+     */
+    pushNotice(n) {
+        if (!n || !n.name) return;
+        this.queue.push(n);
         if (!this.showing) this.next();
     }
 
@@ -68,15 +85,18 @@ export class SynergyBanner {
         const el = this.ensureEl();
         if (!item || !el) { this.showing = false; this.hide(); return; }
         this.showing = true;
-        const { syn, opts } = item;
-        const total = Object.keys(SYNERGIES).length;
+        const n = item;
+        const lines = Array.isArray(n.lines) && n.lines.length
+            ? `<ul class="syn-lines">${n.lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : '';
         el.innerHTML = `
-            <div class="syn-stamp">SYNERGY FORMED</div>
-            <div class="syn-name">${esc(syn.name)}</div>
-            <div class="syn-recipe">${esc(synergyRecipe(syn))}</div>
-            <div class="syn-desc">${esc(syn.desc)}</div>
-            ${opts.isNew ? `<div class="syn-new">NEW CODEX ENTRY · ${Number(opts.discovered) || 1} / ${total}</div>` : ''}`;
-        el.classList.toggle('calm', !!opts.calm);
+            <div class="syn-stamp">${esc(n.stamp || '')}</div>
+            <div class="syn-name">${esc(n.name)}</div>
+            ${n.recipe ? `<div class="syn-recipe">${esc(n.recipe)}</div>` : ''}
+            ${n.desc ? `<div class="syn-desc">${esc(n.desc)}</div>` : ''}
+            ${lines}
+            ${n.foot ? `<div class="syn-new">${esc(n.foot)}</div>` : ''}`;
+        el.classList.toggle('calm', !!n.calm);
+        el.dataset.tone = n.tone || 'synergy';
         // Restart the CSS animation for back-to-back notices.
         el.classList.remove('syn-in');
         void el.offsetWidth;
