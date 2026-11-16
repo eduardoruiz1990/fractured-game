@@ -12,7 +12,13 @@ export const MANIFESTATIONS = {
     
     // --- EPIC 4: NEW WEAPONS ---
     polaroid_camera: { id: 'polaroid_camera', name: 'Polaroid Camera', desc: 'Fires a blinding, stunning flash in a wide cone every few seconds.', maxLvl: 5 },
-    fidget_spinner: { id: 'fidget_spinner', name: 'Weighted Spinner', desc: 'Blades orbit you. Deals shredding damage to enemies that get too close.', maxLvl: 5 }
+    fidget_spinner: { id: 'fidget_spinner', name: 'Weighted Spinner', desc: 'Blades orbit you. Deals shredding damage to enemies that get too close.', maxLvl: 5 },
+
+    // --- PATCH 132 (V2 plan D3): the Phase D weapons. Behaviour in src/systems/Arsenal.js.
+    pill_bottle: { id: 'pill_bottle', name: 'Pill Bottle', desc: 'Thrown at the nearest manifestation. Ricochets to the next one, and the next.', maxLvl: 5 },
+    metronome: { id: 'metronome', name: 'Metronome', desc: 'Every beat, a ring of sound pulses out from you, striking and shoving everything it crosses.', maxLvl: 5 },
+    straitjacket: { id: 'straitjacket', name: 'Straitjacket Straps', desc: 'Straps circle you, lashing what they touch and tearing projectiles out of the air.', maxLvl: 5 },
+    lullaby: { id: 'lullaby', name: 'Lullaby', desc: 'Slow notes drift after the nearest manifestation and burst, leaving it drowsy and slow.', maxLvl: 5 }
 };
 
 /**
@@ -27,7 +33,8 @@ export const MANIFESTATIONS = {
  */
 export const PLAYER_WEAPON_IDS = [
     'flashlight', 'static', 'polaroid_camera', 'fidget_spinner',
-    'lead_pipe', 'spilled_ink', 'broken_chalk', 'corrosive_battery'
+    'lead_pipe', 'spilled_ink', 'broken_chalk', 'corrosive_battery',
+    'pill_bottle', 'metronome', 'straitjacket', 'lullaby'   // Patch 132
 ];
 
 /**
@@ -42,7 +49,7 @@ export const PLAYER_WEAPON_IDS = [
 export const DOOR_REWARDS = [
     { id: 'LUCIDITY',       name: 'LUCIDITY',        effect: '+50 Lucidity and +50 XP, banked into this run.', color: '#ffddaa' },
     { id: 'HEAL',           name: 'RECOVERY',        effect: 'Restores 50 Sanity you have already lost. Does NOT raise your maximum, and cannot take you above it.', color: '#aaffaa' },
-    { id: 'WEAPON_UPGRADE', name: 'WEAPON UPGRADE',  effect: 'Levels one random weapon that is not yet at 5. If everything is maxed, pays +50 Lucidity instead.', color: '#c5a059' },
+    { id: 'WEAPON_UPGRADE', name: 'WEAPON UPGRADE',  effect: 'Levels one of your weapons that is not yet at 5. If everything you carry is maxed, it adds a new weapon while you have a free slot (6), otherwise pays +50 Lucidity.', color: '#c5a059' },
     { id: 'TOKEN_DOOR',     name: 'CONFISCATED ITEM', effect: 'Drops a Token on the spot. It is decrypted into your inventory when the run ends, whether you extract or break.', color: '#ff8c00' },
     { id: 'RISK_REWARD',    name: 'RISK PROTOCOL',   effect: '+150 Lucidity, +150 XP and a Token — at a flat cost of 30 current Sanity. The cost cannot kill you (it floors at 1) and ignores shields and curses.', color: '#ff3333' }
 ];
@@ -84,16 +91,24 @@ export const LIGHT_RECOIL_RESIST = {
     RORSCHACH: 0.25,
     PANOPTICON: 0.15,
     AMALGAMATION: 0.15,
-    ARCHITECT: 0.10      // effectively immovable
+    ARCHITECT: 0.10,     // effectively immovable
+    // Patch 135
+    SPLITTER: 0.9,
+    WARDEN: 0.35,
+    BURROWER: 0.6
 };
 
 export const ENEMY_BESTIARY = [
     { id: 'SCAVENGER', name: 'JANITORS',      icon: '♙', color: '#555555', desc: 'The baseline manifestation. Slow, numerous, and happy to swarm. They vacuum up Lucidity you leave lying around.' },
     { id: 'PREDATOR',  name: 'HALL MONITORS', icon: '♘', color: '#8b0000', desc: 'Telegraphs, then lunges in a straight line. The tell is the pause — move sideways, not backwards.' },
     { id: 'PARASITE',  name: 'SUBSTITUTES',   icon: '♗', color: '#a0522d', desc: 'Hangs back and lashes at range, and will buff other manifestations if left alone. Priority target.' },
+    // Patch 135 (V2 plan D4): one new manifestation per floor, 2 to 4.
+    { id: 'SPLITTER',  name: 'PHOTOCOPIES',   icon: '📄', color: '#d8cfb8', desc: 'Floor 2 on. Tear one apart and two smaller, faster copies shuffle out of it. The copies do not copy again.' },
+    { id: 'WARDEN',    name: 'FIRE WARDENS',  icon: '🦺', color: '#e0a030', desc: 'Floor 3 on. Slow, sturdy, and it keeps to the middle of the crowd: everything inside its orange ward takes half damage. Kill it first.' },
+    { id: 'BURROWER',  name: 'CRAWLSPACES',   icon: '🕳️', color: '#8a6a46', desc: 'Floor 4 on. Travels under the floor where nothing can touch it, then erupts where you stood. Move when the ring appears, and hit it while it is exposed.' },
     { id: 'BOSS',        name: 'SPHERE HEAD',     icon: '🌑',  color: '#b87333', desc: 'Floor 1. Charges, then releases an expanding pulse. The safe place is behind it.', boss: true },
     { id: 'RORSCHACH',   name: 'THE RORSCHACH',   icon: '🦋',  color: '#800080', desc: 'Floor 2. Splits into smaller copies of itself when killed, three generations deep.', boss: true },
-    { id: 'PANOPTICON',  name: 'THE PANOPTICON',  icon: '👁️', color: '#ff0055', desc: 'Floor 3. Sweeps a gaze beam across the arena. Break line of sight or outrun the sweep.', boss: true },
+    { id: 'PANOPTICON',  name: 'THE PANOPTICON',  icon: '👁️', color: '#ff0055', desc: 'Floor 3. Its red wedge shows exactly where the gaze will burn. Outrun the sweep, or step beyond its reach.', boss: true },
     { id: 'AMALGAMATION',name: 'THE AMALGAMATION',icon: '🦠',  color: '#55ff55', desc: 'Floor 4. Pulls you toward it and spawns lesser manifestations continuously.', boss: true },
     { id: 'ARCHITECT',   name: 'THE ARCHITECT',   icon: '🕋',  color: '#c5a059', desc: 'Floor 5, and the close of every cycle beyond it. The source of the construct. Collapses the arena in phases.', boss: true }
 ];
@@ -152,6 +167,28 @@ export const SYNERGIES = {
         id: 'consecrated_ground', name: 'Consecrated Ground',
         desc: 'Pipe swings landed inside a ward restore Sanity.',
         reqs: ['lead_pipe', 'broken_chalk']
+    },
+
+    // Patch 132: one synergy per Phase D weapon, each pairing it with an old one.
+    bitter_pill: {
+        id: 'bitter_pill', name: 'Bitter Pill',
+        desc: 'Every bottle that lands coats its target in battery acid.',
+        reqs: ['pill_bottle', 'corrosive_battery']
+    },
+    cradle_song: {
+        id: 'cradle_song', name: 'Cradle Song',
+        desc: 'The beat lulls. Everything a pulse crosses goes drowsy.',
+        reqs: ['metronome', 'lullaby']
+    },
+    restraint: {
+        id: 'restraint', name: 'Restraint',
+        desc: 'A strap that lands holds its victim in place for half a second.',
+        reqs: ['straitjacket', 'lead_pipe']
+    },
+    nightlight: {
+        id: 'nightlight', name: 'Nightlight',
+        desc: 'Lullaby notes burst twice as wide.',
+        reqs: ['lullaby', 'flashlight']
     }
 };
 

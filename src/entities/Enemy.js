@@ -38,6 +38,18 @@ export class Enemy {
         this.speedModifier = 1.0; 
         this.acidTime = 0;
         this.acidDmg = 0;
+        // Patch 132: statuses from the Phase D weapons (Arsenal.js). Pooled, so reset.
+        this.drowsy = 0;
+        this.held = 0;
+        // Patch 133: a promoted elite (Elites.js) must not come back from the pool
+        // still promoted. Only elites set `radius` among the regular types (Rorschach
+        // sets its own, but is never promoted), so clearing it here is safe.
+        if (this.elite) this.radius = undefined;
+        this.elite = false;
+        this.eliteName = null;
+        // Patch 135: a Fire Warden's ward (Warden.js) — steps left; refreshed each
+        // step by a Warden in range.
+        this.shieldTimer = 0;
         this.damageAccumulator = 0;
         this.damageTick = 0;
         this.painCooldown = 0; // NEW: Audio throttle for individual enemy hits
@@ -65,6 +77,13 @@ export class Enemy {
     // centered (cone, aura, dash, orbiting blade), so there's no need to thread
     // a separate origin point through every call site.
     takeDamage(amount, game, knockbackForce = 0) {
+        // Patch 135: under a Fire Warden's ward, half damage (WARDEN_SHIELD_FACTOR in
+        // Warden.js — CHANGE BOTH).
+        if (this.shieldTimer > 0) amount *= 0.5;
+        // Patch 136: the Photographer's passive — hits on a confused target are critical.
+        if (this.confused > 0 && game && game.state && game.state.player && game.state.player.critConfused) {
+            amount *= game.state.player.critConfused;
+        }
         this.hp -= amount;
         this.flashTime = 5;
         this.lastHitByMelee = false;
@@ -309,6 +328,7 @@ export class Enemy {
         }
 
         if (this.flashTime > 0) this.flashTime--;
+        if (this.shieldTimer > 0) this.shieldTimer--;   // Patch 135
     }
 
     update(state, game) {

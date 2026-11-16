@@ -4,6 +4,10 @@
 import { getActiveSynergies, MANIFESTATIONS, SYNERGIES } from '../data/Manifestations.js';
 // Patch 95 — the weapon ceiling comes off in THE RECURSION. See src/core/Endless.js.
 import { weaponLevelCap, isEndless } from '../core/Endless.js';
+import { MAX_WEAPON_SLOTS, ownedWeaponCount } from '../data/Config.js';   // Patch 132
+// Patch 134: evolution hints on the cards. (Evolutions.js imports BOONS from here;
+// both sides only touch the other inside functions, so the cycle is safe.)
+import { evolutionForWeapon, evolutionsForBoon, evolveLevel } from '../systems/Evolutions.js';
 
 /**
  * The level-up boon pool — the real one.
@@ -140,16 +144,43 @@ export const WEAPON_LEVEL_UPS = {
         { key: 'damage', add: 5, kind: 'num', label: 'Damage' },
         { key: 'baseRadius', add: 10, kind: 'px', label: 'Orbit' },
         { key: 'speed', add: 0.02, kind: 'pct', label: 'Spin speed' }
+    ],
+    // Patch 132 (V2 plan D3). `max` caps a step the way `min` floors one.
+    pill_bottle: [
+        { key: 'damage', add: 6, kind: 'num', label: 'Damage' },
+        { key: 'bounces', add: 1, max: 6, kind: 'count', label: 'Ricochets' },
+        { key: 'cooldown', add: -6, min: 40, kind: 'sec', label: 'Thrown every' }
+    ],
+    metronome: [
+        { key: 'damage', add: 6, kind: 'num', label: 'Damage' },
+        { key: 'radius', add: 30, kind: 'px', label: 'Pulse reach' },
+        { key: 'cooldown', add: -10, min: 50, kind: 'sec', label: 'Beat every' }
+    ],
+    straitjacket: [
+        { key: 'damage', add: 5, kind: 'num', label: 'Damage' },
+        { key: 'straps', add: 1, max: 6, kind: 'count', label: 'Straps' },
+        { key: 'radius', add: 8, kind: 'px', label: 'Orbit' }
+    ],
+    lullaby: [
+        { key: 'damage', add: 10, kind: 'num', label: 'Damage' },
+        { key: 'notes', add: 1, max: 4, kind: 'count', label: 'Notes' },
+        { key: 'cooldown', add: -15, min: 60, kind: 'sec', label: 'Sung every' }
     ]
 };
 
 /** Widely supported emoji per weapon (Patch 125; was one shared 🔧 for all eight). */
 export const WEAPON_ICONS = {
     flashlight: '🔦', static: '📻', lead_pipe: '🔧', spilled_ink: '🖋️',
-    corrosive_battery: '🔋', broken_chalk: '🖍️', polaroid_camera: '📷', fidget_spinner: '🌀'
+    corrosive_battery: '🔋', broken_chalk: '🖍️', polaroid_camera: '📷', fidget_spinner: '🌀',
+    pill_bottle: '💊', metronome: '⏱️', straitjacket: '🥋', lullaby: '🎵'   // Patch 132
 };
 
-const stepResult = (step, cur) => (step.min === undefined ? cur + step.add : Math.max(step.min, cur + step.add));
+const stepResult = (step, cur) => {
+    let v = cur + step.add;
+    if (step.min !== undefined) v = Math.max(step.min, v);
+    if (step.max !== undefined) v = Math.min(step.max, v);   // Patch 132
+    return v;
+};
 
 /** Applies one level's stat steps to `wep` in place. Does NOT touch wep.level. */
 export function applyWeaponLevelUp(wep, id) {
@@ -187,6 +218,7 @@ export function describeWeaponLevelUp(wep, id) {
         else if (step.kind === 'px') text = `${step.label} ${Math.round(cur)} → ${Math.round(next)}`;
         else if (step.kind === 'cone') text = `${step.label} ${Math.round(cur * 2 * 180 / Math.PI)}° → ${Math.round(next * 2 * 180 / Math.PI)}°`;
         else if (step.kind === 'sec') text = `${step.label} ${fmtSec(cur)} → ${fmtSec(next)}`;
+        else if (step.kind === 'count') text = `${step.label} ${cur} → ${next}`;   // Patch 132
         else if (step.kind === 'pct') text = `${step.label} +${Math.round((next / cur - 1) * 100)}%`;
         if (text) lines.push(text);
     }
@@ -243,6 +275,38 @@ export function ensureNewWeaponOffer(selected, ranked, weapons) {
     const out = selected.slice();
     if (out.length < 3) out.push(fresh); else out[out.length - 1] = fresh;
     return out;
+}
+
+/**
+ * Patch 134 (V2 plan D2/C2): what a card means for an evolution.
+ *   ready — evolutions this pick makes available (the weapon reaches its max level
+ *           while its boon is held, or the boon is taken while its weapon is maxed);
+ *           the next elite's chest will evolve it.
+ *   lines — a nudge for evolutions this card is a step towards.
+ * Pure. `choice` is { type: 'weapon'|'boon', id }.
+ */
+export function evolutionHintsFor(player, choice) {
+    const ready = [];
+    const lines = [];
+    if (!player || !player.weapons || !choice) return { ready, lines };
+    const boons = player.boons || [];
+    const boonName = (id) => (BOONS.find(b => b.id === id) || {}).name || id;
+    if (choice.type === 'weapon') {
+        const evo = evolutionForWeapon(choice.id);
+        const w = player.weapons[choice.id];
+        if (evo && w && !w.evolution) {
+            if (w.level + 1 >= evolveLevel(choice.id) && boons.includes(evo.boon)) ready.push(evo.name);
+            else if (w.level >= 1) lines.push(`⬆ evolves with ${boonName(evo.boon)}`);
+        }
+    } else if (choice.type === 'boon') {
+        for (const evo of evolutionsForBoon(choice.id)) {
+            const w = player.weapons[evo.weapon];
+            if (!w || w.level <= 0 || w.evolution) continue;
+            if (w.level >= evolveLevel(evo.weapon)) ready.push(evo.name);
+            else lines.push(`⬆ evolves ${weaponName(evo.weapon)} at LVL ${evolveLevel(evo.weapon)}`);
+        }
+    }
+    return { ready, lines };
 }
 
 export const LEVEL_UP_ARM_MS = 300;
@@ -382,10 +446,15 @@ export class LevelUpUI {
 
         let availableWeapons = [];
         const levelCap = weaponLevelCap(game.state.floor);
+        // Patch 132: no new weapon once every slot is full.
+        const slotsFull = ownedWeaponCount(game.state.player.weapons) >= MAX_WEAPON_SLOTS;
         for (const [weaponKey, wep] of Object.entries(game.state.player.weapons)) {
             // Patch 95: was a hardcoded `wep.level < 5`. weaponLevelCap returns exactly
             // 5 for floors 1-5, so Cycle I keeps its ceiling to the letter.
-            if (wep.level < levelCap) {
+            // Patch 139: a locked instrument (data/Unlocks.js) is never offered NEW.
+            const locked = wep.level === 0 && Array.isArray(game.state.player.lockedWeapons)
+                && game.state.player.lockedWeapons.includes(weaponKey);
+            if (wep.level < levelCap && !(slotsFull && wep.level === 0) && !locked) {
                 // Patch 125: the real name, and what the level actually does. A new
                 // weapon also says what it IS (its MANIFESTATIONS description).
                 const isNew = wep.level === 0;
@@ -475,6 +544,7 @@ export class LevelUpUI {
             // currentLevel because they have no level to carry.
             let label;
             const badges = [];
+            const evoHints = evolutionHintsFor(game.state.player, choice);   // Patch 134
             if (choice.type === 'boon') { label = 'CLINICAL BREAKTHROUGH'; badges.push(['BOON', 'boon']); }
             else if (choice.type === 'deep') label = 'RECURSIVE ADAPTATION';
             else {
@@ -484,13 +554,15 @@ export class LevelUpUI {
                 if (choice.isMax && !choice.isNew) badges.push(['MAX', 'max']);
                 (choice.hints ? choice.hints.ready : []).forEach(n => badges.push([`SYNERGY READY: ${n}`, 'synergy']));
             }
+            evoHints.ready.forEach(n => badges.push([`EVOLUTION READY: ${n}`, 'evolution']));
             const badgeHtml = badges.length
                 ? `<div class="card-badges">${badges.map(([t, c]) => `<span class="card-badge card-badge-${c}">${t}</span>`).join('')}</div>`
                 : '';
             const statsHtml = (choice.stats && choice.stats.length)
                 ? `<ul class="card-stats">${choice.stats.map(l => `<li>${l}</li>`).join('')}</ul>` : '';
             const pairs = choice.hints && !choice.hints.ready.length ? choice.hints.pairs.slice(0, 2) : [];
-            const pairHtml = pairs.map(n => `<div class="card-pair">🔗 pairs with ${n}</div>`).join('');
+            const pairHtml = pairs.map(n => `<div class="card-pair">🔗 pairs with ${n}</div>`).join('')
+                + evoHints.lines.slice(0, 1).map(l => `<div class="card-pair card-evo">${l}</div>`).join('');
 
             card.innerHTML = `
                 <div class="card-key">${idx + 1}</div>
@@ -591,7 +663,8 @@ export class LevelUpUI {
                 game.state.sanity += 200;
             } else if (choice.id === 'steady_hands') {
                 // Applies to every weapon that actually has a cooldown field.
-                ['lead_pipe', 'broken_chalk', 'polaroid_camera'].forEach(id => {
+                // Patch 132: and the three Phase D weapons that run on a timer.
+                ['lead_pipe', 'broken_chalk', 'polaroid_camera', 'pill_bottle', 'metronome', 'lullaby'].forEach(id => {
                     if (w[id] && w[id].cooldown) w[id].cooldown = Math.max(20, Math.floor(w[id].cooldown * 0.8));
                 });
             } else if (choice.id === 'wide_lens') {

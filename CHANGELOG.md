@@ -1886,6 +1886,438 @@ New `qa/juice_check.cjs` checks:
 
 `qa/soak_check` (20 s) is clean: invariants OK, entities ≤ cap.
 
+### Phase D — content (Patches 131+)
+
+**Patch 131 — the Panopticon's tell matches its beam (D6).**
+
+Before, the charge-up warning was a 10 px red sliver, but the sweep that followed was a
+±0.5 rad (57°) cone that hit at any distance. The player was shown roughly a hundredth
+of what would hit them. Patch 40 kept the sliver on purpose and flagged it as a design
+call; the call (the plan's recommendation) is now made:
+
+- **The tell is the hitbox.** During the 45-step charge the whole ±`gazeWidth` wedge is
+  outlined and fills in as the charge completes. Every dimension reads `ent.gazeWidth` /
+  `ent.gazeRange`, the values `Panopticon.js` tests with.
+- **The beam has a reach.** `GAZE_RANGE = 650` px (`src/entities/Panopticon.js`). The
+  hit test is the exported pure `gazeHits(angleDiff, dist, width, range)`. The sweep's
+  drawing is clipped to the same radius (it used to paint to 2000 px). Stepping out of
+  reach is now a third answer besides dashing and outrunning the sweep. The boss still
+  tethers at 200–350 px while stalking, so it is only an answer during the sweep.
+- Bestiary text updated to match.
+
+`test_bosses.js` +6: the entity carries the range; in/out of cone and range; a sweep
+from 800 px does no damage; one from 300 px still does.
+
+**Patch 132 — four new weapons (D3).**
+
+| Weapon | Tags | What it does | Per level |
+|---|---|---|---|
+| **Pill Bottle** | kinetic, burst | Every 1.25 s, a bottle is thrown at the nearest enemy within 520 px and ricochets to the next one within 300 px, `bounces` times (2). It homes lightly, so it does not miss a moving target. | damage +6, ricochets +1 (max 6), throw every −6 steps (min 40) |
+| **Metronome** | aura, tech | Every beat (1.67 s), a ring expands from where you stood to `radius` (200). Everything the wavefront crosses is struck once and shoved 18 px outward. | damage +6, reach +30, beat −10 steps (min 50) |
+| **Straitjacket Straps** | orbit, melee | `straps` (2) bands circle you at 85 px. Each one tears enemy projectiles out of the air and lashes what it touches on its own 12-step beat. Strap kills count as melee (Vampirism). | damage +5, straps +1 (max 6), orbit +8 |
+| **Lullaby** | dark, burst | Every 2.5 s, `notes` (1) slow notes drift after the nearest enemy and burst on contact (70 px), leaving everything caught **drowsy**: 40% speed for 1.5 s. | damage +10, notes +1 (max 4), sung every −15 steps (min 60) |
+
+- **Where it lives.** `src/systems/Arsenal.js`. Combat calls `resolveArsenal()` once per
+  step BEFORE its entity loop, so a kill made there is collected by that loop in the same
+  step (XP, kill count, pool release). Arsenal never splices `state.entities`.
+  `applyArsenalStatus(ent)` sits in the entity loop right after the ink slow, so drowsy
+  composes with it (`Math.min`). The ward 2x, tag damage, and the boss-flicker immunity
+  all apply exactly as they do to the other weapons.
+- **Transient objects.** `state.playerShots`, `state.pulseRings` and `state.lullabyNotes`
+  are plain arrays with hard caps (`ARSENAL_CAPS`: 24 / 6 / 16), not pooled.
+  `Director.releaseRoomState` empties them on every room change; a bottle in flight
+  would otherwise hold a reference to a released entity. `Game.init` creates them.
+  `Enemy.initBase` resets the new `drowsy`/`held` statuses (pooled).
+- **Drawing.** `Renderer.drawArsenal()`, called at the end of the weapon-effects block:
+  plain fills and strokes, no `shadowBlur`, no composite changes.
+- **Four synergies**, one per new weapon, each pairing it with an old one:
+  Bitter Pill (bottle + battery: every bottle applies acid), Cradle Song (metronome +
+  lullaby: pulses make everything drowsy), Restraint (straps + pipe: a strap holds its
+  victim for 0.5 s), Nightlight (lullaby + flashlight: bursts twice as wide). They show
+  up in the Codex, the banner and the card hints with no extra code.
+- **The level-up table** (`WEAPON_LEVEL_UPS`) gained a `max` cap beside `min` and a
+  `count` line kind ("Ricochets 2 → 3"). Steady Hands now also shortens the three new
+  cooldowns.
+- **Six weapon slots** (`MAX_WEAPON_SLOTS`, `ownedWeaponCount` in `Config.js`). With
+  twelve weapons and no ceiling, a run spread its level-ups over everything it was
+  offered and rarely got two weapons to 5, which every synergy (and every evolution)
+  needs. Once six are owned, no NEW weapon is offered. **This is a balance change.**
+- **The WEAPON UPGRADE door now levels a weapon you own.** It drew from all weapons
+  below the cap, including unowned ones; with twelve that mostly handed out level 1 of
+  something new. It now draws a new weapon only if nothing owned can level and a slot
+  is free. It also now switches the Static Receiver on when it grants its first level
+  (only the card did before). Guide text updated.
+- **Old suspended runs.** A carry from before this patch has only the old eight
+  weapons; `backfillWeapons()` adds the missing ones at level 0 and never touches a
+  carried one.
+
+Tests:
+- `test_content.js` +51: the four are in the table and the golden oracle (both start
+  states); back-fill; six slots; in-sim behaviour (ricochet through three, one ring hit
+  plus the shove, a strap deletes a projectile, a note leaves its target drowsy and
+  slowed); the room change empties the arrays.
+- `test_fuzz_runs.js`: its template and level table include the four (200/200 clean).
+- New `qa/arsenal_check.cjs`: all four fire and kill among real enemies; the Metronome
+  card reads "Damage 14 → 20 / Pulse reach 200 → 230 / LVL 2 → 3"; no NEW card in 40
+  draws with six owned, and NEW cards return at five.
+
+**Patch 133 — named elites and chests (D4, first half).**
+
+- **Elites.** Most rooms now promote ONE regular enemy into a named elite: the spawn
+  that brings the room's budget down to half (`state.eliteAt`, rolled in
+  `Director.spawnRoom`). Chance by room (`eliteChanceForRoom`): never in the tutorial,
+  the boss room or floor 1 room 1; 45% on the rest of floor 1; 55% on floor 2, rising
+  5% a floor to a cap of 75%.
+  - **Stats:** 6x hp, 1.35x damage, a 22 px hit radius, and drawn 1.45x larger. The
+    promotion runs after the floor/Recursion scaling, the ELITE room buff and any
+    variant, so it compounds on them.
+  - **Look:** a gold double ring, its name ("THE TRUANT OFFICER", "THE HEAD
+    JANITOR"…, `ELITE_NAMES` per type) and its own gold health bar.
+  - **Pooling:** `Enemy.initBase` clears `elite`, `eliteName` and the radius, so a
+    promoted body never comes back from the pool still promoted.
+  - **Kill:** drops the chest, a heavy orb, +5 convergence, a short freeze, and
+    "<NAME> DISPERSED". It is counted as `killCounts.ELITE` and emits `elite_killed`.
+- **`recordKill` counts any type** (it ignored anything outside the original eight,
+  which would have silently dropped ELITE and the Phase D enemies).
+- **Chests** are `CHEST` interactables (`src/systems/Elites.js`). Walk in and there is
+  a 26-step opening beat: the lid rattles harder and lifts, the shake builds. Then the
+  burst (freeze, ~0.4 s of slow motion, gold particles) and the reward, in this order:
+  1. an **evolution** if one is available (`game.chestEvolve`; Patch 134 plugs into it);
+  2. otherwise **1–3 levels** (70 / 25 / 5%) spread over weapons the player owns,
+     through `applyWeaponLevelUp`, so a chest level is exactly a card level;
+  3. otherwise +100 Lucidity and +30 Sanity.
+
+  A chest is lit through the darkness, has an off-screen pointer like the doors, and
+  is labelled CHEST until opened. This is the C8 "chest moment" the juice patch had to
+  put on token pickups.
+- **The notice.** `SynergyBanner.pushNotice()` is now the generic path (`push(id)`
+  uses it), so a chest's "CHEST OPENED / 2 WEAPON LEVELS / Pill Bottle → LVL 3" uses
+  the same card and queue as a synergy, in a gold tone (`data-tone="chest"`, plus an
+  `evolution` tone for Patch 134). It is driven by `game.onChestOpened` in `main.js`.
+- `Director.spawnEntity` now returns the body it spawned (it returned nothing).
+
+Tests:
+- `test_content.js` +13:
+  - elite chance rules and names;
+  - promotion stats;
+  - the pooled reset;
+  - the Director promotes exactly one elite at half budget;
+  - a dead elite drops a chest, and walking in opens it after the beat;
+  - levels go to owned weapons only;
+  - an empty chest pays Lucidity;
+  - the evolution hook takes priority.
+- New `qa/elite_check.cjs` (phone and desktop): elite spawned and named, chest
+  dropped, chest opened with its notice, no page errors.
+
+**Patch 134 — weapon evolutions (D2).**
+
+A weapon at level 5 plus its matching boon makes the weapon eligible to evolve. The
+next chest an elite drops evolves it, ahead of the usual weapon levels. Evolutions are
+separate from synergies, which need two weapons at 5: an evolution is one weapon plus
+one boon, so it is something a boon pick can aim at. There are twelve, one per weapon,
+each with a different boon (`src/systems/Evolutions.js`):
+
+| Weapon + boon | Evolution | Effect |
+|---|---|---|
+| Flashlight + Last Light | Interrogation Lamp | damage x2, cone +30%, range +25% |
+| Static + Overcharge | White Noise Machine | radius +60%, damage x2.2 |
+| Pipe + Heavy Swing | Wrecking Bar | damage x2, reach +40%, swing 25% faster |
+| Ink + Ink Flood | Inkwell Flood | pools +60%, damage x2, drop 30% faster |
+| Battery + Toxic Blood | Car Battery | acid x3, lasts x1.5 |
+| Chalk + Chalk Dust | Chalk Pentagram | wards +50%, last x2, drawn 40% more often |
+| Camera + Long Exposure | Flashbulb Array | flash in every direction, damage x1.5 |
+| Spinner + Sharpened Blades | Ceiling Fan | damage x2, orbit +30, spin x1.5 (gold blades) |
+| Pill Bottle + Steady Hands | Pill Organiser | two bottles per throw, +3 ricochets |
+| Metronome + Slowing Field | Grandfather Clock | reach +50%, every pulse leaves enemies drowsy |
+| Straps + Reinforced Frame | Padded Cell | +2 straps (max 8), damage x1.8 |
+| Lullaby + Second Wind | Music Box | +2 notes, bursts +60%, each burst restores 1 Sanity |
+
+- **How an evolution is applied.** Once: `apply(wep)` changes the numbers in place and
+  `wep.evolution` records it, so it can never evolve twice. Everything is a
+  multiplier, an addition or a flag that Arsenal reads (`volley`, `lulls`, `heals`);
+  there is no new per-step system.
+- **Cards** (`evolutionHintsFor`):
+  - **EVOLUTION READY: <name>** (purple badge) on the weapon card that takes it to 5
+    while its boon is held, and on the boon card when its weapon is already at 5;
+  - otherwise a single nudge line: "⬆ evolves with Heavy Swing" on an owned weapon,
+    "⬆ evolves Heavy Lead Pipe at LVL 5" on a boon.
+- **Notice.** "EVOLUTION / Wrecking Bar / recipe / effect", in the same card and queue
+  as synergies and chests, with ~0.8 s of slow motion. The first evolution ever shows
+  "NEW CODEX ENTRY · n / 12" and triggers `happytime` (once per session, shared with
+  the first synergy).
+- **Evolution Codex** in the Mind Palace, under the Synergy Codex. It follows the same
+  rule: an unseen entry shows its recipe and keeps its name and effect sealed.
+- **New save field `discoveredEvolutions`** (id → times). Default in the constructor,
+  back-filled in `loadGame`, taken from `parsed` in `importSave`, reset in `wipeSave`
+  (Keep clauses 1–2). `recordEvolution(id)` returns true the first time.
+- **Guide:** an EVOLUTIONS section; INSTRUMENTS now mentions six slots and evolutions;
+  ENEMIES gained NAMED ELITES and CHEST cards (Patch 133).
+- **Module cycle (safe).** `Evolutions.js` ↔ `LevelUpUI.js` import each other (BOONS
+  one way, the hint helpers the other). Both use the other only inside functions, never
+  at module evaluation, which ES modules allow. Keep it that way.
+
+Tests:
+- `test_content.js` +24:
+  - twelve evolutions, one per weapon, with distinct real boons;
+  - each applies to its weapon and leaves finite numbers;
+  - not available below level 5;
+  - the 4→5 card and the boon card say READY, and the boon card nudges when the
+    weapon is not yet maxed;
+  - a chest evolves it, never twice;
+  - Pill Organiser throws two bottles;
+  - the save field is back-filled and recorded once.
+- New `qa/evolution_check.cjs` (phone): the READY badge, a chest evolving the pipe, the
+  notice text with "NEW CODEX ENTRY · 1 / 12", 12 codex cards with one open.
+
+**Patch 135 — three new enemies (D4, second half).**
+
+One per floor from 2 to 4, all set in the school/institution the memory is built from.
+Each archetype asks for a different answer:
+
+| Type (bestiary) | From | Behaviour | The answer |
+|---|---|---|---|
+| `SPLITTER` (Photocopies) | floor 2 | A shuffling paper figure (34 hp, swaying chase). Killing a full-size one tears it into two smaller, faster generation-2 copies (12 hp, 2.2 speed) that do not split again. The split runs in Combat's death path, like the Rorschach's. | Room to breathe, and area damage |
+| `WARDEN` (Fire Wardens) | floor 3 | Slow and sturdy (70 hp). Steers toward the middle of its own crowd and wards every non-boss within 150 px: **half damage** while it stands (`shieldTimer`, refreshed each step, read in `Enemy.takeDamage`). Never wards itself or a boss. Dashed orange ring; warded enemies show an orange arc. | Kill it first |
+| `BURROWER` (Crawlspaces) | floor 4 | Travels under the floor, where nothing can touch it: `takeDamage` is ignored and the homing weapons skip it. It surfaces where the player is standing, shows a 70 px warning ring for 50 steps, erupts (14 damage), then stays exposed and slow for 160 steps before digging back in. The warning ring is lit through the darkness. | Move when the ring appears; hit it while exposed |
+
+- **Spawn tables** (`Director.spawnWave`): each new type is carved out of the
+  Scavenger share (on floor 4+, partly out of the Parasite share), so the older
+  enemies keep their slots.
+  - floor 2: Photocopy 15%;
+  - floor 3: Photocopy 10%, Warden 10%;
+  - floor 4+: Predator 30%, Parasite 30%, Photocopy 8%, Warden 8%, Crawlspace 12%.
+
+  Budget costs are 2 / 3 / 2. Floor 1 is unchanged.
+- **Pools** `splitter` (40), `warden` (12) and `burrower` (20). Combat releases by
+  `type.toLowerCase()` as for every other type. `Enemy.initBase` resets the new
+  `shieldTimer`; each class resets its own state in `init`.
+- **Colours.** Only the original three take the biome tint now. The new types keep
+  their own colours, so the 40-string bound on `drawGlow` keys still holds.
+- **XP** 2/1 (Photocopy full/copy), 6 (Warden), 4 (Crawlspace).
+- **Light recoil resistance** 0.9 / 0.35 / 0.6.
+- Each has elite names (Patch 133) and a bestiary entry (which also gives them
+  Mind Palace kill trophies).
+- The dev bench's SPAWN ONE OF EACH ENEMY includes them, and the scenario dropdown pins
+  the Crawlspace burrowed / warning / exposed.
+
+Tests:
+- `test_content.js` +20:
+  - each type spawns from its pool with a bestiary entry, a resistance and elite names;
+  - a Photocopy splits into two copies that do not split;
+  - new kill types are counted;
+  - a warded enemy takes half damage, the Warden does not ward itself, and the ward
+    fades;
+  - a burrowed Crawlspace takes no damage, surfaces under the player, hurts on
+    eruption if you stay, can be hit when exposed, and stepping out dodges it;
+  - the floor tables: none on floor 1, only the Photocopy on 2, all three by 4.
+- New `qa/enemies_check.cjs`: all three drawn in the real game, and the split happens
+  there.
+
+**Patch 136 — playable Patients and the picker (D1).**
+
+Four ways into a run, in `src/data/Patients.js`. Each is a starting instrument (the
+flashlight is always carried as well, since it is the player's light), one passive and
+a small stat lean. This also gives the Synapse Tree's C2 "starting weapon" capstone a
+real choice.
+
+| Patient | Starts with | Passive (one flag on `state.player`, read at one site) | Lean | Unlocked by |
+|---|---|---|---|---|
+| THE INSOMNIAC 🌙 | Flashlight | `blackoutImmune`: BLACKOUT rooms do not speed spawns up (`Director.spawnWave`); light +10% | — | always (default) |
+| THE VANDAL 🔨 | Lead Pipe | `meleeLifesteal`: pipe hits restore `min(3, hits × 0.75)` Sanity; straps +0.25 per hit (`Arsenal`) | Sanity +20, speed −5% | `killCounts.BOSS ≥ 1` |
+| THE ARTIST 🖋️ | Spilled Ink | `inkMaster`: ink damage ×1.25, pools slow to 0.3 (`Combat`) | speed +6%, Sanity −10 | `maxFloorReached ≥ 3` |
+| THE PHOTOGRAPHER 📷 | Polaroid Camera | `critConfused: 1.5`: ×1.5 damage on a confused target (`Enemy.takeDamage`) | Sanity −10 | `killCounts.PANOPTICON ≥ 1` |
+
+- Phase E's story milestones do not exist yet, so the unlocks use progress the save
+  already records. Players who have it get the Patients immediately. Phase E can swap
+  the predicates without touching anything else.
+- `Game.init`: the Patient comes from the carried state's `character` (a descent keeps
+  it) or from `resolvePatient(meta.selectedCharacter, meta)`, which falls back to the
+  Insomniac if the saved choice is missing or locked. The starting weapon is raised to
+  level 1 through `applyWeaponLevelUp`, on fresh runs only. `getCarriedState` carries
+  `character`.
+- **Save:** `selectedCharacter` (default `'insomniac'`) and `announcedPatients`
+  (`['insomniac']`, drives the NEW badge), each with a constructor default, a
+  `loadGame` back-fill, an `importSave` derivation and a `wipeSave` reset.
+  `setSelectedCharacter(id)` refuses a locked or unknown id.
+- **The picker** (`src/ui/PatientStrip.js`, one component mounted twice):
+  - under BEGIN DESCENT on the title: compact, unlocked Patients only, and **hidden
+    until a second Patient is unlocked**, so a first-time player's title is unchanged;
+  - above AUTHORIZE DESCENT in EVALUATION: all four, a locked chip explains its unlock
+    when tapped and changes nothing.
+  - Launching stays one click: every launch path uses the last choice. Chips are at
+    least 44 px tall.
+- The death screen lists "NEW PATIENT ADMITTED: …" when a run unlocks one.
+- Tests: `test_content.js` Patients block (every Patient's weapon exists, unlocks,
+  `resolvePatient` fallbacks, `newlyAdmitted`, the stat leans in `Game.init`, descent
+  keeps the Patient). `qa/patients_check.cjs` at 384×717 and 1280×720.
+
+**Patch 137 — room shapes and data-driven spawn sectors (D5, first half).**
+
+Every room used to be the same open disc. Each floor now has its own arrangement of the
+memory's furniture (`src/systems/Arena.js`, pure, no DOM/canvas), raised around the
+player when a combat room starts and lowered when it is cleared:
+
+| Floor | Layout | Shape | Spawns |
+|---|---|---|---|
+| 1 | LOCKER CORRIDOR | two broken rows of lockers | down both corridor ends |
+| 2 | INKBLOT GALLERY | twelve mirrored ink posts | all round |
+| 3 | THE YARD | a ring wall (r 430) with four gates | through the four gates |
+| 4 | THE WARD WINGS | four wards on the diagonals: a cross of corridors | down the four corridors |
+| 5 | THE BLUEPRINT | a 5×5 grid of blocks, inner ring sunk | all round |
+
+- **The Blueprint rearranges** every 300 steps: three blocks sink, three sunk blocks
+  rise after a 75-step telegraph (dashed outline filling in, pulsing). A block never
+  rises on the player: the last telegraph step waits until they step off.
+- **When:** never in the tutorial, never in a boss room, never on floor 1 room 1, and in
+  70% of the other rooms (`SHAPED_ROOM_CHANCE`), so open rooms stay common. The
+  Recursion cycles the five with the biomes (`paletteIndexForFloor`). The layout's name
+  floats over the player as it rises.
+- **Collision:** circles against boxes, posts and ring arcs (with round caps at the
+  gates), resolved once per sim step after everything has moved (`updateArena` in
+  `Game.processGameLogic`), for the player and regular enemies only. Bosses never meet
+  a wall (boss rooms are open). A Crawlspace travels under them except while warning or
+  exposed. Weapons, projectiles and XP pass through: they are memories, not physics, and
+  this leaves every weapon's behaviour unchanged.
+- **Never blocking the way out:** the clear (`lowerArena`) turns collision off at once
+  and fades the walls for 40 steps before they are removed, so reward doors, the exit
+  elevator and the walk after a room are never blocked. A chest dropped mid-fight is
+  moved out of any wall (`dropChest`). Every layout leaves a 150 px clear radius round
+  its origin, so nobody starts inside a wall.
+- **Spawn sectors** (data-driven, per layout): `Director.spawnEntity`'s ring sampling
+  draws its first 8 bearings from the layout's sectors (`spawnAngle`); with no sectors
+  that is exactly one `Math.random` call, as before, so open rooms keep their old spawn
+  sequence. A ring spawn that lands in a wall is moved out of it.
+- **Drawing:** `Renderer.drawObstacles` (per floor style: locker doors and vents, ink
+  posts with a slowly folding blot, brick courses on the ring, ward tiles, blueprint
+  hatching; drop shadows; plain fills and strokes, no blur) under everything that
+  moves, plus `drawObstacleOutlines` after the darkness mask, so a wall is never
+  invisible in the dark.
+- Tests: new `test_arena.js` (69 assertions: layout choice per floor and the
+  Recursion, the clear radius, a 3000-body fuzz per layout, each shape kind's push,
+  the Yard's gates walkable and its wall holding, spawn sectors, raise/lower/fade, the
+  Blueprint's shift and its never-on-the-player rise, and the Director/Game seams).
+  `qa/arena_check.cjs` draws all five in game.
+
+**Patch 138 — room events: Power Outage, Lockdown, Session Bell (D5, second half).**
+
+A room that changes its rules partway through (`src/systems/RoomEvents.js`):
+
+| Event | When | What happens | The answer / the reward |
+|---|---|---|---|
+| POWER OUTAGE | 40% of the budget spent | Up to 15 s with no ambient light and the beam at 80%. A breaker box appears 320 px away (toward the arena centre, out of any wall), blinking through the dark with a pointer. | Hold the flashlight on it for a second: the power comes back, and the box's repelling, damaging field (the `BREAKER_BOX` interactable, dormant since the early patches) holds for 7.5 s. The Insomniac keeps their ambient light. |
+| LOCKDOWN (floor 2+) | at once | "The doors seal": 1.5 s of warning, then 30 s in which the arrivals never run out (the budget is held at ≥ 4). | Survive. When it lifts, the rest of the crowd dissolves (released to its pool, no XP), a named elite stays, and a chest drops at the player's feet. |
+| SESSION BELL | half the budget spent | A wave of `4 + floor` (max 10) arrives at once through the room's spawn sectors, the floor's own new enemy included, led by a named elite (its chest). The wave does not spend the budget and respects the live-entity cap. | Area damage, and kill the named one. |
+
+- **When:** only in rooms where no room modifier (ELITE/BLACKOUT/SWARM/HAZARD) was
+  rolled, so the systems never stack and the modifier distribution is unchanged; then
+  at `EVENT_CHANCE` 0.5 (about 20% of rooms). Never in the tutorial, a boss room, or the
+  first two rooms of floor 1; LOCKDOWN only from floor 2.
+- **Wiring:** `armRoomEvent` at the end of `Director.spawnRoom`, `tickRoomEvent` in
+  `spawnWave` before spawning (not during a boss fight), `endRoomEvent` on the clear
+  (an unpowered breaker is removed, the outage ends). State: `state.roomEvent`,
+  `state.powerOut`, `state.lockdown` (defaults in `Game.init`).
+- **Telling the player:** each start and end gets the stamped notice card (`ROOM EVENT`,
+  red tone, through the same queue as synergies and chests, via `game.onRoomEvent`),
+  and the HUD's NIGHTMARES LEFT line says what to do instead ("LOCKDOWN · SURVIVE 23s",
+  "POWER OUT · FIND THE BREAKER").
+- **Test fix:** the Patch 135 floor-table test in `test_content.js` was flaky (about 1
+  run in 4): a SWARM room forces every spawn to SCAVENGER. It now pins the modifier and
+  event off.
+- Tests: `test_arena.js` now also covers the events (107 assertions): eligibility, the
+  floor-1 pool, the outage powered through Combat's real breaker logic, an ignored
+  outage ending on its own, the lockdown's top-up, its lift (crowd released, elite
+  kept, no XP, chest), the bell's wave and elite, and spawnRoom's wiring.
+  `qa/events_check.cjs` runs all three in game at phone size.
+
+**Patch 139 — achievements, instrument unlock tracks, case records (D7, first half).**
+
+- **31 achievements** (`src/data/Achievements.js`): the work itself (1 / 100 / 1,000 /
+  10,000 banished), the five fears faced (one each, then all five three times), named
+  elites (1, 25), depth (Floor 3, 6, 11, 16), coming back (1 / 10 / 50 descents, three
+  Floor 5 clears, Patient Level 10), the codexes (1 / 5 / every synergy, 1 / 6
+  evolutions), the ward (all four Patients), and the room events (power restored,
+  a lockdown survived, 10 chests, a floor cleared with an Intrusive Thought adopted).
+  Every one is a **predicate over the save**, never over a live run, so an existing
+  player is credited for progress they already have (silently, at boot: the Mind
+  Palace lists it), nothing can be earned twice, and checking is idempotent and cheap.
+- **Save** (`metaState.achievements`: id → ms earned; `metaState.stats`: the four
+  counters that exist only for achievements), each with a constructor default, a
+  `loadGame` back-fill (a partial stats object is completed, not replaced), an
+  `importSave` derivation from the file and a `wipeSave` reset. `recordStat(key)` counts
+  known keys only; `claimAchievements()` records and returns what is newly true.
+- **Instrument unlock tracks** (`src/data/Unlocks.js`): the Metronome (reach Floor 2),
+  Straitjacket Straps (defeat a named elite) and Lullaby (survive a Lockdown, or reach
+  Floor 4) leave the level-up pool until unlocked; the Pill Bottle and the original
+  eight are always in it. A first run is learned with fewer, simpler choices. Applied
+  to NEW offers only (level-up cards, the WEAPON_UPGRADE door's new-weapon fallback):
+  `state.player.lockedWeapons`, set by `Game.init`, refreshed by main.js when an
+  unlock lands mid-run so it joins that run's pool at once.
+- **Announcing** (main.js `claimProgress` / `announceProgress`): after a chest, a room
+  event's end, a synergy, a floor clear, the start of a run, and every 5 s of play (kill
+  and depth milestones). The notice card has a gold `achievement` tone and the running
+  count ("3 / 31"); a newly unlocked instrument gets a NEW INSTRUMENT card. The death
+  screen lists what the run earned (three lines, then "+N MORE IN THE MIND PALACE").
+  Held during the tutorial (until `tutorialCompleted`): a first-time player's first
+  minute is for learning to move; the predicates still hold afterwards and are claimed
+  then.
+- **Notice priority** (`SynergyBanner`): achievement notices are low priority. A
+  synergy, chest, evolution or room event goes ahead of every queued achievement and
+  cuts one that is showing short (it is re-queued), so "Caseload" never delays the news
+  that matters mid-fight.
+- **Mind Palace** (`UIManager.renderTrophies`), new sections first: CASE RECORDS
+  (deepest floor, with its Recursion cycle; descents; Floor 5 clears; banished; named
+  elites; chests), ACHIEVEMENTS (n / 31; locked cards show their goal and a progress
+  bar, earned ones their date), and UNLOCK TRACKS (the four Patients and the four Phase
+  D instruments, each with how to unlock it).
+- **Test fix:** `qa/synergy_check.cjs` still expected 10 synergies (14 since Patch 132)
+  and counted the evolution codex cards (Patch 134) as synergy ones; updated.
+- Tests: new `test_progress.js` (40 assertions: the data, every achievement reachable,
+  progress readouts, the unlock rules, every SaveManager seam including an old save
+  being credited, Game.init's locked list). `qa/achievements_check.cjs`: the tutorial
+  not interrupted, the held notice after it, no locked instrument in 120 level-ups, an
+  unlock mid-run, the Mind Palace, the death-screen line.
+
+**Patch 140 — the Daily Session (D7, second half). Phase D complete.**
+
+One scored attempt a day (`src/systems/Daily.js`, pure). Everyone playing on the same
+local date gets the same session:
+
+- **the same Patient** (any of the four, locked or not: the daily is a way to try one)
+  and **the same Intrusive Thought** (one, in place of the player's adopted ones), drawn
+  from a seed hashed from the date;
+- **the same rooms:** `Director.spawnRoom` is now a wrapper that, in a daily run, runs
+  the room (`spawnRoomInner`) with `Math.random` swapped for an rng seeded by date,
+  floor and room (`withRandom`, which always restores it, even on a throw). So the
+  modifier, the room's shape, its event, the named elite and the boss's spawn point are
+  shared. Not seeded, and said so in the module: moment-to-moment spawns, drops and
+  level-up cards (they also run on `Math.random`, from frame-timed code paths), and the
+  player's own Synapse Tree and tokens still apply.
+- **One attempt:** recorded the moment it starts (`SaveManager.beginDaily`), so quitting
+  does not reroll it. **Score:** 100 per room cleared + 1 per nightmare banished,
+  recorded at death or Awaken (`finishDaily`; a suspend records the score so far, and the
+  best of the attempt counts). The best score and a day streak are kept locally.
+- **Save:** `metaState.daily` (`lastKey`, `lastScore`, `attempted`, `best`, `bestKey`,
+  `streak`, `played`), with all four seams (constructor, `loadGame` back-fill,
+  `importSave` from the file, `wipeSave`), plus the `dailiesPlayed` stat.
+- **Game.init(saveManager, carriedState, opts)**: `opts.daily` fixes the Patient and the
+  thought; `state.daily` rides `getCarriedState`, so a descent or a resume keeps it.
+- **Entries:** on the title after THE RECURSION, and in the EVALUATION pane after its
+  Recursion entry, **hidden until the tutorial is done** (a first-time title is
+  unchanged). The label names the day's Patient and thought and the best score; once
+  played it reads DONE with today's score and "AGAIN TOMORROW", and a click only explains.
+  Starting asks first (one attempt; the scoring rule; and that it replaces a suspended
+  run if one is on file). The death and Awaken screens show "DAILY SESSION: n · NEW BEST"
+  or the best.
+- **Achievements:** Same Time Tomorrow (play one) and Routine (three days in a row):
+  33 in all.
+- Tests: `test_progress.js` +32 (72): the key and calendar, the same session per day and
+  variety across days, room rngs, `withRandom` restoring, one attempt a day, the streak
+  and its reset, the best kept, the score, the SaveManager seams, Game.init and the
+  carry, and **the daily's rooms not depending on any other randomness**.
+  `qa/daily_check.cjs`: hidden for a first-time player, shown after the tutorial, the
+  dialog, the day's run, the score on the death screen, DONE after a reload and no
+  second attempt, at 384×717 and 1280×720.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

@@ -407,6 +407,11 @@ console.log('\nWeapon level-ups (LevelUpUI.WEAPON_LEVEL_UPS)');
         else if (id === 'broken_chalk') { wep.radius += 15; wep.duration += 30; wep.cooldown = Math.max(60, wep.cooldown - 15); }
         else if (id === 'polaroid_camera') { wep.damage += 20; wep.radius += 40; wep.cooldown = Math.max(90, wep.cooldown - 30); }
         else if (id === 'fidget_spinner') { wep.damage += 5; wep.baseRadius += 10; wep.speed += 0.02; }
+        // Patch 132: the Phase D weapons, as designed (no older chain exists for them).
+        else if (id === 'pill_bottle') { wep.damage += 6; wep.bounces = Math.min(6, wep.bounces + 1); wep.cooldown = Math.max(40, wep.cooldown - 6); }
+        else if (id === 'metronome') { wep.damage += 6; wep.radius += 30; wep.cooldown = Math.max(50, wep.cooldown - 10); }
+        else if (id === 'straitjacket') { wep.damage += 5; wep.straps = Math.min(6, wep.straps + 1); wep.radius += 8; }
+        else if (id === 'lullaby') { wep.damage += 10; wep.notes = Math.min(4, wep.notes + 1); wep.cooldown = Math.max(60, wep.cooldown - 15); }
     };
     // Game.init's starting values, plus a "modified" variant (boons/Synapse already
     // moved the numbers, cooldowns pushed BELOW their floors as steady_hands can).
@@ -418,10 +423,15 @@ console.log('\nWeapon level-ups (LevelUpUI.WEAPON_LEVEL_UPS)');
         lead_pipe: { damage: 45, radius: 70, cooldown: 90 },
         spilled_ink: { damage: 10, radius: 45, dropRate: 45 },
         broken_chalk: { radius: 60, duration: 300, cooldown: 600 },
-        corrosive_battery: { damage: 2, duration: 180 }
+        corrosive_battery: { damage: 2, duration: 180 },
+        pill_bottle: { damage: 18, bounces: 2, cooldown: 75 },
+        metronome: { damage: 14, radius: 200, cooldown: 100 },
+        straitjacket: { damage: 12, radius: 85, straps: 2 },
+        lullaby: { damage: 26, radius: 70, notes: 1, cooldown: 150 }
     };
     const modified = JSON.parse(JSON.stringify(base));
     modified.lead_pipe.cooldown = 25; modified.broken_chalk.cooldown = 50; modified.polaroid_camera.cooldown = 70;
+    modified.pill_bottle.cooldown = 30; modified.straitjacket.straps = 6;
     modified.spilled_ink.dropRate = 8; modified.flashlight.damage = 30.6; modified.fidget_spinner.damage = 12;
 
     for (const id of PLAYER_WEAPON_IDS) {
@@ -457,6 +467,377 @@ console.log('\nWeapon level-ups (LevelUpUI.WEAPON_LEVEL_UPS)');
         const cp = c.codePointAt(0); return cp >= 0x1F700 && cp <= 0x1F77F;
     }));
     check('no boon icon uses an alchemical symbol', alchemical.length === 0, alchemical.map(b => b.id).join(', '));
+}
+
+// ---------------------------------------------------------------------------
+// Patch 132 (V2 plan D3): the four Phase D weapons, the six-slot cap, the back-fill.
+console.log('\nPhase D weapons (Patch 132)');
+{
+    const { backfillWeapons } = await import('./src/core/Game.js');
+    const { MAX_WEAPON_SLOTS, ownedWeaponCount } = await import('./src/data/Config.js');
+    const { ARSENAL_CAPS, DROWSY_SLOW } = await import('./src/systems/Arsenal.js');
+    const { Combat } = await import('./src/systems/Combat.js');
+    const { SYNERGIES } = await import('./src/data/Manifestations.js');
+
+    const fresh = () => { const g = new Game(); g.init(mockSave); return g; };
+    let g = fresh();
+    for (const id of ['pill_bottle', 'metronome', 'straitjacket', 'lullaby']) {
+        check(`${id} exists at level 0 on a fresh run`, g.state.player.weapons[id] && g.state.player.weapons[id].level === 0);
+        check(`${id} is in a synergy`, Object.values(SYNERGIES).some(sy => sy.reqs.includes(id)));
+    }
+    // A run suspended before Patch 132 carries only the old eight.
+    const old = { flashlight: { level: 3, damage: 25 } };
+    const filled = backfillWeapons(old, fresh().state.player.weapons);
+    check('back-fill keeps the carried weapon untouched', filled.flashlight.level === 3 && filled.flashlight.damage === 25);
+    check('back-fill adds the missing weapons at level 0', filled.lullaby && filled.lullaby.level === 0);
+    const g2 = new Game(); g2.init(mockSave, { floor: 2, sanity: 50, xp: 0, level: 3, lucidity: 0, runInventory: [], weapons: { flashlight: { level: 2, damage: 20, radius: 250, angle: 0.6, tags: ['light'] } } });
+    check('an old carried run resumes with all twelve weapons', Object.keys(g2.state.player.weapons).length >= 12);
+
+    // Six slots.
+    const ws = fresh().state.player.weapons;
+    check('six slots', MAX_WEAPON_SLOTS === 6 && ownedWeaponCount(ws) === 1);
+
+    // Arsenal behaviour, one weapon at a time, enemies parked in front of the player.
+    const park = (g, n, dist = 120) => {
+        for (let i = 0; i < n; i++) g.director.spawnEntity('SCAVENGER', null, null, g.state.player.x + dist + i * 40, g.state.player.y);
+        g.state.entities.forEach(e => { e.update = () => {}; });
+    };
+    const tick = (g, steps) => { for (let i = 0; i < steps; i++) { g.state.frame++; Combat.resolveWeapons(g); } };
+    const solo = (g, id) => { g.state.player.weapons.flashlight.level = 0; g.state.player.weapons.flashlight.radius = 0; g.state.player.weapons[id].level = 1; };
+
+    g = fresh(); solo(g, 'pill_bottle'); park(g, 3);
+    const hp0 = g.state.entities.map(e => e.hp);
+    tick(g, 40);
+    check('pill bottle is thrown and ricochets through all three', g.state.entities.every((e, i) => e.hp < hp0[i]) || g.state.runKills > 0,
+          JSON.stringify(g.state.entities.map(e => e.hp)));
+
+    g = fresh(); solo(g, 'metronome'); park(g, 2, 100);
+    const m0 = g.state.entities.map(e => e.hp), x0 = g.state.entities[0].x;
+    tick(g, 30);
+    check('metronome pulse strikes each enemy once and shoves it outward',
+          g.state.entities[0].hp === m0[0] - 14 && g.state.entities[0].x > x0, `${m0[0]} -> ${g.state.entities[0].hp}`);
+
+    g = fresh(); solo(g, 'straitjacket');
+    const st = g.state.player.weapons.straitjacket;
+    g.director.spawnProjectile(g.state.player.x + st.radius, g.state.player.y, 0, 0, 8, 10, '#fff', 120);
+    st.phase = -st.speed;   // lands on angle 0 after this step's advance
+    tick(g, 1);
+    check('a strap tears an enemy projectile out of the air', g.state.projectiles.length === 0);
+
+    g = fresh(); solo(g, 'lullaby'); park(g, 1, 90);
+    g.state.entities[0].hp = g.state.entities[0].maxHp = 1000;   // survive the burst
+    const e = g.state.entities[0];
+    for (let i = 0; i < 140 && !(e.drowsy > 0); i++) tick(g, 1);
+    check('a lullaby note reaches its target and leaves it drowsy', e && e.drowsy > 0, e && `drowsy ${e.drowsy}`);
+    tick(g, 1);
+    check('drowsy enemies move slower', e.speedModifier <= DROWSY_SLOW);
+
+    g = fresh(); g.state.player.weapons.pill_bottle.level = 1;
+    g.director.releaseRoomState(g.state);
+    check('room change empties the transient weapon arrays', g.state.playerShots.length === 0 && g.state.pulseRings.length === 0);
+    check('transient caps are set', ARSENAL_CAPS.playerShots > 0 && ARSENAL_CAPS.lullabyNotes > 0);
+}
+
+// ---------------------------------------------------------------------------
+// Patch 133 (V2 plan D4): named elites and chests.
+console.log('\nElites and chests (Patch 133)');
+{
+    const E = await import('./src/systems/Elites.js');
+    const { Combat } = await import('./src/systems/Combat.js');
+
+    check('no elite in the tutorial, the boss room, or floor 1 room 1',
+          E.eliteChanceForRoom(1, 1, false, true) === 0 && E.eliteChanceForRoom(2, 5, true, false) === 0 && E.eliteChanceForRoom(1, 1, false, false) === 0);
+    check('elites become likelier deeper, capped', E.eliteChanceForRoom(1, 2, false, false) > 0
+          && E.eliteChanceForRoom(4, 2, false, false) > E.eliteChanceForRoom(2, 2, false, false)
+          && E.eliteChanceForRoom(40, 2, false, false) <= 0.75);
+    for (const t of ['SCAVENGER', 'PREDATOR', 'PARASITE']) check(`${t} elites have names`, E.ELITE_NAMES[t].length > 0);
+
+    const fresh = () => { const g = new Game(); g.init(mockSave); g.state.isTutorial = false; g.state.stress = 1; return g; };
+    let g = fresh();
+    const ent = g.director.spawnEntity('PREDATOR', null, null, 300, 0);
+    const hp = ent.hp, dmg = ent.damage;
+    E.promoteToElite(ent, () => 0);
+    check('promotion: x6 hp, harder hits, a name, a bigger radius',
+          ent.elite && ent.hp === hp * 6 && ent.maxHp === ent.hp && ent.damage > dmg && ent.eliteName === 'THE TRUANT OFFICER' && ent.radius === E.ELITE_RADIUS, JSON.stringify({hp, h: ent.hp, dmg, d: ent.damage, n: ent.eliteName, r: ent.radius}));
+    ent.init(Math.random(), 0, 0, 1);
+    check('a pooled elite comes back plain', !ent.elite && !ent.eliteName && ent.radius === undefined);
+
+    // Director promotes the spawn that halves the budget.
+    g = fresh();
+    g.director.spawnRoom(2, 2);
+    g.state.eliteAt = Math.floor(g.state.enemyBudget * 0.5);
+    let guard = 0;
+    while (!g.state.eliteSpawned && g.state.enemyBudget > 0 && guard++ < 5000) { g.state.budgetTimer = -1; g.director.spawnWave(1280, 720); }
+    check('the room promotes exactly one elite at half budget', g.state.eliteSpawned && g.state.entities.filter(e => e.elite).length === 1,
+          `budget ${g.state.enemyBudget}, elites ${g.state.entities.filter(e => e.elite).length}`);
+
+    // Killing it drops a chest; walking in opens it after the beat.
+    g = fresh();
+    g.state.player.weapons.static.level = 2; g.state.player.weapons.static.active = true;
+    const el = E.promoteToElite(g.director.spawnEntity('SCAVENGER', null, null, 200, 0));
+    el.hp = 0;
+    Combat.resolveWeapons(g);
+    const chest = g.state.interactables.find(o => o.type === 'CHEST');
+    check('a dead elite drops a chest', !!chest && !g.state.entities.includes(el));
+    let opened = null;
+    g.onChestOpened = (r) => { opened = r; };
+    const lv0 = { fl: g.state.player.weapons.flashlight.level, st: g.state.player.weapons.static.level };
+    g.state.player.x = chest.x; g.state.player.y = chest.y;
+    for (let i = 0; i < E.CHEST_OPEN_STEPS + 2; i++) { g.state.hitStop = 0; Combat.resolveWeapons(g); }
+    const lv1 = { fl: g.state.player.weapons.flashlight.level, st: g.state.player.weapons.static.level };
+    const gained = (lv1.fl - lv0.fl) + (lv1.st - lv0.st);
+    check('walking in opens it after the beat, and it reports', opened && opened.kind === 'levels' && !g.state.interactables.some(o => o.type === 'CHEST'),
+          JSON.stringify(opened));
+    check('the levels went to owned weapons only', gained === opened.lines.length && gained >= 1
+          && Object.entries(g.state.player.weapons).every(([id, w]) => ['flashlight', 'static'].includes(id) || w.level === 0));
+
+    // Nothing owned can level: Lucidity instead.
+    g = fresh();
+    for (const w of Object.values(g.state.player.weapons)) w.level = 0;
+    g.state.player.weapons.flashlight.level = 5;
+    const luc = g.state.lucidity;
+    const r = E.resolveChest(g.state);
+    check('a chest with nothing to level pays Lucidity', r.kind === 'lucidity' && g.state.lucidity === luc + 100);
+    // The evolution hook wins when it returns something.
+    const r2 = E.resolveChest(g.state, { evolve: () => ({ id: 'x', name: 'X', desc: 'd' }) });
+    check('an available evolution takes the chest', r2.kind === 'evolution' && r2.title === 'X');
+}
+
+// ---------------------------------------------------------------------------
+// Patch 134 (V2 plan D2): weapon evolutions.
+console.log('\nEvolutions (Patch 134)');
+{
+    const EV = await import('./src/systems/Evolutions.js');
+    const { resolveChest } = await import('./src/systems/Elites.js');
+    const { evolutionHintsFor, BOONS } = await import('./src/ui/LevelUpUI.js');
+    const { PLAYER_WEAPON_IDS } = await import('./src/data/Manifestations.js');
+    const { SaveManager } = await import('./src/core/SaveManager.js');
+    const { Combat } = await import('./src/systems/Combat.js');
+    const evos = Object.values(EV.EVOLUTIONS);
+
+    check('one evolution per weapon, all twelve', evos.length === PLAYER_WEAPON_IDS.length
+          && PLAYER_WEAPON_IDS.every(id => evos.filter(e => e.weapon === id).length === 1));
+    check('every evolution names a real boon, no boon used twice',
+          evos.every(e => BOONS.some(b => b.id === e.boon)) && new Set(evos.map(e => e.boon)).size === evos.length);
+    check('every evolution has a name and a description', evos.every(e => e.name && e.desc && typeof e.apply === 'function'));
+
+    const fresh = () => { const g = new Game(); g.init(mockSave); g.state.stress = 1; g.state.isTutorial = false; return g; };
+    // Each evolution applied to its weapon's level-5 starting numbers stays finite.
+    for (const e of evos) {
+        const g = fresh(); const w = g.state.player.weapons[e.weapon];
+        w.level = 5; g.state.player.boons.push(e.boon);
+        const ok1 = EV.applyEvolution(g.state, e.id);
+        const finite = Object.entries(w).every(([k, v]) => typeof v !== 'number' || Number.isFinite(v));
+        check(`${e.name} applies to ${e.weapon} and leaves finite numbers`, ok1 && w.evolution === e.id && finite);
+    }
+
+    let g = fresh();
+    g.state.player.weapons.lead_pipe.level = 4;
+    g.state.player.boons.push('heavy_swing');
+    check('not available below level 5', EV.availableEvolutions(g.state).length === 0);
+    check('the card that takes it to 5 says EVOLUTION READY',
+          evolutionHintsFor(g.state.player, { type: 'weapon', id: 'lead_pipe' }).ready[0] === 'Wrecking Bar');
+    g.state.player.weapons.lead_pipe.level = 5;
+    const dmg0 = g.state.player.weapons.lead_pipe.damage;
+    const r = resolveChest(g.state, { evolve: EV.evolveForChest });
+    check('a chest evolves the qualifying weapon', r.kind === 'evolution' && r.evolution.id === 'wrecking_bar'
+          && g.state.player.weapons.lead_pipe.damage === dmg0 * 2 && /Heavy Lead Pipe/.test(r.evolution.recipe));
+    const r2 = resolveChest(g.state, { evolve: EV.evolveForChest });
+    check('the same weapon never evolves twice', r2.kind !== 'evolution' && !EV.applyEvolution(g.state, 'wrecking_bar'));
+
+    g = fresh(); g.state.player.weapons.static.level = 5;
+    check('the boon card says EVOLUTION READY when its weapon is maxed',
+          evolutionHintsFor(g.state.player, { type: 'boon', id: 'overcharge' }).ready[0] === 'White Noise Machine');
+    g.state.player.weapons.static.level = 2;
+    check('...and nudges when the weapon is owned but not maxed',
+          /evolves Static Receiver/.test(evolutionHintsFor(g.state.player, { type: 'boon', id: 'overcharge' }).lines[0] || ''));
+
+    // Arsenal-side evolution effects.
+    g = fresh(); const pb = g.state.player.weapons.pill_bottle;
+    g.state.player.weapons.flashlight.level = 0; g.state.player.weapons.flashlight.radius = 0;
+    pb.level = 5; g.state.player.boons.push('steady_hands'); EV.applyEvolution(g.state, 'pill_organiser');
+    for (let i = 0; i < 3; i++) { const e = g.director.spawnEntity('SCAVENGER', null, null, 150 + i * 60, 0); e.update = () => {}; e.hp = e.maxHp = 999; }
+    g.state.frame++; Combat.resolveWeapons(g);
+    check('Pill Organiser throws two bottles at once', g.state.playerShots.length === 2);
+
+    // Save: back-filled, recorded once.
+    const sm = new SaveManager();
+    delete sm.metaState.discoveredEvolutions;
+    sm.saveGame(); sm.loadGame();
+    check('an old save gets discoveredEvolutions back-filled', sm.metaState.discoveredEvolutions && typeof sm.metaState.discoveredEvolutions === 'object');
+    check('recordEvolution is new once', sm.recordEvolution('ceiling_fan') === true && sm.recordEvolution('ceiling_fan') === false);
+}
+
+// ---------------------------------------------------------------------------
+// Patch 135 (V2 plan D4): the Photocopy, the Fire Warden, the Crawlspace.
+console.log('\nPhase D enemies (Patch 135)');
+{
+    const { Combat } = await import('./src/systems/Combat.js');
+    const { ENEMY_BESTIARY, LIGHT_RECOIL_RESIST } = await import('./src/data/Manifestations.js');
+    const { BURROW_STEPS } = await import('./src/entities/Burrower.js');
+    const E = await import('./src/systems/Elites.js');
+    const fresh = () => { const g = new Game(); g.init(mockSave); g.state.stress = 1; g.state.isTutorial = false; return g; };
+
+    for (const t of ['SPLITTER', 'WARDEN', 'BURROWER']) {
+        const g = fresh();
+        const e = g.director.spawnEntity(t, null, null, 300, 0);
+        check(`${t} spawns from its pool with finite stats`, e && e.type === t && Number.isFinite(e.hp) && e.hp > 0 && Number.isFinite(e.speed));
+        check(`${t} has a bestiary entry, a light resistance and elite names`,
+              ENEMY_BESTIARY.some(b => b.id === t) && LIGHT_RECOIL_RESIST[t] !== undefined && E.ELITE_NAMES[t].length > 0);
+    }
+
+    // Photocopy: splits once.
+    let g = fresh();
+    g.state.player.weapons.flashlight.radius = 0;
+    const sp = g.director.spawnEntity('SPLITTER', null, null, 400, 0);
+    sp.hp = 0; Combat.resolveWeapons(g);
+    const copies = g.state.entities.filter(e => e.type === 'SPLITTER');
+    check('a Photocopy tears into two generation-2 copies', copies.length === 2 && copies.every(c => c.generation === 2 && c.hp < sp.maxHp));
+    copies.forEach(c => { c.hp = 0; });
+    Combat.resolveWeapons(g);
+    check('the copies do not copy again', !g.state.entities.some(e => e.type === 'SPLITTER'));
+    {
+        const { SaveManager } = await import('./src/core/SaveManager.js');
+        const sm = new SaveManager(); const k0 = sm.metaState.killCounts.SPLITTER || 0;
+        sm.recordKill('SPLITTER'); sm.recordKill('ELITE');
+        check('kills of a new type are counted (recordKill no longer drops them)', sm.metaState.killCounts.SPLITTER === k0 + 1 && sm.metaState.killCounts.ELITE >= 1);
+    }
+
+    // Fire Warden: half damage to what is near it, never itself, never a boss.
+    g = fresh();
+    const w = g.director.spawnEntity('WARDEN', null, null, 500, 0);
+    const near = g.director.spawnEntity('SCAVENGER', null, null, 560, 0);
+    const far = g.director.spawnEntity('SCAVENGER', null, null, 900, 0);
+    w.update(g.state, g);
+    const h0 = near.hp, f0 = far.hp;
+    near.takeDamage(10, g); far.takeDamage(10, g);
+    check('a warded enemy takes half damage', h0 - near.hp === 5 && f0 - far.hp === 10, `${h0 - near.hp} / ${f0 - far.hp}`);
+    const wh = w.hp; w.takeDamage(10, g);
+    check('the Warden does not ward itself', wh - w.hp === 10);
+    for (let i = 0; i < 8; i++) near.applyMovement(g.state, g);
+    const h1 = near.hp; near.takeDamage(10, g);
+    check('the ward fades once the Warden stops refreshing it', h1 - near.hp === 10);
+
+    // Crawlspace: untouchable underground, warns, erupts where you stood, then exposed.
+    g = fresh();
+    const b = g.director.spawnEntity('BURROWER', null, null, 300, 0);
+    const bh = b.hp; b.takeDamage(50, g);
+    check('a burrowed Crawlspace takes no damage', b.burrowed && b.hp === bh);
+    g.state.player.x = 0; g.state.player.y = 0;
+    let steps = 0;
+    while (b.burrowState === 'burrowed' && steps++ < 400) { g.state.frame++; b.update(g.state, g); }
+    check('it surfaces under the player with a warning', b.burrowState === 'warning' && Math.hypot(b.x, b.y) < 1);
+    const s0 = g.state.sanity; g.state.player.iframes = 0;
+    for (let i = 0; i < BURROW_STEPS.warn + 1; i++) { g.state.frame++; b.update(g.state, g); }
+    check('standing on the ring when it erupts hurts', g.state.sanity < s0 && b.burrowState === 'exposed' && !b.burrowed);
+    const eh = b.hp; b.takeDamage(10, g);
+    check('an exposed Crawlspace can be hit', b.hp === eh - 10);
+    // Dodging works: surface, step out, no damage.
+    g = fresh();
+    const b2 = g.director.spawnEntity('BURROWER', null, null, 0, 0);
+    b2.burrowState = 'warning'; b2.burrowTimer = 2; b2.burrowed = true;
+    g.state.player.x = 200; g.state.player.y = 0;
+    const s1 = g.state.sanity;
+    for (let i = 0; i < 4; i++) { g.state.frame++; b2.update(g.state, g); g.state.player.x = 200; }
+    check('stepping out of the ring dodges the eruption', g.state.sanity === s1);
+
+    // Floor tables: nothing new on floor 1; the Photocopy on 2; all three by 4.
+    const seen = (floor) => {
+        const gg = fresh(); gg.state.floor = floor; gg.director.spawnRoom(floor, 2);
+        // The floor's own table: a SWARM room (15%) forces every spawn to SCAVENGER, and
+        // a room event would change the budget, so both are pinned off here.
+        gg.state.roomModifier = null; gg.state.roomEvent = null;
+        gg.director.hasRoomForEnemy = () => true;
+        const types = new Set();
+        for (let i = 0; i < 1500; i++) {
+            gg.state.enemyBudget = 50; gg.state.budgetTimer = -1;
+            gg.director.spawnWave(1280, 720);
+            const last = gg.state.entities[gg.state.entities.length - 1];
+            if (last) types.add(last.type);
+            gg.director.releaseRoomState(gg.state);
+        }
+        return types;
+    };
+    const f1 = seen(1), f2 = seen(2), f4 = seen(4);
+    check('floor 1 has none of the new three', !['SPLITTER', 'WARDEN', 'BURROWER'].some(t => f1.has(t)), [...f1].join(','));
+    check('floor 2 introduces the Photocopy only', f2.has('SPLITTER') && !f2.has('WARDEN') && !f2.has('BURROWER'), [...f2].join(','));
+    check('floor 4 has all three', f4.has('SPLITTER') && f4.has('WARDEN') && f4.has('BURROWER'), [...f4].join(','));
+}
+
+// ---------------------------------------------------------------------------
+// Patch 136 (V2 plan D1): playable Patients.
+console.log('\nPatients (Patch 136)');
+{
+    const P = await import('./src/data/Patients.js');
+    const { Combat } = await import('./src/systems/Combat.js');
+    const { SaveManager } = await import('./src/core/SaveManager.js');
+    const { BOONS } = await import('./src/ui/LevelUpUI.js');
+    const meta = (over = {}) => ({ ...JSON.parse(JSON.stringify(mockSave.metaState)), ...over });
+    const run = (m, carried = null) => { const g = new Game(); g.init({ metaState: m, saveGame: () => {} }, carried); g.state.stress = 1; g.state.isTutorial = false; return g; };
+
+    check('four Patients, the Insomniac first and always admitted',
+          P.PATIENT_ORDER.length === 4 && P.PATIENT_ORDER[0] === 'insomniac' && P.isPatientUnlocked('insomniac', {}));
+    check('every Patient names a real starting weapon',
+          P.PATIENT_ORDER.every(id => Game && P.PATIENTS[id].weapon && run(meta()).state.player.weapons[P.PATIENTS[id].weapon]));
+    check('locked until their milestone', !P.isPatientUnlocked('vandal', meta()) && P.isPatientUnlocked('vandal', meta({ killCounts: { BOSS: 1 } }))
+          && P.isPatientUnlocked('artist', meta({ maxFloorReached: 3 })) && P.isPatientUnlocked('photographer', meta({ killCounts: { PANOPTICON: 1 } })));
+    check('a locked or unknown choice falls back to the Insomniac',
+          P.resolvePatient('vandal', meta()) === 'insomniac' && P.resolvePatient('nobody', meta()) === 'insomniac');
+
+    // The default run is the Insomniac: flashlight only, +10% reach, blackout-immune.
+    let g = run(meta());
+    check('a default run is the Insomniac', g.state.player.character === 'insomniac' && g.state.player.blackoutImmune
+          && Object.values(g.state.player.weapons).filter(w => w.level > 0).length === 1
+          && Math.abs(g.state.player.weapons.flashlight.radius - 275) < 1e-9);
+
+    // The Vandal: pipe at 1 (one card-level step applied), +20 Sanity, slower.
+    const base = run(meta());
+    g = run(meta({ killCounts: { BOSS: 1 }, selectedCharacter: 'vandal' }));
+    const pipe = g.state.player.weapons.lead_pipe;
+    check('the Vandal starts with the pipe at level 1, exactly as a card would give it',
+          g.state.player.character === 'vandal' && pipe.level === 1 && pipe.damage === 65 && pipe.radius === 85);
+    check('...with +20 max Sanity and 5% less speed',
+          g.state.player.maxHp === base.state.player.maxHp + 20 && g.state.player.speed < base.state.player.speed);
+    // Lifesteal on a pipe swing.
+    g.state.player.weapons.flashlight.radius = 0; g.state.sanity = 50;
+    const e = g.director.spawnEntity('SCAVENGER', null, null, 40, 0); e.update = () => {}; e.hp = e.maxHp = 999;
+    pipe.timer = 0; Combat.resolveWeapons(g);
+    check('the Vandal\'s pipe hit restores Sanity', g.state.sanity > 50, `${g.state.sanity}`);
+
+    // Carried down a floor: same Patient, no second starting grant.
+    const carried = g.getCarriedState();
+    carried.weapons.lead_pipe.level = 3;
+    const g2 = run(meta({ killCounts: { BOSS: 1 }, selectedCharacter: 'insomniac' }), carried);
+    check('a descent keeps the run\'s Patient and its passive', g2.state.player.character === 'vandal' && g2.state.player.meleeLifesteal);
+    check('...and does not grant the start weapon again', g2.state.player.weapons.lead_pipe.level === 3);
+
+    // The Artist's ink.
+    g = run(meta({ maxFloorReached: 3, selectedCharacter: 'artist' }));
+    check('the Artist starts with ink', g.state.player.weapons.spilled_ink.level === 1 && g.state.player.inkMaster);
+    g.director.spawnInkPuddle(300, 0, 60, 5);
+    const ie = g.director.spawnEntity('SCAVENGER', null, null, 300, 0); ie.update = () => {};
+    g.state.player.weapons.flashlight.radius = 0;
+    Combat.resolveWeapons(g);
+    check('the Artist\'s pools slow to 0.3', ie.speedModifier === 0.3, `${ie.speedModifier}`);
+
+    // The Photographer's crit.
+    g = run(meta({ killCounts: { PANOPTICON: 1 }, selectedCharacter: 'photographer' }));
+    check('the Photographer starts with the camera', g.state.player.weapons.polaroid_camera.level === 1);
+    const pe = g.director.spawnEntity('SCAVENGER', null, null, 300, 0); pe.hp = pe.maxHp = 100;
+    pe.confused = 10; pe.takeDamage(10, g);
+    check('hits on a confused target are x1.5', pe.hp === 85);
+    pe.confused = 0; pe.takeDamage(10, g);
+    check('...and normal otherwise', pe.hp === 75);
+
+    // Save field + the NEW badge.
+    const sm = new SaveManager();
+    delete sm.metaState.selectedCharacter; delete sm.metaState.announcedPatients;
+    sm.saveGame(); sm.loadGame();
+    check('an old save gets the Patient fields back-filled', sm.metaState.selectedCharacter === 'insomniac' && Array.isArray(sm.metaState.announcedPatients));
+    sm.metaState.killCounts.BOSS = 1;
+    check('a newly unlocked Patient is NEW until chosen', P.newlyAdmitted(sm.metaState).includes('vandal'));
+    sm.setSelectedCharacter('vandal');
+    check('...and not after', !P.newlyAdmitted(sm.metaState).includes('vandal') && sm.metaState.selectedCharacter === 'vandal');
 }
 
 console.log('\nSynergy discovery (Patch 126)');

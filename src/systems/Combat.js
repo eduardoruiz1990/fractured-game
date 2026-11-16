@@ -49,7 +49,13 @@ export function coneFalloff(angleDiff, hitAngle) {
 // on the hottest gameplay path there is, so anything failing there is exactly what
 // the crash telemetry needs to see. Only touched when something already threw.
 import { errorLog } from '../core/ErrorLog.js';
-import { isBossType } from '../data/Config.js';   // Patch 117
+import { isBossType, MAX_WEAPON_SLOTS, ownedWeaponCount } from '../data/Config.js';   // Patch 117, 132
+// Patch 132 (V2 plan D3): the four Phase D weapons. See src/systems/Arsenal.js.
+import { resolveArsenal, applyArsenalStatus } from './Arsenal.js';
+// Patch 133 (V2 plan D4): named elites drop chests. See src/systems/Elites.js.
+import { dropChest, resolveChest, CHEST_OPEN_STEPS } from './Elites.js';
+// Patch 134 (V2 plan D2): a chest evolves a qualifying weapon first.
+import { evolveForChest } from './Evolutions.js';
 
 // Patch 16: generic tag-scaled knockback, consumed by Enemy.takeDamage's
 // optional knockbackForce param. Only wired at call sites with no existing
@@ -189,6 +195,35 @@ export class Combat {
                             game.spawnDamageText(obj.x, obj.y - 30, "SUPPLIES RECOVERED!", '#55ff55', 1.5, 2.0);
                         }
                     }
+                } else if (obj.type === 'CHEST') {
+                    // Patch 133: walk in, a short opening beat (the lid rattles and the
+                    // shake builds), then the burst and the reward. Counted in sim steps.
+                    if (!obj.opening) {
+                        const d = Math.hypot(obj.x - state.player.x, obj.y - state.player.y);
+                        if (d < obj.radius + state.player.radius) {
+                            obj.opening = 1;
+                            if (game.audioEngine) game.audioEngine.playSFX('backpack', 0.7);
+                        }
+                    } else {
+                        obj.opening++;
+                        state.cameraShake = Math.max(state.cameraShake, 2 + obj.opening * 0.25);
+                        if (obj.opening % 6 === 0) game.spawnParticles(obj.x, obj.y, '#d9a441', 2);
+                        if (obj.opening >= CHEST_OPEN_STEPS) {
+                            obj.dead = true;
+                            const result = resolveChest(state, { evolve: evolveForChest });
+                            if (typeof game.refreshSynergies === 'function') game.refreshSynergies();
+                            state.hitStop = Math.max(state.hitStop || 0, 8);
+                            state.slowMo = Math.max(state.slowMo || 0, 24);
+                            state.cameraShake = Math.max(state.cameraShake, 18);
+                            game.spawnParticles(obj.x, obj.y, '#ffd27f', 40);
+                            game.spawnParticles(obj.x, obj.y, '#ffffff', 20);
+                            game.spawnDamageText(obj.x, obj.y - 30, result.title, '#ffd27f', 1.5, 2.2);
+                            if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 1.0);
+                            if (typeof game.onChestOpened === 'function') {
+                                try { game.onChestOpened(result); } catch (e) { console.error(e); }
+                            }
+                        }
+                    }
                 } else if (obj.type === 'EXIT_ELEVATOR') {
                     const distToPlayer = Math.hypot(obj.x - state.player.x, obj.y - state.player.y);
                     if (distToPlayer < obj.radius + state.player.radius) {
@@ -228,10 +263,22 @@ export class Combat {
                             // about whether a weapon is maxed. Returns exactly 5 for
                             // floors 1-5.
                             const doorLevelCap = weaponLevelCap(state.floor);
-                            const upgradeable = Object.entries(state.player.weapons).filter(([, w]) => w.level < doorLevelCap);
+                            // Patch 132: levels a weapon the player OWNS. With twelve
+                            // weapons, a draw over all of them mostly handed out level 1 of
+                            // something new; a new one is drawn only if nothing owned can
+                            // level and a slot is free.
+                            let upgradeable = Object.entries(state.player.weapons).filter(([, w]) => w.level > 0 && w.level < doorLevelCap);
+                            if (upgradeable.length === 0 && ownedWeaponCount(state.player.weapons) < MAX_WEAPON_SLOTS) {
+                                // Patch 139: never a locked instrument.
+                                const lk = Array.isArray(state.player.lockedWeapons) ? state.player.lockedWeapons : [];
+                                upgradeable = Object.entries(state.player.weapons).filter(([id, w]) => w.level === 0 && !lk.includes(id));
+                            }
                             if (upgradeable.length > 0) {
                                 const [wepId, wep] = upgradeable[Math.floor(Math.random() * upgradeable.length)];
                                 wep.level++;
+                                // Patch 132: a door-granted first level of the Static
+                                // Receiver left it switched off (only the card set it).
+                                if ('active' in wep) wep.active = true;
                                 // A door-granted level counts exactly like a card-granted
                                 // one — same reward, so the same record.
                                 if (game.saveManager && typeof game.saveManager.recordBoonPick === 'function') {
@@ -452,6 +499,10 @@ export class Combat {
                 }
                 
                 if (hitCount > 0) {
+                    // Patch 136: the Vandal's passive — melee hits restore Sanity.
+                    if (state.player.meleeLifesteal) {
+                        state.sanity = Math.min(state.player.maxHp, state.sanity + Math.min(3, hitCount * 0.75));
+                    }
                     state.hitStop = Math.min(25, state.hitStop + 6 + (hitCount * 3));
                     state.cameraShake = Math.max(state.cameraShake, 10 + hitCount * 3);
                     if (game.audioEngine) game.audioEngine.playSFX('pipe_hit', hitCount);
@@ -475,7 +526,8 @@ export class Combat {
             ink.timer -= cooldownTick; 
             if (ink.timer <= 0) {
                 ink.timer = ink.dropRate;
-                game.director.spawnInkPuddle(state.player.x, state.player.y, ink.radius, ink.damage);
+                // Patch 136: the Artist's pools hit 25% harder.
+                game.director.spawnInkPuddle(state.player.x, state.player.y, ink.radius, ink.damage * (state.player.inkMaster ? 1.25 : 1));
             }
         }
         
@@ -518,6 +570,10 @@ export class Combat {
             }
         }
 
+        // Patch 132: before the entity loop below, so a kill made by one of the new
+        // weapons is collected by that loop in this same step.
+        resolveArsenal(game, cooldownTick, { tagDamageMultiplier, tagKnockback, tagShake });
+
         for (let i = state.entities.length - 1; i >= 0; i--) {
             let ent = state.entities[i];
             
@@ -533,7 +589,8 @@ export class Combat {
             const hasIonTrail = !!(state.player.synergies && state.player.synergies.includes('ion_trail'));
             for (let p of state.inkPuddles) {
                 if (Math.hypot(ent.x - p.x, ent.y - p.y) < p.radius) {
-                    ent.speedModifier = hasIonTrail ? 0.25 : 0.5;
+                    // Patch 136: the Artist's pools slow far more (0.3, not 0.5).
+                    ent.speedModifier = hasIonTrail ? 0.25 : (state.player.inkMaster ? 0.3 : 0.5);
                     if (state.frame % 30 === 0) {
                         ent.takeDamage(p.damage, game);
                         state.cameraShake = Math.max(state.cameraShake, tagShake(state.player.weapons.spilled_ink.tags, p.damage));
@@ -545,6 +602,7 @@ export class Combat {
                     break;
                 }
             }
+            applyArsenalStatus(ent);   // Patch 132: drowsy (Lullaby) / held (restraint)
 
             const dx = ent.x - state.player.x; 
             const dy = ent.y - state.player.y;
@@ -714,6 +772,15 @@ export class Combat {
                     errorLog.capture(e, 'enemy-death');
                 }
                 
+                // Patch 135: a full-size Photocopy tears into two smaller copies. It
+                // still pays out below like any other kill; the copies are ordinary
+                // pooled spawns (they do not split again).
+                if (ent.type === 'SPLITTER' && ent.generation < 2 && game.director) {
+                    game.director.spawnEntity('SPLITTER', null, null, ent.x - 16, ent.y, 2);
+                    game.director.spawnEntity('SPLITTER', null, null, ent.x + 16, ent.y, 2);
+                    game.spawnParticles(ent.x, ent.y, '#d8cfb8', 16);
+                }
+
                 if (ent.type === 'RORSCHACH' && ent.generation < 3) {
                     game.director.spawnEntity('RORSCHACH', null, null, ent.x - 20, ent.y, ent.generation + 1);
                     game.director.spawnEntity('RORSCHACH', null, null, ent.x + 20, ent.y, ent.generation + 1);
@@ -764,7 +831,24 @@ export class Combat {
                     }
                     
                 } else {
+                    // Patch 133: a named elite drops the room's chest, a heavy orb, and
+                    // lands with a beat of its own.
+                    if (ent.elite) {
+                        dropChest(state, ent.x, ent.y);
+                        game.spawnXP(ent.x + 30, ent.y, 2, true);
+                        game.spawnParticles(ent.x, ent.y, '#ffd27f', 40);
+                        game.spawnDamageText(ent.x, ent.y - 40, `${ent.eliteName || 'ELITE'} DISPERSED`, '#ffd27f', 1.4, 2.4);
+                        state.hitStop = Math.max(state.hitStop || 0, 6);
+                        state.cameraShake = Math.max(state.cameraShake, 16);
+                        if (!state.bossSpawned) state.convergence += 5;
+                        try { if (game.saveManager && game.saveManager.recordKill) game.saveManager.recordKill('ELITE'); } catch (e) { /* counted below */ }
+                        if (game.eventBus) game.eventBus.emit('elite_killed', ent.type);
+                    }
                     let dropAmount = ent.type === 'SCAVENGER' ? 2 : (ent.type === 'PREDATOR' ? 5 : 1);
+                    // Patch 135: the Phase D enemies.
+                    if (ent.type === 'SPLITTER') dropAmount = ent.generation === 1 ? 2 : 1;
+                    else if (ent.type === 'WARDEN') dropAmount = 6;
+                    else if (ent.type === 'BURROWER') dropAmount = 4;
                     if (ent.maxHp > 30) dropAmount += 5; 
                     if (ent.type === 'SCAVENGER' && state.player.curses && state.player.curses.includes('compulsive_cleaner')) {
                         dropAmount += 3; 

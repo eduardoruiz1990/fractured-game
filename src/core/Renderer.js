@@ -8,6 +8,7 @@ import { errorLog } from './ErrorLog.js';
 // The arena wall drawn below is the same boundary Game.js drains Sanity past and
 // Director.js clamps spawns inside — see the note on ARENA_VOID_RADIUS in Config.js.
 import { ARENA_VOID_RADIUS, isBossType } from '../data/Config.js';
+import { ARENA_LAYOUTS, ARENA_RISE_STEPS, ARENA_FADE_STEPS, GRID_TELEGRAPH_STEPS } from '../systems/Arena.js';   // Patch 137
 // Patch 96 — THE RECURSION's look: the five biomes cycle past floor 5, with a capped
 // depth escalation layered over them. The cap is a memory bound, not a taste one —
 // see CYCLE_VISUAL_CAP in src/core/Endless.js.
@@ -1079,6 +1080,7 @@ export class Renderer {
                 this.drawWorldItems(state, audioEngine);
                 if (this.diag.fog) this.drawFog(state);
                 if (this.diag.lights) this.drawLightingMasks(state, curShakeX, curShakeY);
+                this.drawObstacleOutlines(state);   // Patch 137: walls stay readable in the dark
                 this.drawEffectsAndAuras(state);
                 this.drawPlayer(state, audioEngine);
                 this.drawDamageText(state);
@@ -1380,6 +1382,25 @@ export class Renderer {
                     this.lightCtx.beginPath();
                     this.lightCtx.arc(obj.x, obj.y, 120, 0, Math.PI * 2);
                     this.lightCtx.fill();
+                } else if (obj.type === 'BREAKER_BOX' && obj.roomEvent) {
+                    // Patch 138: the outage's breaker blinks through the dark, so it can be found.
+                    const blink = 0.35 + 0.3 * (Math.sin(this.renderFrame * 0.3) * 0.5 + 0.5);
+                    const bHole = this.lightCtx.createRadialGradient(obj.x, obj.y, 0, obj.x, obj.y, 80);
+                    bHole.addColorStop(0, `rgba(255, 255, 160, ${blink})`);
+                    bHole.addColorStop(1, 'rgba(255, 255, 160, 0)');
+                    this.lightCtx.fillStyle = bHole;
+                    this.lightCtx.beginPath();
+                    this.lightCtx.arc(obj.x, obj.y, 80, 0, Math.PI * 2);
+                    this.lightCtx.fill();
+                } else if (obj.type === 'CHEST') {
+                    // Patch 133: a chest is lit, so it is never lost in the dark.
+                    const chestHole = this.lightCtx.createRadialGradient(obj.x, obj.y, 0, obj.x, obj.y, 110);
+                    chestHole.addColorStop(0, 'rgba(255, 220, 140, 0.7)');
+                    chestHole.addColorStop(1, 'rgba(255, 220, 140, 0)');
+                    this.lightCtx.fillStyle = chestHole;
+                    this.lightCtx.beginPath();
+                    this.lightCtx.arc(obj.x, obj.y, 110, 0, Math.PI * 2);
+                    this.lightCtx.fill();
                 } else if (obj.type === 'EXIT_ELEVATOR') {
                     const exitHole = this.lightCtx.createRadialGradient(obj.x, obj.y, 10, obj.x, obj.y, 150);
                     exitHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
@@ -1390,6 +1411,21 @@ export class Renderer {
                     this.lightCtx.fill();
                 }
             });
+        }
+
+        // Patch 135: a Crawlspace's warning ring is lit, so the tell is never hidden
+        // by the dark (it is the whole counterplay).
+        if (state.entities) {
+            for (const ent of state.entities) {
+                if (ent.type !== 'BURROWER' || ent.burrowState !== 'warning') continue;
+                const g = this.lightCtx.createRadialGradient(ent.x, ent.y, 0, ent.x, ent.y, 110);
+                g.addColorStop(0, 'rgba(255, 200, 140, 0.85)');
+                g.addColorStop(1, 'rgba(255, 200, 140, 0)');
+                this.lightCtx.fillStyle = g;
+                this.lightCtx.beginPath();
+                this.lightCtx.arc(ent.x, ent.y, 110, 0, Math.PI * 2);
+                this.lightCtx.fill();
+            }
         }
 
         const fl = state.player.weapons.flashlight;
@@ -1410,6 +1446,13 @@ export class Renderer {
 
         if (state.roomCleared) {
             ambientRad = 3000;
+        }
+
+        // Patch 138: a Power Outage takes the ambient light and shortens the beam.
+        // The Insomniac (blackoutImmune) keeps their ambient light.
+        if (state.powerOut > 0 && !state.roomCleared) {
+            if (!state.player.blackoutImmune) ambientRad = 0;
+            flRadius *= 0.8;
         }
 
         if (ambientRad > 0) {
@@ -1514,26 +1557,37 @@ export class Renderer {
                         this.ctx.translate(ent.x, ent.y);
                         this.ctx.rotate(ent.gazeAngle);
 
+                        // Patch 131 (V2 plan D6): the tell IS the hitbox. Every
+                        // dimension below reads ent.gazeWidth / ent.gazeRange — the
+                        // values Panopticon.js tests with — so they cannot disagree.
+                        const gR = ent.gazeRange || 2000;
                         if (ent.gazeState === 'charging') {
-                            // KEEP (Patch 40): this sliver's geometry is byte-identical
-                            // to before — moveTo(0,0) then lineTo(2000, ±5). It is
-                            // NOT widened to the true sweep cone even though the two
-                            // disagree sharply; that would hand the player information
-                            // they don't currently get, i.e. a balance change. Flagged
-                            // in the report as a design question, not fixed here.
-                            this.ctx.globalAlpha = 0.5 + Math.sin(this.renderFrame * 0.5) * 0.5;
-                            this.ctx.fillStyle = '#ff0000';
+                            // Before Patch 131 this was a 10px red sliver while the beam
+                            // that followed was a ±0.5 rad (57°) cone with no range limit
+                            // — the player was shown about 1/100th of what would hit them.
+                            // Now the whole wedge is outlined and filling in as the charge
+                            // completes (0 -> full over the 45-step charge).
+                            const fill = Math.max(0, Math.min(1, 1 - (ent.gazeTimer || 0) / 45));
+                            const blink = 0.5 + Math.sin(this.renderFrame * 0.5) * 0.5;
+                            this.ctx.globalAlpha = 0.10 + 0.22 * fill;
+                            this.ctx.fillStyle = '#ff0033';
                             this.ctx.beginPath();
                             this.ctx.moveTo(0, 0);
-                            this.ctx.lineTo(2000, -5);
-                            this.ctx.lineTo(2000, 5);
+                            this.ctx.arc(0, 0, gR * fill, -ent.gazeWidth, ent.gazeWidth);
+                            this.ctx.closePath();
                             this.ctx.fill();
+                            this.ctx.globalAlpha = 0.45 + 0.45 * blink;
+                            this.ctx.strokeStyle = '#ff5555';
+                            this.ctx.lineWidth = 2;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(Math.cos(-ent.gazeWidth) * gR, Math.sin(-ent.gazeWidth) * gR);
+                            this.ctx.lineTo(0, 0);
+                            this.ctx.lineTo(Math.cos(ent.gazeWidth) * gR, Math.sin(ent.gazeWidth) * gR);
+                            this.ctx.arc(0, 0, gR, ent.gazeWidth, -ent.gazeWidth, true);
+                            this.ctx.stroke();
+                            this.ctx.globalAlpha = 1;
 
-                            // Patch 40 (look only): an aperture closing at the lens, so
-                            // the charge reads as energy gathering rather than a static
-                            // red line. Rides the SAME alpha envelope as the sliver
-                            // above, so it appears and vanishes on identical frames —
-                            // no change to when the tell is visible.
+                            // Patch 40 (look only): an aperture closing at the lens.
                             const conv = (this.renderFrame % 40) / 40;
                             this.ctx.strokeStyle = '#ff5555';
                             this.ctx.lineWidth = 2;
@@ -1542,7 +1596,7 @@ export class Renderer {
                             this.ctx.stroke();
                         } else if (ent.gazeState === 'sweeping') {
                             let pulse = Math.sin(this.renderFrame * 0.5) * 0.2;
-                            let grad = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 2000);
+                            let grad = this.ctx.createRadialGradient(0, 0, 0, 0, 0, gR);
                             grad.addColorStop(0, `rgba(255, 0, 0, ${0.8 + pulse})`);
                             grad.addColorStop(0.1, `rgba(255, 50, 0, ${0.5 + pulse})`);
                             grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
@@ -1550,7 +1604,7 @@ export class Renderer {
                             this.ctx.fillStyle = grad;
                             this.ctx.beginPath();
                             this.ctx.moveTo(0, 0);
-                            this.ctx.arc(0, 0, 2000, -ent.gazeWidth, ent.gazeWidth);
+                            this.ctx.arc(0, 0, gR, -ent.gazeWidth, ent.gazeWidth);
                             this.ctx.fill();
 
                             // Patch 40 (look only): crisp lethal-edge rules drawn at
@@ -1565,7 +1619,7 @@ export class Renderer {
                             for (const s of [-1, 1]) {
                                 this.ctx.beginPath();
                                 this.ctx.moveTo(0, 0);
-                                this.ctx.lineTo(Math.cos(ent.gazeWidth * s) * 2000, Math.sin(ent.gazeWidth * s) * 2000);
+                                this.ctx.lineTo(Math.cos(ent.gazeWidth * s) * gR, Math.sin(ent.gazeWidth * s) * gR);
                                 this.ctx.stroke();
                             }
 
@@ -1575,8 +1629,8 @@ export class Renderer {
                             this.ctx.strokeStyle = `rgba(255, 120, 120, ${0.18 + pulse * 0.5})`;
                             this.ctx.lineWidth = 1.5;
                             for (let k = 0; k < 4; k++) {
-                                const rr = (this.renderFrame * 9 + k * 500) % 2000;
-                                if (rr < 40) continue;
+                                const rr = (this.renderFrame * 9 + k * 500) % gR;
+                                if (rr < 40 || rr > gR) continue;
                                 this.ctx.beginPath();
                                 this.ctx.arc(0, 0, rr, -ent.gazeWidth, ent.gazeWidth);
                                 this.ctx.stroke();
@@ -1585,7 +1639,7 @@ export class Renderer {
                             this.ctx.fillStyle = `rgba(255, 255, 255, ${0.8 + pulse})`;
                             this.ctx.beginPath();
                             this.ctx.moveTo(0, 0);
-                            this.ctx.arc(0, 0, 2000, -ent.gazeWidth*0.05, ent.gazeWidth*0.05);
+                            this.ctx.arc(0, 0, gR, -ent.gazeWidth*0.05, ent.gazeWidth*0.05);
                             this.ctx.fill();
                         }
                         this.ctx.restore();
@@ -1785,12 +1839,215 @@ export class Renderer {
                 this.ctx.restore();
             });
         }
+
+        this.drawArsenal(state);   // Patch 132
+    }
+
+    /**
+     * Patch 132 (V2 plan D3): the four Phase D weapons (logic in src/systems/Arsenal.js).
+     * Plain fills and strokes only — no shadowBlur, no composite changes — and every
+     * array here is hard-capped in Arsenal.js (ARSENAL_CAPS), so this is a few dozen
+     * small shapes at most. Strap positions are recomputed from the weapon's own
+     * `phase`, the value the hit test used this step.
+     */
+    drawArsenal(state) {
+        const ctx = this.ctx;
+        const W = state.player.weapons || {};
+
+        const rings = state.pulseRings;
+        if (rings && rings.length) {
+            ctx.lineWidth = 3;
+            for (const r of rings) {
+                const t = Math.max(0, Math.min(1, r.r / (r.maxR || 1)));
+                ctx.strokeStyle = `rgba(127, 212, 255, ${0.75 * (1 - t)})`;
+                ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke();
+                ctx.strokeStyle = `rgba(127, 212, 255, ${0.25 * (1 - t)})`;
+                ctx.beginPath(); ctx.arc(r.x, r.y, Math.max(1, r.r - 10), 0, Math.PI * 2); ctx.stroke();
+            }
+        }
+
+        const shots = state.playerShots;
+        if (shots && shots.length) {
+            for (const sh of shots) {
+                ctx.save();
+                ctx.translate(sh.x, sh.y);
+                ctx.rotate(sh.spin);
+                ctx.fillStyle = '#f2f2f2';
+                ctx.beginPath(); ctx.arc(-4, 0, 4, Math.PI / 2, Math.PI * 1.5); ctx.lineTo(0, -4); ctx.lineTo(0, 4); ctx.closePath(); ctx.fill();
+                ctx.fillStyle = '#d64545';
+                ctx.beginPath(); ctx.arc(4, 0, 4, -Math.PI / 2, Math.PI / 2); ctx.lineTo(0, 4); ctx.lineTo(0, -4); ctx.closePath(); ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        const straps = W.straitjacket;
+        if (straps && straps.level > 0) {
+            const n = Math.max(1, Math.floor(straps.straps));
+            ctx.lineCap = 'round';
+            for (let k = 0; k < n; k++) {
+                const a = (straps.phase || 0) + (k * Math.PI * 2) / n;
+                ctx.strokeStyle = 'rgba(232, 220, 192, 0.9)';
+                ctx.lineWidth = 7;
+                ctx.beginPath(); ctx.arc(state.player.x, state.player.y, straps.radius, a - 0.22, a + 0.22); ctx.stroke();
+                const bx = state.player.x + Math.cos(a) * straps.radius;
+                const by = state.player.y + Math.sin(a) * straps.radius;
+                ctx.fillStyle = '#8a8170';
+                ctx.fillRect(bx - 3, by - 3, 6, 6);
+            }
+            ctx.lineCap = 'butt';
+        }
+
+        const notes = state.lullabyNotes;
+        if (notes && notes.length) {
+            for (const nt of notes) {
+                const y = nt.y + Math.sin(nt.bob) * 3;
+                ctx.fillStyle = 'rgba(155, 140, 255, 0.18)';
+                ctx.beginPath(); ctx.arc(nt.x, y, 14, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#b9adff';
+                ctx.beginPath(); ctx.ellipse(nt.x - 3, y + 4, 4.5, 3.2, -0.4, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#b9adff';
+                ctx.lineWidth = 1.6;
+                ctx.beginPath(); ctx.moveTo(nt.x + 1, y + 3); ctx.lineTo(nt.x + 1, y - 9); ctx.lineTo(nt.x + 6, y - 5); ctx.stroke();
+            }
+        }
+    }
+
+    /** Patch 137: how visible the room's walls are right now (rise-in, fade-out). */
+    arenaAlpha(state) {
+        if (state.arenaFade > 0) return Math.max(0, state.arenaFade / ARENA_FADE_STEPS);
+        if (state.arenaRise > 0) return Math.max(0, 1 - state.arenaRise / ARENA_RISE_STEPS);
+        return 1;
+    }
+
+    /** Patch 137 (V2 plan D5): the room's walls, per floor style. Plain fills, no blur. */
+    drawObstacles(state) {
+        const obs = state.obstacles;
+        if (!obs || !obs.length) return;
+        const L = ARENA_LAYOUTS[state.arenaLayout];
+        const style = L ? L.style : 'ink';
+        const P = {
+            locker:    { fill: '#2c3226', edge: '#6b7558', line: '#171a13' },
+            ink:       { fill: '#0c0c10', edge: '#73737f', line: '#26262e' },
+            brick:     { fill: '#2b100e', edge: '#86443a', line: '#170706' },
+            ward:      { fill: '#15201a', edge: '#5b7c62', line: '#0c140f' },
+            blueprint: { fill: '#19160b', edge: '#c9a54a', line: '#5e4d22' }
+        }[style] || { fill: '#111', edge: '#666', line: '#222' };
+        const ctx = this.ctx;
+        const a = this.arenaAlpha(state);
+        ctx.save();
+        for (const o of obs) {
+            if (o.cap) continue;   // drawn as part of its arc
+            if (!o.solid) {
+                // A sunk Blueprint block: its outline on the floor, and a rising one
+                // fills in and pulses through its telegraph.
+                const t = o.telegraph > 0 ? 1 - o.telegraph / GRID_TELEGRAPH_STEPS : 0;
+                ctx.globalAlpha = a * (o.telegraph > 0 ? 0.35 + 0.45 * t : 0.35);
+                ctx.setLineDash([8, 8]);
+                ctx.strokeStyle = P.edge;
+                ctx.lineWidth = o.telegraph > 0 ? 3 : 1.5;
+                ctx.strokeRect(o.x - o.hw, o.y - o.hh, o.hw * 2, o.hh * 2);
+                ctx.setLineDash([]);
+                if (o.telegraph > 0) {
+                    ctx.globalAlpha = a * (0.15 + 0.35 * t) * (0.75 + 0.25 * Math.sin(this.renderFrame * 0.4));
+                    ctx.fillStyle = P.edge;
+                    const s = 0.4 + 0.6 * t;
+                    ctx.fillRect(o.x - o.hw * s, o.y - o.hh * s, o.hw * 2 * s, o.hh * 2 * s);
+                }
+                continue;
+            }
+            ctx.globalAlpha = a * 0.45;
+            ctx.fillStyle = '#000';
+            if (o.kind === 'block') ctx.fillRect(o.x - o.hw + 6, o.y - o.hh + 9, o.hw * 2, o.hh * 2);
+            else if (o.kind === 'post') { ctx.beginPath(); ctx.arc(o.x + 5, o.y + 8, o.r, 0, Math.PI * 2); ctx.fill(); }
+            ctx.globalAlpha = a;
+            ctx.fillStyle = P.fill;
+            ctx.strokeStyle = P.edge;
+            ctx.lineWidth = 2;
+            if (o.kind === 'block') {
+                ctx.fillRect(o.x - o.hw, o.y - o.hh, o.hw * 2, o.hh * 2);
+                ctx.strokeRect(o.x - o.hw, o.y - o.hh, o.hw * 2, o.hh * 2);
+                ctx.beginPath();
+                ctx.strokeStyle = P.line;
+                if (style === 'locker') {
+                    // Locker doors, with a vent slit near the top of each.
+                    for (let x = o.x - o.hw + 26; x < o.x + o.hw; x += 26) { ctx.moveTo(x, o.y - o.hh); ctx.lineTo(x, o.y + o.hh); }
+                    for (let x = o.x - o.hw + 7; x < o.x + o.hw - 10; x += 26) { ctx.moveTo(x, o.y - o.hh + 6); ctx.lineTo(x + 12, o.y - o.hh + 6); }
+                } else if (style === 'ward') {
+                    for (let x = o.x - o.hw + 40; x < o.x + o.hw; x += 40) { ctx.moveTo(x, o.y - o.hh); ctx.lineTo(x, o.y + o.hh); }
+                    for (let y = o.y - o.hh + 40; y < o.y + o.hh; y += 40) { ctx.moveTo(o.x - o.hw, y); ctx.lineTo(o.x + o.hw, y); }
+                } else if (style === 'blueprint') {
+                    ctx.moveTo(o.x - o.hw, o.y - o.hh); ctx.lineTo(o.x + o.hw, o.y + o.hh);
+                    ctx.moveTo(o.x + o.hw, o.y - o.hh); ctx.lineTo(o.x - o.hw, o.y + o.hh);
+                }
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                // Lit top edge.
+                ctx.strokeStyle = P.edge;
+                ctx.globalAlpha = a * 0.8;
+                ctx.beginPath(); ctx.moveTo(o.x - o.hw, o.y - o.hh + 1); ctx.lineTo(o.x + o.hw, o.y - o.hh + 1); ctx.stroke();
+            } else if (o.kind === 'post') {
+                ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                // An ink post is mirrored: a lighter blot folded about its own axis.
+                ctx.fillStyle = P.line;
+                const w = Math.sin(o.phase + this.renderFrame * 0.01) * 0.25 + 0.55;
+                ctx.beginPath(); ctx.ellipse(o.x, o.y, o.r * w, o.r * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+            } else if (o.kind === 'arc') {
+                ctx.lineCap = 'round';
+                ctx.lineWidth = o.w;
+                ctx.beginPath(); ctx.arc(o.x, o.y, o.r, o.a0, o.a1); ctx.strokeStyle = P.fill; ctx.stroke();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = P.edge;
+                ctx.beginPath(); ctx.arc(o.x, o.y, o.r - o.w / 2, o.a0, o.a1); ctx.stroke();
+                ctx.beginPath(); ctx.arc(o.x, o.y, o.r + o.w / 2, o.a0, o.a1); ctx.stroke();
+                // Brick courses.
+                ctx.strokeStyle = P.line;
+                ctx.beginPath();
+                for (let t = o.a0 + 0.06; t < o.a1; t += 0.06) {
+                    ctx.moveTo(o.x + Math.cos(t) * (o.r - o.w / 2), o.y + Math.sin(t) * (o.r - o.w / 2));
+                    ctx.lineTo(o.x + Math.cos(t) * (o.r + o.w / 2), o.y + Math.sin(t) * (o.r + o.w / 2));
+                }
+                ctx.stroke();
+                ctx.lineCap = 'butt';
+            }
+        }
+        ctx.globalAlpha = 1;
+        ctx.setLineDash([]);
+        ctx.restore();
+    }
+
+    /**
+     * Patch 137: drawn AFTER the darkness mask, so a wall is never invisible: a faint
+     * outline of every solid wall (and every rising telegraph) shows in the dark.
+     */
+    drawObstacleOutlines(state) {
+        const obs = state.obstacles;
+        if (!obs || !obs.length) return;
+        const L = ARENA_LAYOUTS[state.arenaLayout];
+        const edge = { locker: '#9aa684', ink: '#9a9aa8', brick: '#b0665a', ward: '#86a88d', blueprint: '#e0c070' }[L ? L.style : 'ink'] || '#999';
+        const ctx = this.ctx;
+        const a = this.arenaAlpha(state);
+        ctx.save();
+        ctx.strokeStyle = edge;
+        ctx.lineWidth = 2;
+        for (const o of obs) {
+            if (o.cap) continue;
+            if (!o.solid && !(o.telegraph > 0)) continue;
+            ctx.globalAlpha = a * (o.solid ? 0.32 : 0.4 + 0.3 * Math.sin(this.renderFrame * 0.4));
+            ctx.beginPath();
+            if (o.kind === 'block') ctx.rect(o.x - o.hw, o.y - o.hh, o.hw * 2, o.hh * 2);
+            else if (o.kind === 'post') ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+            else if (o.kind === 'arc') { ctx.arc(o.x, o.y, o.r - o.w / 2, o.a0, o.a1); ctx.arc(o.x, o.y, o.r + o.w / 2, o.a1, o.a0, true); ctx.closePath(); }
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        ctx.restore();
     }
 
     drawObjectivePointers(state) {
         if (state.interactables) {
             state.interactables.forEach(obj => {
-                if (obj.type === 'OBJECTIVE_BACKPACK' || obj.type === 'EXIT_ELEVATOR' || obj.type === 'ROOM_DOOR') {
+                if (obj.type === 'OBJECTIVE_BACKPACK' || obj.type === 'EXIT_ELEVATOR' || obj.type === 'ROOM_DOOR' || (obj.type === 'CHEST' && !obj.opening)
+                    || (obj.type === 'BREAKER_BOX' && obj.roomEvent && !obj.active)) {   // Patch 138
                     let dx = obj.x - state.player.x;
                     let dy = obj.y - state.player.y;
                     let dist = Math.hypot(dx, dy);
@@ -1825,6 +2082,21 @@ export class Renderer {
                             this.ctx.fillStyle = `rgba(200, 200, 255, ${0.4 + pulse * 0.6})`;
                             this.ctx.beginPath();
                             this.ctx.moveTo(20, 0); this.ctx.lineTo(-15, 15); this.ctx.lineTo(-10, 0); this.ctx.lineTo(-15, -15);
+                            this.ctx.closePath();
+                            this.ctx.fill();
+                        } else if (obj.type === 'BREAKER_BOX') {
+                            // Patch 138: the Power Outage's breaker, pulsing like a failing bulb.
+                            let pulse = Math.sin(this.renderFrame * 0.3) * 0.5 + 0.5;
+                            this.ctx.fillStyle = `rgba(255, 255, 160, ${0.45 + pulse * 0.55})`;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(18, 0); this.ctx.lineTo(-12, 12); this.ctx.lineTo(-8, 0); this.ctx.lineTo(-12, -12);
+                            this.ctx.closePath();
+                            this.ctx.fill();
+                        } else if (obj.type === 'CHEST') {
+                            let pulse = Math.sin(this.renderFrame * 0.2) * 0.5 + 0.5;
+                            this.ctx.fillStyle = `rgba(255, 210, 127, ${0.4 + pulse * 0.6})`;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(18, 0); this.ctx.lineTo(-12, 12); this.ctx.lineTo(-8, 0); this.ctx.lineTo(-12, -12);
                             this.ctx.closePath();
                             this.ctx.fill();
                         } else if (obj.type === 'ROOM_DOOR') {
@@ -2131,7 +2403,9 @@ export class Renderer {
             
             this.ctx.restore();
         }
-        
+
+        this.drawObstacles(state);   // Patch 137: the room's walls, under everything that moves
+
         if (state.safeZones) {
             state.safeZones.forEach(sz => {
                 this.ctx.save();
@@ -2232,6 +2506,31 @@ export class Renderer {
                     this.ctx.textBaseline = 'middle';
                     this.ctx.font = "bold 14px 'Courier New', Courier, monospace";
                     this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, -35); 
+                } else if (obj.type === 'CHEST') {
+                    // Patch 133: an evidence locker — a squat box with a brass hasp. It
+                    // rattles harder through the opening beat (obj.opening counts up).
+                    const t = obj.opening ? obj.opening / 26 : 0;
+                    const rattle = obj.opening ? Math.sin(this.renderFrame * 1.7) * (1 + t * 3) : 0;
+                    const bob = obj.opening ? 0 : Math.sin(this.renderFrame * 0.08) * 2;
+                    this.drawGlow(0, 0, 46 + t * 20, '#ffd27f', 0.35 + t * 0.3);
+                    this.ctx.translate(rattle, bob);
+                    this.ctx.fillStyle = '#3b2a17';
+                    this.ctx.fillRect(-20, -10, 40, 24);
+                    this.ctx.fillStyle = '#5a4022';
+                    this.ctx.fillRect(-21, -18 - t * 6, 42, 10);   // the lid lifts as it opens
+                    this.ctx.strokeStyle = '#d9a441';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeRect(-20, -10, 40, 24);
+                    this.ctx.strokeRect(-21, -18 - t * 6, 42, 10);
+                    this.ctx.fillStyle = '#ffd27f';
+                    this.ctx.fillRect(-4, -6, 8, 9);
+                    if (!obj.opening) {
+                        this.ctx.fillStyle = '#ffd27f';
+                        this.ctx.textAlign = 'center';
+                        this.ctx.textBaseline = 'middle';
+                        this.ctx.font = "bold 12px 'Courier New', Courier, monospace";
+                        this.ctx.fillText('CHEST', 0, -32);
+                    }
                 } else if (obj.type === 'EXIT_ELEVATOR') {
                     let pulse = Math.sin(this.renderFrame * 0.1) * 20;
                     
@@ -2423,6 +2722,44 @@ export class Renderer {
                     this.ctx.beginPath();
                     this.ctx.arc(0, 0, vr, 0, Math.PI * 2);
                     this.ctx.stroke();
+                }
+
+                // Patch 135: under a Fire Warden's ward — a small orange shield arc.
+                if (ent.shieldTimer > 0 && ent.type !== 'WARDEN') {
+                    const sr = (ent.radius || 15) + 5;
+                    this.ctx.strokeStyle = 'rgba(240, 170, 60, 0.75)';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, sr, -Math.PI * 0.85, -Math.PI * 0.15);
+                    this.ctx.stroke();
+                }
+
+                // Patch 133 (V2 plan D4): a named elite — gold double ring, its name and
+                // its own health bar above it, and the body drawn ELITE_SCALE larger
+                // (the scale is undone right after the per-type dispatch below).
+                const isElite = !!ent.elite;
+                if (isElite) {
+                    const er = (ent.radius || 22) + 10;
+                    this.drawGlow(0, 0, er + 16, '#ffd27f', 0.3);
+                    this.ctx.strokeStyle = '#ffd27f';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.beginPath(); this.ctx.arc(0, 0, er, 0, Math.PI * 2); this.ctx.stroke();
+                    this.ctx.strokeStyle = 'rgba(255, 210, 127, 0.45)';
+                    this.ctx.beginPath(); this.ctx.arc(0, 0, er + 5, 0, Math.PI * 2); this.ctx.stroke();
+                    const barW = 64, barY = -er - 14;
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                    this.ctx.fillRect(-barW / 2, barY, barW, 5);
+                    this.ctx.fillStyle = '#d9a441';
+                    this.ctx.fillRect(-barW / 2, barY, barW * Math.max(0, Math.min(1, ent.hp / (ent.maxHp || 1))), 5);
+                    this.ctx.font = "bold 14px 'Courier New', Courier, monospace";
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'bottom';
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+                    this.ctx.fillText(ent.eliteName || 'ELITE', 1, barY - 2);
+                    this.ctx.fillStyle = '#ffd27f';
+                    this.ctx.fillText(ent.eliteName || 'ELITE', 0, barY - 3);
+                    this.ctx.save();
+                    this.ctx.scale(1.45, 1.45);
                 }
 
                 if (ent.type === 'ARCHITECT') {
@@ -2795,6 +3132,99 @@ export class Renderer {
                     }
 
                     this.ctx.restore();
+                }
+                // Patch 135 (V2 plan D4): the three Phase D enemies. Plain paths, no
+                // sprites — each is a handful of shapes, and none uses shadowBlur.
+                else if (ent.type === 'SPLITTER') {
+                    // A photocopied paper figure: a sheet with a smudged face; the
+                    // copies (generation 2) are smaller and a shade greyer.
+                    const k = ent.generation === 2 ? 0.65 : 1;
+                    const sw = Math.sin(ent.phase || 0) * 0.15;
+                    this.ctx.save();
+                    this.ctx.rotate(sw);
+                    this.ctx.scale(k, k);
+                    this.ctx.fillStyle = isFlashed ? '#ffffff' : (ent.generation === 2 ? '#b9b2a2' : '#e8e0cc');
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(-11, -15); this.ctx.lineTo(7, -15); this.ctx.lineTo(12, -10);
+                    this.ctx.lineTo(12, 15); this.ctx.lineTo(-11, 15);
+                    this.ctx.closePath();
+                    this.ctx.fill();
+                    this.ctx.strokeStyle = '#6b6352';
+                    this.ctx.lineWidth = 1.5;
+                    this.ctx.stroke();
+                    this.ctx.fillStyle = '#2a2620';
+                    this.ctx.fillRect(-6, -6, 3, 3);
+                    this.ctx.fillRect(3, -6, 3, 3);
+                    this.ctx.fillRect(-5, 4, 10, 2);
+                    this.ctx.strokeStyle = 'rgba(40, 36, 30, 0.5)';
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(-11, 9); this.ctx.lineTo(-6, 7); this.ctx.lineTo(-1, 10); this.ctx.lineTo(5, 7); this.ctx.lineTo(12, 9);
+                    this.ctx.stroke();
+                    this.ctx.restore();
+                }
+                else if (ent.type === 'WARDEN') {
+                    // Hi-vis vest and helmet; its ward is the dashed orange ring.
+                    const wr = 150 / (isElite ? 1.45 : 1);   // WARDEN_SHIELD_RADIUS, in world px under the elite scale
+                    const pulse = 0.12 + Math.sin(this.renderFrame * 0.08 + (ent.phase || 0)) * 0.05;
+                    this.ctx.strokeStyle = `rgba(240, 170, 60, ${pulse + 0.15})`;
+                    this.ctx.lineWidth = 2;
+                    this.ctx.setLineDash([10, 8]);
+                    this.ctx.beginPath(); this.ctx.arc(0, 0, wr, 0, Math.PI * 2); this.ctx.stroke();
+                    this.ctx.setLineDash([]);
+                    this.ctx.fillStyle = `rgba(240, 170, 60, ${pulse * 0.5})`;
+                    this.ctx.fill();
+                    this.ctx.fillStyle = isFlashed ? '#ffffff' : '#e0a030';
+                    this.ctx.beginPath(); this.ctx.arc(0, 0, 15, 0, Math.PI * 2); this.ctx.fill();
+                    this.ctx.fillStyle = '#f4f0d0';
+                    this.ctx.fillRect(-15, -3, 30, 4);
+                    this.ctx.fillStyle = '#c2381e';
+                    this.ctx.beginPath(); this.ctx.arc(0, -6, 8, Math.PI, 0); this.ctx.fill();
+                    this.ctx.fillStyle = '#111';
+                    this.ctx.fillRect(-5, 3, 3, 3); this.ctx.fillRect(2, 3, 3, 3);
+                }
+                else if (ent.type === 'BURROWER') {
+                    const st = ent.burrowState;
+                    if (st === 'burrowed') {
+                        // Only the floor moving: a travelling mound of cracks.
+                        this.ctx.strokeStyle = 'rgba(160, 125, 85, 0.75)';
+                        this.ctx.lineWidth = 2;
+                        for (let k = 0; k < 3; k++) {
+                            const a = (ent.phase || 0) * 0.7 + k * 2.1;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(Math.cos(a) * 4, Math.sin(a) * 4);
+                            this.ctx.lineTo(Math.cos(a) * 14, Math.sin(a) * 14);
+                            this.ctx.stroke();
+                        }
+                        this.ctx.fillStyle = 'rgba(120, 90, 60, 0.6)';
+                        this.ctx.beginPath(); this.ctx.ellipse(0, 0, 12, 7, 0, 0, Math.PI * 2); this.ctx.fill();
+                    } else if (st === 'warning') {
+                        // The tell: the eruption's exact radius (ERUPT_RADIUS), filling in.
+                        const t = 1 - Math.max(0, ent.burrowTimer) / 50;
+                        this.ctx.fillStyle = `rgba(255, 120, 60, ${0.12 + 0.25 * t})`;
+                        this.ctx.beginPath(); this.ctx.arc(0, 0, Math.max(0, 70 * t), 0, Math.PI * 2); this.ctx.fill();
+                        this.ctx.strokeStyle = `rgba(255, 140, 80, ${0.6 + 0.4 * Math.sin(this.renderFrame * 0.6)})`;
+                        this.ctx.lineWidth = 3;
+                        this.ctx.beginPath(); this.ctx.arc(0, 0, 70, 0, Math.PI * 2); this.ctx.stroke();
+                    } else {
+                        // Exposed (or digging back in): a clawed thing half out of the floor.
+                        const down = st === 'digging' ? Math.max(0.05, ent.burrowTimer / 24) : 1;
+                        this.ctx.save();
+                        this.ctx.scale(down, down);
+                        this.ctx.fillStyle = 'rgba(70, 50, 30, 0.8)';
+                        this.ctx.beginPath(); this.ctx.ellipse(0, 6, 20, 9, 0, 0, Math.PI * 2); this.ctx.fill();
+                        this.ctx.fillStyle = isFlashed ? '#ffffff' : '#8a6a46';
+                        this.ctx.beginPath(); this.ctx.arc(0, -2, 13, 0, Math.PI * 2); this.ctx.fill();
+                        this.ctx.strokeStyle = '#d9c3a0';
+                        this.ctx.lineWidth = 2;
+                        for (const sx of [-1, 1]) {
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(sx * 9, -6); this.ctx.lineTo(sx * 17, -14); this.ctx.lineTo(sx * 14, -4);
+                            this.ctx.stroke();
+                        }
+                        this.ctx.fillStyle = '#ffcf7a';
+                        this.ctx.fillRect(-5, -5, 3, 3); this.ctx.fillRect(2, -5, 3, 3);
+                        this.ctx.restore();
+                    }
                 }
                 else if (ent.type === 'SCAVENGER') {
                     this.ctx.save();
@@ -3229,7 +3659,9 @@ export class Renderer {
                     }
                 }
 
-                if (ent.hp < ent.maxHp && ent.flashTime <= 0 && !isBossType(ent.type)) {
+                if (isElite) this.ctx.restore();   // Patch 133: undo the elite scale
+
+                if (!isElite && ent.hp < ent.maxHp && ent.flashTime <= 0 && !isBossType(ent.type)) {
                     let barW = 24;
                     let yOffset = 20;
                     
@@ -4157,7 +4589,7 @@ export class Renderer {
                 this.ctx.rotate((i * Math.PI * 2) / 3);
                 this.ctx.translate(spinner.baseRadius, 0);
                 
-                this.ctx.fillStyle = '#888';
+                this.ctx.fillStyle = spinner.evolution ? '#d9b44a' : '#888';   // Patch 134: Ceiling Fan
                 this.ctx.beginPath();
                 this.ctx.moveTo(10, 0);
                 this.ctx.lineTo(-5, 5);

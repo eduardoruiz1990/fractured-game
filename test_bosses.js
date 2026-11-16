@@ -515,6 +515,27 @@ console.log('\nPatch 116 — pooled objects go back to their pools');
     check('non-pooled particles are not injected into the particle pool', P.particle.pool.length === pa0);
 }
 
+// Patch 131 (V2 plan D6): the Panopticon's tell, beam and hitbox are one shape.
+{
+    const { gazeHits, GAZE_RANGE } = await import('./src/entities/Panopticon.js');
+    const g = new Game(); g.init(mockSave);
+    const pan = g.director.spawnEntity('PANOPTICON', null, null, 0, 0);
+    const ent = g.state.entities.find(e => e.type === 'PANOPTICON');
+    check('Panopticon carries its gaze range', ent && ent.gazeRange === GAZE_RANGE && GAZE_RANGE > 0 && GAZE_RANGE < 2000);
+    check('gaze hits inside the cone and range', gazeHits(0.3, GAZE_RANGE - 10, 0.5));
+    check('gaze misses outside the cone', !gazeHits(0.6, 100, 0.5));
+    check('gaze misses beyond its range (was unlimited)', !gazeHits(0, GAZE_RANGE + 10, 0.5));
+    // A full sweep from 800px away never lands.
+    ent.x = 0; ent.y = 0; g.state.player.x = 800; g.state.player.y = 0;
+    ent.gazeState = 'sweeping'; ent.gazeTimer = 60; ent.gazeAngle = 0;
+    const s0 = g.state.sanity;
+    for (let i = 0; i < 45; i++) { g.state.frame++; g.state.player.x = 800; g.state.player.y = 0; ent.x = 0; ent.y = 0; ent.update(g.state, g); }
+    check('a sweep out of range does no damage', g.state.sanity === s0, `${s0} -> ${g.state.sanity}`);
+    g.state.player.x = 300; g.state.player.iframes = 0;
+    for (let i = 0; i < 20; i++) { g.state.frame++; g.state.player.x = 300; g.state.player.y = 0; g.state.player.iframes = 0; ent.x = 0; ent.y = 0; ent.update(g.state, g); }
+    check('a sweep in range still hurts', g.state.sanity < s0, `${s0} -> ${g.state.sanity}`);
+}
+
 // ---------------------------------------------------------------------------
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

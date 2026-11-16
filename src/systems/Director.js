@@ -8,8 +8,16 @@ import { Rorschach } from '../entities/Rorschach.js';
 import { Panopticon } from '../entities/Panopticon.js'; 
 import { Amalgamation } from '../entities/Amalgamation.js';
 import { Architect } from '../entities/Architect.js';
+// Patch 135 (V2 plan D4): the three Phase D enemies.
+import { Splitter } from '../entities/Splitter.js';
+import { Warden } from '../entities/Warden.js';
+import { Burrower } from '../entities/Burrower.js';
 // Patch 51c: reports the swallowed boss-roadmap failure below into the crash log.
 import { errorLog } from '../core/ErrorLog.js';
+import { eliteChanceForRoom, promoteToElite } from './Elites.js';   // Patch 133
+import { layoutForRoom, raiseArena, lowerArena, arenaSolid, resolveObstacles, spawnAngle, ARENA_LAYOUTS } from './Arena.js';   // Patch 137
+import { eventForRoom, armRoomEvent, tickRoomEvent, endRoomEvent } from './RoomEvents.js';   // Patch 138
+import { roomRng, withRandom } from './Daily.js';   // Patch 140
 // The spawn clamp is derived from the arena's void radius rather than repeated as a
 // literal — see the note on ARENA_VOID_RADIUS in Config.js for why the two must agree.
 import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE, isBossType, ROOM_PACE } from '../data/Config.js';
@@ -105,6 +113,9 @@ export class Director {
             panopticon: new ObjectPool(() => new Panopticon(), 2), 
             amalgamation: new ObjectPool(() => new Amalgamation(), 2),
             architect: new ObjectPool(() => new Architect(), 2), 
+            splitter: new ObjectPool(() => new Splitter(), 40),   // Patch 135
+            warden: new ObjectPool(() => new Warden(), 12),
+            burrower: new ObjectPool(() => new Burrower(), 20),
             // Patch 39: `pooled` is a provenance marker — see the release guard in
             // updateParticles(). size/decay/rot/spin give each particle its own
             // character so a burst doesn't read as one rigid object.
@@ -119,13 +130,28 @@ export class Director {
         };
     }
 
+    /**
+     * Patch 140: in a Daily Session every roll this room makes (modifier, shape, event,
+     * elite, the boss's spawn point) comes from an rng seeded by the date, floor and
+     * room, so everyone playing that day gets the same rooms. Otherwise unchanged.
+     */
     spawnRoom(floor, roomNumber) {
+        const daily = this.game.state && this.game.state.daily;
+        if (daily && Number.isFinite(daily.seed)) {
+            return withRandom(roomRng(daily, floor, roomNumber), () => this.spawnRoomInner(floor, roomNumber));
+        }
+        return this.spawnRoomInner(floor, roomNumber);
+    }
+
+    spawnRoomInner(floor, roomNumber) {
         const state = this.game.state;
         state.combatActive = true;
         state.roomCleared = false;
         
         if (floor === 1 && roomNumber === 1 && this.game.saveManager && !this.game.saveManager.metaState.tutorialCompleted) {
             state.isTutorial = true;
+            raiseArena(state, null);   // Patch 137: the tutorial room is always open
+            armRoomEvent(state, null);  // Patch 138: and has no event
             state.enemyBudget = 1;
             state.stress = 0;
             state.budgetTimer = 0;
@@ -141,6 +167,14 @@ export class Director {
         // spawn-table/budget/rate tuning inside Director.js — no entity file or
         // Renderer touched, so nothing outside this file needs to know these exist.
         const isBossRoom = roomNumber >= state.maxRoomsPerFloor && !state.bossSpawned;
+
+        // Patch 137 (V2 plan D5): the floor's room shape, raised around the player.
+        const layout = layoutForRoom(floor, roomNumber, { isBossRoom, isTutorial: false });
+        raiseArena(state, layout, state.player.x, state.player.y);
+        if (layout && typeof this.game.spawnDamageText === 'function') {
+            this.game.spawnDamageText(state.player.x, state.player.y - 70, ARENA_LAYOUTS[layout].name, '#cfc6b0', 1.1, 2.4);
+        }
+
         if (isBossRoom) {
             state.roomModifier = null;
         } else {
@@ -162,6 +196,15 @@ export class Director {
                 state.hazardPuddleTimer = 0;
             }
         }
+
+        // Patch 133 (V2 plan D4): a named elite, promoted from the regular spawn that
+        // takes the budget to half (see spawnWave). -1 = none this room.
+        state.eliteSpawned = false;
+        state.eliteAt = Math.random() < eliteChanceForRoom(floor, roomNumber, isBossRoom, false)
+            ? Math.floor(state.enemyBudget * 0.5) : -1;
+
+        // Patch 138 (V2 plan D5): a room event, only where no modifier was rolled.
+        armRoomEvent(state, eventForRoom(floor, roomNumber, { isBossRoom, hasModifier: !!state.roomModifier }));
 
         if (roomNumber >= state.maxRoomsPerFloor && !state.bossSpawned) {
             state.enemyBudget = 0;
@@ -323,6 +366,9 @@ export class Director {
             this.spawnRoom(state.floor, state.roomNumber);
         }
 
+        // Patch 138: the room's event (triggers on budget spent; LOCKDOWN tops it up).
+        if (!bossAlive && !state.isTutorial && state.roomEvent) tickRoomEvent(this.game);
+
         // HAZARD room modifier: environmental ink puddles independent of the
         // spilled_ink weapon, ticking on its own timer so it keeps firing even
         // after enemyBudget is spent, until the room itself clears.
@@ -348,7 +394,8 @@ export class Director {
 
             let spawnRate = bossAlive ? 120 : Math.max(15, 60 - (state.roomNumber * 2 * ROOM_PACE));
             if (!bossAlive) {
-                if (state.roomModifier === 'BLACKOUT') spawnRate = Math.max(8, Math.floor(spawnRate * 0.6));
+                // Patch 136: the Insomniac sees in a blackout — no faster arrivals.
+                if (state.roomModifier === 'BLACKOUT' && !state.player.blackoutImmune) spawnRate = Math.max(8, Math.floor(spawnRate * 0.6));
                 else if (state.roomModifier === 'SWARM') spawnRate = Math.max(8, Math.floor(spawnRate * 0.5));
             }
 
@@ -375,16 +422,26 @@ export class Director {
                 if (state.floor === 1) {
                     if (roll < 0.1 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR'; 
                 } 
+                // Patch 135 (V2 plan D4): one new enemy per floor from 2 to 4 — the
+                // Photocopy (splits), the Fire Warden (wards its crowd), the Crawlspace
+                // (burrows) — each carved out of the floor's Scavenger share or, on 4+,
+                // out of the Parasite share, so the older enemies keep their slots.
                 else if (state.floor === 2) {
                     if (roll < 0.4 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR'; 
+                    else if (roll < 0.55 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'SPLITTER';
                 }
                 else if (state.floor === 3) {
                     if (roll < 0.3 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR'; 
                     else if (roll < 0.6 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'PARASITE'; 
+                    else if (roll < 0.7 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'SPLITTER';
+                    else if (roll < 0.8 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'WARDEN';
                 }
                 else if (state.floor >= 4) {
                     if (roll < 0.3 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR';
-                    else if (roll < 0.8 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'PARASITE';
+                    else if (roll < 0.6 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'PARASITE';
+                    else if (roll < 0.68 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'SPLITTER';
+                    else if (roll < 0.76 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'WARDEN';
+                    else if (roll < 0.88 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'BURROWER';
                 }
 
                 // Room-modifier overrides layered on top of the floor's base table
@@ -426,11 +483,29 @@ export class Director {
                     if (spawnType === 'SCAVENGER') state.enemyBudget -= 1;
                     else if (spawnType === 'PREDATOR') state.enemyBudget -= 2;
                     else if (spawnType === 'PARASITE') state.enemyBudget -= 3;
+                    else if (spawnType === 'SPLITTER') state.enemyBudget -= 2;   // Patch 135
+                    else if (spawnType === 'WARDEN') state.enemyBudget -= 3;
+                    else if (spawnType === 'BURROWER') state.enemyBudget -= 2;
+
+                    // Patch 133: the spawn that brings the budget to half becomes the
+                    // room's named elite. Promoted after spawnEntity, so it compounds
+                    // onto the floor/Recursion scaling, ELITE room buff and variant.
+                    if (!state.isTutorial && !state.eliteSpawned && state.eliteAt >= 0
+                        && state.enemyBudget <= state.eliteAt) {
+                        const last = state.entities[state.entities.length - 1];
+                        if (last && !isBossType(last.type)) {
+                            promoteToElite(last);
+                            state.eliteSpawned = true;
+                            if (this.game.audioEngine) this.game.audioEngine.playSFX('boss_intro', 0.45);
+                        }
+                    }
                 }
             }
         } else if (state.entities.length === 0 && !state.roomCleared && !state.bossSpawned) {
             state.combatActive = false;
             state.roomCleared = true;
+            lowerArena(state);   // Patch 137: the walls sink before the doors appear
+            endRoomEvent(state); // Patch 138
             this.spawnRewardDoors();
         }
     }
@@ -587,6 +662,11 @@ export class Director {
     /** Patch 116: what a room transition clears (particles and texts play out). */
     releaseRoomState(state) {
         this.releaseArrays(state, ['entities', 'projectiles', 'xpDrops', 'tokenDrops', 'inkPuddles', 'safeZones']);
+        // Patch 132: the new weapons' transient objects (plain, not pooled). A bottle
+        // in flight would otherwise carry a reference to an entity just released.
+        for (const k of ['playerShots', 'pulseRings', 'lullabyNotes']) {
+            if (Array.isArray(state[k])) state[k].length = 0;
+        }
     }
 
     /** Patch 116: everything pooled — used when Game.init discards a whole run state. */
@@ -701,7 +781,9 @@ export class Director {
 
             if (ringReachable) {
                 for (let i = 0; i < 12; i++) {
-                    const a = Math.random() * Math.PI * 2;
+                    // Patch 137: a shaped room's spawn sectors (corridor ends, gates)
+                    // for the first tries; one Math.random call when there are none.
+                    const a = i < 8 ? spawnAngle(state) : Math.random() * Math.PI * 2;
                     const cx = state.player.x + Math.cos(a) * spawnRadius;
                     const cy = state.player.y + Math.sin(a) * spawnRadius;
                     if (inArena(cx, cy) && offScreen(cx, cy)) { x = cx; y = cy; break; }
@@ -747,6 +829,9 @@ export class Director {
         else if (type === 'PANOPTICON') ent = this.pools.panopticon.get().init(Math.random(), x, y); 
         else if (type === 'AMALGAMATION') ent = this.pools.amalgamation.get().init(Math.random(), x, y);
         else if (type === 'ARCHITECT') ent = this.pools.architect.get().init(Math.random(), x, y);
+        else if (type === 'SPLITTER') ent = this.pools.splitter.get().init(Math.random(), x, y, state.stress, generation);   // Patch 135
+        else if (type === 'WARDEN') ent = this.pools.warden.get().init(Math.random(), x, y, state.stress);
+        else if (type === 'BURROWER') ent = this.pools.burrower.get().init(Math.random(), x, y, state.stress);
 
         if (ent) {
             // Patch 94: before the ELITE/variant branch, so those compound onto it.
@@ -764,11 +849,15 @@ export class Director {
                 // deepening forever would mint a new permanent cache entry every cycle.
                 // Capped, the reachable set is 5 palettes x 2 roles x 4 tiers = 40
                 // strings, forever — asserted in test_endless.js.
-                const tints = ENEMY_TINTS[paletteIndexForFloor(state.floor)];
-                ent.originalColor = recursionTint(
-                    ent.type === 'SCAVENGER' ? tints[0] : tints[1],
-                    state.floor
-                );
+                // Patch 135: only the original three take the biome tint. The Phase D
+                // enemies keep their own colours (and the 40-string bound above holds).
+                if (ent.type === 'SCAVENGER' || ent.type === 'PREDATOR' || ent.type === 'PARASITE') {
+                    const tints = ENEMY_TINTS[paletteIndexForFloor(state.floor)];
+                    ent.originalColor = recursionTint(
+                        ent.type === 'SCAVENGER' ? tints[0] : tints[1],
+                        state.floor
+                    );
+                }
                 ent.color = ent.originalColor;
 
                 // ELITE room modifier: fewer total spawns (enemyBudget cut in
@@ -790,10 +879,13 @@ export class Director {
                 }
             }
 
+            // Patch 137: a ring spawn that lands in a wall is moved out of it.
+            if (arenaSolid(state) && !isBossType(ent.type)) resolveObstacles(state.obstacles, ent, ent.radius || 12);
             state.entities.push(ent);
             if (this.game.audioEngine && Math.random() < 0.3) {                this.game.audioEngine.playSFX('enemy_spawn', 0.3);
             }
         }
+        return ent || null;   // Patch 133: callers (elite promotion, tests) can hold the body
     }
 
     spawnProjectile(x, y, vx, vy, radius, damage, color, life) {

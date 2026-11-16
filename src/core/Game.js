@@ -8,6 +8,24 @@ import { EventBus } from './EventBus.js';
 import { getXPRequiredForLevel, ARENA_VOID_RADIUS, isBossType, ROOMS_PER_FLOOR } from '../data/Config.js';
 // Patch 96 — the biome palettes cycle past floor 5. See src/core/Endless.js.
 import { paletteIndexForFloor } from './Endless.js';
+// Patch 136 (V2 plan D1): playable Patients.
+import { PATIENTS, resolvePatient, DEFAULT_PATIENT } from '../data/Patients.js';
+import { applyWeaponLevelUp } from '../ui/LevelUpUI.js';
+import { updateArena } from '../systems/Arena.js';   // Patch 137
+import { lockedWeapons } from '../data/Unlocks.js';   // Patch 139
+
+/**
+ * Patch 132: adds any weapon in `fresh` that `carried` lacks (at level 0), so a run
+ * suspended before a weapon existed resumes with the whole current arsenal. Never
+ * touches a weapon the carry already has. Mutates and returns `carried`.
+ */
+export function backfillWeapons(carried, fresh) {
+    if (!carried || typeof carried !== 'object') return fresh;
+    for (const [id, w] of Object.entries(fresh)) {
+        if (!carried[id]) carried[id] = w;
+    }
+    return carried;
+}
 
 export class Game {
     constructor() {
@@ -22,9 +40,12 @@ export class Game {
         this.hubWorld = new HubWorld(this);
     }
 
-    init(saveManager, carriedState = null) {
+    init(saveManager, carriedState = null, opts = {}) {
         this.saveManager = saveManager;
         const meta = saveManager.metaState;
+        // Patch 140: a Daily Session (systems/Daily.js) fixes the Patient and the
+        // Intrusive Thought, and rides the carried state across floors and a resume.
+        const daily = (carriedState && carriedState.daily) || (opts && opts.daily) || null;
 
         // Patch 116: hand the outgoing run's pooled objects back before the state is
         // rebuilt (runs, floor descents, resume, hub entry all come through here).
@@ -73,9 +94,16 @@ export class Game {
             tokenBundle.grants.forEach(g => grants.add(g));
         }
 
-        const maxSanity = 100 + (stats.sanity || 0);
-        const speedBuff = 1.0 + ((stats.speed || 0) / 100);
-        const lightBuff = 1.0 + ((stats.light || 0) / 100);
+        // Patch 136: the Patient. A fresh run takes the saved choice (if unlocked); a
+        // floor descent or a resume keeps the one the run started with.
+        const patientId = carriedState
+            ? (PATIENTS[carriedState.character] ? carriedState.character : DEFAULT_PATIENT)
+            : (daily && PATIENTS[daily.patient] ? daily.patient : resolvePatient(meta.selectedCharacter, meta));
+        const patient = PATIENTS[patientId];
+
+        const maxSanity = 100 + (stats.sanity || 0) + (patient.sanity || 0);
+        const speedBuff = (1.0 + ((stats.speed || 0) / 100)) * (1 + (patient.speed || 0) / 100);
+        const lightBuff = (1.0 + ((stats.light || 0) / 100)) * (1 + (patient.light || 0) / 100);
 
         const startFloor = carriedState ? carriedState.floor : 1;
         let effectiveMaxSanity = maxSanity;
@@ -125,11 +153,40 @@ export class Game {
             });
         }
 
-        if (meta.selectedCurses && meta.selectedCurses.length > 0) pCurses.push(...meta.selectedCurses);
+        // Patch 140: a Daily Session's one Intrusive Thought replaces the adopted ones.
+        if (daily && daily.curse) pCurses.push(daily.curse);
+        else if (meta.selectedCurses && meta.selectedCurses.length > 0) pCurses.push(...meta.selectedCurses);
 
         if (pCurses.includes('fragile_mind')) effectiveMaxSanity = Math.floor(maxSanity * 0.5);
 
         let startSanity = carriedState ? carriedState.sanity : effectiveMaxSanity;
+
+        const freshWeapons = {
+            flashlight: {
+                level: 1, damage: 15, radius: 250 * lightBuff,
+                // F3/F7's flashlightAngle has no legacy equivalent — applied here
+                // directly as a percentage widening of the base cone.
+                angle: 0.6 * (1 + (stats.flashlightAngle || 0) / 100), type: 'cone',
+                tags: ['light', 'focus']
+            },
+            static: { level: 0, damage: 5, radius: 100, active: false, pulsePhase: 0, tags: ['aura', 'tech'] },
+            polaroid_camera: { level: 0, damage: 30, radius: 300, angle: Math.PI/3, cooldown: 180, timer: 0, tags: ['burst', 'light'] },
+            fidget_spinner: { level: 0, damage: 8, baseRadius: 60, speed: 0.1, tags: ['orbit', 'kinetic'] },
+            // C2's 'start_weapon:<choice>' grant: no selection UI exists yet (the
+            // '<choice>' in the grant string is a placeholder for future work), so
+            // this always grants the same fixed weapon — lead_pipe at level 1 —
+            // rather than fabricating a choice mechanism that isn't built.
+            lead_pipe: { level: grants.has('start_weapon:<choice>') ? 1 : 0, damage: 45, radius: 70, cooldown: 90, timer: 0, tags: ['melee', 'kinetic'] },
+            spilled_ink: { level: 0, damage: 10, radius: 45, dropRate: 45, timer: 0, tags: ['hazard', 'dark'] },
+            broken_chalk: { level: 0, radius: 60, duration: 300, cooldown: 600, timer: 0, tags: ['utility', 'focus'] },
+            corrosive_battery: { level: 0, damage: 2, duration: 180, tags: ['passive', 'tech'] },
+            // Patch 132 (V2 plan D3): the Phase D weapons. Behaviour in
+            // src/systems/Arsenal.js; level-up steps in LevelUpUI's table.
+            pill_bottle: { level: 0, damage: 18, bounces: 2, cooldown: 75, timer: 0, tags: ['kinetic', 'burst'] },
+            metronome: { level: 0, damage: 14, radius: 200, cooldown: 100, timer: 0, tags: ['aura', 'tech'] },
+            straitjacket: { level: 0, damage: 12, radius: 85, straps: 2, speed: 0.05, phase: 0, tags: ['orbit', 'melee'] },
+            lullaby: { level: 0, damage: 26, radius: 70, notes: 1, sleep: 90, cooldown: 150, timer: 0, tags: ['dark', 'burst'] }
+        };
 
         this.state = {
             killCounts: meta.killCounts || {}, 
@@ -164,6 +221,11 @@ export class Game {
             cameraFlash: 0,
             hitStop: 0,
             slowMo: 0,   // Patch 126: sim steps of half-speed after a synergy forms
+            // Patch 137 (V2 plan D5): the room's shape (see systems/Arena.js).
+            obstacles: [], arenaLayout: null, arenaOrigin: null, spawnSectors: null,
+            arenaRise: 0, arenaFade: 0, arenaShiftTimer: 0,
+            roomEvent: null, powerOut: 0, lockdown: 0,   // Patch 138 (systems/RoomEvents.js)
+            daily: daily ? { ...daily } : null,   // Patch 140
             bossSpawned: false,
             activeBoss: null,
             // Patch 93: read back from the carry (see getCarriedState) so a run that
@@ -262,26 +324,9 @@ export class Game {
                     charges: 1 + (grants.has('dash_charge_2') ? 1 : 0),
                     dx: 0, dy: 0
                 },
-                weapons: carriedState ? carriedState.weapons : {
-                    flashlight: {
-                        level: 1, damage: 15, radius: 250 * lightBuff,
-                        // F3/F7's flashlightAngle has no legacy equivalent — applied here
-                        // directly as a percentage widening of the base cone.
-                        angle: 0.6 * (1 + (stats.flashlightAngle || 0) / 100), type: 'cone',
-                        tags: ['light', 'focus']
-                    },
-                    static: { level: 0, damage: 5, radius: 100, active: false, pulsePhase: 0, tags: ['aura', 'tech'] },
-                    polaroid_camera: { level: 0, damage: 30, radius: 300, angle: Math.PI/3, cooldown: 180, timer: 0, tags: ['burst', 'light'] },
-                    fidget_spinner: { level: 0, damage: 8, baseRadius: 60, speed: 0.1, tags: ['orbit', 'kinetic'] },
-                    // C2's 'start_weapon:<choice>' grant: no selection UI exists yet (the
-                    // '<choice>' in the grant string is a placeholder for future work), so
-                    // this always grants the same fixed weapon — lead_pipe at level 1 —
-                    // rather than fabricating a choice mechanism that isn't built.
-                    lead_pipe: { level: grants.has('start_weapon:<choice>') ? 1 : 0, damage: 45, radius: 70, cooldown: 90, timer: 0, tags: ['melee', 'kinetic'] },
-                    spilled_ink: { level: 0, damage: 10, radius: 45, dropRate: 45, timer: 0, tags: ['hazard', 'dark'] },
-                    broken_chalk: { level: 0, radius: 60, duration: 300, cooldown: 600, timer: 0, tags: ['utility', 'focus'] },
-                    corrosive_battery: { level: 0, damage: 2, duration: 180, tags: ['passive', 'tech'] }
-                },
+                // Patch 132: a run carried from an older build lacks the weapons added
+                // since, so the carry is back-filled from the fresh set (level 0).
+                weapons: carriedState ? backfillWeapons(carriedState.weapons, freshWeapons) : freshWeapons,
                 upgrades: meta.upgrades 
             },
             input: { moveX: 0, moveY: 0, aimAngle: 0, isMoving: false },
@@ -295,13 +340,26 @@ export class Game {
             inkPuddles: [],
             meleeSwings: [],
             interactables: [],
-            playerAfterimages: []
+            playerAfterimages: [],
+            playerShots: [], pulseRings: [], lullabyNotes: []   // Patch 132 (Arsenal.js)
         };
         
         // Patch 31b: the insomniac 2pc flashlight bonus USED to be applied here as a
         // hardcoded x1.25. It now lives in TOKEN_SETS.insomniac.bonuses[2] as
         // { light: 25 } and flows through lightBuff above like every other light
         // source. Re-applying it here would double-count it.
+
+        // Patch 136: the Patient's passive flags (every init — state.player is rebuilt
+        // on each floor) and, on a fresh run only, the starting instrument. A start
+        // level is taken exactly like a level-up card's first level.
+        this.state.player.character = patientId;
+        Object.assign(this.state.player, patient.flags || {});
+        // Patch 139: instruments this save has not unlocked yet stay out of NEW offers.
+        this.state.player.lockedWeapons = lockedWeapons(meta);
+        if (!carriedState && patient.weapon) {
+            const w = this.state.player.weapons[patient.weapon];
+            if (w && w.level < 1) { w.level = 1; applyWeaponLevelUp(w, patient.weapon); }
+        }
 
         this.state.player.synergies = getActiveSynergies(this.state.player.weapons);
 
@@ -350,6 +408,8 @@ export class Game {
             // with a fresh, false latch and bank a second completion — and a third on
             // floor 7, forever.
             runCompletionRecorded: !!this.state.runCompletionRecorded,
+            character: this.state.player.character || DEFAULT_PATIENT,   // Patch 136
+            daily: this.state.daily || null,   // Patch 140
             runKills: this.state.runKills || 0,     // Patch 124
             runFrames: this.state.runFrames || 0,   // Patch 124
             bestFloorAtStart: this.state.bestFloorAtStart || 1,   // Patch 124
@@ -892,6 +952,10 @@ export class Game {
                 }
             }
         }
+
+        // Patch 137: after everything has moved, the room's walls push the player and
+        // the regular enemies back out (and the Blueprint rearranges itself).
+        if (!devFrozen) updateArena(this.state);
 
         Combat.resolveWeapons(this);
         Combat.collectXP(this);

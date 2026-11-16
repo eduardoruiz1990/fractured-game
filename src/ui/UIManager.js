@@ -1,6 +1,7 @@
 // src/ui/UIManager.js
 import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS, MANIFESTATIONS, PLAYER_WEAPON_IDS, ENEMY_BESTIARY, SYNERGIES } from '../data/Manifestations.js';
 import { synergyRecipe } from './SynergyBanner.js';
+import { EVOLUTIONS, evolutionRecipe } from '../systems/Evolutions.js';   // Patch 134
 
 // Patch 126: synergy names/descs are static data today, but escaped anyway — the
 // codex builds markup from them.
@@ -9,6 +10,10 @@ const escapeText = (v) => String(v == null ? '' : v)
 import { SynapseTree } from './SynapseTree.js';
 import { GuideUI } from './GuideUI.js';
 import { FolderTabs } from './FolderTabs.js';
+import { PatientStrips } from './PatientStrip.js';   // Patch 136
+import { ACHIEVEMENTS, achievementProgress, totalKills } from '../data/Achievements.js';   // Patch 139
+import { WEAPON_UNLOCKS, isWeaponUnlocked } from '../data/Unlocks.js';
+import { PATIENTS, PATIENT_ORDER, isPatientUnlocked } from '../data/Patients.js';
 import { showConfirm } from './Dialog.js';
 import { BOONS } from './LevelUpUI.js';
 // Patch 98 — the roadmap reports depth past floor 5. See src/core/Endless.js.
@@ -237,6 +242,24 @@ export class UIManager {
         // Patch 129: the eight tabs grouped into four (see FolderTabs.js). Built after
         // tabBtns is captured: the same buttons, regrouped, keep their handlers.
         this.folderTabs = new FolderTabs();
+
+        // Patch 136 (V2 plan D1): the Patient picker, on the title (compact) and in
+        // the EVALUATION pane. Hosts are created here so index.html is untouched.
+        this.patientStrips = new PatientStrips(this.saveManager);
+        const titleBegin = document.getElementById('btn-title-begin');
+        if (titleBegin && titleBegin.parentNode) {
+            const t = document.createElement('div');
+            t.id = 'title-patient-strip';
+            titleBegin.parentNode.insertBefore(t, titleBegin.nextSibling);
+            this.patientStrips.mount(t, { compact: true });
+        }
+        const startBtn = document.getElementById('btn-start');
+        if (startBtn && startBtn.parentNode && startBtn.parentNode.parentNode) {
+            const f = document.createElement('div');
+            f.id = 'folder-patient-strip';
+            startBtn.parentNode.parentNode.insertBefore(f, startBtn.parentNode);
+            this.patientStrips.mount(f, { compact: false });
+        }
 
         // Patch 34b: one shared floating tooltip appended directly to <body>,
         // outside .inventory-panel's DOM subtree so its overflow-y:auto (which
@@ -518,6 +541,7 @@ export class UIManager {
 
     updateMenuUI() {
         const meta = this.saveManager.metaState;
+        if (this.patientStrips) this.patientStrips.render();   // Patch 136
         const levelInfo = this.saveManager.getPatientLevelInfo();
         
         const levelDisplays = document.querySelectorAll('.patient-stamp');
@@ -897,7 +921,63 @@ export class UIManager {
                 <div style="font-size:0.8rem; color:#555; margin-top:5px; font-weight:bold;">${count}${goalText}</div>
             </div>`;
 
-        let html = heading('STANDARD NIGHTMARES (Bronze: 10, Silver: 1k, Gold: 10k)');
+        // Patch 139 (V2 plan D7): the case records, the achievements, and the unlock
+        // tracks come first: they are the goals, the monuments below are the history.
+        const meta = this.saveManager.metaState;
+        const deepest = Number(meta.maxFloorReached) || 1;
+        const depthText = isEndless(deepest) ? `Floor ${deepest} · Recursion Cycle ${cycleLabel(deepest)}` : `Floor ${deepest}`;
+        const rec = (label, value) => `<div class="record-cell"><span class="record-value">${escapeText(value)}</span><span class="record-label">${label}</span></div>`;
+        let html = heading('CASE RECORDS');
+        html += `<div class="records-row" style="grid-column: 1 / -1;">
+            ${rec('DEEPEST', depthText)}
+            ${rec('DESCENTS', Number(meta.runsStarted) || 0)}
+            ${rec('FLOOR 5 CLEARS', Number(meta.runsCompleted) || 0)}
+            ${rec('BANISHED', totalKills(meta).toLocaleString('en-US'))}
+            ${rec('NAMED ELITES', Number((meta.killCounts || {}).ELITE) || 0)}
+            ${rec('CHESTS', Number((meta.stats || {}).chestsOpened) || 0)}
+        </div>`;
+
+        const got = meta.achievements || {};
+        const earned = ACHIEVEMENTS.filter(a => got[a.id]).length;
+        html += heading(`ACHIEVEMENTS (${earned} / ${ACHIEVEMENTS.length})`);
+        ACHIEVEMENTS.forEach(a => {
+            const when = got[a.id];
+            const p = achievementProgress(a, meta);
+            const prog = !when && p && p.goal > 1 ? `<div class="ach-progress"><span style="width:${Math.round(p.value / p.goal * 100)}%"></span></div><div class="ach-count">${p.value.toLocaleString('en-US')} / ${p.goal.toLocaleString('en-US')}</div>` : '';
+            const date = when ? `<div class="ach-date">${escapeText(new Date(when).toISOString().slice(0, 10))}</div>` : '';
+            html += `
+            <div class="trophy-card ach-card ${when ? 'earned' : 'locked'}" data-achievement="${a.id}">
+                <div class="ach-icon">${a.icon}</div>
+                <div class="ach-name">${escapeText(a.name)}</div>
+                <div class="ach-desc">${escapeText(a.desc)}</div>
+                ${prog}${date}
+            </div>`;
+        });
+
+        html += heading('UNLOCK TRACKS');
+        PATIENT_ORDER.forEach(id => {
+            const pt = PATIENTS[id];
+            const open = isPatientUnlocked(id, meta);
+            html += `
+            <div class="trophy-card ach-card ${open ? 'earned' : 'locked'}" data-unlock="patient:${id}">
+                <div class="ach-icon">${open ? pt.icon : '🔒'}</div>
+                <div class="ach-name">${escapeText(pt.name)}</div>
+                <div class="ach-desc">${open ? 'Admitted. Choose them before a descent.' : escapeText(pt.unlockText)}</div>
+            </div>`;
+        });
+        ['pill_bottle', ...Object.keys(WEAPON_UNLOCKS)].forEach(id => {
+            const open = isWeaponUnlocked(id, meta);
+            const name = (MANIFESTATIONS[id] && MANIFESTATIONS[id].name) || id;
+            const u = WEAPON_UNLOCKS[id];
+            html += `
+            <div class="trophy-card ach-card ${open ? 'earned' : 'locked'}" data-unlock="weapon:${id}">
+                <div class="ach-icon">${open ? '🧰' : '🔒'}</div>
+                <div class="ach-name">${escapeText(name)}</div>
+                <div class="ach-desc">${open ? 'In the level-up pool.' : escapeText(u ? u.text : '')}</div>
+            </div>`;
+        });
+
+        html += heading('STANDARD NIGHTMARES (Bronze: 10, Silver: 1k, Gold: 10k)');
         mobs.forEach(entry => {
             const count = kills[entry.id] || 0;
             if (count <= 0) { html += sealedCard(); return; }
@@ -941,6 +1021,36 @@ export class UIManager {
                 <div style="font-size:0.72rem; color:#6f6656; margin-top:4px; line-height:1.35;">${recipe}</div>
                 <div style="font-size:0.74rem; color:#333; margin-top:6px; line-height:1.35;">${escapeText(syn.desc)}</div>
                 <div style="font-size:0.7rem; color:#8a8172; margin-top:6px; letter-spacing:1px;">FORMED ×${times}</div>
+            </div>`;
+        });
+
+        // Patch 134 (V2 plan D2): the evolution codex — same rules as the synergy one:
+        // an unrevealed entry shows its recipe (weapon at level 5 + boon, then a chest)
+        // so it is a goal, and keeps its name and effect sealed.
+        const evolved = this.saveManager.metaState.discoveredEvolutions || {};
+        const evoIds = Object.keys(EVOLUTIONS);
+        const evolvedCount = evoIds.filter(id => (Number(evolved[id]) || 0) > 0).length;
+        html += heading(`EVOLUTION CODEX (${evolvedCount} / ${evoIds.length} · weapon at level 5 + its boon, then open an elite's chest)`);
+        evoIds.forEach(id => {
+            const evo = EVOLUTIONS[id];
+            const times = Number(evolved[id]) || 0;
+            const recipe = escapeText(evolutionRecipe(evo));
+            if (times <= 0) {
+                html += `
+            <div class="trophy-card codex-card codex-locked" data-evolution="${id}" style="background:#f4f1ea; border:2px dashed #c2b59b; box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
+                <div style="font-size:2.6rem; color:#111; opacity:0.08; line-height:1;">⬆</div>
+                <div class="redacted-text" style="font-weight:bold; margin-top:10px; font-size:0.8rem;">(UNEVOLVED)</div>
+                <div style="font-size:0.72rem; color:#6f6656; margin-top:6px; line-height:1.35;">${recipe}</div>
+            </div>`;
+                return;
+            }
+            html += `
+            <div class="trophy-card codex-card" data-evolution="${id}" style="background:#fbf8ff; border:2px solid #8e6cd8; box-shadow:4px 4px 0 rgba(0,0,0,0.1); padding:15px; text-align:center;">
+                <div style="font-size:2.6rem; line-height:1; color:#8e6cd8;">⬆</div>
+                <div style="font-weight:bold; color:var(--ink-black); margin-top:10px; font-size:0.9rem;">${escapeText(evo.name)}</div>
+                <div style="font-size:0.72rem; color:#6f6656; margin-top:4px; line-height:1.35;">${recipe}</div>
+                <div style="font-size:0.74rem; color:#333; margin-top:6px; line-height:1.35;">${escapeText(evo.desc)}</div>
+                <div style="font-size:0.7rem; color:#8a8172; margin-top:6px; letter-spacing:1px;">EVOLVED ×${times}</div>
             </div>`;
         });
 

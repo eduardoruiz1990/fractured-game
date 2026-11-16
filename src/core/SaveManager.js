@@ -5,6 +5,8 @@ import { TOKENS, TOKEN_SETS, TOKEN_RARITIES, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHT
 // uses the host's cloud-save backend when one exists and plain localStorage when it
 // does not. Off-portal this is exactly the previous localStorage behaviour.
 import { portalSDK } from '../systems/PortalSDK.js';
+import { ACHIEVEMENTS, ACHIEVEMENT_BY_ID, STAT_KEYS, emptyStats } from '../data/Achievements.js';   // Patch 139
+import { emptyDaily, startDailyAttempt, finishDailyAttempt, canStartDaily } from '../systems/Daily.js';   // Patch 140
 
 // Patch 31: built from TOKEN_SLOT_TYPES so the equippedTokens shape has ONE source
 // of truth. §2 of the handoff listed five hardcoded copies of the old 4-slot shape;
@@ -51,6 +53,14 @@ export class SaveManager {
             // nothing reads it back into gameplay. Back-filled in loadGame, derived
             // from the imported file in importSave, cleared by wipeSave.
             discoveredSynergies: {},
+            discoveredEvolutions: {},   // Patch 134
+            selectedCharacter: 'insomniac',   // Patch 136 — data/Patients.js
+            announcedPatients: ['insomniac'],
+            // Patch 139: achievements (id -> ms when earned) and the few lifetime
+            // counters that exist only for them (data/Achievements.js).
+            achievements: {},
+            stats: emptyStats(),
+            daily: emptyDaily(),   // Patch 140: the Daily Session record (systems/Daily.js)
             // Patch 59: lifetime case statistics. runsStarted counts descents begun,
             // deaths counts minds broken, runsCompleted counts Floor 5 clears (the
             // Architect falling). All three are records only — nothing reads them
@@ -134,6 +144,17 @@ export class SaveManager {
                 // recordBoonPick() indexes into it directly.
                 if (!this.metaState.boonHistory) this.metaState.boonHistory = {};
                 // Patch 126.
+                // Patch 136: the chosen Patient and the ones already shown as NEW.
+                if (typeof this.metaState.selectedCharacter !== 'string') this.metaState.selectedCharacter = 'insomniac';
+                if (!Array.isArray(this.metaState.announcedPatients)) this.metaState.announcedPatients = ['insomniac'];
+                // Patch 139: achievements and their counters.
+                if (!this.metaState.achievements || typeof this.metaState.achievements !== 'object') this.metaState.achievements = {};
+                this.metaState.stats = { ...emptyStats(), ...((this.metaState.stats && typeof this.metaState.stats === 'object') ? this.metaState.stats : {}) };
+                this.metaState.daily = { ...emptyDaily(), ...((this.metaState.daily && typeof this.metaState.daily === 'object') ? this.metaState.daily : {}) };   // Patch 140
+                // Patch 134: evolution codex, same shape as the synergy one.
+                if (!this.metaState.discoveredEvolutions || typeof this.metaState.discoveredEvolutions !== 'object') {
+                    this.metaState.discoveredEvolutions = {};
+                }
                 if (!this.metaState.discoveredSynergies || typeof this.metaState.discoveredSynergies !== 'object') {
                     this.metaState.discoveredSynergies = {};
                 }
@@ -257,6 +278,14 @@ export class SaveManager {
                 // Patch 126: same rule — from the imported file, never inherited.
                 this.metaState.discoveredSynergies =
                     (parsed.discoveredSynergies && typeof parsed.discoveredSynergies === 'object') ? parsed.discoveredSynergies : {};
+                this.metaState.discoveredEvolutions =   // Patch 134
+                    (parsed.discoveredEvolutions && typeof parsed.discoveredEvolutions === 'object') ? parsed.discoveredEvolutions : {};
+                this.metaState.selectedCharacter = typeof parsed.selectedCharacter === 'string' ? parsed.selectedCharacter : 'insomniac';   // Patch 136
+                this.metaState.announcedPatients = Array.isArray(parsed.announcedPatients) ? parsed.announcedPatients : ['insomniac'];
+                // Patch 139: from the imported file, never inherited from this profile.
+                this.metaState.achievements = (parsed.achievements && typeof parsed.achievements === 'object') ? parsed.achievements : {};
+                this.metaState.stats = { ...emptyStats(), ...((parsed.stats && typeof parsed.stats === 'object') ? parsed.stats : {}) };
+                this.metaState.daily = { ...emptyDaily(), ...((parsed.daily && typeof parsed.daily === 'object') ? parsed.daily : {}) };   // Patch 140
 
                 // Patch 59: same reasoning as boonHistory directly above — these must
                 // come from the IMPORTED file, not survive from whatever profile this
@@ -332,6 +361,79 @@ export class SaveManager {
         return prev === 0;
     }
 
+    /** Patch 136: chooses the Patient for the next run, and marks it as seen. */
+    setSelectedCharacter(id) {
+        if (typeof id !== 'string' || !id) return;
+        this.metaState.selectedCharacter = id;
+        if (!Array.isArray(this.metaState.announcedPatients)) this.metaState.announcedPatients = ['insomniac'];
+        if (!this.metaState.announcedPatients.includes(id)) this.metaState.announcedPatients.push(id);
+        this.saveGame();
+    }
+
+    /** Patch 139: bumps an achievement counter (metaState.stats). Saved by the next claim. */
+    recordStat(key, n = 1) {
+        if (!STAT_KEYS.includes(key)) return;
+        if (!this.metaState.stats || typeof this.metaState.stats !== 'object') this.metaState.stats = emptyStats();
+        this.metaState.stats[key] = (Number(this.metaState.stats[key]) || 0) + (Number(n) || 0);
+    }
+
+    /**
+     * Patch 139: records every achievement whose predicate now holds and was not yet
+     * recorded, saves if any, and returns them (achievement objects) for announcing.
+     */
+    claimAchievements(now = Date.now()) {
+        if (!this.metaState.achievements || typeof this.metaState.achievements !== 'object') this.metaState.achievements = {};
+        const got = this.metaState.achievements;
+        const fresh = [];
+        for (const a of ACHIEVEMENTS) {
+            if (got[a.id]) continue;
+            let ok = false;
+            try { ok = !!a.test(this.metaState); } catch (e) { ok = false; }
+            if (ok) { got[a.id] = now; fresh.push(a); }
+        }
+        if (fresh.length) this.saveGame();
+        return fresh;
+    }
+
+    /** Patch 140: whether today's Daily Session attempt is still available. */
+    canStartDaily(key) {
+        return canStartDaily(this.metaState.daily, key);
+    }
+
+    /** Patch 140: records that today's attempt has started (one per day), and saves. */
+    beginDaily(key) {
+        this.metaState.daily = startDailyAttempt(this.metaState.daily, key);
+        this.recordStat('dailiesPlayed');
+        this.saveGame();
+        return this.metaState.daily;
+    }
+
+    /** Patch 140: the attempt's score; returns { score, best, isBest, streak }. */
+    finishDaily(key, score) {
+        const { record, isBest } = finishDailyAttempt(this.metaState.daily, key, score);
+        this.metaState.daily = record;
+        this.saveGame();
+        return { score: record.lastScore, best: record.best, isBest, streak: record.streak };
+    }
+
+    /** Patch 139: how many achievements this profile has. */
+    achievementCount() {
+        const got = this.metaState.achievements || {};
+        return Object.keys(got).filter(id => ACHIEVEMENT_BY_ID[id]).length;
+    }
+
+    /** Patch 134: the same for an evolution. True the first time this profile evolves it. */
+    recordEvolution(id) {
+        if (!id) return false;
+        if (!this.metaState.discoveredEvolutions || typeof this.metaState.discoveredEvolutions !== 'object') {
+            this.metaState.discoveredEvolutions = {};
+        }
+        const prev = Number(this.metaState.discoveredEvolutions[id]) || 0;
+        this.metaState.discoveredEvolutions[id] = prev + 1;
+        this.saveGame();
+        return prev === 0;
+    }
+
     /**
      * Bumps one of the lifetime case counters (Patch 59).
      *
@@ -362,8 +464,11 @@ export class SaveManager {
         if (!this.metaState.killCounts) {
             this.metaState.killCounts = { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 };
         }
-        if (this.metaState.killCounts[type] !== undefined) {
-            this.metaState.killCounts[type]++;
+        // Patch 133: any type is counted, not just the eight seeded above — the
+        // Phase D enemies and ELITE (counted alongside the base type) would otherwise
+        // be silently dropped. Renderers read known keys with `|| 0`.
+        if (typeof type === 'string' && type) {
+            this.metaState.killCounts[type] = (this.metaState.killCounts[type] || 0) + 1;
         }
     }
 
@@ -745,6 +850,11 @@ export class SaveManager {
             killCounts: { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 },
             boonHistory: {},   // Patch 57: a wipe clears the record too.
             discoveredSynergies: {},   // Patch 126
+            discoveredEvolutions: {},  // Patch 134
+            selectedCharacter: 'insomniac',   // Patch 136
+            announcedPatients: ['insomniac'],
+            achievements: {}, stats: emptyStats(),   // Patch 139
+            daily: emptyDaily(),   // Patch 140
             runsStarted: 0, deaths: 0, runsCompleted: 0,   // Patch 59
             // Patch 92: a wipe is a new patient file, so the retention notice and the
             // backup prompt are both re-armed. wipeSave() reloads the page, so the

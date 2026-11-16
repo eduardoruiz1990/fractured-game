@@ -23,7 +23,7 @@ patches numbered from 102).
 
 There is no test runner configured (no `test` script, no framework installed). The `test_*.js` scripts at the repo root are standalone Node scripts that mock `document`/`window`/`localStorage` and exercise the real modules directly — run them with `node test_bosses.js` etc.
 
-**Six are assertion-based and exit non-zero on failure — run the relevant ones after any change:**
+**These are assertion-based and exit non-zero on failure — run the relevant ones after any change** (`test_rewards.js`, `test_pacing.js` and `test_fuzz_runs.js` also assert; see their headers):
 
 | File | Run it after touching |
 | --- | --- |
@@ -33,6 +33,8 @@ There is no test runner configured (no `test` script, no framework installed). T
 | `test_leash.js` | `Enemy.applyMovement`, leash thresholds, tutorial spawn distances |
 | `test_tutorial.js` | `src/systems/Tutorial.js`, tutorial copy, the step gates, the instruction hold |
 | `test_viewport.js` | `Renderer.updateZoom`, `src/core/Layout.js`, the portrait band, anything reading canvas dimensions |
+| `test_arena.js` | `src/systems/Arena.js` (room shapes, spawn sectors, wall collision), `src/systems/RoomEvents.js`, `Director.spawnRoom`'s layout/event choice, the room-clear path |
+| `test_progress.js` | `src/data/Achievements.js`, `src/data/Unlocks.js`, the `achievements`/`stats` save fields, `claimAchievements`, the Daily Session |
 | `test_endless.js` | `src/core/Endless.js`, boss-per-floor dispatch, endless scaling/cadence, the run-completion latch, per-floor palettes or enemy tints, `LevelUpUI`'s weapon cap or `DEEP_BOONS` |
 
 `test_director.js` and `test_save.js` are exploratory only (they print, they don't assert).

@@ -21,6 +21,8 @@ import {
 } from '../data/Manifestations.js';
 import { BOONS } from './LevelUpUI.js';
 import { synergyRecipe } from './SynergyBanner.js';
+import { EVOLUTIONS, evolutionRecipe } from '../systems/Evolutions.js';   // Patch 134
+import { MAX_WEAPON_SLOTS } from '../data/Config.js';   // Patch 132
 
 const esc = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -120,6 +122,12 @@ export class GuideUI {
                 h += this.section('ABERRANT STRAINS',
                     'From Floor 2 onward, ordinary manifestations can present with a strain. Floor 1 never does — learn the plain forms first.');
                 ENEMY_VARIANTS.forEach(v => { h += this.card(v.color, '🧬', v.name, v.effect); });
+
+                // Patch 133 (V2 plan D4).
+                h += this.section('NAMED ELITES',
+                    'Most rooms past the first send one manifestation that has a name. It wears a gold ring and its own health bar.');
+                h += this.card('#d9a441', '👑', 'ELITE', 'Six times the health and harder hits. It arrives about halfway through the room. Kill it and it leaves a chest.');
+                h += this.card('#d9a441', '🧰', 'CHEST', 'Walk into it. It levels the weapons you carry (one to three levels) — or, if one is ready, evolves a weapon instead.');
                 return h;
             }),
 
@@ -136,7 +144,7 @@ export class GuideUI {
                     'With several closing at once you cannot hold them all. Pick the one that must be stopped, give it the centre, and accept that the rest keep walking.');
 
                 h += this.section('INSTRUMENTS',
-                    'Weapons fire on their own. Every one caps at level 5, and reaching that cap is what unlocks synergies.');
+                    `Weapons fire on their own. You can carry ${MAX_WEAPON_SLOTS} at once. Every one caps at level 5, and reaching that cap is what unlocks synergies and evolutions.`);
                 PLAYER_WEAPON_IDS.forEach(id => {
                     const w = MANIFESTATIONS[id];
                     if (!w) return;
@@ -152,6 +160,13 @@ export class GuideUI {
                 Object.values(SYNERGIES).forEach(s => {
                     const recipe = synergyRecipe(s);
                     h += this.card('#1a1a1a', '🔗', s.name, s.desc || '', recipe ? `REQUIRES: ${recipe.toUpperCase()} · BOTH LEVEL 5` : null);
+                });
+
+                // Patch 134 (V2 plan D2).
+                h += this.section('EVOLUTIONS',
+                    'One instrument at level 5 plus its matching trait. The next chest an elite drops evolves it. Each one is filed in the Evolution Codex.');
+                Object.values(EVOLUTIONS).forEach(e => {
+                    h += this.card('#8e6cd8', '⬆', e.name, e.desc, `REQUIRES: ${evolutionRecipe(e).toUpperCase()}`);
                 });
                 return h;
             }),
