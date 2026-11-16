@@ -1245,13 +1245,16 @@ body.quality-low #crt-scanlines { display: none; }
     max-width: 100%;
 }
 
+/* Patch 150 (V2 plan F3): tamed. It was up to 12px of offset and 5deg of skew,
+   flipping every 1.5s on the first screen every player sees. Now about half the
+   offset, a third of the skew; it stops altogether under reduced motion. */
 @keyframes aggressive-glitch {
-    0% { text-shadow: 6px 0 0 #fff, -6px 0 0 #000; transform: skewX(0deg); }
-    20% { text-shadow: -8px 0 0 var(--ui-red), 8px 0 0 var(--ui-gold); transform: skewX(3deg); }
-    40% { text-shadow: 6px 0 0 #fff, -6px 0 0 var(--ui-red); transform: skewX(-3deg); }
-    60% { text-shadow: -12px 3px 0 var(--ui-gold), 12px -3px 0 #000; transform: skewX(5deg); }
-    80% { text-shadow: 4px 0 0 var(--ui-red), -4px 0 0 #fff; transform: skewX(-2deg); }
-    100% { text-shadow: -6px 0 0 var(--ui-gold), 6px 0 0 #000; transform: skewX(0deg); }
+    0% { text-shadow: 3px 0 0 #fff, -3px 0 0 #000; transform: skewX(0deg); }
+    20% { text-shadow: -4px 0 0 var(--ui-red), 4px 0 0 var(--ui-gold); transform: skewX(1deg); }
+    40% { text-shadow: 3px 0 0 #fff, -3px 0 0 var(--ui-red); transform: skewX(-1deg); }
+    60% { text-shadow: -5px 1px 0 var(--ui-gold), 5px -1px 0 #000; transform: skewX(1.5deg); }
+    80% { text-shadow: 2px 0 0 var(--ui-red), -2px 0 0 #fff; transform: skewX(-0.5deg); }
+    100% { text-shadow: -3px 0 0 var(--ui-gold), 3px 0 0 #000; transform: skewX(0deg); }
 }
 
 #glitch-overlay {
@@ -2059,3 +2062,20 @@ body.quality-low #crt-scanlines { display: none; }
     .story-text, .story-ending-text { font-size: 0.9rem; }
     .story-title { font-size: 1rem; }
 }
+
+/* ===================================================================================
+   Patch 150 (V2 plan F3, F4): motion and text-size settings.
+   =================================================================================== */
+/* F3: the title stops glitching for OS reduced motion and for the photosensitivity
+   setting (body.calm-motion, set by main.js applyAccessibility). */
+@media (prefers-reduced-motion: reduce) {
+    .title-glitch, #title-screen .title-glitch { animation: none !important; }
+    .story-hint, .story-card.story-in, .story-ending-text.story-in { animation: none !important; }
+}
+body.calm-motion .title-glitch,
+body.calm-motion #title-screen .title-glitch,
+body.calm-motion .story-hint { animation: none !important; }
+
+/* F4: Text Size. Everything sized in rem (menus, HUD, notices, story) scales. */
+html.text-large { font-size: 112.5%; }
+html.text-larger { font-size: 125%; }

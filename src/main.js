@@ -601,14 +601,23 @@ function maybeHappytimeForBossKill(floor) {
 // portalSDK.init(); reloadSettingsFromPortal() re-reads through the portal once init
 // has resolved, and saveSettings() writes through it. Try/caught, so a SecurityError
 // degrades to default settings rather than killing boot.
-let gameSettings = { screenShake: true, photosensitive: false, musicVolume: 1, sfxVolume: 1,
+// Patch 150 (V2 plan F3): a player whose OS asks for reduced motion starts with screen
+// shake off and photosensitivity mode on. Only the DEFAULTS follow the OS; a saved
+// choice (merged over these below) always wins.
+const osReducedMotion = (() => {
+    try { return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+    catch (e) { return false; }
+})();
+let gameSettings = { screenShake: !osReducedMotion, photosensitive: osReducedMotion, musicVolume: 1, sfxVolume: 1,
                      // Patch 115: 'auto' | 'high' | 'low'; autoQuality is what AUTO settled on.
                      quality: 'auto', autoQuality: 'high',
                      // Patch 148 (V2 plan F1): aim assist — 'auto' (on for touch, off with a
                      // mouse) | 'on' | 'off'. See systems/AutoAim.js.
                      aimAssist: 'auto',
                      // Patch 149 (V2 plan F2/F6): double-tap the move side to dash; vibration.
-                     doubleTapDash: true, haptics: true };
+                     doubleTapDash: true, haptics: true,
+                     // Patch 150 (V2 plan F4): colour-blind assist; menu/HUD text size.
+                     colorAssist: false, textSize: 'normal' };
 try {
     const savedSettings = localStorage.getItem('fractured_settings');
     if (savedSettings) gameSettings = { ...gameSettings, ...JSON.parse(savedSettings) };
@@ -706,6 +715,31 @@ function probeQualityOnDraw(time) {
 function applyInputSettings() {
     setHapticsEnabled(gameSettings.haptics !== false);
     if (inputManager) inputManager.doubleTapDash = gameSettings.doubleTapDash !== false;
+    applyAccessibility();
+}
+
+// Patch 150 (V2 plan F4): the Sanity bar's three states. The assist ramp avoids the
+// red/green pair (blue, orange, pink), and low/breakdown are also hatched (Patch 128).
+const SANITY_COLOURS = {
+    standard: { ok: 'var(--hud-green)', low: '#ffaa00', breakdown: 'var(--ui-red)' },
+    assist:   { ok: '#4da3ff', low: '#ff9a1f', breakdown: '#ff4fa3' }
+};
+const TEXT_SIZES = { normal: '', large: 'text-large', larger: 'text-larger' };
+
+/** Patch 150: body/html classes and renderer flags for the accessibility settings. */
+function applyAccessibility() {
+    try {
+        const html = document.documentElement;
+        Object.values(TEXT_SIZES).forEach(c => { if (c) html.classList.remove(c); });
+        const cls = TEXT_SIZES[gameSettings.textSize];
+        if (cls) html.classList.add(cls);
+        document.body.classList.toggle('calm-motion', !!gameSettings.photosensitive);
+        document.body.classList.toggle('cb-assist', !!gameSettings.colorAssist);
+        if (renderer) {
+            renderer.cbAssist = !!gameSettings.colorAssist;
+            renderer.textScale = gameSettings.textSize === 'larger' ? 1.25 : (gameSettings.textSize === 'large' ? 1.12 : 1);
+        }
+    } catch (e) { /* cosmetic */ }
 }
 
 function reloadSettingsFromPortal() {
@@ -1855,6 +1889,20 @@ function initEngine() {
                     </label>
                     <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Buzzes when you are hit, when a boss arrives or winds up, and on rewards. Phones only.</p>
 
+                    <label style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="toggle-colorassist" style="width: 20px; height: 20px; cursor: pointer;">
+                        Colour-Blind Assist
+                    </label>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Sanity reads blue, orange, pink instead of green to red, and enemies winding up an attack get a white dashed ring.</p>
+
+                    <label for="select-textsize" style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem;">Text Size</label>
+                    <select id="select-textsize" style="margin-top: -12px; font-family: inherit; font-size: 1rem; padding: 8px; min-height: 44px; background: var(--paper-bg); color: var(--ink-black); border: 1px solid var(--ink-black);">
+                        <option value="normal">NORMAL</option>
+                        <option value="large">LARGE</option>
+                        <option value="larger">LARGER</option>
+                    </select>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px;">Menus, the HUD, notices and story text.</p>
+
                     <label for="select-quality" style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem;">Graphics Quality</label>
                     <select id="select-quality" style="margin-top: -12px; font-family: inherit; font-size: 1rem; padding: 8px; min-height: 44px; background: var(--paper-bg); color: var(--ink-black); border: 1px solid var(--ink-black);">
                         <option value="auto">AUTO (recommended)</option>
@@ -2061,8 +2109,19 @@ function initEngine() {
             });
         }
 
+        // Patch 150 (V2 plan F4): text size, applied the moment it changes.
+        const selectText = document.getElementById('select-textsize');
+        if (selectText) {
+            selectText.value = TEXT_SIZES[gameSettings.textSize] !== undefined ? gameSettings.textSize : 'normal';
+            selectText.addEventListener('change', () => {
+                gameSettings.textSize = TEXT_SIZES[selectText.value] !== undefined ? selectText.value : 'normal';
+                applyAccessibility();
+                saveSettings();
+            });
+        }
+
         // Patch 149 (V2 plan F2/F6): applied the moment they change.
-        [['toggle-doubletap', 'doubleTapDash'], ['toggle-haptics', 'haptics']].forEach(([id, key]) => {
+        [['toggle-doubletap', 'doubleTapDash'], ['toggle-haptics', 'haptics'], ['toggle-colorassist', 'colorAssist']].forEach(([id, key]) => {
             const el = document.getElementById(id);
             if (!el) return;
             el.checked = gameSettings[key] !== false;
@@ -2120,6 +2179,7 @@ function initEngine() {
         document.getElementById('btn-close-settings').addEventListener('click', () => {
             gameSettings.screenShake = toggleShake.checked;
             gameSettings.photosensitive = togglePhoto.checked;
+            applyAccessibility();   // Patch 150: calm-motion follows photosensitivity
             saveSettings();
             settingsUI.style.display = 'none';
         });
@@ -2298,8 +2358,8 @@ function initEngine() {
     knownLockedWeapons = lockedWeapons(saveManager.metaState);
     inputManager = new InputManager(canvas);
     inputManager.onDashGesture = () => haptic('dash');   // Patch 149
-    applyInputSettings();
     renderer = new Renderer(canvas, ctx);
+    applyInputSettings();   // after the renderer: it also applies the accessibility flags
     audioEngine = new AudioEngine();
     // Push the persisted volumes in BEFORE preload() builds the graph, so the buses
     // are created at the player's level. Doing it after would open every session at
@@ -3270,9 +3330,11 @@ function gameLoop(time) {
                 if (!Number.isFinite(ratio)) ratio = 0;
                 hudStyle(sanityBar, 'width', hudPct(Math.max(0, ratio)));
                 
-                if (isBreakdown) { hudStyle(sanityBar, 'backgroundColor', 'var(--ui-red)'); hudStyle(sanityBar, 'boxShadow', '0 0 15px var(--ui-red)'); }
-                else if (ratio < 0.3) { hudStyle(sanityBar, 'backgroundColor', '#ffaa00'); hudStyle(sanityBar, 'boxShadow', '0 0 10px #ffaa00'); }
-                else { hudStyle(sanityBar, 'backgroundColor', 'var(--hud-green)'); hudStyle(sanityBar, 'boxShadow', '0 0 10px var(--hud-green)'); }
+                // Patch 150: the palette follows Colour-Blind Assist.
+                const sc = gameSettings.colorAssist ? SANITY_COLOURS.assist : SANITY_COLOURS.standard;
+                if (isBreakdown) { hudStyle(sanityBar, 'backgroundColor', sc.breakdown); hudStyle(sanityBar, 'boxShadow', `0 0 15px ${sc.breakdown}`); }
+                else if (ratio < 0.3) { hudStyle(sanityBar, 'backgroundColor', sc.low); hudStyle(sanityBar, 'boxShadow', `0 0 10px ${sc.low}`); }
+                else { hudStyle(sanityBar, 'backgroundColor', sc.ok); hudStyle(sanityBar, 'boxShadow', `0 0 10px ${sc.ok}`); }
 
                 // Patch 128 (V2 plan C7): the state in WORDS and a hatch pattern, not
                 // only the bar's colour. Thresholds are the colour thresholds above.

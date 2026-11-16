@@ -2536,6 +2536,33 @@ small box... that if the player presses it, then it gets the large screen."
   CDP touches (it dashes, along the last heading, with a buzz; a hold then a touch
   does not).
 
+**Patch 150 — reduced-motion defaults, colour-blind assist, text size (plan F3, F4).**
+
+- **F3.** `prefers-reduced-motion: reduce` now sets the DEFAULTS: screen shake off and
+  photosensitivity mode on. A saved choice still wins (the saved settings are merged
+  over these defaults, as before). The title's `aggressive-glitch` is tamed for
+  everyone (about half the offset, a third of the skew) and stops entirely under
+  reduced motion or with photosensitivity on (`body.calm-motion`), as do the cold
+  open's pulsing hint and the story fade-ins.
+- **F4, Colour-Blind Assist** (`gameSettings.colorAssist`, default off):
+  - the Sanity bar reads blue → orange → pink in place of green → amber → red
+    (`SANITY_COLOURS`; low and breakdown keep Patch 128's hatching and text);
+  - every enemy winding up an attack gets a white dashed ring that pulses
+    (`Renderer.drawTelegraphRings`, after the lighting mask): bosses by
+    `Haptics.bossTelegraphing`, Hall Monitors by `attackState === 'telegraphing'`.
+    XP orbs were already blue-white and are unchanged.
+- **F4, Text Size** NORMAL / LARGE / LARGER (`gameSettings.textSize`): `html.text-large`
+  (112.5%) / `html.text-larger` (125%) scale everything in rem — menus, HUD, notices,
+  story — and `renderer.textScale` scales the canvas subtitles and boss lines.
+- `applyAccessibility()` (main.js) sets the classes and renderer flags; it runs at boot,
+  after the portal settings load, and on every change.
+- New `qa/access_check.cjs`: the OS reduced-motion defaults and the still title, the
+  usual defaults without it, a saved choice beating the OS across a reload, and on a
+  384 px phone the assist palette (blue, then orange), LARGER text (20 px root, ×1.25
+  canvas) with the HUD still on screen, both saved.
+- `qa/synergy_check.cjs`: up to 40 level-up rolls for the Static Receiver card (15
+  occasionally missed it by chance).
+
 ---
 
 ## Keep clauses (things future patches break by accident)
