@@ -2770,6 +2770,46 @@ any tuning I built a way to measure it.
     clamp.
   - Every other suite, the 200-run fuzz and the soak are unchanged.
 
+**Patch 157 — the Mind Hub, round three: back off 155's two risky choices; a hub benchmark.**
+
+The A56 reported the hub at **26 fps after Patch 155**, down from ~45, with JS still
+0.8 ms a frame. 155 made the GPU's work worse. Two of its changes are known risks on
+an Android WebView, and both are now reverted to the safer form:
+
+- **The baked floor is drawn from its canvas, not an `ImageBitmap`.** A WebView can
+  keep an `ImageBitmap` made from a canvas in CPU memory. Drawing it then re-uploads
+  all 1200×1200×4 = 5.8 MB to the GPU every frame, where a canvas stays a GPU texture.
+  The bitmap is now made only if the benchmark asks for it (`HubWorld.requestBitmap`).
+- **Dust motes are 1–3 px squares again, one `fillRect` each** (`drawHubDust(state,
+  'rect')`). 155 batched them into one path of many circles per brightness band, which
+  loses the GPU's single-shape fast path.
+
+One more cost was found while reading the hub branch:
+
+- **Film grain in the hub ignored the tier.** It was a full-screen pattern pass every
+  frame, even on LOW. Gameplay has turned it off on LOW since Patch 115. The hub now
+  honours `filmGrainEnabled`.
+
+What stays from 155: the baked furniture, the sprite glows, and `'lighter'` in place of
+`'screen'`.
+
+The headless checks cannot measure GPU cost (Known issues), so this patch also adds a
+way for the phone to say which layer costs what:
+
+- **`Renderer.hubDiag`** `{ floor, bitmap, light, tints, dust }` switches each hub
+  layer. The defaults are what ships.
+- **Hub benchmark.** In the playtest build's perf panel, pressing RUN BENCHMARK in the
+  Mind Hub (about 1 minute, all on LOW) runs:
+  1. the default, twice;
+  2. each 155 choice put back alone (bitmap floor, path dust, film grain), plus all
+     three together;
+  3. each layer removed (floor image, darkness, tints and beams, dust);
+  4. everything off;
+  5. the default again.
+
+  It restores every switch afterwards and stops early if the player leaves the hub.
+  Pressed during a run, the button runs the gameplay benchmark as before.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

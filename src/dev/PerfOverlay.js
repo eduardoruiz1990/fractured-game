@@ -16,7 +16,9 @@
  *     CRT scanline overlay, DOM HUD) and the quality tier;
  *   - RUN BENCHMARK: holds a busy room (crowd at the live cap, player immortal)
  *     and holds LOW for 60 s in 10 s windows, then measures one-change variants, then prints a plain-text report
- *     with a COPY button, to paste into a chat or an issue.
+ *     with a COPY button, to paste into a chat or an issue;
+ *   - pressed in the Mind Hub, the same button runs the hub benchmark instead (Patch
+ *     157): the hub's own layers (Renderer.hubDiag), one change at a time, on LOW.
  *
  * It reads and wraps only what window.__fractured exposes (renderer.drawGame and
  * game.processGameLogic are timed by wrapping the instance methods), and restores
@@ -149,7 +151,7 @@ export function installPerfOverlay() {
     <button id="perf-copy">COPY REPORT</button>
     <button id="perf-close">CLOSE</button>
   </div>
-  <p class="note" id="perf-hint">Start a run first. The benchmark fills the room to the enemy cap, keeps you alive, and holds LOW for 60 s, then measures 7 more setups. Hands off the screen while it runs.</p>
+  <p class="note" id="perf-hint">In the Mind Hub, RUN BENCHMARK measures the hub's layers (~1 min). During a run, it fills the room to the enemy cap, keeps you alive, holds LOW for 60 s, then measures 7 more setups. Hands off the screen while it runs.</p>
   <textarea id="perf-report" readonly spellcheck="false" hidden></textarea>
 </div>`;
     document.body.appendChild(panel);
@@ -272,10 +274,93 @@ export function installPerfOverlay() {
         for (const k of ['fog', 'lights', 'vignette', 'grain', 'crt', 'hud']) sw[k].set(!!cfg[k]);
     }
 
+    // ---- the Mind Hub benchmark (Patch 157) -------------------------------------
+    // The hub fell from ~45 to 26 fps on the A56 after Patch 155 with JS unchanged, so
+    // the cost is on the GPU and only a device can measure it. Pressed in the hub, RUN
+    // BENCHMARK measures the hub's own layers (Renderer.hubDiag) one change at a time:
+    // the shipped default first and twice (heat drift), then each 155 choice put back
+    // alone, then each layer removed, then everything off, then the default again.
+    const HUB = { floor: 1, bitmap: 0, light: 1, tints: 1, dust: 'rect', grain: 0 };
+    const HUB_STEPS = [
+        { name: 'HUB default  0-8 s',      cfg: { ...HUB }, ms: 8000, warm: WARM_MS },
+        { name: 'HUB default  8-16 s',     cfg: null,       ms: 8000, warm: 0 },
+        { name: 'as 155 (bmp+path+grain)', cfg: { ...HUB, bitmap: 1, dust: 'path', grain: 1 } },
+        { name: 'default + bitmap floor',  cfg: { ...HUB, bitmap: 1 } },
+        { name: 'default + path dust',     cfg: { ...HUB, dust: 'path' } },
+        { name: 'default + film grain',    cfg: { ...HUB, grain: 1 } },
+        { name: 'minus floor image',       cfg: { ...HUB, floor: 0 } },
+        { name: 'minus darkness',          cfg: { ...HUB, light: 0 } },
+        { name: 'minus tints & beams',     cfg: { ...HUB, tints: 0 } },
+        { name: 'minus dust',              cfg: { ...HUB, dust: 0 } },
+        { name: 'everything off',          cfg: { floor: 0, bitmap: 0, light: 0, tints: 0, dust: 0, grain: 0 } },
+        { name: 'default again (drift)',   cfg: { ...HUB }, ms: 6000 }
+    ];
+    function runHubBench() {
+        running = true;
+        const saved = { q: F.qualitySetting || 'auto', grain: sw.grain.get(), hub: { ...R.hubDiag } };
+        panel.hidden = true;
+        const banner = document.createElement('div');
+        banner.id = 'perf-run';
+        document.body.appendChild(banner);
+        F.setQuality('low');
+        const applyHub = cfg => {
+            R.hubDiag.floor = !!cfg.floor; R.hubDiag.bitmap = !!cfg.bitmap;
+            R.hubDiag.light = !!cfg.light; R.hubDiag.tints = !!cfg.tints;
+            R.hubDiag.dust = cfg.dust || false;
+            sw.grain.set(!!cfg.grain);
+        };
+        const rows = [];
+        let i = 0;
+        const next = () => {
+            if (i >= HUB_STEPS.length || F.gameState !== 'HUB') return finish();
+            const step = HUB_STEPS[i];
+            if (step.cfg) applyHub(step.cfg);
+            banner.textContent = `HUB BENCHMARK ${i + 1}/${HUB_STEPS.length}: ${step.name} — hands off`;
+            const t0 = performance.now();
+            setTimeout(() => {
+                const s = stats(t0 + (step.warm ?? WARM_MS), performance.now());
+                rows.push({ name: step.name, s });
+                i++;
+                next();
+            }, step.ms || STEP_MS);
+        };
+        const finish = () => {
+            const dev = deviceText();   // before the tier is restored: the rows ran on LOW
+            banner.remove();
+            F.setQuality(saved.q);
+            sw.grain.set(saved.grain);
+            Object.assign(R.hubDiag, saved.hub);
+            running = false;
+            const pad = (v, n) => String(v).padStart(n);
+            const refMs = rows.length ? rows[0].s.intMean : NaN;
+            report = [
+                'FRACTURED hub perf report · playtest build (Patch 157)',
+                dev,
+                ...(rows.length < HUB_STEPS.length ? [`(stopped early after ${rows.length} rows: left the hub)`] : []),
+                '',
+                'setup                    fps  int ms  vs 1st  p95 ms  js ms',
+                ...rows.map(({ name, s }) =>
+                    name.padEnd(24) + pad(f0(s.fps), 5) + pad(f1(s.intMean), 8) +
+                    pad((s.intMean - refMs >= 0 ? '+' : '') + f1(s.intMean - refMs), 8) +
+                    pad(f1(s.intP95), 8) + pad(f1(s.jsMean), 7)),
+                '',
+                `screen refresh ~${f0(rows.length ? rows[0].s.refresh : NaN)} Hz · all rows on LOW`
+            ].join('\n');
+            const ta = $('perf-report');
+            ta.value = report;
+            ta.hidden = false;
+            $('perf-hint').textContent = 'Done. Press COPY REPORT and paste it into the chat.';
+            renderControls();
+            panel.hidden = false;
+        };
+        next();
+    }
+
     $('perf-bench').onclick = () => {
         if (running) return;
+        if (F.gameState === 'HUB') return runHubBench();
         if (F.gameState !== 'PLAYING') {
-            $('perf-hint').textContent = 'Start a run first (BEGIN DESCENT), then open this panel and press RUN BENCHMARK.';
+            $('perf-hint').textContent = 'Open this panel in the Mind Hub (hub benchmark, ~1 min) or during a run (gameplay benchmark), then press RUN BENCHMARK.';
             return;
         }
         running = true;

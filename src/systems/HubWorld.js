@@ -159,10 +159,34 @@ export class HubWorld {
      * at 60. Re-baked whenever Game.init builds a new state (every hub entry), which is
      * when the trophy statues can have changed.
      */
-    draw(ctx, state) {
+    draw(ctx, state, renderer) {
         if (!this.baked || this.bakedFor !== state) this.bake(state);
-        ctx.drawImage(this.bakedBitmap || this.baked, -600, -600);
+        const hd = renderer && renderer.hubDiag;
+        if (!hd || hd.floor !== false) {
+            // Patch 157: from the canvas by default. 155 drew an ImageBitmap of it,
+            // and the hub fell from ~45 to 26 fps on the A56 with JS unchanged — a
+            // WebView can keep an ImageBitmap in CPU memory and re-upload all 5.8 MB
+            // of it every frame, where a canvas stays a GPU texture. Kept as a
+            // benchmark switch (Renderer.hubDiag.bitmap), made on first request.
+            let img = this.baked;
+            if (hd && hd.bitmap) {
+                if (this.bakedBitmap) img = this.bakedBitmap;
+                else this.requestBitmap(state);
+            }
+            ctx.drawImage(img, -600, -600);
+        }
         if (this.activeZone) this.drawHighlight(ctx, this.activeZone);
+    }
+
+    requestBitmap(state) {
+        if (this.bitmapPending || typeof createImageBitmap !== 'function') return;
+        const c = this.baked;
+        this.bitmapPending = true;
+        createImageBitmap(c).then(bm => {
+            this.bitmapPending = false;
+            if (this.baked === c && this.bakedFor === state && !this.bakedBitmap) this.bakedBitmap = bm;
+            else if (bm && bm.close) bm.close();
+        }).catch(() => { this.bitmapPending = false; });
     }
 
     bake(state) {
@@ -176,13 +200,6 @@ export class HubWorld {
         cx.translate(600, 600);
         this.drawFurniture(cx, state);
         this.baked = c;
-        // An ImageBitmap is an immutable GPU-ready texture: uploaded once, never re-snapshotted.
-        if (typeof createImageBitmap === 'function') {
-            createImageBitmap(c).then(bm => {
-                if (this.baked === c && this.bakedFor === state && !this.bakedBitmap) this.bakedBitmap = bm;
-                else if (bm && bm.close) bm.close();
-            }).catch(() => {});
-        }
     }
 
     /**
