@@ -27,6 +27,7 @@ import { showColdOpen, dismissColdOpen, playEnding, endingShowing } from './ui/S
 import * as Story from './data/Story.js';
 import { STRINGS } from './data/Strings.js';
 import { autoAimEnabled, AUTO_AIM_MODES } from './systems/AutoAim.js';   // Patch 148
+import { haptic, setHapticsEnabled } from './core/Haptics.js';   // Patch 149
 // Patch 93/97 — THE RECURSION: the endless floors past the Architect, and the mode
 // that launches straight into them. See src/core/Endless.js.
 import {
@@ -605,7 +606,9 @@ let gameSettings = { screenShake: true, photosensitive: false, musicVolume: 1, s
                      quality: 'auto', autoQuality: 'high',
                      // Patch 148 (V2 plan F1): aim assist — 'auto' (on for touch, off with a
                      // mouse) | 'on' | 'off'. See systems/AutoAim.js.
-                     aimAssist: 'auto' };
+                     aimAssist: 'auto',
+                     // Patch 149 (V2 plan F2/F6): double-tap the move side to dash; vibration.
+                     doubleTapDash: true, haptics: true };
 try {
     const savedSettings = localStorage.getItem('fractured_settings');
     if (savedSettings) gameSettings = { ...gameSettings, ...JSON.parse(savedSettings) };
@@ -699,12 +702,19 @@ function probeQualityOnDraw(time) {
     }
 }
 
+/** Patch 149: pushes the input-side settings (double-tap dash, haptics) where they act. */
+function applyInputSettings() {
+    setHapticsEnabled(gameSettings.haptics !== false);
+    if (inputManager) inputManager.doubleTapDash = gameSettings.doubleTapDash !== false;
+}
+
 function reloadSettingsFromPortal() {
     if (!portalSDK.available) return;
     try {
         const fromPortal = portalSDK.getItem('fractured_settings');
         if (fromPortal) {
             gameSettings = { ...gameSettings, ...JSON.parse(fromPortal) };
+            applyInputSettings();   // Patch 149
         } else {
             saveSettings();   // migrate whatever the import-time localStorage read found
         }
@@ -1833,6 +1843,18 @@ function initEngine() {
                     </select>
                     <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px;">Your light turns to the nearest threat by itself. On touch, the right stick still aims while you hold it.</p>
 
+                    <label style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="toggle-doubletap" style="width: 20px; height: 20px; cursor: pointer;">
+                        Double-Tap to Dash (touch)
+                    </label>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Tap twice quickly on the left side to dash the way you were going.</p>
+
+                    <label style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="toggle-haptics" style="width: 20px; height: 20px; cursor: pointer;">
+                        Vibration
+                    </label>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Buzzes when you are hit, when a boss arrives or winds up, and on rewards. Phones only.</p>
+
                     <label for="select-quality" style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem;">Graphics Quality</label>
                     <select id="select-quality" style="margin-top: -12px; font-family: inherit; font-size: 1rem; padding: 8px; min-height: 44px; background: var(--paper-bg); color: var(--ink-black); border: 1px solid var(--ink-black);">
                         <option value="auto">AUTO (recommended)</option>
@@ -2038,6 +2060,19 @@ function initEngine() {
                 saveSettings();
             });
         }
+
+        // Patch 149 (V2 plan F2/F6): applied the moment they change.
+        [['toggle-doubletap', 'doubleTapDash'], ['toggle-haptics', 'haptics']].forEach(([id, key]) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.checked = gameSettings[key] !== false;
+            el.addEventListener('change', () => {
+                gameSettings[key] = el.checked;
+                applyInputSettings();
+                saveSettings();
+                if (key === 'haptics' && el.checked) haptic('dash');   // a sample buzz
+            });
+        });
 
         // --- VOLUME SLIDERS (Patch 80) ---
         // Applied and persisted on 'input', not on APPLY & CLOSE like the toggles.
@@ -2262,6 +2297,8 @@ function initEngine() {
     try { saveManager.claimAchievements(); } catch (e) { errorLog.capture(e, 'achievements-boot'); }
     knownLockedWeapons = lockedWeapons(saveManager.metaState);
     inputManager = new InputManager(canvas);
+    inputManager.onDashGesture = () => haptic('dash');   // Patch 149
+    applyInputSettings();
     renderer = new Renderer(canvas, ctx);
     audioEngine = new AudioEngine();
     // Push the persisted volumes in BEFORE preload() builds the graph, so the buses
@@ -2273,6 +2310,7 @@ function initEngine() {
     levelUpUI = new LevelUpUI(audioEngine, saveManager);
 
     game.audioEngine = audioEngine;
+    game.onHaptic = (kind) => haptic(kind);   // Patch 149: hits, boss arrivals and wind-ups
     applyQualityTier();   // Patch 115: renderer + Director caps from the saved tier
 
     // V2 plan G1: a DEV-ONLY inspection hook for the headless Playwright checks
@@ -2866,7 +2904,7 @@ function initEngine() {
         if (game.state) game.state.slowMo = Math.max(game.state.slowMo || 0, SYNERGY_SLOWMO_STEPS);
         audioEngine.playSFX('ui_upgrade', 3, false);
         announceProgress(claimProgress());   // Patch 139
-        try { if (navigator.vibrate) navigator.vibrate([30, 40, 80]); } catch (e) {}
+        haptic('synergy');   // Patch 149
         if (anyNew && !happySynergyThisSession) {
             happySynergyThisSession = true;
             portalSDK.happytime();
@@ -2900,7 +2938,7 @@ function initEngine() {
             tone: evo ? 'evolution' : 'chest',
             calm: !!gameSettings.photosensitive
         });
-        try { if (navigator.vibrate) navigator.vibrate(evo ? [40, 40, 120] : [30, 30, 60]); } catch (e) {}
+        haptic(evo ? 'evolution' : 'chest');   // Patch 149
         announceProgress(claimProgress());   // Patch 139
     };
 
@@ -2919,7 +2957,7 @@ function initEngine() {
             tone: 'story',
             calm: !!gameSettings.photosensitive
         });
-        try { if (navigator.vibrate) navigator.vibrate([15, 30, 15]); } catch (e) {}
+        haptic('page');   // Patch 149
         if (audioEngine) audioEngine.playSFX('ui_click', 0.8);
         announceProgress(claimProgress());
     };
@@ -2934,7 +2972,7 @@ function initEngine() {
             tone: 'event',
             calm: !!gameSettings.photosensitive
         });
-        try { if (!ev.end && navigator.vibrate) navigator.vibrate([20, 40, 20]); } catch (e) {}
+        if (!ev.end) haptic('event');   // Patch 149
         // Patch 139: the outcomes the achievements and the Lullaby's unlock count.
         if (ev.outcome === 'restored') saveManager.recordStat('outagesRestored');
         else if (ev.outcome === 'survived') saveManager.recordStat('lockdownsSurvived');

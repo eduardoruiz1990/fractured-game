@@ -27,7 +27,7 @@ node qa/arena_check.cjs            # each floor's room shape drawn, the player h
 node qa/events_check.cjs           # the Power Outage, Lockdown and Session Bell in game, with their notices and HUD lines (Patch 138)
 node qa/achievements_check.cjs     # achievements held through the tutorial, locked instruments never offered, an unlock mid-run, the Mind Palace, the death-screen line (Patch 139)
 node qa/daily_check.cjs            # the Daily Session: hidden at first, the day's run, its score, one attempt per day across a reload (Patch 140)
-node qa/aim_check.cjs              # aim assist: on for touch, the right stick overrides, AUTO/ON on desktop, saved (Patch 148)
+node qa/aim_check.cjs              # aim assist (on for touch, stick override, AUTO/ON on desktop) and the double-tap dash with its buzz (Patches 148-149)
 node qa/story_check.cjs            # Phase E: cold open, Case File pages and pane, boss lines and skip, death subtitle, session notes, both endings, replays (Patches 142-147)
 node qa/sprite_cache_check.cjs     # sprite cache plateaus while the tutorial cue fades (Patch 109)
 node qa/soak_check.cjs [--seconds 45] [--throttle 4] [--phone] [--floor 9]   # perf soak: all bosses + capped crowd; exits 1 on invariant breaks

@@ -4,6 +4,7 @@
 import { getActiveSynergies, MANIFESTATIONS, SYNERGIES } from '../data/Manifestations.js';
 // Patch 95 — the weapon ceiling comes off in THE RECURSION. See src/core/Endless.js.
 import { weaponLevelCap, isEndless } from '../core/Endless.js';
+import { haptic } from '../core/Haptics.js';   // Patch 149
 import { MAX_WEAPON_SLOTS, ownedWeaponCount } from '../data/Config.js';   // Patch 132
 // Patch 134: evolution hints on the cards. (Evolutions.js imports BOONS from here;
 // both sides only touch the other inside functions, so the cycle is safe.)
@@ -699,7 +700,7 @@ export class LevelUpUI {
         
         game.state.sanity = Math.min(game.state.player.maxHp, game.state.sanity + 20);
         this.close();
-        try { if (navigator.vibrate) navigator.vibrate([50, 50, 50]); } catch(e){}
+        haptic('levelUp');   // Patch 149: through the setting
         onCompleteCallback();
     }
 }  

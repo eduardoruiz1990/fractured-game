@@ -12,6 +12,7 @@ import { paletteIndexForFloor } from './Endless.js';
 import { PATIENTS, resolvePatient, DEFAULT_PATIENT } from '../data/Patients.js';
 import { applyWeaponLevelUp } from '../ui/LevelUpUI.js';
 import { autoAimStep } from '../systems/AutoAim.js';   // Patch 148 (V2 plan F1)
+import { bossTelegraphing } from './Haptics.js';   // Patch 149 (V2 plan F6)
 import { updateArena } from '../systems/Arena.js';   // Patch 137
 import { lockedWeapons } from '../data/Unlocks.js';   // Patch 139
 
@@ -498,6 +499,8 @@ export class Game {
 
         this.state.player.flashTime = 10;
         this.state.player.iframes = this.state.player.iframeDuration;
+        // Patch 149 (V2 plan F6): a buzz when hurt (main.js forwards it; throttled there).
+        if (finalDmg > 0 && typeof this.onHaptic === 'function') this.onHaptic('hit');
         this.state.cameraShake = Math.max(this.state.cameraShake, finalDmg * 2);
 
         // Directional hit indicator. takeDamage() only receives an amount — every
@@ -714,12 +717,19 @@ export class Game {
             this.state.autoAim.targetId = null;
         }
 
+        // Patch 149 (V2 plan F2): a double-tap on the move side is a one-shot dash
+        // (InputManager sets dashPulse; consumed here, once, even if no charge is left)
+        // in the last direction of travel (dashAngle).
+        const dashPulse = !!inputState.dashPulse;
+        if (dashPulse) inputState.dashPulse = false;
+
         const currentInput = {
             moveX: inputState.moveX,
             moveY: inputState.moveY,
             aimAngle,
             isMoving: inputState.isMoving,
-            isDashing: inputState.isDashing
+            isDashing: inputState.isDashing || dashPulse,
+            dashAngle: dashPulse ? inputState.dashAngle : undefined
         };
 
         let isBreakdown = false;
@@ -788,6 +798,8 @@ export class Game {
             let dashAngle = this.state.player.angle;
             if (moveInput.isMoving) {
                 dashAngle = Math.atan2(moveInput.moveY, moveInput.moveX);
+            } else if (Number.isFinite(moveInput.dashAngle)) {
+                dashAngle = moveInput.dashAngle;   // Patch 149: a double-tap keeps the heading
             }
             this.state.player.dash.dx = Math.cos(dashAngle);
             this.state.player.dash.dy = Math.sin(dashAngle);
@@ -971,6 +983,21 @@ export class Game {
         // Patch 137: after everything has moved, the room's walls push the player and
         // the regular enemies back out (and the Blueprint rearranges itself).
         if (!devFrozen) updateArena(this.state);
+
+        // Patch 149 (V2 plan F6): buzz when a boss arrives and each time one starts a
+        // wind-up. Edge-triggered per entity (wasTelegraph), so a held charge is one buzz.
+        if (typeof this.onHaptic === 'function') {
+            if (this.state.bossSpawned && !this.state.bossHapticDone) {
+                this.state.bossHapticDone = true;
+                this.onHaptic('bossIntro');
+            }
+            for (const ent of this.state.entities) {
+                if (!ent || !isBossType(ent.type)) continue;
+                const t = bossTelegraphing(ent);
+                if (t && !ent.wasTelegraph) this.onHaptic('telegraph');
+                ent.wasTelegraph = t;
+            }
+        }
 
         Combat.resolveWeapons(this);
         Combat.collectXP(this);

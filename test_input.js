@@ -101,5 +101,72 @@ ok(turnTowards(NaN, 1) === 1 && turnTowards(1, NaN) === 1, 'non-finite angles ar
     ok(Tutorial.bannerCopy({ isTutorial: true, tutorialStep: 'MOVE', autoAimOn: true }, 'touch') === 'Slide your left thumb to move.', 'other steps unchanged by assist');
 }
 
+// --- Patch 149: the double-tap dash ----------------------------------------------------------------------
+{
+    const { isDoubleTap, wasTap, DOUBLE_TAP_MS, DOUBLE_TAP_SLOP, TAP_MAX_MS, TAP_MAX_TRAVEL } = await import('./src/core/Input.js');
+    ok(wasTap(TAP_MAX_MS - 1, TAP_MAX_TRAVEL - 1) && !wasTap(TAP_MAX_MS + 1, 0) && !wasTap(50, TAP_MAX_TRAVEL + 1), 'a tap is short and still');
+    const prev = { wasTap: true, endAt: 1000, x: 100, y: 500 };
+    ok(isDoubleTap(prev, 1000 + DOUBLE_TAP_MS - 1, 110, 505), 'a second touch soon and near: double-tap');
+    ok(!isDoubleTap(prev, 1000 + DOUBLE_TAP_MS + 1, 110, 505), 'too late: not');
+    ok(!isDoubleTap(prev, 1100, 100 + DOUBLE_TAP_SLOP + 1, 500), 'too far: not');
+    ok(!isDoubleTap({ ...prev, wasTap: false }, 1100, 100, 500), 'after a hold (steering), not a tap: not');
+    ok(!isDoubleTap(null, 1100, 100, 500), 'no previous touch: not');
+}
+
+// --- Patch 149: haptics ------------------------------------------------------------------------------------
+{
+    const H = await import('./src/core/Haptics.js');
+    const calls = [];
+    const nav = { vibrate: (p) => { calls.push(p); return true; } };
+    H.resetHaptics();
+    ok(H.haptic('hit', 1000, nav) === true && calls.length === 1, 'a hit buzzes');
+    ok(H.haptic('hit', 1100, nav) === false && calls.length === 1, 'a second hit inside the gap does not');
+    ok(H.haptic('hit', 1000 + H.HAPTIC_MIN_GAP.hit, nav) === true, 'after the gap it does again');
+    ok(H.haptic('nope', 5000, nav) === false, 'unknown kinds do nothing');
+    H.setHapticsEnabled(false);
+    ok(H.haptic('levelUp', 9000, nav) === false && !H.hapticsEnabled(), 'off: nothing');
+    H.resetHaptics();
+    ok(H.haptic('levelUp', 9000, null) === false, 'no navigator: no throw');
+    ok(H.haptic('levelUp', 9000, { vibrate: () => { throw new Error('x'); } }) === false, 'a throwing vibrate is contained');
+    ok(H.bossTelegraphing({ pulseState: 'charging' }) && H.bossTelegraphing({ gazeState: 'charging' }) && H.bossTelegraphing({ actionState: 'charging_collapse' })
+       && H.bossTelegraphing({ shootState: 'telegraphing' }) && !H.bossTelegraphing({ pulseState: 'idle' }) && !H.bossTelegraphing(null), 'bossTelegraphing');
+}
+
+// --- Patch 149: the Game side (dash pulse, hit and boss haptics) -------------------------------------------
+{
+    const { Game } = await import('./src/core/Game.js');
+    const meta = { upgrades: { hp: 0, speed: 0, light: 0, magnet: 0 }, killCounts: {}, inventory: [], equippedTokens: {}, selectedCurses: [],
+        maxFloorReached: 1, tutorialCompleted: true, story: { coldOpenSeen: true, pages: {} } };
+    const g = new Game();
+    g.onDeath = () => {}; g.onLevelUp = () => {}; g.onFloorComplete = () => {};
+    const buzz = [];
+    g.onHaptic = (k) => buzz.push(k);
+    g.init({ metaState: meta, saveGame: () => {} });
+    const idle = { moveX: 0, moveY: 0, aimAngle: 0, isMoving: false };
+    g.update(idle, 1280, 720, 'PLAYING');
+    g.director.spawnWave = () => {};
+    g.state.hitStop = 0; g.state.slowMo = 0;
+    const p = g.state.player;
+    const charges = p.dash.charges;
+    const input = { ...idle, dashPulse: true, dashAngle: Math.PI / 2 };
+    g.update(input, 1280, 720, 'PLAYING');
+    ok(p.dash.active && p.dash.charges === charges - 1, 'a dash pulse dashes');
+    ok(near(p.dash.dx, 0, 1e-9) && near(p.dash.dy, 1, 1e-9), 'standing still, it dashes along dashAngle (the last heading)');
+    ok(input.dashPulse === false, 'the pulse is consumed');
+    p.iframes = 0;
+    g.takeDamage(5, 'test');
+    ok(buzz.includes('hit'), 'taking damage asks for a hit buzz');
+    g.director.releaseRoomState(g.state);
+    const boss = g.director.spawnEntity('BOSS', null, null, p.x + 300, p.y);
+    g.state.bossSpawned = true;
+    boss.update = () => {}; boss.pulseState = 'charging';
+    g.state.hitStop = 0;
+    g.update(idle, 1280, 720, 'PLAYING');
+    g.state.hitStop = 0;
+    g.update(idle, 1280, 720, 'PLAYING');
+    ok(buzz.filter(k => k === 'bossIntro').length === 1, 'a boss arriving buzzes once');
+    ok(buzz.filter(k => k === 'telegraph').length === 1, `a held wind-up buzzes once (${buzz})`);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

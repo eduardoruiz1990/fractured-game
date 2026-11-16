@@ -8,6 +8,27 @@ function Input_isTextEntry(el) {
     return tag === 'TEXTAREA' || (tag === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes(el.type)) || !!el.isContentEditable;
 }
 
+// Patch 149 (V2 plan F2): double-tap the movement side to dash. A "tap" is a touch on
+// the left half shorter than TAP_MAX_MS that travelled under TAP_MAX_TRAVEL px; a second
+// touch starting within DOUBLE_TAP_MS of its end, within DOUBLE_TAP_SLOP px of it, fires
+// one dash in the last direction of travel. The second touch then steers as normal.
+export const TAP_MAX_MS = 220;
+export const TAP_MAX_TRAVEL = 20;
+export const DOUBLE_TAP_MS = 300;
+export const DOUBLE_TAP_SLOP = 80;
+
+/** Pure: does a touch starting at (x, y) at `now` complete a double-tap after `prev`? */
+export function isDoubleTap(prev, now, x, y) {
+    if (!prev || !prev.wasTap) return false;
+    if (!(now - prev.endAt >= 0 && now - prev.endAt < DOUBLE_TAP_MS)) return false;
+    return Math.hypot(x - prev.x, y - prev.y) < DOUBLE_TAP_SLOP;
+}
+
+/** Pure: was a finished touch a tap (short and still)? */
+export function wasTap(durationMs, travelPx) {
+    return durationMs < TAP_MAX_MS && travelPx < TAP_MAX_TRAVEL;
+}
+
 export class InputManager {
     constructor(canvas) {
         this.canvas = canvas;
@@ -37,6 +58,12 @@ export class InputManager {
         // Track spacebar for dash
         this.keys = { w: false, a: false, s: false, d: false, space: false };
         this.leftTouch = { id: null, ox: 0, oy: 0, cx: 0, cy: 0 };
+        // Patch 149: the double-tap dash. doubleTapDash is the player's setting (main.js);
+        // onDashGesture is told when one fires (for the haptic).
+        this.doubleTapDash = true;
+        this.onDashGesture = null;
+        this.leftTap = { startAt: 0, travel: 0, prev: null };
+        this.lastMoveAngle = null;
         this.rightTouch = { id: null, ox: 0, oy: 0, cx: 0, cy: 0 };
 
         this.joyLeft = document.getElementById('joy-left');
@@ -208,6 +235,16 @@ export class InputManager {
             const t = e.changedTouches[i];
             if (t.clientX < halfWidth) {
                 if (this.leftTouch.id === null) {
+                    // Patch 149: a second quick touch after a tap is a dash.
+                    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+                    if (this.doubleTapDash && isDoubleTap(this.leftTap.prev, now, t.clientX, t.clientY)) {
+                        this.state.dashPulse = true;
+                        this.state.dashAngle = this.lastMoveAngle;
+                        this.leftTap.prev = null;
+                        if (typeof this.onDashGesture === 'function') { try { this.onDashGesture(); } catch (err) { /* cosmetic */ } }
+                    }
+                    this.leftTap.startAt = now;
+                    this.leftTap.travel = 0;
                     this.leftTouch.id = t.identifier;
                     this.leftTouch.ox = t.clientX; this.leftTouch.oy = t.clientY;
                     this.joyLeft.style.display = 'block';
@@ -216,6 +253,7 @@ export class InputManager {
                 }
                 if (this.leftTouch.id === t.identifier) {
                     this.leftTouch.cx = t.clientX; this.leftTouch.cy = t.clientY;
+                    this.leftTap.travel = Math.max(this.leftTap.travel, Math.hypot(t.clientX - this.leftTouch.ox, t.clientY - this.leftTouch.oy));
                 }
             } else {
                 if (this.rightTouch.id === null) {
@@ -239,6 +277,9 @@ export class InputManager {
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
             if (t.identifier === this.leftTouch.id) {
+                // Patch 149: remember whether this was a tap, for a double-tap dash.
+                const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+                this.leftTap.prev = { wasTap: wasTap(now - this.leftTap.startAt, this.leftTap.travel), endAt: now, x: this.leftTouch.ox, y: this.leftTouch.oy };
                 this.leftTouch.id = null; this.joyLeft.style.display = 'none';
                 this.state.moveX = 0; this.state.moveY = 0; this.state.isMoving = false; 
                 this.knobLeft.style.transform = `translate(-50%, -50%)`;
@@ -258,6 +299,7 @@ export class InputManager {
             if (dist > MAX_PULL) { dx = (dx/dist)*MAX_PULL; dy = (dy/dist)*MAX_PULL; dist = MAX_PULL; }
             this.knobLeft.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
             
+            if (dist > 25) this.lastMoveAngle = Math.atan2(dy, dx);   // Patch 149: a real heading, not tap jitter
             if (dist > 10) { 
                 this.state.moveX = dx / MAX_PULL; this.state.moveY = dy / MAX_PULL; this.state.isMoving = true; 
             } else { 
@@ -310,6 +352,8 @@ export class InputManager {
         this.state.isMoving = false;
         this.state.isDashing = false;
         this.state.aimHeld = false;   // Patch 148
+        this.state.dashPulse = false;   // Patch 149: no stale gesture across a menu
+        this.leftTap.prev = null;
         if (this.knobLeft) this.knobLeft.style.transform = 'translate(-50%, -50%)';
         if (this.knobRight) this.knobRight.style.transform = 'translate(-50%, -50%)';
         // Clear the reveal latch too. handleTouch only shows the dash button while

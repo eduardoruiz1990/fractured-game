@@ -1,4 +1,4 @@
-// Patch 148 (V2 plan F1): aim assist in the real game.
+// Patches 148-149 (V2 plan F1, F2, F6): aim assist and the double-tap dash in the real game.
 // Assertion-based: exits 1 on any failure. Needs the dev server on :5199.
 //   node qa/aim_check.cjs <dir with sdkmock.js>
 //
@@ -63,6 +63,40 @@ const near = (a, b, eps = 0.2) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(
     await page.waitForTimeout(600);
     const back = await angle(page);
     ok(near(back, -Math.PI / 2), `touch: letting go hands aiming back to assist (${back.toFixed(2)})`);
+    // Patch 149: double-tap the move side to dash, in the last heading.
+    const L = (x, y) => [{ x, y, id: 3 }];
+    await page.evaluate(() => { const p = window.__fractured.game.state.player; p.dash.charges = p.dash.maxCharges; p.dash.active = false; window.__vib = []; navigator.vibrate = (pt) => { window.__vib.push(pt); return true; }; });
+    // steer left for a moment (a real heading), then let go
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: L(100, 500) });
+    for (let i = 1; i <= 5; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: L(100 - i * 10, 500) }); await page.waitForTimeout(30); }
+    await page.waitForTimeout(250);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(300);
+    const c0 = await page.evaluate(() => window.__fractured.game.state.player.dash.charges);
+    // a tap, then a second touch: the dash
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: L(110, 520) });
+    await page.waitForTimeout(60);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(90);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: L(112, 522) });
+    await page.waitForTimeout(80);
+    const d = await page.evaluate(() => { const p = window.__fractured.game.state.player; return { charges: p.dash.charges, dx: p.dash.dx, vib: window.__vib.length }; });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    ok(d.charges === c0 - 1, `touch: a double-tap on the left dashes (charges ${c0} -> ${d.charges})`);
+    ok(d.dx < -0.9, `touch: along the last heading (left), not the aim (dx ${d.dx && d.dx.toFixed(2)})`);
+    ok(d.vib >= 1, `touch: with a buzz (${d.vib})`);
+    // a hold-and-release, then a touch: steering, not a dash
+    await page.waitForTimeout(400);
+    await page.evaluate(() => { const p = window.__fractured.game.state.player; p.dash.charges = p.dash.maxCharges; p.dash.active = false; });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: L(110, 520) });
+    await page.waitForTimeout(400);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(80);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: L(110, 520) });
+    await page.waitForTimeout(80);
+    const nd = await page.evaluate(() => { const p = window.__fractured.game.state.player; return p.dash.charges === p.dash.maxCharges; });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    ok(nd, 'touch: a hold then a touch is not a dash');
     ok(errors.length === 0, `touch: no page errors ${JSON.stringify(errors)}`);
     await ctx.close();
   }

@@ -2504,6 +2504,38 @@ small box... that if the player presses it, then it gets the large screen."
   the light turns by itself, a held stick overrides, letting go hands it back; a mouse
   desktop: AUTO leaves the mouse in charge, ON aims, the choice is saved).
 
+**Patch 149 — the double-tap dash and one place for vibration (plan F2, F6).**
+
+- **Double-tap to dash (F2; the CHANGELOG known issue "can't dash while aiming").** A
+  tap on the left half (shorter than 220 ms, travelling under 20 px) followed within
+  300 ms by a second touch within 80 px fires ONE dash; the second touch then steers as
+  usual. The dash goes along the last real heading (`InputManager.lastMoveAngle`,
+  recorded only past 25 px of pull so tap jitter never sets it), falling back to the
+  aim when there is none. A hold-and-release followed by a touch is steering, not a
+  dash. The decision is the pure `isDoubleTap` / `wasTap` in `Input.js`.
+  - Plumbing: `InputManager.state.dashPulse` + `dashAngle`; `Game.update` consumes the
+    pulse exactly once (even without a charge) and passes `dashAngle`, which the dash
+    uses when not moving. `hideJoysticks` clears both.
+  - Setting **Double-Tap to Dash (touch)**, default on.
+- **Haptics (F6).** New `src/core/Haptics.js`: `haptic(kind)` with named patterns, a
+  per-kind minimum gap (hits 350 ms, wind-ups 600 ms) so a crowd's hits cannot become
+  one long drone, the player's setting, and no throw where vibrate is missing or
+  throws. Every existing `navigator.vibrate` (level-up, synergy, chest/evolution, page,
+  room event) now goes through it, and three moments that had none now buzz:
+  - being hit (`Game.takeDamage` → `game.onHaptic('hit')`);
+  - a boss arriving (once per floor, `state.bossHapticDone`);
+  - a boss starting a wind-up — edge-triggered per boss (`ent.wasTelegraph`) from
+    `Haptics.bossTelegraphing` (the Sphere Head's and Panopticon's `charging`, the
+    Architect's `charging_collapse`, the Rorschach's `telegraphing`);
+  - a double-tap dash.
+  The sim only emits `onHaptic(kind)`; `main.js` forwards it, so Node tests stay free
+  of browser APIs. Setting **Vibration**, default on (a sample buzz when turned on).
+- `test_input.js` +20 (the tap rules, the throttle, off, no navigator, a throwing
+  vibrate, the telegraph states, the pulse dashing once along `dashAngle`, the hit /
+  arrival / single wind-up buzzes); `qa/aim_check.cjs` drives a real double-tap with
+  CDP touches (it dashes, along the last heading, with a buzz; a hold then a touch
+  does not).
+
 ---
 
 ## Keep clauses (things future patches break by accident)
