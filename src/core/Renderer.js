@@ -4310,7 +4310,7 @@ export class Renderer {
                 this.ctx.rotate((i * Math.PI * 2) / 3);
                 this.ctx.translate(spinner.baseRadius, 0);
                 
-                this.ctx.fillStyle = '#888';
+                this.ctx.fillStyle = spinner.evolution ? '#d9b44a' : '#888';   // Patch 134: Ceiling Fan
                 this.ctx.beginPath();
                 this.ctx.moveTo(10, 0);
                 this.ctx.lineTo(-5, 5);

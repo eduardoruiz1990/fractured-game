@@ -603,6 +603,71 @@ console.log('\nElites and chests (Patch 133)');
     check('an available evolution takes the chest', r2.kind === 'evolution' && r2.title === 'X');
 }
 
+// ---------------------------------------------------------------------------
+// Patch 134 (V2 plan D2): weapon evolutions.
+console.log('\nEvolutions (Patch 134)');
+{
+    const EV = await import('./src/systems/Evolutions.js');
+    const { resolveChest } = await import('./src/systems/Elites.js');
+    const { evolutionHintsFor, BOONS } = await import('./src/ui/LevelUpUI.js');
+    const { PLAYER_WEAPON_IDS } = await import('./src/data/Manifestations.js');
+    const { SaveManager } = await import('./src/core/SaveManager.js');
+    const { Combat } = await import('./src/systems/Combat.js');
+    const evos = Object.values(EV.EVOLUTIONS);
+
+    check('one evolution per weapon, all twelve', evos.length === PLAYER_WEAPON_IDS.length
+          && PLAYER_WEAPON_IDS.every(id => evos.filter(e => e.weapon === id).length === 1));
+    check('every evolution names a real boon, no boon used twice',
+          evos.every(e => BOONS.some(b => b.id === e.boon)) && new Set(evos.map(e => e.boon)).size === evos.length);
+    check('every evolution has a name and a description', evos.every(e => e.name && e.desc && typeof e.apply === 'function'));
+
+    const fresh = () => { const g = new Game(); g.init(mockSave); g.state.stress = 1; g.state.isTutorial = false; return g; };
+    // Each evolution applied to its weapon's level-5 starting numbers stays finite.
+    for (const e of evos) {
+        const g = fresh(); const w = g.state.player.weapons[e.weapon];
+        w.level = 5; g.state.player.boons.push(e.boon);
+        const ok1 = EV.applyEvolution(g.state, e.id);
+        const finite = Object.entries(w).every(([k, v]) => typeof v !== 'number' || Number.isFinite(v));
+        check(`${e.name} applies to ${e.weapon} and leaves finite numbers`, ok1 && w.evolution === e.id && finite);
+    }
+
+    let g = fresh();
+    g.state.player.weapons.lead_pipe.level = 4;
+    g.state.player.boons.push('heavy_swing');
+    check('not available below level 5', EV.availableEvolutions(g.state).length === 0);
+    check('the card that takes it to 5 says EVOLUTION READY',
+          evolutionHintsFor(g.state.player, { type: 'weapon', id: 'lead_pipe' }).ready[0] === 'Wrecking Bar');
+    g.state.player.weapons.lead_pipe.level = 5;
+    const dmg0 = g.state.player.weapons.lead_pipe.damage;
+    const r = resolveChest(g.state, { evolve: EV.evolveForChest });
+    check('a chest evolves the qualifying weapon', r.kind === 'evolution' && r.evolution.id === 'wrecking_bar'
+          && g.state.player.weapons.lead_pipe.damage === dmg0 * 2 && /Heavy Lead Pipe/.test(r.evolution.recipe));
+    const r2 = resolveChest(g.state, { evolve: EV.evolveForChest });
+    check('the same weapon never evolves twice', r2.kind !== 'evolution' && !EV.applyEvolution(g.state, 'wrecking_bar'));
+
+    g = fresh(); g.state.player.weapons.static.level = 5;
+    check('the boon card says EVOLUTION READY when its weapon is maxed',
+          evolutionHintsFor(g.state.player, { type: 'boon', id: 'overcharge' }).ready[0] === 'White Noise Machine');
+    g.state.player.weapons.static.level = 2;
+    check('...and nudges when the weapon is owned but not maxed',
+          /evolves Static Receiver/.test(evolutionHintsFor(g.state.player, { type: 'boon', id: 'overcharge' }).lines[0] || ''));
+
+    // Arsenal-side evolution effects.
+    g = fresh(); const pb = g.state.player.weapons.pill_bottle;
+    g.state.player.weapons.flashlight.level = 0; g.state.player.weapons.flashlight.radius = 0;
+    pb.level = 5; g.state.player.boons.push('steady_hands'); EV.applyEvolution(g.state, 'pill_organiser');
+    for (let i = 0; i < 3; i++) { const e = g.director.spawnEntity('SCAVENGER', null, null, 150 + i * 60, 0); e.update = () => {}; e.hp = e.maxHp = 999; }
+    g.state.frame++; Combat.resolveWeapons(g);
+    check('Pill Organiser throws two bottles at once', g.state.playerShots.length === 2);
+
+    // Save: back-filled, recorded once.
+    const sm = new SaveManager();
+    delete sm.metaState.discoveredEvolutions;
+    sm.saveGame(); sm.loadGame();
+    check('an old save gets discoveredEvolutions back-filled', sm.metaState.discoveredEvolutions && typeof sm.metaState.discoveredEvolutions === 'object');
+    check('recordEvolution is new once', sm.recordEvolution('ceiling_fan') === true && sm.recordEvolution('ceiling_fan') === false);
+}
+
 console.log('\nSynergy discovery (Patch 126)');
 {
     const { SaveManager } = await import('./src/core/SaveManager.js');

@@ -54,6 +54,8 @@ import { isBossType, MAX_WEAPON_SLOTS, ownedWeaponCount } from '../data/Config.j
 import { resolveArsenal, applyArsenalStatus } from './Arsenal.js';
 // Patch 133 (V2 plan D4): named elites drop chests. See src/systems/Elites.js.
 import { dropChest, resolveChest, CHEST_OPEN_STEPS } from './Elites.js';
+// Patch 134 (V2 plan D2): a chest evolves a qualifying weapon first.
+import { evolveForChest } from './Evolutions.js';
 
 // Patch 16: generic tag-scaled knockback, consumed by Enemy.takeDamage's
 // optional knockbackForce param. Only wired at call sites with no existing
@@ -208,7 +210,7 @@ export class Combat {
                         if (obj.opening % 6 === 0) game.spawnParticles(obj.x, obj.y, '#d9a441', 2);
                         if (obj.opening >= CHEST_OPEN_STEPS) {
                             obj.dead = true;
-                            const result = resolveChest(state, { evolve: game.chestEvolve });
+                            const result = resolveChest(state, { evolve: evolveForChest });
                             if (typeof game.refreshSynergies === 'function') game.refreshSynergies();
                             state.hitStop = Math.max(state.hitStop || 0, 8);
                             state.slowMo = Math.max(state.slowMo || 0, 24);

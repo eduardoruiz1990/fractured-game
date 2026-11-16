@@ -80,13 +80,20 @@ export function resolveArsenal(game, cooldownTick, h) {
             const target = nearestEnemy(state.entities, state.player.x, state.player.y, 520);
             if (target && state.playerShots.length < ARSENAL_CAPS.playerShots) {
                 pill.timer = pill.cooldown;
-                const a = Math.atan2(target.y - state.player.y, target.x - state.player.x);
-                state.playerShots.push({
-                    kind: 'pill', x: state.player.x, y: state.player.y,
-                    vx: Math.cos(a) * 9, vy: Math.sin(a) * 9, spin: 0,
-                    target, life: 90, bouncesLeft: pill.bounces,
-                    damage: pill.damage, hit: new Set()
-                });
+                // Patch 134: the Pill Organiser evolution throws `volley` bottles, each
+                // at a different nearby enemy where there is one.
+                const aimed = new Set();
+                for (let v = 0; v < (pill.volley || 1) && state.playerShots.length < ARSENAL_CAPS.playerShots; v++) {
+                    const t = v === 0 ? target : (nearestEnemy(state.entities, state.player.x, state.player.y, 520, aimed) || target);
+                    aimed.add(t.id);
+                    const a = Math.atan2(t.y - state.player.y, t.x - state.player.x);
+                    state.playerShots.push({
+                        kind: 'pill', x: state.player.x, y: state.player.y,
+                        vx: Math.cos(a) * 9, vy: Math.sin(a) * 9, spin: 0,
+                        target: t, life: 90, bouncesLeft: pill.bounces,
+                        damage: pill.damage, hit: new Set()
+                    });
+                }
                 if (game.audioEngine) game.audioEngine.playSFX('pipe_swing', 0.35);
             } else {
                 pill.timer = 10;   // nothing in reach — check again shortly
@@ -159,7 +166,7 @@ export function resolveArsenal(game, cooldownTick, h) {
                 const dd = Math.max(d, 0.001);
                 e.x += ((e.x - ring.x) / dd) * 18;
                 e.y += ((e.y - ring.y) / dd) * 18;
-                if (has(state, 'cradle_song')) e.drowsy = Math.max(e.drowsy || 0, 90);
+                if (has(state, 'cradle_song') || (met && met.lulls)) e.drowsy = Math.max(e.drowsy || 0, 90);   // lulls: Grandfather Clock (Patch 134)
             }
         }
         if (ring.r >= ring.maxR) state.pulseRings.splice(i, 1);
@@ -240,6 +247,8 @@ export function resolveArsenal(game, cooldownTick, h) {
                     e.drowsy = Math.max(e.drowsy || 0, lul.sleep || 90);
                 }
                 game.spawnParticles(nt.x, nt.y, '#9b8cff', 12);
+                // Patch 134: the Music Box evolution restores Sanity per burst.
+                if (lul.heals) state.sanity = Math.min(state.player.maxHp, state.sanity + lul.heals);
                 if (game.audioEngine) game.audioEngine.playSFX('pickup', 0.4);
             }
             state.lullabyNotes.splice(i, 1);

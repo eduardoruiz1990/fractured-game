@@ -1,6 +1,7 @@
 // src/ui/UIManager.js
 import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS, MANIFESTATIONS, PLAYER_WEAPON_IDS, ENEMY_BESTIARY, SYNERGIES } from '../data/Manifestations.js';
 import { synergyRecipe } from './SynergyBanner.js';
+import { EVOLUTIONS, evolutionRecipe } from '../systems/Evolutions.js';   // Patch 134
 
 // Patch 126: synergy names/descs are static data today, but escaped anyway — the
 // codex builds markup from them.
@@ -941,6 +942,36 @@ export class UIManager {
                 <div style="font-size:0.72rem; color:#6f6656; margin-top:4px; line-height:1.35;">${recipe}</div>
                 <div style="font-size:0.74rem; color:#333; margin-top:6px; line-height:1.35;">${escapeText(syn.desc)}</div>
                 <div style="font-size:0.7rem; color:#8a8172; margin-top:6px; letter-spacing:1px;">FORMED ×${times}</div>
+            </div>`;
+        });
+
+        // Patch 134 (V2 plan D2): the evolution codex — same rules as the synergy one:
+        // an unrevealed entry shows its recipe (weapon at level 5 + boon, then a chest)
+        // so it is a goal, and keeps its name and effect sealed.
+        const evolved = this.saveManager.metaState.discoveredEvolutions || {};
+        const evoIds = Object.keys(EVOLUTIONS);
+        const evolvedCount = evoIds.filter(id => (Number(evolved[id]) || 0) > 0).length;
+        html += heading(`EVOLUTION CODEX (${evolvedCount} / ${evoIds.length} · weapon at level 5 + its boon, then open an elite's chest)`);
+        evoIds.forEach(id => {
+            const evo = EVOLUTIONS[id];
+            const times = Number(evolved[id]) || 0;
+            const recipe = escapeText(evolutionRecipe(evo));
+            if (times <= 0) {
+                html += `
+            <div class="trophy-card codex-card codex-locked" data-evolution="${id}" style="background:#f4f1ea; border:2px dashed #c2b59b; box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
+                <div style="font-size:2.6rem; color:#111; opacity:0.08; line-height:1;">⬆</div>
+                <div class="redacted-text" style="font-weight:bold; margin-top:10px; font-size:0.8rem;">(UNEVOLVED)</div>
+                <div style="font-size:0.72rem; color:#6f6656; margin-top:6px; line-height:1.35;">${recipe}</div>
+            </div>`;
+                return;
+            }
+            html += `
+            <div class="trophy-card codex-card" data-evolution="${id}" style="background:#fbf8ff; border:2px solid #8e6cd8; box-shadow:4px 4px 0 rgba(0,0,0,0.1); padding:15px; text-align:center;">
+                <div style="font-size:2.6rem; line-height:1; color:#8e6cd8;">⬆</div>
+                <div style="font-weight:bold; color:var(--ink-black); margin-top:10px; font-size:0.9rem;">${escapeText(evo.name)}</div>
+                <div style="font-size:0.72rem; color:#6f6656; margin-top:4px; line-height:1.35;">${recipe}</div>
+                <div style="font-size:0.74rem; color:#333; margin-top:6px; line-height:1.35;">${escapeText(evo.desc)}</div>
+                <div style="font-size:0.7rem; color:#8a8172; margin-top:6px; letter-spacing:1px;">EVOLVED ×${times}</div>
             </div>`;
         });
 

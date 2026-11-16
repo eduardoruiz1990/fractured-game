@@ -7,6 +7,7 @@ import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
 import { SynergyBanner } from './ui/SynergyBanner.js';
+import { EVOLUTIONS } from './systems/Evolutions.js';   // Patch 134
 import { screenFlash } from './ui/Juice.js';
 import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies, ENEMY_BESTIARY } from './data/Manifestations.js';
 import { portalSDK } from './systems/PortalSDK.js';
@@ -2634,11 +2635,23 @@ function initEngine() {
     game.onChestOpened = (result) => {
         if (!result) return;
         const evo = result.kind === 'evolution';
+        // Patch 134: an evolution goes in the codex; the first one ever is a happy moment.
+        let foot = '';
+        if (evo && result.evolution) {
+            const isNew = saveManager.recordEvolution(result.evolution.id);
+            if (isNew) {
+                const n = Object.keys(saveManager.metaState.discoveredEvolutions || {}).filter(k => EVOLUTIONS[k]).length;
+                foot = `NEW CODEX ENTRY · ${n} / ${Object.keys(EVOLUTIONS).length}`;
+                if (!happySynergyThisSession) { happySynergyThisSession = true; portalSDK.happytime(); }
+            }
+            if (game.state) game.state.slowMo = Math.max(game.state.slowMo || 0, SYNERGY_SLOWMO_STEPS);
+        }
         synergyBanner.pushNotice({
             stamp: evo ? 'EVOLUTION' : 'CHEST OPENED',
             name: result.title,
             recipe: evo && result.evolution ? result.evolution.recipe : '',
             lines: result.lines,
+            foot,
             tone: evo ? 'evolution' : 'chest',
             calm: !!gameSettings.photosensitive
         });

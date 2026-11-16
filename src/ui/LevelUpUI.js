@@ -5,6 +5,9 @@ import { getActiveSynergies, MANIFESTATIONS, SYNERGIES } from '../data/Manifesta
 // Patch 95 — the weapon ceiling comes off in THE RECURSION. See src/core/Endless.js.
 import { weaponLevelCap, isEndless } from '../core/Endless.js';
 import { MAX_WEAPON_SLOTS, ownedWeaponCount } from '../data/Config.js';   // Patch 132
+// Patch 134: evolution hints on the cards. (Evolutions.js imports BOONS from here;
+// both sides only touch the other inside functions, so the cycle is safe.)
+import { evolutionForWeapon, evolutionsForBoon, evolveLevel } from '../systems/Evolutions.js';
 
 /**
  * The level-up boon pool — the real one.
@@ -274,6 +277,38 @@ export function ensureNewWeaponOffer(selected, ranked, weapons) {
     return out;
 }
 
+/**
+ * Patch 134 (V2 plan D2/C2): what a card means for an evolution.
+ *   ready — evolutions this pick makes available (the weapon reaches its max level
+ *           while its boon is held, or the boon is taken while its weapon is maxed);
+ *           the next elite's chest will evolve it.
+ *   lines — a nudge for evolutions this card is a step towards.
+ * Pure. `choice` is { type: 'weapon'|'boon', id }.
+ */
+export function evolutionHintsFor(player, choice) {
+    const ready = [];
+    const lines = [];
+    if (!player || !player.weapons || !choice) return { ready, lines };
+    const boons = player.boons || [];
+    const boonName = (id) => (BOONS.find(b => b.id === id) || {}).name || id;
+    if (choice.type === 'weapon') {
+        const evo = evolutionForWeapon(choice.id);
+        const w = player.weapons[choice.id];
+        if (evo && w && !w.evolution) {
+            if (w.level + 1 >= evolveLevel(choice.id) && boons.includes(evo.boon)) ready.push(evo.name);
+            else if (w.level >= 1) lines.push(`⬆ evolves with ${boonName(evo.boon)}`);
+        }
+    } else if (choice.type === 'boon') {
+        for (const evo of evolutionsForBoon(choice.id)) {
+            const w = player.weapons[evo.weapon];
+            if (!w || w.level <= 0 || w.evolution) continue;
+            if (w.level >= evolveLevel(evo.weapon)) ready.push(evo.name);
+            else lines.push(`⬆ evolves ${weaponName(evo.weapon)} at LVL ${evolveLevel(evo.weapon)}`);
+        }
+    }
+    return { ready, lines };
+}
+
 export const LEVEL_UP_ARM_MS = 300;
 
 export class LevelUpUI {
@@ -506,6 +541,7 @@ export class LevelUpUI {
             // currentLevel because they have no level to carry.
             let label;
             const badges = [];
+            const evoHints = evolutionHintsFor(game.state.player, choice);   // Patch 134
             if (choice.type === 'boon') { label = 'CLINICAL BREAKTHROUGH'; badges.push(['BOON', 'boon']); }
             else if (choice.type === 'deep') label = 'RECURSIVE ADAPTATION';
             else {
@@ -515,13 +551,15 @@ export class LevelUpUI {
                 if (choice.isMax && !choice.isNew) badges.push(['MAX', 'max']);
                 (choice.hints ? choice.hints.ready : []).forEach(n => badges.push([`SYNERGY READY: ${n}`, 'synergy']));
             }
+            evoHints.ready.forEach(n => badges.push([`EVOLUTION READY: ${n}`, 'evolution']));
             const badgeHtml = badges.length
                 ? `<div class="card-badges">${badges.map(([t, c]) => `<span class="card-badge card-badge-${c}">${t}</span>`).join('')}</div>`
                 : '';
             const statsHtml = (choice.stats && choice.stats.length)
                 ? `<ul class="card-stats">${choice.stats.map(l => `<li>${l}</li>`).join('')}</ul>` : '';
             const pairs = choice.hints && !choice.hints.ready.length ? choice.hints.pairs.slice(0, 2) : [];
-            const pairHtml = pairs.map(n => `<div class="card-pair">🔗 pairs with ${n}</div>`).join('');
+            const pairHtml = pairs.map(n => `<div class="card-pair">🔗 pairs with ${n}</div>`).join('')
+                + evoHints.lines.slice(0, 1).map(l => `<div class="card-pair card-evo">${l}</div>`).join('');
 
             card.innerHTML = `
                 <div class="card-key">${idx + 1}</div>

@@ -2009,6 +2009,66 @@ Tests:
 - New `qa/elite_check.cjs` (phone and desktop): elite spawned and named, chest
   dropped, chest opened with its notice, no page errors.
 
+**Patch 134 — weapon evolutions (D2).**
+
+A weapon at level 5 plus its matching boon makes the weapon eligible to evolve. The
+next chest an elite drops evolves it, ahead of the usual weapon levels. Evolutions are
+separate from synergies, which need two weapons at 5: an evolution is one weapon plus
+one boon, so it is something a boon pick can aim at. There are twelve, one per weapon,
+each with a different boon (`src/systems/Evolutions.js`):
+
+| Weapon + boon | Evolution | Effect |
+|---|---|---|
+| Flashlight + Last Light | Interrogation Lamp | damage x2, cone +30%, range +25% |
+| Static + Overcharge | White Noise Machine | radius +60%, damage x2.2 |
+| Pipe + Heavy Swing | Wrecking Bar | damage x2, reach +40%, swing 25% faster |
+| Ink + Ink Flood | Inkwell Flood | pools +60%, damage x2, drop 30% faster |
+| Battery + Toxic Blood | Car Battery | acid x3, lasts x1.5 |
+| Chalk + Chalk Dust | Chalk Pentagram | wards +50%, last x2, drawn 40% more often |
+| Camera + Long Exposure | Flashbulb Array | flash in every direction, damage x1.5 |
+| Spinner + Sharpened Blades | Ceiling Fan | damage x2, orbit +30, spin x1.5 (gold blades) |
+| Pill Bottle + Steady Hands | Pill Organiser | two bottles per throw, +3 ricochets |
+| Metronome + Slowing Field | Grandfather Clock | reach +50%, every pulse leaves enemies drowsy |
+| Straps + Reinforced Frame | Padded Cell | +2 straps (max 8), damage x1.8 |
+| Lullaby + Second Wind | Music Box | +2 notes, bursts +60%, each burst restores 1 Sanity |
+
+- **How an evolution is applied.** Once: `apply(wep)` changes the numbers in place and
+  `wep.evolution` records it, so it can never evolve twice. Everything is a
+  multiplier, an addition or a flag that Arsenal reads (`volley`, `lulls`, `heals`);
+  there is no new per-step system.
+- **Cards** (`evolutionHintsFor`):
+  - **EVOLUTION READY: <name>** (purple badge) on the weapon card that takes it to 5
+    while its boon is held, and on the boon card when its weapon is already at 5;
+  - otherwise a single nudge line: "⬆ evolves with Heavy Swing" on an owned weapon,
+    "⬆ evolves Heavy Lead Pipe at LVL 5" on a boon.
+- **Notice.** "EVOLUTION / Wrecking Bar / recipe / effect", in the same card and queue
+  as synergies and chests, with ~0.8 s of slow motion. The first evolution ever shows
+  "NEW CODEX ENTRY · n / 12" and triggers `happytime` (once per session, shared with
+  the first synergy).
+- **Evolution Codex** in the Mind Palace, under the Synergy Codex. It follows the same
+  rule: an unseen entry shows its recipe and keeps its name and effect sealed.
+- **New save field `discoveredEvolutions`** (id → times). Default in the constructor,
+  back-filled in `loadGame`, taken from `parsed` in `importSave`, reset in `wipeSave`
+  (Keep clauses 1–2). `recordEvolution(id)` returns true the first time.
+- **Guide:** an EVOLUTIONS section; INSTRUMENTS now mentions six slots and evolutions;
+  ENEMIES gained NAMED ELITES and CHEST cards (Patch 133).
+- **Module cycle (safe).** `Evolutions.js` ↔ `LevelUpUI.js` import each other (BOONS
+  one way, the hint helpers the other). Both use the other only inside functions, never
+  at module evaluation, which ES modules allow. Keep it that way.
+
+Tests:
+- `test_content.js` +24:
+  - twelve evolutions, one per weapon, with distinct real boons;
+  - each applies to its weapon and leaves finite numbers;
+  - not available below level 5;
+  - the 4→5 card and the boon card say READY, and the boon card nudges when the
+    weapon is not yet maxed;
+  - a chest evolves it, never twice;
+  - Pill Organiser throws two bottles;
+  - the save field is back-filled and recorded once.
+- New `qa/evolution_check.cjs` (phone): the READY badge, a chest evolving the pipe, the
+  notice text with "NEW CODEX ENTRY · 1 / 12", 12 codex cards with one open.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
