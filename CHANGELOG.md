@@ -2597,6 +2597,30 @@ Measured at 960×540, 800×600, 1280×720, 1024×768 and on phones both ways up 
   cards and DASH comes back after the pick; on a phone no storm is drawn behind the
   folder; no `backdrop-filter` remains on the folder, its header or the pause menu.
 
+**Patch 152 — the Mind Hub frame rate (follow-up to 151).**
+
+The A56 playtest report after Patch 151, taken in the walkable Mind Hub (not the
+RECORDS → MIND PALACE pane that 151 fixed): 36 fps, frame interval 27.9 ms mean, but
+only 0.8 ms of JS per draw — GPU/compositor bound. Gameplay on the same phone was smooth.
+
+- The cause was not the canvas: forcing each hub frame to finish (draw + a 1-pixel
+  readback) measured 4.6 ms against gameplay's 5.8 ms on LOW, headless. It was the page.
+  The hub branch of the game loop rewrote `#prompt-text`'s `innerText` (and the prompt's
+  colours) on EVERY frame a zone was active — which is most frames, because aiming the
+  flashlight at a zone counts — so the browser re-laid-out and re-rasterised the prompt,
+  10 px blurred text-shadow and 20 px box-shadow included, 60 times a second. At a DPR of
+  2.8 that blur is ~28 device pixels. A MutationObserver counted 60 changes a second in
+  the hub and nothing else.
+- Now the prompt is written only when the active zone changes (`hubPromptZoneId`).
+  `hideHubPrompt()` hides it and forgets the zone, and runs when the folder opens from a
+  desk, on entering the hub, and in `startNewRun` (a run started from the hub never
+  keeps the prompt), so the prompt reappears correctly after closing the folder.
+- `qa/hub_check.cjs`: standing at a desk for a second, the prompt is shown and the page
+  records zero mutations, at 384×717, 915×412 and 1280×720.
+- `qa/sizes_check.cjs`: the touch-control reveal tapped `#game-canvas` (the canvas is
+  `#gameCanvas`), so it waited out Playwright's 30 s timeout, during which the run could
+  end — which made the landscape level-up assertions flaky. Fixed, with a 3 s timeout.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

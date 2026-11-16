@@ -72,7 +72,7 @@ const shown = (page, id) => page.evaluate((id) => { const e = document.getElemen
     await page.evaluate(() => { const m = window.__fractured.saveManager.metaState; m.story.coldOpenSeen = true; m.tutorialCompleted = true; });
     if (touch) await page.tap('#btn-title-begin'); else await page.click('#btn-title-begin');
     await page.waitForTimeout(900);
-    if (touch) { await page.tap('#game-canvas', { position: { x: 30, y: h - 40 } }).catch(() => {}); await page.waitForTimeout(200); }
+    if (touch) { await page.tap('#gameCanvas', { position: { x: 30, y: h - 40 }, timeout: 3000 }); await page.waitForTimeout(200); }
     const hud = await offscreen(page, '#ui-layer .sanity-section, #ui-layer .convergence-section, #ui-layer .score-section, #btn-pause, #btn-dash');
     ok(hud.length === 0, `${tag} HUD on screen ${JSON.stringify(hud)}`);
     const dashBefore = touch ? await shown(page, 'btn-dash') : null;
@@ -87,7 +87,9 @@ const shown = (page, id) => page.evaluate((id) => { const e = document.getElemen
     await page.waitForTimeout(500);
     const cards = await offscreen(page, '#cards-container .card, #levelup-screen button');
     ok(cards.length === 0, `${tag} level-up: every card on screen ${JSON.stringify(cards)}`);
-    ok(!(await shown(page, 'synergy-banner')), `${tag} level-up: the notice strip waits`);
+    const strip = await page.evaluate(() => { const b = document.getElementById('synergy-banner');
+      return { vis: b && getComputedStyle(b).visibility, cls: document.body.className, gs: window.__fractured.gameState }; });
+    ok(!(await shown(page, 'synergy-banner')), `${tag} level-up: the notice strip waits ${JSON.stringify(strip)}`);
     if (touch) ok(!(await shown(page, 'btn-dash')), `${tag} level-up: DASH is not over the cards`);
     await page.screenshot({ path: `${S}/sizes_levelup_${tag}.png` });
     await page.evaluate(() => { const ui = window.__fractured.levelUpUI; ui.armedAt = 0; ui.tryPick(0); });

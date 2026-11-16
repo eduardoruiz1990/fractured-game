@@ -30,6 +30,18 @@ const gs = (p) => p.evaluate(() => window.__fractured.gameState);
     ok(btn.h >= 44 && btn.onScreen, `${tag} DESCEND >= 44px and on screen (${btn.h}px)`);
     await page.screenshot({ path: `${S}/hub_${tag}.png` });
 
+    // --- Patch 152: standing still in the hub changes nothing in the page ---------------
+    // (the interaction prompt was rewritten every frame, re-rasterising its glow; on a
+    // phone that held the hub to 36 fps with under 1 ms of JS a frame)
+    await page.evaluate(() => { const g = window.__fractured.game, z = g.hubWorld.zones[0]; g.state.player.x = z.x; g.state.player.y = z.y; });
+    await page.waitForTimeout(300);
+    const churn = await page.evaluate(() => new Promise(res => {
+      let n = 0; const mo = new MutationObserver(ms => { n += ms.length; });
+      mo.observe(document.getElementById('game-container') || document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+      setTimeout(() => { mo.disconnect(); res({ n, prompt: getComputedStyle(document.getElementById('interaction-prompt')).display }); }, 1000);
+    }));
+    ok(churn.n === 0 && churn.prompt === 'block', `${tag} hub: the prompt shows and nothing in the page is rewritten while standing at a desk (${JSON.stringify(churn)})`);
+
     // --- the folder: 4 groups, sub-tabs per group ------------------------------
     // Stand at the Mind Palace desk (the hub recomputes activeZone from the player's
     // position every frame, so setting it directly races the next frame).

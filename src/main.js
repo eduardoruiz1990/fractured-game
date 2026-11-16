@@ -1014,6 +1014,7 @@ function enterPlayingState() {
     // play rather than from the first touch. Called here, after every menu close, so it
     // also undoes hideJoysticks()' latch reset on the way back into a run.
     document.body.classList.remove('levelup-open');   // Patch 151: never carried into a new run
+    hideHubPrompt();   // Patch 152: a run started from the hub must not keep its prompt
     if (inputManager && typeof inputManager.revealTouchControls === 'function') {
         inputManager.revealTouchControls();
     }
@@ -1166,6 +1167,16 @@ function autoSaveRun() {
     }
 }
 
+// Patch 152: the hub zone the interaction prompt currently shows (null = hidden), so the
+// prompt is written on a change only. Reset wherever the prompt is hidden from outside
+// the hub branch, so the next hub frame shows it again.
+let hubPromptZoneId = null;
+function hideHubPrompt() {
+    hubPromptZoneId = null;
+    const el = document.getElementById('interaction-prompt');
+    if (el) el.style.display = 'none';
+}
+
 // Patch 151 (V2 plan F5): whether the open folder covers the whole canvas (it does on a
 // phone, where .medical-folder goes full-screen). Re-measured at most twice a second
 // rather than every frame, so it never forces a layout of its own.
@@ -1189,6 +1200,7 @@ function enterMindHub() {
     game.init(saveManager);
     game.state.player.x = 0;
     game.state.player.y = 0;
+    hideHubPrompt();   // Patch 152
     gameState = 'HUB';
 }
 
@@ -2309,7 +2321,7 @@ function initEngine() {
                         } catch (e) { /* pre-options implementations; the tab is still active */ }
                     }
 
-                    interactionPrompt.style.display = 'none';
+                    hideHubPrompt();   // Patch 152: also forgets the zone, so it shows again on return
                     if (audioEngine) audioEngine.playSFX('ui_click');
                     inputManager.hideJoysticks();
                     gameState = 'MENU';
@@ -3311,15 +3323,24 @@ function gameLoop(time) {
             // --- PHASE 2: HUB INTERACTION & PLAYER ROTATION ---
             if (gameState === 'HUB') {
                 if (game.hubWorld) {
-                    const interactionPrompt = document.getElementById('interaction-prompt');
-                    const promptText = document.getElementById('prompt-text');
-                    if (game.hubWorld.activeZone) {
-                        interactionPrompt.style.display = 'block';
-                        promptText.innerText = game.hubWorld.activeZone.prompt;
-                        interactionPrompt.style.borderColor = game.hubWorld.activeZone.color;
-                        interactionPrompt.style.color = game.hubWorld.activeZone.color;
-                    } else {
-                        interactionPrompt.style.display = 'none';
+                    // Patch 152: written only when the zone changes. Rewriting innerText every
+                    // frame (even to the same words) re-rasterised the prompt, glow and all,
+                    // 60 times a second — the whole cost of the Mind Hub on a phone, where
+                    // it ran at 36 fps with 0.8 ms of JS per frame.
+                    const zone = game.hubWorld.activeZone;
+                    const zoneId = zone ? zone.id : null;
+                    if (zoneId !== hubPromptZoneId) {
+                        hubPromptZoneId = zoneId;
+                        const interactionPrompt = document.getElementById('interaction-prompt');
+                        const promptText = document.getElementById('prompt-text');
+                        if (zone) {
+                            promptText.innerText = zone.prompt;
+                            interactionPrompt.style.borderColor = zone.color;
+                            interactionPrompt.style.color = zone.color;
+                            interactionPrompt.style.display = 'block';
+                        } else {
+                            interactionPrompt.style.display = 'none';
+                        }
                     }
                 }
                 
