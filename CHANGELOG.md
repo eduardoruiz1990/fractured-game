@@ -2692,6 +2692,84 @@ mobile GPUs can only do by copying the destination first, per draw. Plus 136 `fi
 - Per hub frame (LOW, 384×717): `screen` draws 89 → 0, `fill` 136 → 16, `fillRect`
   38 → 9, gradients 18 → 5. Screenshots before/after at 1280×720 match closely.
 
+**Patch 156 — the difficulty pass (regular rooms, floors 2–5).**
+
+The first full playtest after Phase D called the game "fair, and maybe too easy". Before
+any tuning I built a way to measure it.
+
+- **New `sim_difficulty.js`.** It plays whole runs headless with a scripted player. It
+  uses the real `Game`, `Director`, `Combat` and `LevelUpUI.selectCard`, on a
+  fake DOM.
+  - Profiles: `fresh` (no Synapse nodes), `returning` (the 12 cheapest) and `veteran` (20).
+  - Skills: `novice` (sluggish, random picks), `competent` (standoff, kites, dashes,
+    dodges boss wind-ups) and `statue` (never moves; a check that enemies can hurt at all).
+  - It reports, per floor:
+    - the median and minimum lowest Sanity in rooms 1–4 and over the whole floor;
+    - the damage taken;
+    - where and to what each death happened.
+  - `--detail` adds, for rooms 1–4: damage, healing, time, level-ups and the mean
+    number of enemies alive.
+  - `--sources` tallies the damage by attacker. `--ttk` gives each enemy type's
+    lifetime and HP.
+  - `--pressure '{"3":{"hp":1.6}}'` overrides rows of the new table without editing it.
+- **What it found** (16 runs per profile and skill, before this patch):
+  - Regular rooms were *spawn-rate bound*. Enemies arrived one at a time and died on
+    the way in: 0.5–1.0 alive on average on floors 2–5.
+  - Scavengers spend most of their time chasing XP orbs, not the player. By floor 2,
+    the player's damage outgrows every regular enemy: a ×4 HP scavenger still lived
+    only 3 s.
+  - So nearly all Sanity lost in a regular room was the passive drain, and the +3 per
+    XP orb refilled it. The lowest Sanity in rooms 1–4 was a median of 81–97% on
+    floors 2–5.
+  - Almost every bot death was a boss (the Panopticon, the Architect).
+  - The scripted bot fights bosses worse than a person does, so its boss death rate is
+    not a target. Boss fights are left alone.
+- **New `src/data/Difficulty.js`:** `FLOOR_PRESSURE`, one row per floor, read through
+  `floorPressure(floor)`.
+  - Floor 1 is exactly the old game. Floors past 5 read the floor-5 row, and
+    `Endless.js` scales on top of it as before.
+  - Every knob is off while a boss is alive, so bosses, their projectiles, their
+    escort and the Amalgamation's minions keep their numbers.
+
+  | floor | orbHeal | damage | budget | pack | hp | speed |
+  |---|---|---|---|---|---|---|
+  | 1 | 3 | 1 | 1 | 1 | 1 | 1 |
+  | 2 | 2.25 | 1.15 | 1.25 | 2 | 1.3 | 1.1 |
+  | 3 | 2 | 1.2 | 1.35 | 3 | 1.45 | 1.12 |
+  | 4 | 1.75 | 1.25 | 1.4 | 3 | 1.6 | 1.15 |
+  | 5 | 1.5 | 1.3 | 1.5 | 3 | 1.75 | 1.18 |
+
+  There is also a `density` knob (it shortens the gap between arrivals), held at 1 on
+  every floor.
+- **Wiring:**
+  - `Combat.collectXP`: orb heal.
+  - `Game.takeDamage`: `damage`, skipped while `state.activeBoss` is set or the source
+    is a boss type.
+  - `Director.spawnRoom`: `budget`. It also resets `state.packLeft`.
+  - `Director.spawnWave`:
+    - `density`;
+    - **packs**: the rest of a pack follows 6 frames after the first by stepping
+      `budgetTimer` back, then the usual gap. Never in the tutorial room or while a
+      boss is alive.
+  - `Director.spawnEntity`: `hp` and `speed` on regular enemies, before the ELITE and
+    variant multipliers, re-stamping `maxHp`, `spawnMaxHp` and `baseSpeed` (Keep
+    clause 6).
+- **Measured with the table:**
+  - Enemies alive in a regular room went from 0.5–1.0 to 1.5–2.9.
+  - Damage from regular enemies on floors 2–3 went up about 2–3×, and some runs now
+    hit real low points in rooms (13%, 5%).
+  - No profile gained regular-room deaths beyond one drain death.
+  - The rooms 1–4 median low is still high (82–95% for a competent bot). The bot kites
+    perfectly with full knowledge, and a person does not; the real check is a human
+    playtest.
+  - Push further with `pack`/`hp` first: the bot says `damage` and `orbHeal` matter
+    little while enemies cannot reach the player.
+- **Tests:**
+  - `test_content.js` +17: floor 1 is identity, every knob is finite and positive,
+    `pack` is whole, no floor is easier than the one before, and out-of-range floors
+    clamp.
+  - Every other suite, the 200-run fuzz and the soak are unchanged.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -2970,8 +3048,10 @@ mobile GPUs can only do by copying the destination first, per draw. Plus 136 `fi
 - ~~**Fog is 30 live `createRadialGradient` per frame.**~~ **Fixed in Patch 115**: fog
   clouds draw from a cached sprite (`getFogSprite`), and the quality tiers scale it.
 - **The game may be too easy.** The first full playtest after Phase D called it "fair,
-  and maybe too easy". A difficulty pass is deferred to a later section by decision
-  (2026-11-16); nothing in Phases E–G changed balance.
+  and maybe too easy". **Patch 156** raises regular-room pressure on floors 2–5
+  (packs, tougher and faster enemies, less orb healing; floor 1 and bosses unchanged).
+  Awaiting a human playtest; tune `src/data/Difficulty.js`, measured with
+  `sim_difficulty.js`.
 - **GPU cost is invisible to the headless checks.** Headless Chromium rasterises the
   canvas in software and composites without a GPU, so a compositor-bound slowdown (the
   Mind Hub, Patch 152; the folder blur, Patch 151) shows up only on a device. The

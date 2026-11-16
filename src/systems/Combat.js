@@ -58,6 +58,7 @@ import { dropPage, updatePage, collectLoosePages } from './CasePages.js';   // P
 import { bossDeathLine, BOSS_DEATH_SUBTITLE_STEPS } from '../data/Story.js';   // Patch 146
 // Patch 134 (V2 plan D2): a chest evolves a qualifying weapon first.
 import { evolveForChest } from './Evolutions.js';
+import { floorPressure } from '../data/Difficulty.js';   // Patch 156
 
 // Patch 16: generic tag-scaled knockback, consumed by Enemy.takeDamage's
 // optional knockbackForce param. Only wired at call sites with no existing
@@ -933,7 +934,8 @@ export class Combat {
                     xp.collected = true; 
                     state.xp += xp.value; 
                     state.lucidity += xp.value;
-                    state.sanity = Math.min(state.player.maxHp, state.sanity + 3);
+                    // Patch 156: per floor (data/Difficulty.js); 3 on floor 1, as it was.
+                    state.sanity = Math.min(state.player.maxHp, state.sanity + floorPressure(state.floor).orbHeal);
                     pickupCount++;
                 }
             }

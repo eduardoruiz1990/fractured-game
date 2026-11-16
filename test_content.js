@@ -17,6 +17,7 @@ import {
     SYNERGIES, TOKENS, TOKEN_SETS, TOKEN_RARITIES, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS
 } from './src/data/Manifestations.js';
 import { getXPRequiredForLevel } from './src/data/Config.js';
+import { FLOOR_PRESSURE, floorPressure } from './src/data/Difficulty.js';   // Patch 156
 
 global.CustomEvent = class CustomEvent {
     constructor(type, opts = {}) { this.type = type; this.detail = opts.detail; }
@@ -941,6 +942,28 @@ console.log('\nFirst minute (Patch 127)');
     check('two weapons owned: unchanged', ensureNewWeaponOffer(sel, ranked, W({ s: 1 })) === sel);
     check('no new weapon left in the pool: unchanged',
           ensureNewWeaponOffer(sel, ranked.filter(c => !c.isNew), W({})) === sel);
+}
+
+// ---------------------------------------------------------------------------
+// Patch 156: the floor pressure table (src/data/Difficulty.js).
+{
+    console.log('\n-- Floor pressure (Patch 156) --');
+    const KEYS = ['orbHeal', 'damage', 'budget', 'pack', 'hp', 'speed', 'density'];
+    const IDENTITY = { orbHeal: 3, damage: 1, budget: 1, pack: 1, hp: 1, speed: 1, density: 1 };
+    check('floor 1 is exactly the pre-156 game', KEYS.every(k => FLOOR_PRESSURE[1][k] === IDENTITY[k]),
+          JSON.stringify(FLOOR_PRESSURE[1]));
+    for (let f = 1; f <= 5; f++) {
+        const r = FLOOR_PRESSURE[f];
+        check(`floor ${f}: every knob is a finite positive number`, KEYS.every(k => Number.isFinite(r[k]) && r[k] > 0), JSON.stringify(r));
+        check(`floor ${f}: pack is a whole number`, Number.isInteger(r.pack));
+        if (f > 1) {
+            const p = FLOOR_PRESSURE[f - 1];
+            check(`floor ${f}: never easier than floor ${f - 1}`,
+                  r.orbHeal <= p.orbHeal && ['damage', 'budget', 'pack', 'hp', 'speed', 'density'].every(k => r[k] >= p[k]));
+        }
+    }
+    check('floors below 1 and junk read floor 1', floorPressure(0) === FLOOR_PRESSURE[1] && floorPressure(NaN) === FLOOR_PRESSURE[1] && floorPressure(undefined) === FLOOR_PRESSURE[1]);
+    check('THE RECURSION reads the floor-5 row', floorPressure(6) === FLOOR_PRESSURE[5] && floorPressure(40) === FLOOR_PRESSURE[5]);
 }
 
 // ---------------------------------------------------------------------------
