@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–127)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–128)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1785,6 +1785,37 @@ Changes:
 cards, and `ensureNewWeaponOffer` (replaces only the last card, never mutates, leaves
 two-weapon and no-new-weapon cases alone). `qa/levelup_check.cjs` adds: 64 XP from a
 fresh run gives two cards in a row, and both offer a NEW weapon.
+
+**Patch 128 — HUD readability (C7).**
+
+- **Scanlines no longer stripe the HUD.** `#ui-layer` goes from z 20 to **z 101**,
+  above `#crt-scanlines` (100, opacity 0.8, 2 px dark bands) and still below every menu
+  (200+), the tutorial note (150) and the synergy notice (160).
+- **11 px floor on phones.** The small-screen and landscape blocks had shrunk
+  `.hud-label` to 0.58rem / 0.55rem (9.3 / 8.8 px), the pause button to 0.68rem and the
+  enemy counter to 0.62rem. All are now 0.7rem (11.2 px).
+- **Sanity state that is not colour alone.** The label reads `SANITY 82%`, then
+  `SANITY 24% · FRAYING` below 30%, then `SANITY 0% · BREAKDOWN`, using the bar's own
+  colour thresholds. Low Sanity also hatches the bar. Breakdown blinks the panel
+  outline about once a second; it is steady under `prefers-reduced-motion` and the
+  photosensitivity setting. Class toggles happen only when the state changes.
+- **Layout bugs this exposed:**
+  - **Portrait:** the progress panel's base `min-width: 200px` beat the small-screen
+    `max-width: 28%`, leaving the Sanity panel 70 px wide. Portrait now splits 34% /
+    flexible / 30%.
+  - **800×600 and 960×540 iframes:** the HUD row wrapped. The Lucidity/pause panel
+    dropped under Sanity, into the play area. Mid widths now keep one row, with a
+    150 px progress floor and 1rem large labels.
+  - **Tutorial note:** its fixed `top: 76px` sat on the progress panel's
+    "NIGHTMARES LEFT" line on desktop. It is now 132 px (desktop), 118 px (portrait),
+    and stays 76 px on landscape phones.
+
+New `qa/hud_check.cjs` checks 384×717, 915×412, 800×600, 960×600 and 1280×720:
+- HUD text is at least 11 px, and the z-order is scanlines < HUD < menus;
+- the HUD clusters stay on screen and in one row;
+- the tutorial note does not overlap the HUD;
+- the healthy, FRAYING and recovered labels read correctly, the low bar is hatched, and
+  the longest label fits its panel.
 
 ---
 

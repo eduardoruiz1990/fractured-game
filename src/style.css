@@ -602,7 +602,11 @@ body.quality-low #crt-scanlines { display: none; }
 #ui-layer {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     pointer-events: none; display: none; flex-direction: column; justify-content: space-between;
-    padding: 20px; box-sizing: border-box; z-index: 20;
+    /* Patch 128 (V2 plan C7): z 101, ABOVE #crt-scanlines (100). At 20 the scanlines
+       (opacity 0.8, 2px dark bands) striped every HUD glyph, which at phone sizes
+       made 9px labels unreadable. Still below every menu (.fullscreen-menu is 200+),
+       the tutorial note (150) and the synergy notice (160). */
+    padding: 20px; box-sizing: border-box; z-index: 101;
     /* Patch 38: keep the HUD clear of notches and rounded display corners. */
     padding-top: max(20px, env(safe-area-inset-top));
     padding-left: max(20px, env(safe-area-inset-left));
@@ -618,6 +622,22 @@ body.quality-low #crt-scanlines { display: none; }
 /* Patch 38: de-inlined out of index.html so the HUD is themeable from one place. */
 .hud-label-dash { margin-top: 6px; color: #88aaff; }
 #enemy-counter { margin-top: 5px; color: #ffaaaa; font-size: 0.85rem; text-shadow: 0 0 5px #ff0000; }
+/* Patch 128: Sanity state that is not colour alone. main.js writes the label as
+   "SANITY 82%", "SANITY 24% · FRAYING" or "SANITY 0% · BREAKDOWN", and sets these
+   classes; low Sanity also hatches the bar, so the state reads in greyscale and for
+   colour-blind players. background-image composes with the inline backgroundColor. */
+.sanity-section.sanity-low #sanity-bar,
+.sanity-section.sanity-breakdown #sanity-bar {
+    background-image: repeating-linear-gradient(-45deg, rgba(0,0,0,0.45) 0 3px, transparent 3px 7px);
+}
+.sanity-section.sanity-low #sanity-label { color: #ffcc66; }
+.sanity-section.sanity-breakdown #sanity-label { color: #ff8a80; }
+.sanity-section.sanity-breakdown { animation: sanityAlarm 0.9s steps(2, jump-none) infinite; }
+@keyframes sanityAlarm { from { outline: 2px solid rgba(255, 80, 80, 0.85); } to { outline: 2px solid transparent; } }
+@media (prefers-reduced-motion: reduce) {
+    .sanity-section.sanity-breakdown { animation: none; outline: 2px solid rgba(255, 80, 80, 0.85); }
+}
+.sanity-section.sanity-calm.sanity-breakdown { animation: none; outline: 2px solid rgba(255, 80, 80, 0.85); }   /* photosensitivity setting */
 
 /* Patch 38: shared instrument-panel chrome for all three HUD clusters. */
 .sanity-section, .convergence-section, .score-section {
@@ -725,7 +745,10 @@ body.quality-low #crt-scanlines { display: none; }
    on screen during the one minute where low-end mobile framerate matters most. */
 #tutorial-banner {
     position: absolute;
-    top: 76px;
+    /* Patch 128: was 76px, which put the note on top of the progress panel's
+       "NIGHTMARES LEFT" line on desktop (the HUD row ends ~121px down there).
+       Landscape phones (short HUD) keep 76px; portrait phones use 118px. */
+    top: 132px;
     left: 50%;
     transform: translateX(-50%);
     max-width: min(440px, calc(100vw - 32px));
@@ -1141,11 +1164,12 @@ body.quality-low #crt-scanlines { display: none; }
     .convergence-bar-container { width: 100%; }
     .score-section { order: 3; align-items: flex-end; padding: 5px 6px; }
     .sanity-section, .convergence-section, .score-section { background-color: rgba(4, 8, 6, 0.55); }
-    .hud-label { font-size: 0.58rem; margin-bottom: 2px; letter-spacing: 0.5px; }
+    /* Patch 128: 0.7rem (11.2px) is the floor for HUD text (was 0.58rem, 9.3px). */
+    .hud-label { font-size: 0.7rem; margin-bottom: 2px; letter-spacing: 0.3px; }
     .hud-label-large { font-size: 0.78rem; }
     .sanity-bar-container { height: 9px; }
-    .hud-icon-btn { font-size: 0.68rem; padding: 3px 7px; margin-top: 4px; }
-    #enemy-counter { font-size: 0.62rem; margin-top: 3px; }
+    .hud-icon-btn { font-size: 0.7rem; padding: 3px 7px; margin-top: 4px; }
+    #enemy-counter { font-size: 0.7rem; margin-top: 3px; }
 
     /* Patch 72: end-of-run and pause dialogs. The run summary is a lot of text on a
        narrow screen, and .file-btn's desktop size (1.2rem, 12px/30px padding) eats
@@ -1169,8 +1193,9 @@ body.quality-low #crt-scanlines { display: none; }
 @media (max-height: 560px) and (orientation: landscape) {
     #ui-layer { padding: 4px 8px; padding-top: max(4px, env(safe-area-inset-top)); }
     .hud-top { padding: 2px 4px; gap: 5px; }
+    #tutorial-banner { top: 76px; }   /* Patch 128: the short landscape HUD ends ~70px */
     .sanity-section, .convergence-section, .score-section { padding: 4px 6px; }
-    .hud-label { font-size: 0.55rem; margin-bottom: 1px; }
+    .hud-label { font-size: 0.7rem; margin-bottom: 1px; }   /* Patch 128: was 0.55rem */
     .hud-label-large { font-size: 0.72rem; }
     .sanity-bar-container { height: 8px; }
     .hud-icon-btn { margin-top: 2px; padding: 2px 6px; }
@@ -1206,6 +1231,33 @@ body.quality-low #crt-scanlines { display: none; }
     .roadmap-timeline { gap: 8px; }
     .roadmap-node { padding: 8px 12px; }
 }
+/* Patch 128: mid-size iframes (CrazyGames serves 800x600 and 960x540 among others).
+   250 + 200 (progress min-width) + ~250 + gaps and padding is ~810px, so at 800 the
+   row WRAPPED: the Lucidity/pause panel dropped under Sanity, into the play area and
+   under the tutorial note. One row, a narrower floor on the progress panel. */
+@media (min-width: 601px) and (max-width: 1000px) and (min-height: 561px) {
+    .hud-top { flex-wrap: nowrap; padding: 10px 6px; }
+    .convergence-section { min-width: 150px; padding: 8px 12px; }
+    .hud-label-large { font-size: 1rem; }
+    .convergence-section .hud-label-large { text-align: center; }
+}
+
+/* Patch 128: PORTRAIT phone HUD widths. The base rule's `min-width: 200px` on
+   .convergence-section beat the small-screen `max-width: 28%` (min-width wins), so
+   on a 384px phone the progress panel took 200px and left Sanity — the one number
+   that kills you — 70px, wrapping its label onto three lines. Placed AFTER the
+   small-screen block so it wins at equal specificity. */
+@media (max-width: 600px) and (orientation: portrait) {
+    .sanity-section { flex: 0 0 34%; max-width: 34%; }
+    .convergence-section { flex: 1 1 auto; min-width: 0; max-width: none; }
+    .convergence-section .hud-label-large { font-size: 0.72rem; text-align: center; }
+    #enemy-counter { text-align: center; }
+    .score-section { flex: 0 0 auto; max-width: 30%; }
+    /* The HUD row is ~105px tall here (the 44px pause button sets it), so the
+       tutorial note's desktop `top: 76px` sat on top of the progress panel. */
+    #tutorial-banner { top: 118px; }
+}
+
 /* Touch-target floor for the HUD buttons (Patch 85).
    #btn-pause is the only .hud-icon-btn, and on a phone it is the ONLY way to pause:
    the Escape/P handlers in main.js are keyboard, so touch has no other route. The two

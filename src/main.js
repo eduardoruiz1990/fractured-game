@@ -326,6 +326,7 @@ function hudText(el, value) {
     if (el.textContent !== v) el.textContent = v;
 }
 let lastScoreHtml = null;
+let lastSanityState = null;   // Patch 128: class toggles only on a change
 function hudHtml(el, html) {
     if (!el || html === lastScoreHtml) return;   // #score is written only from here
     lastScoreHtml = html;
@@ -2813,6 +2814,22 @@ function gameLoop(time) {
                 if (isBreakdown) { hudStyle(sanityBar, 'backgroundColor', 'var(--ui-red)'); hudStyle(sanityBar, 'boxShadow', '0 0 15px var(--ui-red)'); }
                 else if (ratio < 0.3) { hudStyle(sanityBar, 'backgroundColor', '#ffaa00'); hudStyle(sanityBar, 'boxShadow', '0 0 10px #ffaa00'); }
                 else { hudStyle(sanityBar, 'backgroundColor', 'var(--hud-green)'); hudStyle(sanityBar, 'boxShadow', '0 0 10px var(--hud-green)'); }
+
+                // Patch 128 (V2 plan C7): the state in WORDS and a hatch pattern, not
+                // only the bar's colour. Thresholds are the colour thresholds above.
+                const sanityState = isBreakdown ? 'breakdown' : (ratio < 0.3 ? 'low' : 'ok');
+                hudText(document.getElementById('sanity-label'),
+                    `SANITY ${Math.max(0, Math.round(ratio * 100))}%` +
+                    (sanityState === 'breakdown' ? ' · BREAKDOWN' : sanityState === 'low' ? ' · FRAYING' : ''));
+                if (sanityState !== lastSanityState) {
+                    lastSanityState = sanityState;
+                    const sec = sanityBar && sanityBar.closest('.sanity-section');
+                    if (sec) {
+                        sec.classList.toggle('sanity-low', sanityState === 'low');
+                        sec.classList.toggle('sanity-breakdown', sanityState === 'breakdown');
+                        sec.classList.toggle('sanity-calm', !!gameSettings.photosensitive);
+                    }
+                }
                 
                 const dashBar = document.getElementById('dash-bar');
                 if (dashBar && game.state.player.dash) {
