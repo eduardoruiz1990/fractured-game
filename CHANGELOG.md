@@ -2668,6 +2668,30 @@ only 0.8 ms of JS per draw — GPU/compositor bound. Gameplay on the same phone 
   inventory lists all thirteen suites and the fuzz with current counts. `CLAUDE.md`
   points at the v2 clauses, the smoke test and the checklist.
 
+**Patch 155 — the Mind Hub frame rate, round two.**
+
+After Patch 152 the A56 reported the Mind Hub at ~45 fps (up from 36), still well below
+gameplay's 60 with nothing in the page changing. Counting canvas calls per hub frame
+found the rest: **89 draws a frame under `globalCompositeOperation = 'screen'`** —
+the flashlight tint, four zone pools, four ceiling beams, and all 80 dust motes, which
+were drawn inside the same `'screen'` block. `screen` is an advanced blend that many
+mobile GPUs can only do by copying the destination first, per draw. Plus 136 `fill`s,
+38 `fillRect`s and 18 new gradients a frame, mostly furniture that never moves.
+
+- `HubWorld`: the furniture (shadows, bed, desk, locker, trophy shelf, statues and boss
+  monuments) is baked into the floor image once per visit (`bake`, re-run when
+  `Game.init` builds a new state, i.e. every hub entry, so new statues appear), and
+  handed to the GPU as an `ImageBitmap` when available. Each frame is one `drawImage`
+  plus the active zone's outline (`drawHighlight`: a 3 px stroke on a rect grown 1.5 px,
+  the same visible band the old 6 px stroke under the furniture left).
+- `Renderer` hub branch: the light-mask zone discs, the zone colour pools and the beams
+  are cached sprites (`hubSprite`, the `drawGlow` pattern) instead of per-frame
+  gradients; the main-canvas tints use `'lighter'` (a plain additive blend) instead of
+  `'screen'`, alphas trimmed (0.4→0.32, 0.15→0.12, tint 0.4→0.32) so the room reads the
+  same; the dust is drawn as four batched fills, one per brightness band.
+- Per hub frame (LOW, 384×717): `screen` draws 89 → 0, `fill` 136 → 16, `fillRect`
+  38 → 9, gradients 18 → 5. Screenshots before/after at 1280×720 match closely.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

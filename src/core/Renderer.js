@@ -879,7 +879,13 @@ export class Renderer {
     }
 
     drawHubDust(state) {
-        this.ctx.fillStyle = '#ffffff';
+        // Patch 155: four fills (one per brightness band) instead of one per mote. Each
+        // mote's alpha is quantised to the band's midpoint; at <= 0.5 alpha on 1-3 px
+        // specks the difference is not visible, and 80 draw calls become 4.
+        const BANDS = 4;
+        if (!this._dustBands) this._dustBands = Array.from({ length: BANDS }, () => []);
+        const bands = this._dustBands;
+        for (let b = 0; b < BANDS; b++) bands[b].length = 0;
         this.hubDust.forEach(dust => {
             dust.x += dust.vx;
             dust.y += dust.vy;
@@ -890,13 +896,58 @@ export class Renderer {
             if (dust.y > state.player.y + 800) dust.y -= 1600;
             if (dust.y < state.player.y - 800) dust.y += 1600;
 
-            let alpha = (Math.sin(dust.phase) + 1) / 2 * 0.5; 
-            this.ctx.globalAlpha = alpha;
-            this.ctx.beginPath();
-            this.ctx.arc(dust.x, dust.y, dust.size, 0, Math.PI*2);
-            this.ctx.fill();
+            const t = (Math.sin(dust.phase) + 1) / 2;   // 0..1
+            bands[Math.min(BANDS - 1, (t * BANDS) | 0)].push(dust);
         });
+        this.ctx.fillStyle = '#ffffff';
+        for (let b = 0; b < BANDS; b++) {
+            const list = bands[b];
+            if (!list.length) continue;
+            this.ctx.globalAlpha = ((b + 0.5) / BANDS) * 0.5;
+            this.ctx.beginPath();
+            for (let i = 0; i < list.length; i++) {
+                const d = list[i];
+                this.ctx.moveTo(d.x + d.size, d.y);
+                this.ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+            }
+            this.ctx.fill();
+        }
         this.ctx.globalAlpha = 1.0;
+    }
+
+    /**
+     * Patch 155: the Mind Hub's glows as cached sprites (the drawGlow pattern), built
+     * once each. 'glow' is the white light-mask disc, 'tint' a zone's coloured pool,
+     * 'beam' the soft ceiling-light wedge in zone-local coordinates (-120..120, -350..60).
+     */
+    hubSprite(kind, color = '') {
+        if (!this.hubSprites) this.hubSprites = new Map();
+        const key = kind + color;
+        let c = this.hubSprites.get(key);
+        if (c) return c;
+        c = document.createElement('canvas');
+        const x = c.getContext('2d');
+        if (kind === 'beam') {
+            c.width = 120; c.height = 205;   // half scale; it is a soft gradient
+            x.scale(0.5, 0.5);
+            x.translate(120, 350);
+            const g = x.createLinearGradient(-80, -300, 40, 50);
+            g.addColorStop(0, '#ffffff');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            x.fillStyle = g;
+            x.beginPath();
+            x.moveTo(-80, -350); x.lineTo(40, -350); x.lineTo(120, 60); x.lineTo(-120, 60);
+            x.fill();
+        } else {
+            c.width = c.height = 128;
+            const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+            if (kind === 'glow') { g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(1, 'rgba(255,255,255,0)'); }
+            else { g.addColorStop(0, color); g.addColorStop(1, 'rgba(0,0,0,0)'); }
+            x.fillStyle = g;
+            x.fillRect(0, 0, 128, 128);
+        }
+        this.hubSprites.set(key, c);
+        return c;
     }
 
     drawGame(state, audioEngine, gameState = 'PLAYING') {
@@ -1001,16 +1052,12 @@ export class Renderer {
                     this.lightCtx.fillStyle = pGlow;
                     this.lightCtx.beginPath(); this.lightCtx.arc(state.player.x, state.player.y, 100, 0, Math.PI*2); this.lightCtx.fill();
 
+                    // Patch 155: cached sprites, not four new gradients a frame.
                     if (state.hubWorld.zones && state.hubWorld.lightIntensity > 0.5) {
+                        const glowSprite = this.hubSprite('glow');
                         state.hubWorld.zones.forEach(z => {
-                            let pulse = Math.sin(this.renderFrame * 0.05 + z.x) * 5;
-                            const glow = this.lightCtx.createRadialGradient(z.x, z.y, 0, z.x, z.y, 140 + pulse);
-                            glow.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-                            glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
-                            this.lightCtx.fillStyle = glow;
-                            this.lightCtx.beginPath();
-                            this.lightCtx.arc(z.x, z.y, 140 + pulse, 0, Math.PI * 2);
-                            this.lightCtx.fill();
+                            const r = 140 + Math.sin(this.renderFrame * 0.05 + z.x) * 5;
+                            this.lightCtx.drawImage(glowSprite, z.x - r, z.y - r, r * 2, r * 2);
                         });
                     }
                     this.lightCtx.restore();
@@ -1022,14 +1069,18 @@ export class Renderer {
                     this.ctx.restore();
 
                     this.ctx.save();
-                    this.ctx.globalCompositeOperation = 'screen';
+                    // Patch 155: 'lighter' (additive), not 'screen'. Both brighten; on a dark
+                    // room at these alphas they look alike, but 'screen' is an advanced blend
+                    // that many mobile GPUs can only do by first copying what is underneath —
+                    // nine times a frame here. 'lighter' is a plain fixed-function blend.
+                    this.ctx.globalCompositeOperation = 'lighter';
                     
                     let flTint = this.ctx.createRadialGradient(
                         state.player.x, state.player.y, 0, 
                         state.player.x, state.player.y, flRadius * 1.5
                     );
-                    flTint.addColorStop(0, 'rgba(255, 240, 200, 0.4)');
-                    flTint.addColorStop(0.5, 'rgba(150, 180, 255, 0.1)');
+                    flTint.addColorStop(0, 'rgba(255, 240, 200, 0.32)');
+                    flTint.addColorStop(0.5, 'rgba(150, 180, 255, 0.08)');
                     flTint.addColorStop(1, 'transparent');
                     this.ctx.fillStyle = flTint;
                     this.ctx.beginPath();
@@ -1043,30 +1094,15 @@ export class Renderer {
                     this.ctx.fill();
 
                     if (state.hubWorld.zones && state.hubWorld.lightIntensity > 0.5) {
+                        const beamSprite = this.hubSprite('beam');
                         state.hubWorld.zones.forEach(z => {
-                            let pulse = Math.sin(this.renderFrame * 0.05 + z.x) * 5;
-                            
-                            const zoneTint = this.ctx.createRadialGradient(z.x, z.y, 0, z.x, z.y, 140 + pulse);
-                            zoneTint.addColorStop(0, z.color);
-                            zoneTint.addColorStop(1, 'transparent');
-                            this.ctx.globalAlpha = 0.4;
-                            this.ctx.fillStyle = zoneTint;
-                            this.ctx.beginPath();
-                            this.ctx.arc(z.x, z.y, 140 + pulse, 0, Math.PI * 2);
-                            this.ctx.fill();
-
-                            this.ctx.globalAlpha = 0.15;
-                            const beam = this.ctx.createLinearGradient(z.x - 80, z.y - 300, z.x + 40, z.y + 50);
-                            beam.addColorStop(0, '#ffffff');
-                            beam.addColorStop(1, 'transparent');
-                            this.ctx.fillStyle = beam;
-                            this.ctx.beginPath();
-                            this.ctx.moveTo(z.x - 80, z.y - 350); 
-                            this.ctx.lineTo(z.x + 40, z.y - 350); 
-                            this.ctx.lineTo(z.x + 120, z.y + 60); 
-                            this.ctx.lineTo(z.x - 120, z.y + 60); 
-                            this.ctx.fill();
+                            const r = 140 + Math.sin(this.renderFrame * 0.05 + z.x) * 5;
+                            this.ctx.globalAlpha = 0.32;
+                            this.ctx.drawImage(this.hubSprite('tint', z.color), z.x - r, z.y - r, r * 2, r * 2);
+                            this.ctx.globalAlpha = 0.12;
+                            this.ctx.drawImage(beamSprite, z.x - 120, z.y - 350, 240, 410);
                         });
+                        this.ctx.globalAlpha = 1;
                     }
 
                     this.drawHubDust(state);

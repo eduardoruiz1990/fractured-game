@@ -151,25 +151,63 @@ export class HubWorld {
         }
     }
 
-    draw(ctx, state, renderer) {
+    /**
+     * Patch 155: the furniture never moves during a visit, so it is baked into the
+     * floor image once per visit (bake) and each frame is one drawImage plus the
+     * highlight. It used to be ~40 shapes, gradients and paths re-drawn every frame —
+     * part of what held the Mind Hub at 36-45 fps on a phone that runs a full fight
+     * at 60. Re-baked whenever Game.init builds a new state (every hub entry), which is
+     * when the trophy statues can have changed.
+     */
+    draw(ctx, state) {
+        if (!this.baked || this.bakedFor !== state) this.bake(state);
+        ctx.drawImage(this.bakedBitmap || this.baked, -600, -600);
+        if (this.activeZone) this.drawHighlight(ctx, this.activeZone);
+    }
+
+    bake(state) {
+        this.bakedFor = state;
+        if (this.bakedBitmap && typeof this.bakedBitmap.close === 'function') this.bakedBitmap.close();
+        this.bakedBitmap = null;
+        const c = (this.baked && this.baked.width === 1200) ? this.baked : document.createElement('canvas');
+        c.width = 1200; c.height = 1200;   // also clears a reused canvas
+        const cx = c.getContext('2d');
+        cx.drawImage(this.cachedFloor, 0, 0);
+        cx.translate(600, 600);
+        this.drawFurniture(cx, state);
+        this.baked = c;
+        // An ImageBitmap is an immutable GPU-ready texture: uploaded once, never re-snapshotted.
+        if (typeof createImageBitmap === 'function') {
+            createImageBitmap(c).then(bm => {
+                if (this.baked === c && this.bakedFor === state && !this.bakedBitmap) this.bakedBitmap = bm;
+                else if (bm && bm.close) bm.close();
+            }).catch(() => {});
+        }
+    }
+
+    /**
+     * The active zone's outline. It used to be stroked UNDER the furniture (6 px wide, so
+     * the inner 3 px were covered); over the baked furniture the same visible band is a
+     * 3 px stroke on a rectangle grown by 1.5 px.
+     */
+    drawHighlight(ctx, z) {
         ctx.save();
-        
-        ctx.drawImage(this.cachedFloor, -600, -600);
-        
+        ctx.translate(z.x, z.y);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 3;
+        const g = 1.5;
+        if (z.id === 'bed') { ctx.beginPath(); ctx.roundRect(-45 - g, -75 - g, 90 + 2 * g, 150 + 2 * g, 8 + g); ctx.stroke(); }
+        else if (z.id === 'desk') { ctx.beginPath(); ctx.roundRect(-60 - g, -30 - g, 120 + 2 * g, 60 + 2 * g, 6 + g); ctx.stroke(); }
+        else if (z.id === 'locker') ctx.strokeRect(-30 - g, -50 - g, 60 + 2 * g, 100 + 2 * g);
+        else if (z.id === 'trophies') ctx.strokeRect(-45 - g, -15 - g, 90 + 2 * g, 30 + 2 * g);
+        ctx.restore();
+    }
+
+    /** Shadows and furniture for every zone. Static for a visit: drawn only by bake(). */
+    drawFurniture(ctx, state) {
+        ctx.save();
+
         for (let z of this.zones) {
-            let isActive = this.activeZone && this.activeZone.id === z.id;
-            
-            if (isActive) {
-                ctx.save();
-                ctx.translate(z.x, z.y);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-                ctx.lineWidth = 6;
-                if (z.id === 'bed') { ctx.beginPath(); ctx.roundRect(-45, -75, 90, 150, 8); ctx.stroke(); }
-                else if (z.id === 'desk') { ctx.beginPath(); ctx.roundRect(-60, -30, 120, 60, 6); ctx.stroke(); }
-                else if (z.id === 'locker') ctx.strokeRect(-30, -50, 60, 100);
-                else if (z.id === 'trophies') ctx.strokeRect(-45, -15, 90, 30);
-                ctx.restore();
-            }
 
             ctx.save();
             ctx.translate(z.x + 10, z.y + 15); 
