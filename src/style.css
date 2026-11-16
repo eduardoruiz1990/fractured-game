@@ -940,6 +940,11 @@ body.quality-low #crt-scanlines { display: none; }
 /* Patch 138: room events */
 #synergy-banner[data-tone="event"] { border-color: #c0392b; }
 #synergy-banner[data-tone="event"] .syn-stamp { border-color: #c0392b; color: #ff8a7a; }
+/* Patch 140: the Daily Session entries */
+.daily-btn { width: auto; padding: 8px 26px; font-size: 0.95rem; min-height: 44px; color: var(--ui-gold); opacity: 0.9; }
+.daily-btn .daily-sub { display: block; font-size: 0.7rem; letter-spacing: 1px; margin-top: 3px; opacity: 0.85; }
+.daily-btn .daily-done { display: inline-block; margin-left: 8px; padding: 1px 6px; border: 1px solid currentColor; font-size: 0.6rem; letter-spacing: 2px; vertical-align: middle; }
+.daily-btn.daily-closed { opacity: 0.75; border-style: dashed; }
 /* Patch 139: achievements and unlocks */
 #synergy-banner[data-tone="achievement"] { border-color: #c5a059; }
 #synergy-banner[data-tone="achievement"] .syn-stamp { border-color: #c5a059; color: #f0d08a; }

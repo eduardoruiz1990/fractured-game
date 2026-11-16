@@ -12,6 +12,8 @@ import { PATIENTS, newlyAdmitted } from './data/Patients.js';   // Patch 136
 import { roomEventHud } from './systems/RoomEvents.js';   // Patch 138
 import { lockedWeapons } from './data/Unlocks.js';   // Patch 139
 import { ACHIEVEMENTS } from './data/Achievements.js';
+import { dailyKey, dailySetup, dailyScore } from './systems/Daily.js';   // Patch 140
+import { INTRUSIVE_THOUGHTS } from './data/Manifestations.js';
 import { MANIFESTATIONS } from './data/Manifestations.js';
 import { screenFlash } from './ui/Juice.js';
 import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies, ENEMY_BESTIARY } from './data/Manifestations.js';
@@ -981,9 +983,9 @@ function enterPlayingState() {
  * bought during that hub visit were not applied to the run launched from it. A
  * fresh run must be built from the meta state as it is at launch.
  */
-function startNewRun() {
+function startNewRun(opts = {}) {
     synergyBanner.clear();   // Patch 126: a notice from the last run must not linger
-    game.init(saveManager);
+    game.init(saveManager, null, opts);   // Patch 140: opts.daily for a Daily Session
     applyDevOverrides();
     // Patch 59: counted here rather than in enterPlayingState(), which RESUMING also
     // goes through — picking a suspended run back up is the same descent continuing,
@@ -1174,6 +1176,86 @@ function refreshRecursionEntries() {
  * the same torn-paper dialog as every other interruption in the game rather than a
  * second thing that has to be kept looking like the first.
  */
+// --- THE DAILY SESSION (Patch 140, V2 plan D7) -----------------------------------
+//
+// One scored attempt a day, with the day's Patient and Intrusive Thought and the day's
+// rooms (systems/Daily.js). Entries on the title (after THE RECURSION) and in the
+// EVALUATION pane, both hidden until the tutorial is done: a first-time title stays as
+// it was. The attempt is recorded the moment it starts, so it cannot be rerolled.
+
+const fmtScore = (n) => (Number(n) || 0).toLocaleString('en-US');
+
+function dailyDescribe(setup) {
+    const p = PATIENTS[setup.patient];
+    const c = INTRUSIVE_THOUGHTS[setup.curse];
+    return { patient: p ? p.name : setup.patient, curse: c ? c.name : setup.curse };
+}
+
+function refreshDailyEntries() {
+    if (!saveManager) return;
+    const show = !!saveManager.metaState.tutorialCompleted;
+    const key = dailyKey();
+    const setup = dailySetup(key);
+    const d = dailyDescribe(setup);
+    const rec = saveManager.metaState.daily || {};
+    const open = saveManager.canStartDaily(key);
+    ['btn-title-daily', 'btn-start-daily'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.style.display = show ? 'block' : 'none';
+        const best = rec.best ? ` · BEST ${fmtScore(rec.best)}` : '';
+        const sub = open
+            ? `${d.patient.replace(/^THE /, '')} · ${d.curse.toUpperCase()}${best}`
+            : `TODAY ${fmtScore(rec.lastScore)}${best} · AGAIN TOMORROW`;
+        btn.innerHTML = `DAILY SESSION${open ? '' : '<span class="daily-done">DONE</span>'}` +
+            `<span class="daily-sub">${escapeHtml(sub)}</span>`;
+        btn.classList.toggle('daily-closed', !open);
+        btn.dataset.open = open ? '1' : '0';
+    });
+}
+
+function onDailyClick() {
+    const key = dailyKey();
+    const setup = dailySetup(key);
+    const d = dailyDescribe(setup);
+    const rec = saveManager.metaState.daily || {};
+    if (!saveManager.canStartDaily(key)) {
+        showConfirm({
+            title: 'SESSION ON FILE',
+            body: `Today's session is recorded: ${fmtScore(rec.lastScore)}. Best: ${fmtScore(rec.best)}.`,
+            note: `A new session opens tomorrow.${rec.streak > 1 ? ` Streak: ${rec.streak} days.` : ''}`,
+            confirmLabel: 'UNDERSTOOD', danger: false, noticeOnly: true, onConfirm: () => {}
+        });
+        return;
+    }
+    const suspended = refreshTitleActions();
+    showConfirm({
+        title: 'DAILY SESSION',
+        body: `${d.patient}, with ${d.curse}. The same rooms for everyone today. One attempt: it counts from the moment it starts.`,
+        note: 'Score: 100 per room cleared, +1 per nightmare banished.' +
+              (suspended ? ` Starting discards the suspended protocol on file (${suspended}).` : ''),
+        confirmLabel: 'BEGIN SESSION',
+        cancelLabel: 'NOT NOW',
+        danger: false,
+        onConfirm: () => {
+            if (audioEngine) audioEngine.stopMenuTheme();
+            resumeAudioForGameplay();
+            clearSuspendedRun();
+            saveManager.beginDaily(key);
+            startNewRun({ daily: setup });
+            refreshDailyEntries();
+        }
+    });
+}
+
+/** Records a Daily Session's score at the end of the run; returns a death-screen line. */
+function settleDaily(st) {
+    if (!st || !st.daily) return '';
+    const res = saveManager.finishDaily(st.daily.key, dailyScore(st));
+    refreshDailyEntries();
+    return `<span class="death-record">DAILY SESSION: ${fmtScore(res.score)}${res.isBest ? ' · NEW BEST' : ` · BEST ${fmtScore(res.best)}`}</span>`;
+}
+
 function showRecursionSealedNotice() {
     showConfirm({
         title: 'PROTOCOL SEALED',
@@ -1211,6 +1293,7 @@ function refreshTitleActions() {
     }
 
     refreshRecursionEntries();
+    refreshDailyEntries();   // Patch 140
 
     let summary = null;
     if (raw) {
@@ -1468,6 +1551,7 @@ function initEngine() {
             saveManager.metaState.killCounts.ARCHITECT = Math.max(1, saveManager.metaState.killCounts.ARCHITECT || 0);
             saveManager.saveGame();
             refreshRecursionEntries();
+            refreshDailyEntries();   // Patch 140
             console.log(`%c DEV: killCounts.ARCHITECT forced to ${saveManager.metaState.killCounts.ARCHITECT} — THE RECURSION unlocked. `, 'background: #c5a059; color: #000; font-weight: bold;');
         });
         document.getElementById('dev-btn-dump-builds').addEventListener('click', () => {
@@ -1851,6 +1935,19 @@ function initEngine() {
             });
         }
 
+        // Patch 140: the Daily Session entries — title (after THE RECURSION) and the
+        // EVALUATION pane (after its Recursion entry). refreshDailyEntries owns them.
+        const titleRecursion = document.getElementById('btn-title-endless');
+        if (titleRecursion && !document.getElementById('btn-title-daily')) {
+            const b = document.createElement('button');
+            b.id = 'btn-title-daily';
+            b.className = 'file-btn daily-btn';
+            b.style.display = 'none';
+            titleRecursion.parentNode.insertBefore(b, titleRecursion.nextSibling);
+            b.addEventListener('click', onDailyClick);
+        }
+        refreshDailyEntries();
+
         const toggleShake = document.getElementById('toggle-shake');
         const togglePhoto = document.getElementById('toggle-photo');
 
@@ -1952,6 +2049,14 @@ function initEngine() {
             hubEndlessBtn.style.display = 'none';
             // After AUTHORIZE DESCENT: the normal descent stays the primary action.
             hubStartBtn.parentNode.insertBefore(hubEndlessBtn, hubStartBtn.nextSibling);
+            // Patch 140: the Daily Session, after the Recursion entry.
+            const hubDailyBtn = document.createElement('button');
+            hubDailyBtn.id = 'btn-start-daily';
+            hubDailyBtn.className = 'file-btn daily-btn';
+            hubDailyBtn.style.display = 'none';
+            hubEndlessBtn.parentNode.insertBefore(hubDailyBtn, hubEndlessBtn.nextSibling);
+            hubDailyBtn.addEventListener('click', onDailyClick);
+            refreshDailyEntries();
 
             hubEndlessBtn.addEventListener('click', () => {
                 // Same as the title entry — see the note there.
@@ -2010,6 +2115,7 @@ function initEngine() {
                     // reveals ENTER THE RECURSION on the very next visit to the hub
                     // rather than on the next page load.
                     refreshRecursionEntries();
+                    refreshDailyEntries();   // Patch 140
 
                     // Patch 87: bring the activated tab into view. The strip scrolls
                     // horizontally on a phone (8 tabs, ~1000px of them against a 390px
@@ -2506,6 +2612,10 @@ function initEngine() {
             `;
         }
 
+        // Patch 140: a Daily Session's score (an extraction or a suspend: the best so far counts).
+        const dailyLine = settleDaily(game.state);
+        if (dailyLine) document.getElementById('final-stats').insertAdjacentHTML('afterbegin', dailyLine + '<br>');
+
         inputManager.hideJoysticks();
         if (audioEngine) audioEngine.stop();
         gameState = 'DEAD'; 
@@ -2599,6 +2709,7 @@ function initEngine() {
             newlyAdmitted(saveManager.metaState).forEach(id => {
                 record += `<span class="death-record">NEW PATIENT ADMITTED: ${escapeHtml(PATIENTS[id].name)}</span>`;
             });
+            record += settleDaily(st);   // Patch 140 (before claiming: the streak counts)
             record += progressRecordsHtml(claimProgress());   // Patch 139
             causeEl.innerHTML = `Broken by <strong>${escapeHtml(describeDamageSource(st.lastDamageSource))}</strong>` +
                 `<span class="death-where">${where} · ${formatRunTime(st.runFrames)} survived</span>${record}`;

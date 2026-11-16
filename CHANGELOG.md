@@ -2277,6 +2277,47 @@ A room that changes its rules partway through (`src/systems/RoomEvents.js`):
   not interrupted, the held notice after it, no locked instrument in 120 level-ups, an
   unlock mid-run, the Mind Palace, the death-screen line.
 
+**Patch 140 — the Daily Session (D7, second half). Phase D complete.**
+
+One scored attempt a day (`src/systems/Daily.js`, pure). Everyone playing on the same
+local date gets the same session:
+
+- **the same Patient** (any of the four, locked or not: the daily is a way to try one)
+  and **the same Intrusive Thought** (one, in place of the player's adopted ones), drawn
+  from a seed hashed from the date;
+- **the same rooms:** `Director.spawnRoom` is now a wrapper that, in a daily run, runs
+  the room (`spawnRoomInner`) with `Math.random` swapped for an rng seeded by date,
+  floor and room (`withRandom`, which always restores it, even on a throw). So the
+  modifier, the room's shape, its event, the named elite and the boss's spawn point are
+  shared. Not seeded, and said so in the module: moment-to-moment spawns, drops and
+  level-up cards (they also run on `Math.random`, from frame-timed code paths), and the
+  player's own Synapse Tree and tokens still apply.
+- **One attempt:** recorded the moment it starts (`SaveManager.beginDaily`), so quitting
+  does not reroll it. **Score:** 100 per room cleared + 1 per nightmare banished,
+  recorded at death or Awaken (`finishDaily`; a suspend records the score so far, and the
+  best of the attempt counts). The best score and a day streak are kept locally.
+- **Save:** `metaState.daily` (`lastKey`, `lastScore`, `attempted`, `best`, `bestKey`,
+  `streak`, `played`), with all four seams (constructor, `loadGame` back-fill,
+  `importSave` from the file, `wipeSave`), plus the `dailiesPlayed` stat.
+- **Game.init(saveManager, carriedState, opts)**: `opts.daily` fixes the Patient and the
+  thought; `state.daily` rides `getCarriedState`, so a descent or a resume keeps it.
+- **Entries:** on the title after THE RECURSION, and in the EVALUATION pane after its
+  Recursion entry, **hidden until the tutorial is done** (a first-time title is
+  unchanged). The label names the day's Patient and thought and the best score; once
+  played it reads DONE with today's score and "AGAIN TOMORROW", and a click only explains.
+  Starting asks first (one attempt; the scoring rule; and that it replaces a suspended
+  run if one is on file). The death and Awaken screens show "DAILY SESSION: n · NEW BEST"
+  or the best.
+- **Achievements:** Same Time Tomorrow (play one) and Routine (three days in a row):
+  33 in all.
+- Tests: `test_progress.js` +32 (72): the key and calendar, the same session per day and
+  variety across days, room rngs, `withRandom` restoring, one attempt a day, the streak
+  and its reset, the best kept, the score, the SaveManager seams, Game.init and the
+  carry, and **the daily's rooms not depending on any other randomness**.
+  `qa/daily_check.cjs`: hidden for a first-time player, shown after the tutorial, the
+  dialog, the day's run, the score on the death screen, DONE after a reload and no
+  second attempt, at 384×717 and 1280×720.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

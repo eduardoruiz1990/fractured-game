@@ -43,7 +43,8 @@ const maxed = {
     maxFloorReached: 16, runsStarted: 50, runsCompleted: 3, spentLucidity: 500 * 81,
     discoveredSynergies: Object.fromEntries(Object.keys(SYNERGIES).map(k => [k, 1])),
     discoveredEvolutions: Object.fromEntries(Object.keys(EVOLUTIONS).slice(0, 6).map(k => [k, 1])),
-    stats: { chestsOpened: 10, outagesRestored: 1, lockdownsSurvived: 1, cursedFloorClears: 1 }
+    stats: { chestsOpened: 10, outagesRestored: 1, lockdownsSurvived: 1, cursedFloorClears: 1, dailiesPlayed: 1 },
+    daily: { streak: 3 }
 };
 ok(totalKills(maxed) === 10015, `totalKills sums every type (${totalKills(maxed)})`);
 ok(patientLevel({ spentLucidity: 500 * 81 }) === 10 && patientLevel({}) === 1, 'patientLevel matches SaveManager.getPatientLevelInfo');
@@ -119,6 +120,93 @@ ok(lockedWeapons(maxed).length === 0, 'a progressed save has none locked');
     const mk = (meta) => { const g = new Game(); g.init({ metaState: { upgrades: { hp: 0, speed: 0, light: 0, magnet: 0 }, killCounts: {}, inventory: [], equippedTokens: {}, selectedCurses: [], maxFloorReached: 1, tutorialCompleted: true, ...meta }, saveGame: () => {} }); return g; };
     ok(mk({}).state.player.lockedWeapons.sort().join() === 'lullaby,metronome,straitjacket', 'a new save\'s run has three locked');
     ok(mk({ maxFloorReached: 4, killCounts: { ELITE: 1 } }).state.player.lockedWeapons.length === 0, 'a progressed save\'s run has none');
+}
+
+// ============================================================================
+// Patch 140: the Daily Session.
+// ============================================================================
+{
+    const D = await import('./src/systems/Daily.js');
+    const { PATIENT_ORDER } = await import('./src/data/Patients.js');
+    const { INTRUSIVE_THOUGHTS } = await import('./src/data/Manifestations.js');
+    ok(D.dailyKey(new Date(2026, 10, 6)) === '2026-11-06', 'dailyKey is local YYYY-MM-DD');
+    ok(D.nextKey('2026-12-31') === '2027-01-01' && D.nextKey('2028-02-28') === '2028-02-29', 'nextKey crosses months, years, leap days');
+    const a = D.dailySetup('2026-11-16'), b = D.dailySetup('2026-11-16');
+    ok(a.seed === b.seed && a.patient === b.patient && a.curse === b.curse, 'the same day gives the same session');
+    ok(PATIENT_ORDER.includes(a.patient) && INTRUSIVE_THOUGHTS[a.curse], `a real Patient and Intrusive Thought (${a.patient}, ${a.curse})`);
+    const pats = new Set(), curses = new Set();
+    for (let i = 0; i < 60; i++) { const s = D.dailySetup(D.dailyKey(new Date(2026, 0, 1 + i))); pats.add(s.patient); curses.add(s.curse); }
+    ok(pats.size === PATIENT_ORDER.length && curses.size >= 5, `sessions vary by day (${pats.size} Patients, ${curses.size} thoughts over 60 days)`);
+    const r1 = D.roomRng(a, 2, 3), r2 = D.roomRng(a, 2, 3), r3 = D.roomRng(a, 2, 4);
+    const s1 = [r1(), r1(), r1()], s2 = [r2(), r2(), r2()], s3 = [r3(), r3(), r3()];
+    ok(s1.join() === s2.join() && s1.join() !== s3.join(), 'roomRng: same room same rolls, another room different');
+    const real = Math.random;
+    try { D.withRandom(() => 0.5, () => { throw new Error('x'); }); } catch (e) {}
+    ok(Math.random === real, 'withRandom restores Math.random even when fn throws');
+
+    // The record: one attempt a day, a streak, the best kept.
+    let rec = D.emptyDaily();
+    ok(D.canStartDaily(rec, '2026-11-16'), 'a fresh record can start');
+    rec = D.startDailyAttempt(rec, '2026-11-16');
+    ok(!D.canStartDaily(rec, '2026-11-16') && rec.streak === 1 && rec.played === 1, 'started: no second attempt today, streak 1');
+    let fin = D.finishDailyAttempt(rec, '2026-11-16', 830);
+    ok(fin.isBest && fin.record.best === 830 && fin.record.lastScore === 830, 'first score is the best');
+    ok(D.finishDailyAttempt(fin.record, '2026-11-15', 99999).record.best === 830, "a score for another day's run is ignored");
+    rec = D.startDailyAttempt(fin.record, '2026-11-17');
+    ok(D.canStartDaily(fin.record, '2026-11-17') && rec.streak === 2, 'the next day: available, streak 2');
+    fin = D.finishDailyAttempt(rec, '2026-11-17', 500);
+    ok(!fin.isBest && fin.record.best === 830 && fin.record.lastScore === 500, 'a lower score keeps the best');
+    rec = D.startDailyAttempt(fin.record, '2026-11-20');
+    ok(rec.streak === 1, 'a missed day resets the streak');
+    ok(D.dailyScore({ floor: 2, roomNumber: 3, maxRoomsPerFloor: 5, roomCleared: true, runKills: 47 }) === (5 + 2 + 1) * 100 + 47, 'score: 100 per room cleared + kills');
+    ok(D.dailyScore({ floor: 1, roomNumber: 1, runKills: 0 }) === 0, 'nothing cleared scores 0');
+
+    // SaveManager.
+    storage = {};
+    const sm = new SaveManager();
+    ok(sm.metaState.daily && sm.metaState.daily.best === 0 && sm.canStartDaily('2026-11-16'), 'constructor: an empty daily record');
+    sm.beginDaily('2026-11-16');
+    ok(!sm.canStartDaily('2026-11-16') && sm.metaState.stats.dailiesPlayed === 1, 'beginDaily records the attempt and the stat');
+    const res = sm.finishDaily('2026-11-16', 1234);
+    ok(res.score === 1234 && res.best === 1234 && res.isBest, 'finishDaily');
+    ok(sm.claimAchievements().some(x => x.id === 'same_time_tomorrow'), 'Same Time Tomorrow');
+    const sm2 = new SaveManager();
+    ok(sm2.metaState.daily.best === 1234 && !sm2.canStartDaily('2026-11-16'), 'persisted: no retry after a reload');
+    storage = { fractured_meta: JSON.stringify({ lucidityBank: 1 }) };
+    ok(new SaveManager().metaState.daily.best === 0, 'loadGame back-fills the daily record');
+    sm2.importSave(btoa(JSON.stringify({ lucidityBank: 1 })));
+    ok(sm2.metaState.daily.best === 0 && sm2.canStartDaily('2026-11-16'), 'importSave: the daily record comes from the file');
+    sm2.metaState.daily.best = 5; sm2.wipeSave();
+    ok(sm2.metaState.daily.best === 0, 'wipeSave resets it');
+
+    // Game.init and the shared rooms.
+    const { Game } = await import('./src/core/Game.js');
+    const baseMeta = () => ({ upgrades: { hp: 0, speed: 0, light: 0, magnet: 0 }, killCounts: {}, inventory: [], equippedTokens: {}, selectedCurses: ['nyctophobia'], maxFloorReached: 1, tutorialCompleted: true });
+    const setup = { ...D.dailySetup('2026-11-16'), patient: 'photographer', curse: 'tunnel_vision' };
+    const g = new Game(); g.init({ metaState: baseMeta(), saveGame: () => {} }, null, { daily: setup });
+    ok(g.state.player.character === 'photographer', 'the daily Patient, even locked');
+    ok(g.state.player.curses.join() === 'tunnel_vision', "the daily's thought replaces the adopted ones");
+    ok(g.state.player.weapons.polaroid_camera.level === 1, "with that Patient's instrument");
+    const carried = g.getCarriedState();
+    ok(carried.daily && carried.daily.key === '2026-11-16', 'the daily rides the carried state');
+    const g2 = new Game(); g2.init({ metaState: baseMeta(), saveGame: () => {} }, { ...carried, floor: 2 });
+    ok(g2.state.daily && g2.state.daily.seed === setup.seed && g2.state.player.curses.join() === 'tunnel_vision', 'a descent keeps the daily');
+    const rooms = (noise) => {
+        const gg = new Game(); gg.init({ metaState: baseMeta(), saveGame: () => {} }, null, { daily: setup });
+        const out = [];
+        for (const [f, r] of [[2, 2], [2, 3], [3, 2], [3, 4], [4, 3]]) {
+            for (let i = 0; i < noise; i++) Math.random();
+            gg.state.floor = f; gg.state.player.x = 0; gg.state.player.y = 0;
+            gg.director.spawnRoom(f, r);
+            out.push([gg.state.roomModifier, gg.state.arenaLayout, gg.state.roomEvent && gg.state.roomEvent.id, gg.state.eliteAt, gg.state.enemyBudget].join('/'));
+        }
+        return out.join(' | ');
+    };
+    const ra = rooms(0), rb = rooms(37);
+    ok(ra === rb, `the daily's rooms do not depend on anything else's randomness`);
+    ok(Math.random === real, 'Math.random is restored after spawnRoom');
+    const plain = new Game(); plain.init({ metaState: baseMeta(), saveGame: () => {} });
+    ok(plain.state.daily === null && plain.state.player.curses.join() === 'nyctophobia', 'a normal run is unchanged');
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

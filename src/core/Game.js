@@ -40,9 +40,12 @@ export class Game {
         this.hubWorld = new HubWorld(this);
     }
 
-    init(saveManager, carriedState = null) {
+    init(saveManager, carriedState = null, opts = {}) {
         this.saveManager = saveManager;
         const meta = saveManager.metaState;
+        // Patch 140: a Daily Session (systems/Daily.js) fixes the Patient and the
+        // Intrusive Thought, and rides the carried state across floors and a resume.
+        const daily = (carriedState && carriedState.daily) || (opts && opts.daily) || null;
 
         // Patch 116: hand the outgoing run's pooled objects back before the state is
         // rebuilt (runs, floor descents, resume, hub entry all come through here).
@@ -95,7 +98,7 @@ export class Game {
         // floor descent or a resume keeps the one the run started with.
         const patientId = carriedState
             ? (PATIENTS[carriedState.character] ? carriedState.character : DEFAULT_PATIENT)
-            : resolvePatient(meta.selectedCharacter, meta);
+            : (daily && PATIENTS[daily.patient] ? daily.patient : resolvePatient(meta.selectedCharacter, meta));
         const patient = PATIENTS[patientId];
 
         const maxSanity = 100 + (stats.sanity || 0) + (patient.sanity || 0);
@@ -150,7 +153,9 @@ export class Game {
             });
         }
 
-        if (meta.selectedCurses && meta.selectedCurses.length > 0) pCurses.push(...meta.selectedCurses);
+        // Patch 140: a Daily Session's one Intrusive Thought replaces the adopted ones.
+        if (daily && daily.curse) pCurses.push(daily.curse);
+        else if (meta.selectedCurses && meta.selectedCurses.length > 0) pCurses.push(...meta.selectedCurses);
 
         if (pCurses.includes('fragile_mind')) effectiveMaxSanity = Math.floor(maxSanity * 0.5);
 
@@ -220,6 +225,7 @@ export class Game {
             obstacles: [], arenaLayout: null, arenaOrigin: null, spawnSectors: null,
             arenaRise: 0, arenaFade: 0, arenaShiftTimer: 0,
             roomEvent: null, powerOut: 0, lockdown: 0,   // Patch 138 (systems/RoomEvents.js)
+            daily: daily ? { ...daily } : null,   // Patch 140
             bossSpawned: false,
             activeBoss: null,
             // Patch 93: read back from the carry (see getCarriedState) so a run that
@@ -403,6 +409,7 @@ export class Game {
             // floor 7, forever.
             runCompletionRecorded: !!this.state.runCompletionRecorded,
             character: this.state.player.character || DEFAULT_PATIENT,   // Patch 136
+            daily: this.state.daily || null,   // Patch 140
             runKills: this.state.runKills || 0,     // Patch 124
             runFrames: this.state.runFrames || 0,   // Patch 124
             bestFloorAtStart: this.state.bestFloorAtStart || 1,   // Patch 124

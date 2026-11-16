@@ -17,6 +17,7 @@ import { errorLog } from '../core/ErrorLog.js';
 import { eliteChanceForRoom, promoteToElite } from './Elites.js';   // Patch 133
 import { layoutForRoom, raiseArena, lowerArena, arenaSolid, resolveObstacles, spawnAngle, ARENA_LAYOUTS } from './Arena.js';   // Patch 137
 import { eventForRoom, armRoomEvent, tickRoomEvent, endRoomEvent } from './RoomEvents.js';   // Patch 138
+import { roomRng, withRandom } from './Daily.js';   // Patch 140
 // The spawn clamp is derived from the arena's void radius rather than repeated as a
 // literal — see the note on ARENA_VOID_RADIUS in Config.js for why the two must agree.
 import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE, isBossType, ROOM_PACE } from '../data/Config.js';
@@ -129,7 +130,20 @@ export class Director {
         };
     }
 
+    /**
+     * Patch 140: in a Daily Session every roll this room makes (modifier, shape, event,
+     * elite, the boss's spawn point) comes from an rng seeded by the date, floor and
+     * room, so everyone playing that day gets the same rooms. Otherwise unchanged.
+     */
     spawnRoom(floor, roomNumber) {
+        const daily = this.game.state && this.game.state.daily;
+        if (daily && Number.isFinite(daily.seed)) {
+            return withRandom(roomRng(daily, floor, roomNumber), () => this.spawnRoomInner(floor, roomNumber));
+        }
+        return this.spawnRoomInner(floor, roomNumber);
+    }
+
+    spawnRoomInner(floor, roomNumber) {
         const state = this.game.state;
         state.combatActive = true;
         state.roomCleared = false;

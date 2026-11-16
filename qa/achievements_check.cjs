@@ -66,7 +66,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
              unlocks: g.querySelectorAll('[data-unlock]').length, records: g.querySelectorAll('.record-cell').length,
              straps: g.querySelector('[data-unlock="weapon:straitjacket"]').classList.contains('earned') };
   });
-  ok(mp.ach === 31 && mp.earned >= 2 && mp.unlocks === 8 && mp.records === 6 && mp.straps, `Mind Palace: ${JSON.stringify(mp)}`);
+  ok(mp.ach === 33 && mp.earned >= 2 && mp.unlocks === 8 && mp.records === 6 && mp.straps, `Mind Palace: ${JSON.stringify(mp)}`);
   await page.evaluate(() => {
     document.getElementById('clinical-folder-menu').style.display = 'flex';
     const b = document.querySelector('.tab-btn[data-target="tab-trophies"]'); if (b) b.click();

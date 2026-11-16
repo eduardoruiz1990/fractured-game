@@ -85,13 +85,16 @@ export const ACHIEVEMENTS = [
     { id: 'lights_on', icon: '💡', name: 'Lights On', desc: 'Restore the power during an outage.', ...counter(m => st(m, 'outagesRestored'), 1) },
     { id: 'held', icon: '🔒', name: 'Held', desc: 'Survive a Lockdown.', ...counter(m => st(m, 'lockdownsSurvived'), 1) },
     { id: 'care_packages', icon: '🎁', name: 'Care Packages', desc: 'Open 10 chests.', ...counter(m => st(m, 'chestsOpened'), 10) },
+    // Patch 140: the Daily Session.
+    { id: 'same_time_tomorrow', icon: '📅', name: 'Same Time Tomorrow', desc: 'Play a Daily Session.', ...counter(m => st(m, 'dailiesPlayed'), 1) },
+    { id: 'routine', icon: '⏰', name: 'Routine', desc: 'Play the Daily Session three days in a row.', ...counter(m => Number((m && m.daily && m.daily.streak) || 0), 3) },
     { id: 'living_with_it', icon: '💭', name: 'Living With It', desc: 'Clear a floor with an Intrusive Thought adopted.', ...counter(m => st(m, 'cursedFloorClears'), 1) }
 ];
 
 export const ACHIEVEMENT_BY_ID = Object.fromEntries(ACHIEVEMENTS.map(a => [a.id, a]));
 
 /** Lifetime counters that only exist for achievements (metaState.stats). */
-export const STAT_KEYS = ['chestsOpened', 'outagesRestored', 'lockdownsSurvived', 'cursedFloorClears'];
+export const STAT_KEYS = ['chestsOpened', 'outagesRestored', 'lockdownsSurvived', 'cursedFloorClears', 'dailiesPlayed'];
 
 export function emptyStats() {
     return Object.fromEntries(STAT_KEYS.map(k => [k, 0]));

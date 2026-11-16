@@ -6,6 +6,7 @@ import { TOKENS, TOKEN_SETS, TOKEN_RARITIES, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHT
 // does not. Off-portal this is exactly the previous localStorage behaviour.
 import { portalSDK } from '../systems/PortalSDK.js';
 import { ACHIEVEMENTS, ACHIEVEMENT_BY_ID, STAT_KEYS, emptyStats } from '../data/Achievements.js';   // Patch 139
+import { emptyDaily, startDailyAttempt, finishDailyAttempt, canStartDaily } from '../systems/Daily.js';   // Patch 140
 
 // Patch 31: built from TOKEN_SLOT_TYPES so the equippedTokens shape has ONE source
 // of truth. §2 of the handoff listed five hardcoded copies of the old 4-slot shape;
@@ -59,6 +60,7 @@ export class SaveManager {
             // counters that exist only for them (data/Achievements.js).
             achievements: {},
             stats: emptyStats(),
+            daily: emptyDaily(),   // Patch 140: the Daily Session record (systems/Daily.js)
             // Patch 59: lifetime case statistics. runsStarted counts descents begun,
             // deaths counts minds broken, runsCompleted counts Floor 5 clears (the
             // Architect falling). All three are records only — nothing reads them
@@ -148,6 +150,7 @@ export class SaveManager {
                 // Patch 139: achievements and their counters.
                 if (!this.metaState.achievements || typeof this.metaState.achievements !== 'object') this.metaState.achievements = {};
                 this.metaState.stats = { ...emptyStats(), ...((this.metaState.stats && typeof this.metaState.stats === 'object') ? this.metaState.stats : {}) };
+                this.metaState.daily = { ...emptyDaily(), ...((this.metaState.daily && typeof this.metaState.daily === 'object') ? this.metaState.daily : {}) };   // Patch 140
                 // Patch 134: evolution codex, same shape as the synergy one.
                 if (!this.metaState.discoveredEvolutions || typeof this.metaState.discoveredEvolutions !== 'object') {
                     this.metaState.discoveredEvolutions = {};
@@ -282,6 +285,7 @@ export class SaveManager {
                 // Patch 139: from the imported file, never inherited from this profile.
                 this.metaState.achievements = (parsed.achievements && typeof parsed.achievements === 'object') ? parsed.achievements : {};
                 this.metaState.stats = { ...emptyStats(), ...((parsed.stats && typeof parsed.stats === 'object') ? parsed.stats : {}) };
+                this.metaState.daily = { ...emptyDaily(), ...((parsed.daily && typeof parsed.daily === 'object') ? parsed.daily : {}) };   // Patch 140
 
                 // Patch 59: same reasoning as boonHistory directly above — these must
                 // come from the IMPORTED file, not survive from whatever profile this
@@ -389,6 +393,27 @@ export class SaveManager {
         }
         if (fresh.length) this.saveGame();
         return fresh;
+    }
+
+    /** Patch 140: whether today's Daily Session attempt is still available. */
+    canStartDaily(key) {
+        return canStartDaily(this.metaState.daily, key);
+    }
+
+    /** Patch 140: records that today's attempt has started (one per day), and saves. */
+    beginDaily(key) {
+        this.metaState.daily = startDailyAttempt(this.metaState.daily, key);
+        this.recordStat('dailiesPlayed');
+        this.saveGame();
+        return this.metaState.daily;
+    }
+
+    /** Patch 140: the attempt's score; returns { score, best, isBest, streak }. */
+    finishDaily(key, score) {
+        const { record, isBest } = finishDailyAttempt(this.metaState.daily, key, score);
+        this.metaState.daily = record;
+        this.saveGame();
+        return { score: record.lastScore, best: record.best, isBest, streak: record.streak };
     }
 
     /** Patch 139: how many achievements this profile has. */
@@ -829,6 +854,7 @@ export class SaveManager {
             selectedCharacter: 'insomniac',   // Patch 136
             announcedPatients: ['insomniac'],
             achievements: {}, stats: emptyStats(),   // Patch 139
+            daily: emptyDaily(),   // Patch 140
             runsStarted: 0, deaths: 0, runsCompleted: 0,   // Patch 59
             // Patch 92: a wipe is a new patient file, so the retention notice and the
             // backup prompt are both re-armed. wipeSave() reloads the page, so the
