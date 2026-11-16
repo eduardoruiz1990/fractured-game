@@ -76,15 +76,31 @@ export class SynergyBanner {
      */
     pushNotice(n) {
         if (!n || !n.name) return;
-        this.queue.push(n);
+        // Patch 139: achievement notices are LOW priority. Anything else (a synergy,
+        // a chest, an evolution, a room event) goes ahead of every queued low one, and
+        // cuts a low one that is showing short (it goes back to the end of the queue),
+        // so "Caseload" never delays the news that matters mid-fight.
+        if (n.low) {
+            this.queue.push(n);
+        } else {
+            const at = this.queue.findIndex(q => q.low);
+            if (at < 0) this.queue.push(n); else this.queue.splice(at, 0, n);
+            if (this.showing && this.current && this.current.low) {
+                this.queue.push(this.current);
+                this.current = null;
+                this.next();
+                return;
+            }
+        }
         if (!this.showing) this.next();
     }
 
     next() {
         const item = this.queue.shift();
         const el = this.ensureEl();
-        if (!item || !el) { this.showing = false; this.hide(); return; }
+        if (!item || !el) { this.showing = false; this.current = null; this.hide(); return; }
         this.showing = true;
+        this.current = item;
         const n = item;
         const lines = Array.isArray(n.lines) && n.lines.length
             ? `<ul class="syn-lines">${n.lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : '';
@@ -116,6 +132,7 @@ export class SynergyBanner {
         this.timer = null;
         this.queue = [];
         this.showing = false;
+        this.current = null;
         this.hide();
     }
 }

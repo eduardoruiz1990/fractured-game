@@ -178,7 +178,7 @@ export function tickRoomEvent(game, { rng = Math.random } = {}) {
             ev.restored = !!restored;
             if (!restored && ev.box) ev.box.dead = true;   // the lights came back on their own
             if (typeof game.onRoomEvent === 'function') {
-                try { game.onRoomEvent({ id: E.id, name: restored ? 'POWER RESTORED' : 'THE LIGHTS RETURN', desc: restored ? 'The breaker holds them back for a while.' : '', end: true }); } catch (e) { console.error(e); }
+                try { game.onRoomEvent({ id: E.id, name: restored ? 'POWER RESTORED' : 'THE LIGHTS RETURN', desc: restored ? 'The breaker holds them back for a while.' : '', end: true, outcome: restored ? 'restored' : 'expired' }); } catch (e) { console.error(e); }
             }
         }
         return;
@@ -203,7 +203,7 @@ export function tickRoomEvent(game, { rng = Math.random } = {}) {
         state.cameraShake = Math.max(state.cameraShake || 0, 14);
         if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 0.8);
         if (typeof game.onRoomEvent === 'function') {
-            try { game.onRoomEvent({ id: E.id, name: 'LOCKDOWN LIFTED', desc: 'You held. Something was left for you.', end: true }); } catch (e) { console.error(e); }
+            try { game.onRoomEvent({ id: E.id, name: 'LOCKDOWN LIFTED', desc: 'You held. Something was left for you.', end: true, outcome: 'survived' }); } catch (e) { console.error(e); }
         }
     }
 }

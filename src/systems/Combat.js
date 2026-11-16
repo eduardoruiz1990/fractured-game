@@ -269,7 +269,9 @@ export class Combat {
                             // level and a slot is free.
                             let upgradeable = Object.entries(state.player.weapons).filter(([, w]) => w.level > 0 && w.level < doorLevelCap);
                             if (upgradeable.length === 0 && ownedWeaponCount(state.player.weapons) < MAX_WEAPON_SLOTS) {
-                                upgradeable = Object.entries(state.player.weapons).filter(([, w]) => w.level === 0);
+                                // Patch 139: never a locked instrument.
+                                const lk = Array.isArray(state.player.lockedWeapons) ? state.player.lockedWeapons : [];
+                                upgradeable = Object.entries(state.player.weapons).filter(([id, w]) => w.level === 0 && !lk.includes(id));
                             }
                             if (upgradeable.length > 0) {
                                 const [wepId, wep] = upgradeable[Math.floor(Math.random() * upgradeable.length)];

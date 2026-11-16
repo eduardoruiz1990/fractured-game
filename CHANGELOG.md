@@ -2229,6 +2229,54 @@ A room that changes its rules partway through (`src/systems/RoomEvents.js`):
   kept, no XP, chest), the bell's wave and elite, and spawnRoom's wiring.
   `qa/events_check.cjs` runs all three in game at phone size.
 
+**Patch 139 — achievements, instrument unlock tracks, case records (D7, first half).**
+
+- **31 achievements** (`src/data/Achievements.js`): the work itself (1 / 100 / 1,000 /
+  10,000 banished), the five fears faced (one each, then all five three times), named
+  elites (1, 25), depth (Floor 3, 6, 11, 16), coming back (1 / 10 / 50 descents, three
+  Floor 5 clears, Patient Level 10), the codexes (1 / 5 / every synergy, 1 / 6
+  evolutions), the ward (all four Patients), and the room events (power restored,
+  a lockdown survived, 10 chests, a floor cleared with an Intrusive Thought adopted).
+  Every one is a **predicate over the save**, never over a live run, so an existing
+  player is credited for progress they already have (silently, at boot: the Mind
+  Palace lists it), nothing can be earned twice, and checking is idempotent and cheap.
+- **Save** (`metaState.achievements`: id → ms earned; `metaState.stats`: the four
+  counters that exist only for achievements), each with a constructor default, a
+  `loadGame` back-fill (a partial stats object is completed, not replaced), an
+  `importSave` derivation from the file and a `wipeSave` reset. `recordStat(key)` counts
+  known keys only; `claimAchievements()` records and returns what is newly true.
+- **Instrument unlock tracks** (`src/data/Unlocks.js`): the Metronome (reach Floor 2),
+  Straitjacket Straps (defeat a named elite) and Lullaby (survive a Lockdown, or reach
+  Floor 4) leave the level-up pool until unlocked; the Pill Bottle and the original
+  eight are always in it. A first run is learned with fewer, simpler choices. Applied
+  to NEW offers only (level-up cards, the WEAPON_UPGRADE door's new-weapon fallback):
+  `state.player.lockedWeapons`, set by `Game.init`, refreshed by main.js when an
+  unlock lands mid-run so it joins that run's pool at once.
+- **Announcing** (main.js `claimProgress` / `announceProgress`): after a chest, a room
+  event's end, a synergy, a floor clear, the start of a run, and every 5 s of play (kill
+  and depth milestones). The notice card has a gold `achievement` tone and the running
+  count ("3 / 31"); a newly unlocked instrument gets a NEW INSTRUMENT card. The death
+  screen lists what the run earned (three lines, then "+N MORE IN THE MIND PALACE").
+  Held during the tutorial (until `tutorialCompleted`): a first-time player's first
+  minute is for learning to move; the predicates still hold afterwards and are claimed
+  then.
+- **Notice priority** (`SynergyBanner`): achievement notices are low priority. A
+  synergy, chest, evolution or room event goes ahead of every queued achievement and
+  cuts one that is showing short (it is re-queued), so "Caseload" never delays the news
+  that matters mid-fight.
+- **Mind Palace** (`UIManager.renderTrophies`), new sections first: CASE RECORDS
+  (deepest floor, with its Recursion cycle; descents; Floor 5 clears; banished; named
+  elites; chests), ACHIEVEMENTS (n / 31; locked cards show their goal and a progress
+  bar, earned ones their date), and UNLOCK TRACKS (the four Patients and the four Phase
+  D instruments, each with how to unlock it).
+- **Test fix:** `qa/synergy_check.cjs` still expected 10 synergies (14 since Patch 132)
+  and counted the evolution codex cards (Patch 134) as synergy ones; updated.
+- Tests: new `test_progress.js` (40 assertions: the data, every achievement reachable,
+  progress readouts, the unlock rules, every SaveManager seam including an old save
+  being credited, Game.init's locked list). `qa/achievements_check.cjs`: the tutorial
+  not interrupted, the held notice after it, no locked instrument in 120 level-ups, an
+  unlock mid-run, the Mind Palace, the death-screen line.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

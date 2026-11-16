@@ -56,7 +56,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
     ok(b.gs === 'PLAYING' && b.syn.includes('blinding_signal'), `${tag} back in PLAYING with the synergy active (${b.gs}, ${JSON.stringify(b.syn)})`);
     ok(b.shown && /SYNERGY FORMED/.test(b.text) && /The Blinding Signal/.test(b.text), `${tag} banner names the synergy`);
     ok(/Rusted Flashlight/i.test(b.text) && /Static Receiver/i.test(b.text) && !/_/.test(b.text), `${tag} recipe in display names`);
-    ok(/NEW CODEX ENTRY · 1 \/ 10/.test(b.text), `${tag} first formation reads NEW CODEX ENTRY · 1 / 10`);
+    ok(/NEW CODEX ENTRY · 1 \/ 14/.test(b.text), `${tag} first formation reads NEW CODEX ENTRY · 1 / 14`);
     ok(b.z > 100, `${tag} banner above the scanlines (z ${b.z})`);
     ok(b.onScreen, `${tag} banner fully on screen`);
     ok(b.minFont >= 11, `${tag} banner text >= 11px (min ${b.minFont})`);
@@ -80,7 +80,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
     });
     await page.waitForTimeout(100);
     const second = await page.evaluate(() => document.getElementById('synergy-banner').innerText.replace(/\s+/g, ' '));
-    ok(/Ritual Focus/.test(second) && /2 \/ 10/.test(second), `${tag} second synergy announced (${second.slice(0, 60)}…)`);
+    ok(/Ritual Focus/.test(second) && /2 \/ 14/.test(second), `${tag} second synergy announced (${second.slice(0, 60)}…)`);
     ok(await happy() === happy0 + 1, `${tag} happytime not repeated in the same session`);
 
     // The codex in the Mind Palace: 2 formed, 8 silhouettes that still give the recipe.
@@ -91,7 +91,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
     });
     await page.waitForTimeout(200);
     const codex = await page.evaluate(() => {
-      const cards = [...document.querySelectorAll('#trophy-grid .codex-card')];
+      const cards = [...document.querySelectorAll('#trophy-grid .codex-card[data-synergy]')];   // Patch 134 added evolution codex cards
       return {
         n: cards.length,
         locked: cards.filter(c => c.classList.contains('codex-locked')).length,
@@ -100,8 +100,8 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
         heading: [...document.querySelectorAll('#trophy-grid strong')].map(e => e.innerText).find(t => /SYNERGY CODEX/.test(t)) || ''
       };
     });
-    ok(codex.n === 10 && codex.locked === 8, `${tag} codex has 10 entries, 8 locked (${codex.n}/${codex.locked})`);
-    ok(/2 \/ 10/.test(codex.heading), `${tag} codex heading counts 2 / 10`);
+    ok(codex.n === 14 && codex.locked === 12, `${tag} codex has 14 entries, 12 locked (${codex.n}/${codex.locked})`);
+    ok(/2 \/ 14/.test(codex.heading), `${tag} codex heading counts 2 / 14`);
     ok(codex.lockedText.every(t => /\+/.test(t) && !/_/.test(t)), `${tag} locked entries show the recipe in display names`);
     ok(!codex.lockedText.some(t => /Overexposure|Centrifuge|Industrial Bleed/.test(t)), `${tag} locked entries withhold the name`);
     ok(codex.formedText.some(t => /The Blinding Signal/.test(t) && /FORMED ×1/.test(t)), `${tag} formed entry shows name and count`);

@@ -12,6 +12,7 @@ import { paletteIndexForFloor } from './Endless.js';
 import { PATIENTS, resolvePatient, DEFAULT_PATIENT } from '../data/Patients.js';
 import { applyWeaponLevelUp } from '../ui/LevelUpUI.js';
 import { updateArena } from '../systems/Arena.js';   // Patch 137
+import { lockedWeapons } from '../data/Unlocks.js';   // Patch 139
 
 /**
  * Patch 132: adds any weapon in `fresh` that `carried` lacks (at level 0), so a run
@@ -347,6 +348,8 @@ export class Game {
         // level is taken exactly like a level-up card's first level.
         this.state.player.character = patientId;
         Object.assign(this.state.player, patient.flags || {});
+        // Patch 139: instruments this save has not unlocked yet stay out of NEW offers.
+        this.state.player.lockedWeapons = lockedWeapons(meta);
         if (!carriedState && patient.weapon) {
             const w = this.state.player.weapons[patient.weapon];
             if (w && w.level < 1) { w.level = 1; applyWeaponLevelUp(w, patient.weapon); }

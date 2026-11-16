@@ -5,6 +5,7 @@ import { TOKENS, TOKEN_SETS, TOKEN_RARITIES, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHT
 // uses the host's cloud-save backend when one exists and plain localStorage when it
 // does not. Off-portal this is exactly the previous localStorage behaviour.
 import { portalSDK } from '../systems/PortalSDK.js';
+import { ACHIEVEMENTS, ACHIEVEMENT_BY_ID, STAT_KEYS, emptyStats } from '../data/Achievements.js';   // Patch 139
 
 // Patch 31: built from TOKEN_SLOT_TYPES so the equippedTokens shape has ONE source
 // of truth. §2 of the handoff listed five hardcoded copies of the old 4-slot shape;
@@ -54,6 +55,10 @@ export class SaveManager {
             discoveredEvolutions: {},   // Patch 134
             selectedCharacter: 'insomniac',   // Patch 136 — data/Patients.js
             announcedPatients: ['insomniac'],
+            // Patch 139: achievements (id -> ms when earned) and the few lifetime
+            // counters that exist only for them (data/Achievements.js).
+            achievements: {},
+            stats: emptyStats(),
             // Patch 59: lifetime case statistics. runsStarted counts descents begun,
             // deaths counts minds broken, runsCompleted counts Floor 5 clears (the
             // Architect falling). All three are records only — nothing reads them
@@ -140,6 +145,9 @@ export class SaveManager {
                 // Patch 136: the chosen Patient and the ones already shown as NEW.
                 if (typeof this.metaState.selectedCharacter !== 'string') this.metaState.selectedCharacter = 'insomniac';
                 if (!Array.isArray(this.metaState.announcedPatients)) this.metaState.announcedPatients = ['insomniac'];
+                // Patch 139: achievements and their counters.
+                if (!this.metaState.achievements || typeof this.metaState.achievements !== 'object') this.metaState.achievements = {};
+                this.metaState.stats = { ...emptyStats(), ...((this.metaState.stats && typeof this.metaState.stats === 'object') ? this.metaState.stats : {}) };
                 // Patch 134: evolution codex, same shape as the synergy one.
                 if (!this.metaState.discoveredEvolutions || typeof this.metaState.discoveredEvolutions !== 'object') {
                     this.metaState.discoveredEvolutions = {};
@@ -271,6 +279,9 @@ export class SaveManager {
                     (parsed.discoveredEvolutions && typeof parsed.discoveredEvolutions === 'object') ? parsed.discoveredEvolutions : {};
                 this.metaState.selectedCharacter = typeof parsed.selectedCharacter === 'string' ? parsed.selectedCharacter : 'insomniac';   // Patch 136
                 this.metaState.announcedPatients = Array.isArray(parsed.announcedPatients) ? parsed.announcedPatients : ['insomniac'];
+                // Patch 139: from the imported file, never inherited from this profile.
+                this.metaState.achievements = (parsed.achievements && typeof parsed.achievements === 'object') ? parsed.achievements : {};
+                this.metaState.stats = { ...emptyStats(), ...((parsed.stats && typeof parsed.stats === 'object') ? parsed.stats : {}) };
 
                 // Patch 59: same reasoning as boonHistory directly above — these must
                 // come from the IMPORTED file, not survive from whatever profile this
@@ -353,6 +364,37 @@ export class SaveManager {
         if (!Array.isArray(this.metaState.announcedPatients)) this.metaState.announcedPatients = ['insomniac'];
         if (!this.metaState.announcedPatients.includes(id)) this.metaState.announcedPatients.push(id);
         this.saveGame();
+    }
+
+    /** Patch 139: bumps an achievement counter (metaState.stats). Saved by the next claim. */
+    recordStat(key, n = 1) {
+        if (!STAT_KEYS.includes(key)) return;
+        if (!this.metaState.stats || typeof this.metaState.stats !== 'object') this.metaState.stats = emptyStats();
+        this.metaState.stats[key] = (Number(this.metaState.stats[key]) || 0) + (Number(n) || 0);
+    }
+
+    /**
+     * Patch 139: records every achievement whose predicate now holds and was not yet
+     * recorded, saves if any, and returns them (achievement objects) for announcing.
+     */
+    claimAchievements(now = Date.now()) {
+        if (!this.metaState.achievements || typeof this.metaState.achievements !== 'object') this.metaState.achievements = {};
+        const got = this.metaState.achievements;
+        const fresh = [];
+        for (const a of ACHIEVEMENTS) {
+            if (got[a.id]) continue;
+            let ok = false;
+            try { ok = !!a.test(this.metaState); } catch (e) { ok = false; }
+            if (ok) { got[a.id] = now; fresh.push(a); }
+        }
+        if (fresh.length) this.saveGame();
+        return fresh;
+    }
+
+    /** Patch 139: how many achievements this profile has. */
+    achievementCount() {
+        const got = this.metaState.achievements || {};
+        return Object.keys(got).filter(id => ACHIEVEMENT_BY_ID[id]).length;
     }
 
     /** Patch 134: the same for an evolution. True the first time this profile evolves it. */
@@ -786,6 +828,7 @@ export class SaveManager {
             discoveredEvolutions: {},  // Patch 134
             selectedCharacter: 'insomniac',   // Patch 136
             announcedPatients: ['insomniac'],
+            achievements: {}, stats: emptyStats(),   // Patch 139
             runsStarted: 0, deaths: 0, runsCompleted: 0,   // Patch 59
             // Patch 92: a wipe is a new patient file, so the retention notice and the
             // backup prompt are both re-armed. wipeSave() reloads the page, so the

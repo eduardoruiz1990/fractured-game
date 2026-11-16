@@ -10,6 +10,9 @@ import { SynergyBanner } from './ui/SynergyBanner.js';
 import { EVOLUTIONS } from './systems/Evolutions.js';   // Patch 134
 import { PATIENTS, newlyAdmitted } from './data/Patients.js';   // Patch 136
 import { roomEventHud } from './systems/RoomEvents.js';   // Patch 138
+import { lockedWeapons } from './data/Unlocks.js';   // Patch 139
+import { ACHIEVEMENTS } from './data/Achievements.js';
+import { MANIFESTATIONS } from './data/Manifestations.js';
 import { screenFlash } from './ui/Juice.js';
 import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies, ENEMY_BESTIARY } from './data/Manifestations.js';
 import { portalSDK } from './systems/PortalSDK.js';
@@ -533,6 +536,45 @@ const synergyBanner = new SynergyBanner();
 // step while state.slowMo > 0), so ~0.8 s at 60 Hz of real time at half speed.
 const SYNERGY_SLOWMO_STEPS = 48;
 const LEVELUP_EASE_STEPS = 20;   // Patch 130
+
+// Patch 139 (V2 plan D7): achievements and instrument unlocks. Both are predicates over
+// the save, so checking is idempotent; these two helpers claim what is newly true and
+// say so. `knownLockedWeapons` is what the player was last told is locked, so a weapon
+// unlocked mid-run is announced once and joins this run's pool at once.
+let knownLockedWeapons = [];
+function claimProgress() {
+    if (!saveManager) return { fresh: [], freed: [] };
+    // Held during the tutorial: a first-time player's first minute is for learning to
+    // move. Nothing is lost: the predicates still hold afterwards and are claimed then.
+    if (!saveManager.metaState.tutorialCompleted || (game && game.state && game.state.isTutorial)) return { fresh: [], freed: [] };
+    const fresh = saveManager.claimAchievements();
+    const nowLocked = lockedWeapons(saveManager.metaState);
+    const freed = knownLockedWeapons.filter(id => !nowLocked.includes(id));
+    knownLockedWeapons = nowLocked;
+    if (game && game.state && game.state.player) game.state.player.lockedWeapons = nowLocked.slice();
+    return { fresh, freed };
+}
+function announceProgress(res) {
+    if (!res) return;
+    const calm = !!gameSettings.photosensitive;
+    const total = saveManager.achievementCount();
+    res.fresh.forEach(a => synergyBanner.pushNotice({
+        stamp: 'ACHIEVEMENT', name: `${a.icon} ${a.name}`, desc: a.desc,
+        foot: `${total} / ${ACHIEVEMENTS.length}`, tone: 'achievement', calm, low: true
+    }));
+    res.freed.forEach(id => synergyBanner.pushNotice({
+        stamp: 'NEW INSTRUMENT', name: (MANIFESTATIONS[id] && MANIFESTATIONS[id].name) || id,
+        desc: 'Unlocked. It can now be offered on a level-up.', tone: 'achievement', calm, low: true
+    }));
+}
+/** Death-screen lines for what the run unlocked (the notice card is cleared on death). */
+function progressRecordsHtml(res) {
+    if (!res) return '';
+    const lines = res.fresh.map(a => `ACHIEVEMENT: ${a.name.toUpperCase()}`)
+        .concat(res.freed.map(id => `NEW INSTRUMENT: ${((MANIFESTATIONS[id] && MANIFESTATIONS[id].name) || id).toUpperCase()}`));
+    const shown = lines.slice(0, 3).map(l => `<span class="death-record">${escapeHtml(l)}</span>`).join('');
+    return shown + (lines.length > 3 ? `<span class="death-record">+${lines.length - 3} MORE IN THE MIND PALACE</span>` : '');
+}
 function maybeHappytimeForBossKill(floor) {
     if (!saveManager || !Number.isFinite(floor)) return;
     if (floor < (saveManager.metaState.maxFloorReached || 1)) return;
@@ -950,6 +992,7 @@ function startNewRun() {
         saveManager.recordRunStat('runsStarted');
     }
     enterPlayingState();
+    announceProgress(claimProgress());   // Patch 139 (e.g. "Admitted", "Regular Appointments")
 }
 
 /**
@@ -2046,6 +2089,10 @@ function initEngine() {
     }
 
     saveManager = new SaveManager();
+    // Patch 139: credit progress an existing save already has, silently (the Mind
+    // Palace lists it); only what is earned from here on is announced.
+    try { saveManager.claimAchievements(); } catch (e) { errorLog.capture(e, 'achievements-boot'); }
+    knownLockedWeapons = lockedWeapons(saveManager.metaState);
     inputManager = new InputManager(canvas);
     renderer = new Renderer(canvas, ctx);
     audioEngine = new AudioEngine();
@@ -2552,6 +2599,7 @@ function initEngine() {
             newlyAdmitted(saveManager.metaState).forEach(id => {
                 record += `<span class="death-record">NEW PATIENT ADMITTED: ${escapeHtml(PATIENTS[id].name)}</span>`;
             });
+            record += progressRecordsHtml(claimProgress());   // Patch 139
             causeEl.innerHTML = `Broken by <strong>${escapeHtml(describeDamageSource(st.lastDamageSource))}</strong>` +
                 `<span class="death-where">${where} · ${formatRunTime(st.runFrames)} survived</span>${record}`;
         }
@@ -2635,6 +2683,7 @@ function initEngine() {
         });
         if (game.state) game.state.slowMo = Math.max(game.state.slowMo || 0, SYNERGY_SLOWMO_STEPS);
         audioEngine.playSFX('ui_upgrade', 3, false);
+        announceProgress(claimProgress());   // Patch 139
         try { if (navigator.vibrate) navigator.vibrate([30, 40, 80]); } catch (e) {}
         if (anyNew && !happySynergyThisSession) {
             happySynergyThisSession = true;
@@ -2647,6 +2696,7 @@ function initEngine() {
     // this is the notice (same card and queue as the synergy one) and the buzz.
     game.onChestOpened = (result) => {
         if (!result) return;
+        saveManager.recordStat('chestsOpened');   // Patch 139
         const evo = result.kind === 'evolution';
         // Patch 134: an evolution goes in the codex; the first one ever is a happy moment.
         let foot = '';
@@ -2669,6 +2719,7 @@ function initEngine() {
             calm: !!gameSettings.photosensitive
         });
         try { if (navigator.vibrate) navigator.vibrate(evo ? [40, 40, 120] : [30, 30, 60]); } catch (e) {}
+        announceProgress(claimProgress());   // Patch 139
     };
 
     // Patch 138 (V2 plan D5): a room event starting (or ending) gets the stamped card.
@@ -2682,11 +2733,20 @@ function initEngine() {
             calm: !!gameSettings.photosensitive
         });
         try { if (!ev.end && navigator.vibrate) navigator.vibrate([20, 40, 20]); } catch (e) {}
+        // Patch 139: the outcomes the achievements and the Lullaby's unlock count.
+        if (ev.outcome === 'restored') saveManager.recordStat('outagesRestored');
+        else if (ev.outcome === 'survived') saveManager.recordStat('lockdownsSurvived');
+        if (ev.end) announceProgress(claimProgress());
     };
 
     game.onFloorComplete = () => {
         gameState = 'EXIT_REACHED';
         maybeHappytimeForBossKill(game.state.floor);   // Patch 104
+        // Patch 139: a floor cleared with an Intrusive Thought adopted.
+        if (game.state.player && Array.isArray(game.state.player.curses) && game.state.player.curses.length) {
+            saveManager.recordStat('cursedFloorClears');
+        }
+        announceProgress(claimProgress());
         pauseTitle.innerText = "THE DESCENT CALLS";
         pauseTitle.style.color = "var(--ui-red)";
         
@@ -2987,6 +3047,9 @@ function gameLoop(time) {
                         hudStyle(conContainer, 'boxShadow', '0 0 15px rgba(0, 0, 0, 0.5)');
                     }
                 }
+
+                // Patch 139: kill and depth milestones are checked every 5 s of play.
+                if (gameState === 'PLAYING' && game.state.frame % 300 === 150) announceProgress(claimProgress());
 
                 const enemyCounter = document.getElementById('enemy-counter');
                 if (enemyCounter) {

@@ -451,7 +451,10 @@ export class LevelUpUI {
         for (const [weaponKey, wep] of Object.entries(game.state.player.weapons)) {
             // Patch 95: was a hardcoded `wep.level < 5`. weaponLevelCap returns exactly
             // 5 for floors 1-5, so Cycle I keeps its ceiling to the letter.
-            if (wep.level < levelCap && !(slotsFull && wep.level === 0)) {
+            // Patch 139: a locked instrument (data/Unlocks.js) is never offered NEW.
+            const locked = wep.level === 0 && Array.isArray(game.state.player.lockedWeapons)
+                && game.state.player.lockedWeapons.includes(weaponKey);
+            if (wep.level < levelCap && !(slotsFull && wep.level === 0) && !locked) {
                 // Patch 125: the real name, and what the level actually does. A new
                 // weapon also says what it IS (its MANIFESTATIONS description).
                 const isNew = wep.level === 0;

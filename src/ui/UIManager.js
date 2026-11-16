@@ -11,6 +11,9 @@ import { SynapseTree } from './SynapseTree.js';
 import { GuideUI } from './GuideUI.js';
 import { FolderTabs } from './FolderTabs.js';
 import { PatientStrips } from './PatientStrip.js';   // Patch 136
+import { ACHIEVEMENTS, achievementProgress, totalKills } from '../data/Achievements.js';   // Patch 139
+import { WEAPON_UNLOCKS, isWeaponUnlocked } from '../data/Unlocks.js';
+import { PATIENTS, PATIENT_ORDER, isPatientUnlocked } from '../data/Patients.js';
 import { showConfirm } from './Dialog.js';
 import { BOONS } from './LevelUpUI.js';
 // Patch 98 — the roadmap reports depth past floor 5. See src/core/Endless.js.
@@ -918,7 +921,63 @@ export class UIManager {
                 <div style="font-size:0.8rem; color:#555; margin-top:5px; font-weight:bold;">${count}${goalText}</div>
             </div>`;
 
-        let html = heading('STANDARD NIGHTMARES (Bronze: 10, Silver: 1k, Gold: 10k)');
+        // Patch 139 (V2 plan D7): the case records, the achievements, and the unlock
+        // tracks come first: they are the goals, the monuments below are the history.
+        const meta = this.saveManager.metaState;
+        const deepest = Number(meta.maxFloorReached) || 1;
+        const depthText = isEndless(deepest) ? `Floor ${deepest} · Recursion Cycle ${cycleLabel(deepest)}` : `Floor ${deepest}`;
+        const rec = (label, value) => `<div class="record-cell"><span class="record-value">${escapeText(value)}</span><span class="record-label">${label}</span></div>`;
+        let html = heading('CASE RECORDS');
+        html += `<div class="records-row" style="grid-column: 1 / -1;">
+            ${rec('DEEPEST', depthText)}
+            ${rec('DESCENTS', Number(meta.runsStarted) || 0)}
+            ${rec('FLOOR 5 CLEARS', Number(meta.runsCompleted) || 0)}
+            ${rec('BANISHED', totalKills(meta).toLocaleString('en-US'))}
+            ${rec('NAMED ELITES', Number((meta.killCounts || {}).ELITE) || 0)}
+            ${rec('CHESTS', Number((meta.stats || {}).chestsOpened) || 0)}
+        </div>`;
+
+        const got = meta.achievements || {};
+        const earned = ACHIEVEMENTS.filter(a => got[a.id]).length;
+        html += heading(`ACHIEVEMENTS (${earned} / ${ACHIEVEMENTS.length})`);
+        ACHIEVEMENTS.forEach(a => {
+            const when = got[a.id];
+            const p = achievementProgress(a, meta);
+            const prog = !when && p && p.goal > 1 ? `<div class="ach-progress"><span style="width:${Math.round(p.value / p.goal * 100)}%"></span></div><div class="ach-count">${p.value.toLocaleString('en-US')} / ${p.goal.toLocaleString('en-US')}</div>` : '';
+            const date = when ? `<div class="ach-date">${escapeText(new Date(when).toISOString().slice(0, 10))}</div>` : '';
+            html += `
+            <div class="trophy-card ach-card ${when ? 'earned' : 'locked'}" data-achievement="${a.id}">
+                <div class="ach-icon">${a.icon}</div>
+                <div class="ach-name">${escapeText(a.name)}</div>
+                <div class="ach-desc">${escapeText(a.desc)}</div>
+                ${prog}${date}
+            </div>`;
+        });
+
+        html += heading('UNLOCK TRACKS');
+        PATIENT_ORDER.forEach(id => {
+            const pt = PATIENTS[id];
+            const open = isPatientUnlocked(id, meta);
+            html += `
+            <div class="trophy-card ach-card ${open ? 'earned' : 'locked'}" data-unlock="patient:${id}">
+                <div class="ach-icon">${open ? pt.icon : '🔒'}</div>
+                <div class="ach-name">${escapeText(pt.name)}</div>
+                <div class="ach-desc">${open ? 'Admitted. Choose them before a descent.' : escapeText(pt.unlockText)}</div>
+            </div>`;
+        });
+        ['pill_bottle', ...Object.keys(WEAPON_UNLOCKS)].forEach(id => {
+            const open = isWeaponUnlocked(id, meta);
+            const name = (MANIFESTATIONS[id] && MANIFESTATIONS[id].name) || id;
+            const u = WEAPON_UNLOCKS[id];
+            html += `
+            <div class="trophy-card ach-card ${open ? 'earned' : 'locked'}" data-unlock="weapon:${id}">
+                <div class="ach-icon">${open ? '🧰' : '🔒'}</div>
+                <div class="ach-name">${escapeText(name)}</div>
+                <div class="ach-desc">${open ? 'In the level-up pool.' : escapeText(u ? u.text : '')}</div>
+            </div>`;
+        });
+
+        html += heading('STANDARD NIGHTMARES (Bronze: 10, Silver: 1k, Gold: 10k)');
         mobs.forEach(entry => {
             const count = kills[entry.id] || 0;
             if (count <= 0) { html += sealedCard(); return; }

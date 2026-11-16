@@ -940,6 +940,22 @@ body.quality-low #crt-scanlines { display: none; }
 /* Patch 138: room events */
 #synergy-banner[data-tone="event"] { border-color: #c0392b; }
 #synergy-banner[data-tone="event"] .syn-stamp { border-color: #c0392b; color: #ff8a7a; }
+/* Patch 139: achievements and unlocks */
+#synergy-banner[data-tone="achievement"] { border-color: #c5a059; }
+#synergy-banner[data-tone="achievement"] .syn-stamp { border-color: #c5a059; color: #f0d08a; }
+.records-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.record-cell { background: #fdfaf3; border: 2px solid #ccc; padding: 8px; text-align: center; }
+.record-value { display: block; font-weight: bold; font-size: 1rem; color: var(--ink-black); }
+.record-label { display: block; font-size: 0.7rem; letter-spacing: 1px; color: #6f6656; margin-top: 3px; }
+.ach-card { background: #fdfaf3; border: 2px solid var(--ui-gold); box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 12px; text-align: center; }
+.ach-card.locked { background: #f4f1ea; border: 2px dashed #c2b59b; box-shadow: 4px 4px 0 rgba(0,0,0,0.06); }
+.ach-icon { font-size: 2.2rem; line-height: 1; }
+.ach-card.locked .ach-icon { opacity: 0.25; filter: grayscale(1); }
+.ach-name { font-weight: bold; color: var(--ink-black); margin-top: 8px; font-size: 0.85rem; }
+.ach-desc { font-size: 0.74rem; color: #4a4338; margin-top: 4px; line-height: 1.35; }
+.ach-progress { height: 5px; background: #e2dccd; margin-top: 8px; }
+.ach-progress span { display: block; height: 100%; background: #8b6d2f; }
+.ach-count, .ach-date { font-size: 0.7rem; color: #8a8172; margin-top: 4px; letter-spacing: 1px; }
 #synergy-banner.syn-in { animation: synergyBanner 3600ms ease-out forwards; }
 #synergy-banner.syn-in .syn-stamp { animation: synergyStamp 420ms cubic-bezier(.2,1.6,.4,1) both; }
 #synergy-banner.calm.syn-in .syn-stamp { animation: none; }
