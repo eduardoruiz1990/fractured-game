@@ -26,6 +26,7 @@ import { Pacing } from './core/Pacing.js';
 import { showColdOpen, dismissColdOpen, playEnding, endingShowing } from './ui/StoryUI.js';   // Patches 143–147 (V2 plan E)
 import * as Story from './data/Story.js';
 import { STRINGS } from './data/Strings.js';
+import { autoAimEnabled, AUTO_AIM_MODES } from './systems/AutoAim.js';   // Patch 148
 // Patch 93/97 — THE RECURSION: the endless floors past the Architect, and the mode
 // that launches straight into them. See src/core/Endless.js.
 import {
@@ -601,7 +602,10 @@ function maybeHappytimeForBossKill(floor) {
 // degrades to default settings rather than killing boot.
 let gameSettings = { screenShake: true, photosensitive: false, musicVolume: 1, sfxVolume: 1,
                      // Patch 115: 'auto' | 'high' | 'low'; autoQuality is what AUTO settled on.
-                     quality: 'auto', autoQuality: 'high' };
+                     quality: 'auto', autoQuality: 'high',
+                     // Patch 148 (V2 plan F1): aim assist — 'auto' (on for touch, off with a
+                     // mouse) | 'on' | 'off'. See systems/AutoAim.js.
+                     aimAssist: 'auto' };
 try {
     const savedSettings = localStorage.getItem('fractured_settings');
     if (savedSettings) gameSettings = { ...gameSettings, ...JSON.parse(savedSettings) };
@@ -1821,6 +1825,14 @@ function initEngine() {
                     </label>
                     <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Disables strobing lights, camera flashes, and softens glitch overlays.</p>
 
+                    <label for="select-aim" style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem;">Aim Assist</label>
+                    <select id="select-aim" style="margin-top: -12px; font-family: inherit; font-size: 1rem; padding: 8px; min-height: 44px; background: var(--paper-bg); color: var(--ink-black); border: 1px solid var(--ink-black);">
+                        <option value="auto">AUTO (on for touch, off with a mouse)</option>
+                        <option value="on">ON</option>
+                        <option value="off">OFF</option>
+                    </select>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px;">Your light turns to the nearest threat by itself. On touch, the right stick still aims while you hold it.</p>
+
                     <label for="select-quality" style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem;">Graphics Quality</label>
                     <select id="select-quality" style="margin-top: -12px; font-family: inherit; font-size: 1rem; padding: 8px; min-height: 44px; background: var(--paper-bg); color: var(--ink-black); border: 1px solid var(--ink-black);">
                         <option value="auto">AUTO (recommended)</option>
@@ -2014,6 +2026,16 @@ function initEngine() {
                 applyQualityTier();
                 saveSettings();
                 paintQualityNote();
+            });
+        }
+
+        // Patch 148 (V2 plan F1): aim assist, applied the moment it changes.
+        const selectAim = document.getElementById('select-aim');
+        if (selectAim) {
+            selectAim.value = AUTO_AIM_MODES.includes(gameSettings.aimAssist) ? gameSettings.aimAssist : 'auto';
+            selectAim.addEventListener('change', () => {
+                gameSettings.aimAssist = AUTO_AIM_MODES.includes(selectAim.value) ? selectAim.value : 'auto';
+                saveSettings();
             });
         }
 
@@ -2267,7 +2289,8 @@ function initEngine() {
             get qualityTier() { return currentQualityTier(); },
             get qualitySetting() { return gameSettings.quality; },  // Patch 120
             get levelUpUI() { return levelUpUI; },                 // Patch 125
-            get uiManager() { return uiManager; }                  // Patch 126
+            get uiManager() { return uiManager; },                 // Patch 126
+            get inputManager() { return inputManager; }            // Patch 148
         };
         // Patch 120: the on-screen perf panel, playtest builds only. MODE is a string
         // literal after Vite's replacement, so every other build drops this branch and
@@ -3138,6 +3161,8 @@ function gameLoop(time) {
             // It must land BEFORE the simulation steps below, which is where
             // Tutorial.update runs.
             game.state.inputMode = inputManager.getInputMode();
+            // Patch 148: whether aim assist is on, for the tutorial's ENGAGE line.
+            game.state.autoAimOn = autoAimEnabled(gameSettings.aimAssist, game.state.inputMode);
 
             // Patch 71: the WORLD viewport, not the canvas. Identical to canvas
             // width/height on every layout except portrait, where the bottom band is
@@ -3150,6 +3175,8 @@ function gameLoop(time) {
             const simSteps = pacing.takeSteps();
             renderer.simStepsThisFrame = simSteps;
 
+            // Patch 148: aim assist follows the setting and the control scheme in use.
+            game.autoAimOn = autoAimEnabled(gameSettings.aimAssist, inputManager.getInputMode());
             for (let s = 0; s < simSteps; s++) {
                 // gameState is READ FRESH each iteration on purpose: onLevelUp and
                 // onDeath fire from inside update() and change it, and Game.update

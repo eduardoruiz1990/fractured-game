@@ -11,6 +11,7 @@ import { paletteIndexForFloor } from './Endless.js';
 // Patch 136 (V2 plan D1): playable Patients.
 import { PATIENTS, resolvePatient, DEFAULT_PATIENT } from '../data/Patients.js';
 import { applyWeaponLevelUp } from '../ui/LevelUpUI.js';
+import { autoAimStep } from '../systems/AutoAim.js';   // Patch 148 (V2 plan F1)
 import { updateArena } from '../systems/Arena.js';   // Patch 137
 import { lockedWeapons } from '../data/Unlocks.js';   // Patch 139
 
@@ -704,10 +705,19 @@ export class Game {
             }
         }
 
+        // Patch 148 (V2 plan F1): aim assist. main.js sets this.autoAimOn from the
+        // player's setting and control scheme each frame; a held right stick overrides.
+        let aimAngle = inputState.aimAngle;
+        if (this.autoAimOn && !inputState.aimHeld && this.state.player) {
+            aimAngle = autoAimStep(this.state, inputState);
+        } else if (this.state.autoAim) {
+            this.state.autoAim.targetId = null;
+        }
+
         const currentInput = {
             moveX: inputState.moveX,
             moveY: inputState.moveY,
-            aimAngle: inputState.aimAngle,
+            aimAngle,
             isMoving: inputState.isMoving,
             isDashing: inputState.isDashing
         };

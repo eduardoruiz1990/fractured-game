@@ -13,7 +13,9 @@ export class InputManager {
         this.canvas = canvas;
         
         // Added 'dash' intent to state
-        this.state = { moveX: 0, moveY: 0, aimAngle: 0, isMoving: false, isAiming: true, dash: false };
+        // Patch 148: aimHeld — the right stick is held AND pulled past its dead zone. Aim
+        // assist (systems/AutoAim.js) yields to it.
+        this.state = { moveX: 0, moveY: 0, aimAngle: 0, isMoving: false, isAiming: true, dash: false, aimHeld: false };
         
         this.isTouchDevice = false;
         this.dashBtnShown = false;
@@ -243,6 +245,7 @@ export class InputManager {
             } else if (t.identifier === this.rightTouch.id) {
                 this.rightTouch.id = null; this.joyRight.style.display = 'none'; 
                 this.knobRight.style.transform = `translate(-50%, -50%)`;
+                this.state.aimHeld = false;   // Patch 148: assist takes over again
             }
         }
     }
@@ -271,6 +274,9 @@ export class InputManager {
             if (dist > 10) { 
                 this.state.aimAngle = Math.atan2(dy, dx); 
                 this.state.isAiming = true; 
+                this.state.aimHeld = true;   // Patch 148
+            } else {
+                this.state.aimHeld = false;
             }
         }
     }
@@ -303,6 +309,7 @@ export class InputManager {
         this.state.moveY = 0;
         this.state.isMoving = false;
         this.state.isDashing = false;
+        this.state.aimHeld = false;   // Patch 148
         if (this.knobLeft) this.knobLeft.style.transform = 'translate(-50%, -50%)';
         if (this.knobRight) this.knobRight.style.transform = 'translate(-50%, -50%)';
         // Clear the reveal latch too. handleTouch only shows the dash button while

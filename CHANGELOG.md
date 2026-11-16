@@ -2479,6 +2479,31 @@ small box... that if the player presses it, then it gets the large screen."
   subtitle, the session and end-of-session notes, the first ending → credits → AWAKEN,
   every page → the true ending → RECURSE into floor 6, a replay, the Guide's content note.
 
+### Phase F — mobile and accessibility (Patches 148+)
+
+**Patch 148 — aim assist (plan F1; the A56 playtest: "there's no auto aim on mobile").**
+
+- New pure `src/systems/AutoAim.js`. With assist on, the player's angle (the flashlight
+  and every weapon that reads it) turns to the nearest live, visible enemy within 520
+  px — skipping the dead, the burrowed and non-finite positions — keeping the current
+  target while it is within 1.25× the nearest's distance (no flicking between two),
+  and turning at most 0.2 rad a sim step (a half turn in ~0.3 s). With nothing in range
+  it follows the direction of travel; standing still, it holds.
+- **The right stick overrides it.** `InputManager.state.aimHeld` is true while the
+  right stick is held past its dead zone (cleared on release and in `hideJoysticks`);
+  assist yields to it and takes over again from wherever it was left. This frees the
+  right thumb for DASH.
+- Hooked in `Game.update` before the input snapshot, so it runs once per sim step at
+  any refresh rate. `game.autoAimOn` is set by `main.js` each frame from the new
+  setting **Aim Assist: AUTO (on for touch, off with a mouse) / ON / OFF**
+  (`gameSettings.aimAssist`, default `auto`, saved through the portal like the others).
+- The tutorial's ENGAGE line has an `assist` variant ("Your light turns to it by
+  itself…"), chosen when `state.autoAimOn` (published beside `inputMode`).
+- The dev hook gains `inputManager`.
+- New `test_input.js` (24 assertions) and `qa/aim_check.cjs` (a touch phone: assist on,
+  the light turns by itself, a held stick overrides, letting go hands it back; a mouse
+  desktop: AUTO leaves the mouse in charge, ON aims, the choice is saved).
+
 ---
 
 ## Keep clauses (things future patches break by accident)
