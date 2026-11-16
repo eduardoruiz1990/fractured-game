@@ -53,10 +53,11 @@ export class Renderer {
         // Patch 157: the Mind Hub's layers, switchable by the playtest benchmark (a
         // phone's GPU cost is invisible headless). The defaults are what ships:
         //   floor   the baked floor + furniture image (HubWorld.draw)
-        //   bitmap  draw it from an ImageBitmap instead of its canvas (155 did; off)
         //   light   the darkness mask;  tints  the flashlight tint, zone pools, beams
-        //   dust    'rect' (one fillRect per mote), 'path' (155's one-path batch), or off
-        this.hubDiag = { floor: true, bitmap: false, light: true, tints: true, dust: 'rect' };
+        //   dust    the drifting motes
+        // Patch 158 removed 155's two losing variants (the ImageBitmap floor and the
+        // one-path dust) after the A56 measured them; see CHANGELOG 157-158.
+        this.hubDiag = { floor: true, light: true, tints: true, dust: true };
         
         // Camera zoom. 1.3 is the desktop look and the MAXIMUM — updateZoom() only
         // ever scales DOWN, on viewports too small to show a usable amount of world.
@@ -885,12 +886,12 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    drawHubDust(state, mode = 'rect') {
-        // Patch 155 batched the motes into one path per brightness band ('path'). On the
-        // A56 the hub then fell from ~45 to 26 fps with JS unchanged: a path of many
-        // circles loses the GPU's single-shape fast path. Patch 157 draws each mote as
-        // a 1-3 px square ('rect'), the cheapest shape there is; at this size and alpha
-        // a square and a disc look the same. Brightness bands as before.
+    drawHubDust(state) {
+        // Each mote is a 1-3 px square, one fillRect each: the cheapest shape there is,
+        // and at this size and alpha it looks the same as a disc. Patch 155 batched the
+        // motes into one path of circles per band instead, and on the A56 that cost the
+        // hub ~20 ms a frame (Patch 157's benchmark): a many-circle path loses the GPU's
+        // simple-shape fast path. Brightness is quantised into 4 bands.
         const BANDS = 4;
         if (!this._dustBands) this._dustBands = Array.from({ length: BANDS }, () => []);
         const bands = this._dustBands;
@@ -913,20 +914,10 @@ export class Renderer {
             const list = bands[b];
             if (!list.length) continue;
             this.ctx.globalAlpha = ((b + 0.5) / BANDS) * 0.5;
-            if (mode === 'rect') {
-                for (let i = 0; i < list.length; i++) {
-                    const d = list[i];
-                    this.ctx.fillRect(d.x - d.size, d.y - d.size, d.size * 2, d.size * 2);
-                }
-                continue;
-            }
-            this.ctx.beginPath();
             for (let i = 0; i < list.length; i++) {
                 const d = list[i];
-                this.ctx.moveTo(d.x + d.size, d.y);
-                this.ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+                this.ctx.fillRect(d.x - d.size, d.y - d.size, d.size * 2, d.size * 2);
             }
-            this.ctx.fill();
         }
         this.ctx.globalAlpha = 1.0;
     }
@@ -1126,7 +1117,7 @@ export class Renderer {
                     this.ctx.globalCompositeOperation = 'source-over';
                     }   // hd.tints
 
-                    if (hd.dust) this.drawHubDust(state, hd.dust);
+                    if (hd.dust) this.drawHubDust(state);
 
                     this.ctx.restore();
                     

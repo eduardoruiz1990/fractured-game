@@ -56,7 +56,7 @@ For each: cold load, the tutorial to the first level-up, one boss, death → PLA
 Use `npm run build:playtest`; open the perf overlay and RUN BENCHMARK, or copy a report.
 
 - [ ] Gameplay on LOW holds ~60 fps on the low-end Android phone.
-- [ ] **Mind Hub** holds ~60 fps (Patch 152 fix; awaiting a device report).
+- [ ] **Mind Hub** holds ~60 fps: in the hub, the perf panel's RUN BENCHMARK (~1.5 min) shows 60 for all six 10 s default rows (Patches 157–158).
 - [ ] The RECORDS → MIND PALACE pane scrolls smoothly (Patch 151).
 - [ ] A full boss fight (floor 5, the Architect) stays playable on LOW.
 - [ ] AUTO quality drops a slow phone to LOW within the first seconds and remembers it.

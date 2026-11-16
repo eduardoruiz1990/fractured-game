@@ -2810,6 +2810,47 @@ way for the phone to say which layer costs what:
   It restores every switch afterwards and stops early if the player leaves the hub.
   Pressed during a run, the button runs the gameplay benchmark as before.
 
+**Patch 158 — the Mind Hub: what the A56 hub benchmark said, acted on.**
+
+Patch 157's hub benchmark on the A56 (Android 10 WebView, 120 Hz, LOW), in order:
+
+| setup | fps |
+|---|---|
+| default 0–8 s, 8–16 s | **60, 60** |
+| as 155 (bitmap floor + path dust + grain) | 34 (js 9.3 ms: the bitmap being made) |
+| default + bitmap floor | 26 |
+| default + path dust | 26 |
+| default + film grain | 26 |
+| minus floor image | 41 |
+| minus darkness | 30 |
+| minus tints & beams | 46 |
+| minus dust | 26 |
+| everything off | 60 |
+| **default again** | **28** |
+
+Reading it:
+- **157 fixed the hub.** The shipped default ran at 60 fps for as long as it was measured.
+- **Making an `ImageBitmap` from the baked floor canvas broke the hub for the rest of
+  the visit.** Every row after it is slow, including the identical default, and the
+  floor image is the layer whose removal helps most (+15 fps).
+  - The likely mechanism is that Chrome demotes a canvas that has been read back to a
+    slow path, after which drawing it costs ~20 ms a frame.
+  - Shipped builds stopped making the bitmap in 157. Only the benchmark row could.
+
+Changes:
+- **`HubWorld`:** `requestBitmap` and every `ImageBitmap` path are deleted.
+- **`HubWorld.bake`** makes a *new* canvas on every hub entry and zeroes the old one, so
+  a demoted canvas can never outlive a visit.
+- **`Renderer.hubDiag`** loses its `bitmap` switch and its `'path'` dust mode;
+  `drawHubDust` draws one `fillRect` per mote only.
+- **Hub benchmark v2:**
+  - It holds the default for 60 s in 10 s windows, because sustained fps is what
+    matters on a phone that has throttled before (Patch 122).
+  - Then come the single-layer rows, everything off, default + film grain, and the
+    default again.
+  - The 155 variants are gone, so the benchmark can no longer poison its own rows.
+- **Keep clause 51** and **QA_CHECKLIST** §5 are updated.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -3063,6 +3104,12 @@ way for the phone to say which layer costs what:
 50. **Run `node qa/smoke_check.cjs` before every upload (Patch 153).** It is the only
     check that exercises the shipped bundle — the SDK tag, the absence of the dev hook,
     the real asset paths — rather than the dev server.
+51. **Never read back a canvas that is drawn every frame, or that is the source of an
+    every-frame `drawImage`: no `createImageBitmap`, `getImageData` or `toDataURL` on
+    it (Patch 158).** On the A56, one `createImageBitmap` of the hub's baked floor held
+    the Mind Hub at 26–28 fps for the rest of the visit, against 60 before. The
+    browser demotes a read-back canvas to a slow path, and nothing in JS says so. If
+    pixels are needed, read them from a separate scratch canvas made for that.
 
 ---
 
@@ -3095,8 +3142,8 @@ way for the phone to say which layer costs what:
 - **GPU cost is invisible to the headless checks.** Headless Chromium rasterises the
   canvas in software and composites without a GPU, so a compositor-bound slowdown (the
   Mind Hub, Patch 152; the folder blur, Patch 151) shows up only on a device. The
-  playtest bundle's perf overlay report is the measurement; the Mind Hub fix awaits a
-  device report.
+  playtest bundle's perf overlay report is the measurement. Its hub benchmark (Patch
+  157) confirmed the Mind Hub at 60 fps on the A56 (Patch 158).
 - **The canvas renders at CSS-pixel resolution, ignoring DPR.** Deliberate — it is a
   large performance saving on phones — but it means the image is upscaled by the
   compositor. Patch 67 made that upscale smooth; it did not make it sharp. If this is

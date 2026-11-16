@@ -162,39 +162,22 @@ export class HubWorld {
     draw(ctx, state, renderer) {
         if (!this.baked || this.bakedFor !== state) this.bake(state);
         const hd = renderer && renderer.hubDiag;
-        if (!hd || hd.floor !== false) {
-            // Patch 157: from the canvas by default. 155 drew an ImageBitmap of it,
-            // and the hub fell from ~45 to 26 fps on the A56 with JS unchanged — a
-            // WebView can keep an ImageBitmap in CPU memory and re-upload all 5.8 MB
-            // of it every frame, where a canvas stays a GPU texture. Kept as a
-            // benchmark switch (Renderer.hubDiag.bitmap), made on first request.
-            let img = this.baked;
-            if (hd && hd.bitmap) {
-                if (this.bakedBitmap) img = this.bakedBitmap;
-                else this.requestBitmap(state);
-            }
-            ctx.drawImage(img, -600, -600);
-        }
+        // Patch 157/158: drawn from the canvas, never an ImageBitmap of it. On the A56
+        // (Patch 157's hub benchmark) the bitmap held the hub at 26 fps, and once one had
+        // been made the hub STAYED slow (28 fps) after going back to the canvas — the
+        // canvas it was read from had been moved to a slow path for good. Do not call
+        // createImageBitmap, getImageData or toDataURL on this canvas.
+        if (!hd || hd.floor !== false) ctx.drawImage(this.baked, -600, -600);
         if (this.activeZone) this.drawHighlight(ctx, this.activeZone);
-    }
-
-    requestBitmap(state) {
-        if (this.bitmapPending || typeof createImageBitmap !== 'function') return;
-        const c = this.baked;
-        this.bitmapPending = true;
-        createImageBitmap(c).then(bm => {
-            this.bitmapPending = false;
-            if (this.baked === c && this.bakedFor === state && !this.bakedBitmap) this.bakedBitmap = bm;
-            else if (bm && bm.close) bm.close();
-        }).catch(() => { this.bitmapPending = false; });
     }
 
     bake(state) {
         this.bakedFor = state;
-        if (this.bakedBitmap && typeof this.bakedBitmap.close === 'function') this.bakedBitmap.close();
-        this.bakedBitmap = null;
-        const c = (this.baked && this.baked.width === 1200) ? this.baked : document.createElement('canvas');
-        c.width = 1200; c.height = 1200;   // also clears a reused canvas
+        // Patch 158: a new canvas every visit, never a reused one, so a canvas the
+        // browser has demoted to a slow path (see draw) is dropped at the next hub entry.
+        if (this.baked) { this.baked.width = 0; this.baked.height = 0; }   // free its memory now
+        const c = document.createElement('canvas');
+        c.width = 1200; c.height = 1200;
         const cx = c.getContext('2d');
         cx.drawImage(this.cachedFloor, 0, 0);
         cx.translate(600, 600);
