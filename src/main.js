@@ -7,6 +7,7 @@ import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
 import { SynergyBanner } from './ui/SynergyBanner.js';
+import { screenFlash } from './ui/Juice.js';
 import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies, ENEMY_BESTIARY } from './data/Manifestations.js';
 import { portalSDK } from './systems/PortalSDK.js';
 import { showConfirm } from './ui/Dialog.js';
@@ -528,6 +529,7 @@ const synergyBanner = new SynergyBanner();
 // Sim steps of half speed after a synergy forms (Game.update skips every other
 // step while state.slowMo > 0), so ~0.8 s at 60 Hz of real time at half speed.
 const SYNERGY_SLOWMO_STEPS = 48;
+const LEVELUP_EASE_STEPS = 20;   // Patch 130
 function maybeHappytimeForBossKill(floor) {
     if (!saveManager || !Number.isFinite(floor)) return;
     if (floor < (saveManager.metaState.maxFloorReached || 1)) return;
@@ -2590,10 +2592,17 @@ function initEngine() {
         inputManager.keys = { w: false, a: false, s: false, d: false, space: false }; 
         inputManager.updateKeyboardInput();
         audioEngine.playSFX('levelup');
+        // Patch 130 (C8): a gold radial flash behind the cards (none in
+        // photosensitivity mode); the cards themselves deal in via CSS.
+        screenFlash('levelup', { calm: !!gameSettings.photosensitive });
         levelUpUI.show(game, () => {
             if (game.state && game.state.telemetry && game.state.telemetry.firstBoonAt === null) {
                 game.state.telemetry.firstBoonAt = performance.now() - game.state.telemetry.runStartWallClock;
             }
+            // Patch 130: ease back in — a third of a second at half speed rather than
+            // full-speed combat the instant the card is picked. A synergy formed by
+            // this pick sets a longer slowMo first, and Math.max keeps that one.
+            if (game.state) game.state.slowMo = Math.max(game.state.slowMo || 0, LEVELUP_EASE_STEPS);
             gameState = 'PLAYING';
         });
     };

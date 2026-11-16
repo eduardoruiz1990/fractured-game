@@ -31,9 +31,13 @@ const gs = (p) => p.evaluate(() => window.__fractured.gameState);
     await page.screenshot({ path: `${S}/hub_${tag}.png` });
 
     // --- the folder: 4 groups, sub-tabs per group ------------------------------
-    await page.evaluate(() => {   // open the Mind Palace desk like the hub zone does
-      const g = window.__fractured.game; g.hubWorld.activeZone = g.hubWorld.zones.find(z => z.action === 'tab-trophies');
+    // Stand at the Mind Palace desk (the hub recomputes activeZone from the player's
+    // position every frame, so setting it directly races the next frame).
+    await page.evaluate(() => {
+      const g = window.__fractured.game, z = g.hubWorld.zones.find(z => z.action === 'tab-trophies');
+      g.state.player.x = z.x; g.state.player.y = z.y;
     });
+    await page.waitForFunction(() => { const z = window.__fractured.game.hubWorld.activeZone; return z && z.action === 'tab-trophies'; }, null, { timeout: 3000 }).catch(() => {});
     await page.keyboard.press('e');
     await page.waitForTimeout(250);
     const f = await page.evaluate(() => {

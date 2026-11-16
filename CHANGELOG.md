@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–129)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–130)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1850,6 +1850,41 @@ New `qa/hub_check.cjs` (384×717, 915×412, 1280×720) checks:
 - SYNAPSES has no sub-row, and a group reopens on its last pane;
 - DESCEND by Enter (desktop) or tap (touch) starts a run, and Enter is inert mid-run;
 - with a suspended run, DESCEND opens EVALUATION with RESUME.
+
+**Patch 130 — juice (C8).**
+
+- **Level-up:**
+  - **Flash:** a gold radial flash behind the cards (`src/ui/Juice.js`, `#juice-flash`
+    at z 190, under the modal and every menu). It is skipped entirely in
+    photosensitivity mode.
+  - **Deal-in:** the cards rise into place one after another (0 / 60 / 120 ms). This
+    finishes inside the 300 ms arming window from Patch 125, so they land as they
+    become pickable. It uses the individual `translate`/`scale` properties, so it
+    composes with each card's inline `rotate()`. It is off under reduced motion.
+  - **Ease back in:** after the pick, 20 steps of half speed (`state.slowMo`), so
+    combat does not resume at full speed the instant a card is chosen.
+    `Math.max` keeps a synergy's longer slow motion.
+- **Boss death** (the last boss alive in the room): a 12-step impact freeze (`hitStop`),
+  then 72 steps of half speed (`BOSS_DEATH_SLOWMO_STEPS`, ~1.2 s), a soft white
+  `cameraFlash` (which main.js already zeroes in photosensitivity mode), and 80 more
+  fragments in white and the boss's colour. All of it is counted in sim steps, so it
+  lasts the same at any refresh rate.
+- **The "chest" moment.** The game has no chests yet (Phase D adds them through the
+  dormant interactables), so this goes on the boss token pickup, the run's one
+  physical reward. A short freeze (anticipation), then a burst in the rarity's colour
+  and a kick of shake, both growing with rarity (`tokenBurstTier`, read from
+  `TOKEN_RARITIES`' own order). When chests arrive they should reuse this beat.
+
+New `qa/juice_check.cjs` checks:
+- the flash shows and sits under the cards;
+- all three cards deal in and keep their tilt;
+- the post-pick ease;
+- a real boss kill gives the freeze, slow motion, flash, 100+ particles and the exit,
+  and the slow motion ends;
+- a legendary token pickup gives the freeze and shake;
+- photosensitivity mode shows no flash.
+
+`qa/soak_check` (20 s) is clean: invariants OK, entities ≤ cap.
 
 ---
 

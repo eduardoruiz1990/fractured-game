@@ -1,5 +1,16 @@
 // src/systems/Combat.js
-import { getActiveSynergies, LIGHT_RECOIL_RESIST } from '../data/Manifestations.js';
+import { getActiveSynergies, LIGHT_RECOIL_RESIST, TOKEN_RARITIES } from '../data/Manifestations.js';
+
+// Patch 130 (V2 plan C8): juice constants. Sim steps (Game.update counts them).
+export const BOSS_DEATH_SLOWMO_STEPS = 72;
+/**
+ * 0 for common, rising with rarity in TOKEN_RARITIES' own order (common, rare, epic,
+ * legendary, mythic), capped at 3; an unknown rarity reads as 0.
+ */
+export function tokenBurstTier(rarity) {
+    const i = Object.keys(TOKEN_RARITIES).indexOf(String(rarity || '').toLowerCase());
+    return i < 0 ? 0 : Math.min(3, i);
+}
 // Patch 95 — the weapon ceiling comes off in THE RECURSION. See src/core/Endless.js.
 import { weaponLevelCap } from '../core/Endless.js';
 
@@ -731,6 +742,17 @@ export class Combat {
                     if (otherBosses.length === 0) {
                         state.cameraShake = 50;
                         if (game.audioEngine) game.audioEngine.playSFX('death', 1.5);
+                        // Patch 130 (V2 plan C8): the kill lands. A short impact freeze,
+                        // then ~1.2 s at half speed (Game.update: hitStop first, then
+                        // slowMo), a soft white flash (main.js zeroes cameraFlash in
+                        // photosensitivity mode) and a ring of fragments in the boss's
+                        // colour and white on top of the existing burst. All counted in
+                        // sim steps, so it is the same length at any refresh rate.
+                        state.hitStop = Math.max(state.hitStop || 0, 12);
+                        state.slowMo = Math.max(state.slowMo || 0, BOSS_DEATH_SLOWMO_STEPS);
+                        state.cameraFlash = Math.max(state.cameraFlash || 0, 8);
+                        game.spawnParticles(ent.x, ent.y, '#ffffff', 40);
+                        game.spawnParticles(ent.x, ent.y, ent.color || '#c5a059', 40);
                         
                         state.interactables.push({
                              id: Math.random(),
@@ -844,6 +866,13 @@ export class Combat {
                         state.runInventory.push(t.rarity);
                         game.spawnDamageText(t.x, t.y - 20, `${t.rarity} TOKEN!`, t.color, 1.5, 2.0);
                         if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 0.8);
+                        // Patch 130 (V2 plan C8): the reward lands — a beat of
+                        // anticipation (a brief freeze), then a burst in the rarity's
+                        // colour that grows with rarity, and a small kick of shake.
+                        const tier = tokenBurstTier(t.rarity);
+                        state.hitStop = Math.max(state.hitStop || 0, 5 + tier * 2);
+                        state.cameraShake = Math.max(state.cameraShake || 0, 4 + tier * 3);
+                        game.spawnParticles(state.player.x, state.player.y, t.color || '#ffffff', 18 + tier * 12);
                     }
                 }
             }
