@@ -73,7 +73,9 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
     const n0 = s.runInventory.length;
     s.hitStop = 0; s.slowMo = 0; s.cameraShake = 0;
     g.director.spawnToken(s.player.x + 2, s.player.y, { type: 'legendary', color: '#ff8c00' });
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))));
+    // Up to 30 frames for the pickup (Patch 159: 3 frames flaked under a loaded CPU),
+    // then read the beat on the frame it lands.
+    for (let i = 0; i < 30 && s.runInventory.length === n0; i++) await new Promise(r => requestAnimationFrame(r));
     return { got: s.runInventory.length - n0, hitStop: s.hitStop, shake: s.cameraShake };
   });
   ok(tok.got === 1, 'token collected');
