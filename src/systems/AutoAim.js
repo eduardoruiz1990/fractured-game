@@ -18,11 +18,35 @@
 //     turn), so the cone sweeps rather than snaps.
 //
 // Whether it is on is the player's setting: 'auto' (on for touch, off with a mouse),
-// 'on' or 'off' (autoAimEnabled). State lives on state.autoAim = { targetId }.
+// 'on' or 'off' (autoAimEnabled). State lives on state.autoAim = { targetId, idle, wait }.
+//
+// Patch 164: assist, not autopilot. A player reported that with the phone left alone
+// the light tracked so fast that standing still won the early floors, and
+// sim_difficulty.js's "statue" bot (never touches anything) agreed: it survived floor
+// 1's first room for the whole 8-minute cap in 8 of 12 runs. Assist now does what a
+// second hand on a mouse does, for a player who is playing:
+//   - MOVING (the move stick is pulled): full assist, but at a human turn speed,
+//     AUTO_AIM_TURN = 0.14 rad a step (8.4 rad/s, a half turn in ~0.4 s; it was 0.2);
+//   - STANDING with a thumb on the glass (or a key held): a slow drift towards the
+//     target, AUTO_AIM_TURN_STILL. The right thumb is free then, so the right stick
+//     aims at full speed;
+//   - NO INPUT for AUTO_AIM_IDLE_STEPS (1.5 s): assist lets go and the light holds
+//     where it points. Touching anything wakes it at once;
+//   - a NEW target (the old one died or was dropped) is turned to only after
+//     AUTO_AIM_REACT steps (0.1 s, the light holds meanwhile): a reaction, not a snap
+//     from kill to kill;
+//   - range 500 (was 520).
+// Measured with sim_difficulty.js (12 runs, fresh profile): novice and competent
+// still reach floor 3 in 10/12 (12/12 and 11/12 before); "statue" now dies in floor
+// 1's first room in ~1 min in most runs; "anchored" (thumb resting, never moving)
+// survives that room in 8/12, but at a 10% Sanity low (29% before, without a thumb).
 
-export const AUTO_AIM_RANGE = 520;
+export const AUTO_AIM_RANGE = 500;
 export const AUTO_AIM_STICKY = 1.25;
-export const AUTO_AIM_TURN = 0.2;
+export const AUTO_AIM_TURN = 0.14;
+export const AUTO_AIM_TURN_STILL = 0.035;
+export const AUTO_AIM_IDLE_STEPS = 90;
+export const AUTO_AIM_REACT = 6;
 export const AUTO_AIM_MODES = ['auto', 'on', 'off'];
 
 /** Whether assist is on for this setting and control scheme ('touch' | 'keyboard'). */
@@ -69,12 +93,22 @@ export function turnTowards(from, to, maxTurn = AUTO_AIM_TURN) {
  */
 export function autoAimStep(state, input = {}) {
     const p = state.player;
-    if (!state.autoAim) state.autoAim = { targetId: null };
+    if (!state.autoAim) state.autoAim = { targetId: null, idle: 0, wait: 0 };
+    const A = state.autoAim;
     const cur = Number.isFinite(p.angle) ? p.angle : 0;
-    const t = pickTarget(state.entities, p.x, p.y, state.autoAim.targetId);
-    state.autoAim.targetId = t ? t.id : null;
+    const moving = !!(input.isMoving && (input.moveX || input.moveY));
+    const engaged = moving || !!input.touchHeld || !!input.isDashing || !!input.aimHeld || !!input.pointerMoved;
+    A.idle = engaged ? 0 : (A.idle || 0) + 1;
+    if (A.idle > AUTO_AIM_IDLE_STEPS) { A.targetId = null; A.wait = 0; return cur; }   // let go: the light holds
+
+    const prevId = A.targetId;
+    const t = pickTarget(state.entities, p.x, p.y, prevId);
+    A.targetId = t ? t.id : null;
+    if (t && t.id !== prevId) A.wait = AUTO_AIM_REACT;   // a new target: react, don't snap
     let goal = cur;
-    if (t) goal = Math.atan2(t.y - p.y, t.x - p.x);
-    else if (input.isMoving && (input.moveX || input.moveY)) goal = Math.atan2(input.moveY, input.moveX);
-    return turnTowards(cur, goal, AUTO_AIM_TURN);
+    if (t) {
+        if (A.wait > 0) { A.wait--; goal = cur; }
+        else goal = Math.atan2(t.y - p.y, t.x - p.x);
+    } else if (moving) goal = Math.atan2(input.moveY, input.moveX);
+    return turnTowards(cur, goal, moving ? AUTO_AIM_TURN : AUTO_AIM_TURN_STILL);
 }

@@ -3013,6 +3013,31 @@ The user asked for a title screen that is "dynamic and moving", and a new name f
   - A virtual-clock 10 s capture at 384×717 was reviewed frame by frame.
   - The headless draw cost is noisy (0.05–5 ms a frame with the same settings); a phone check is still needed.
 
+**Patch 164: aim assist needs a player.**
+
+The user reported that on a phone left alone, aim assist "basically plays itself": the light snapped from enemy to enemy so fast that standing still beat the first floors. The aim was to give touch players a fair chance against a mouse, not a bot.
+
+- **What changed (`src/systems/AutoAim.js`, `autoAimStep`):**
+  - **Human turn speed.** The turn is 0.14 rad a step while moving. It is 0.035 a step (about 2 rad/s) while standing still, so a crowd that surrounds a still player gets through.
+  - **A reaction delay.** On a new target the light holds for 6 steps (0.1 s) before turning; there is no instant flick between enemies.
+  - **Range.** 500 px instead of the screen.
+  - **It lets go when nobody plays.** Assist needs a player at the controls: moving, a touch held anywhere (`InputManager.state.touchHeld`), a dash, a held aim stick, or a mouse move (`pointerMoved`). After 90 steps (1.5 s) with none of these it stops turning and the light holds where it was. With the mouse, the mouse aims again (`Game.update`'s assist hook).
+- **`sim_difficulty.js`.** A new skill, `anchored`: a thumb resting on the screen, never moving. The bot reports `touchHeld`.
+- **Sim results (fresh profile, 12 runs):**
+
+  | Bot | Before | After |
+  | --- | --- | --- |
+  | statue (phone untouched) | 8 of 12 survived the full 8-minute cap; Sanity low 29% | 7 died in room 1-1 in about a minute; 5 stuck |
+  | anchored (thumb resting) | — | 8 of 12 survive, at a 10% Sanity low |
+  | novice | floor 3 in 12/12 | floor 3 in 10/12 |
+  | competent | floor 2 in 11/12 | floor 3 in 10/12 |
+
+  A first, harder version (turn 0.1, reaction 10 steps, range 460) cut the competent bot to floor 2 in 8/12, so it was loosened. Players who move keep the help.
+- **Checks:**
+  - `test_input.js`: 71 assertions, including the turn rates, the reaction delay, idle letting go, no turn to a new enemy while idle, and touch and mouse waking assist.
+  - `qa/aim_check.cjs` plays like a person: a resting left thumb wakes assist, an untouched phone holds the light still, the light doesn't snap, and on desktop ON the mouse keeps moving.
+  - Passing: `aim`, `hud`, `focus_keys`, all Node suites, and `test_fuzz_runs.js`.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -3280,6 +3305,12 @@ The user asked for a title screen that is "dynamic and moving", and a new name f
     - Re-sorting moves by half is what froze the player in portrait: the aim stick
       adopted a move thumb that crossed the midline. `test_input.js` and
       `qa/aim_check.cjs` assert the crossing.
+53. **Aim assist must not play the game by itself (Patch 164).**
+    - It turns at a human speed (`AUTO_AIM_TURN`, and a slower `AUTO_AIM_TURN_STILL`
+      when standing), waits `AUTO_AIM_REACT` steps before a new target, and stops after
+      `AUTO_AIM_IDLE_STEPS` with no input at all.
+    - Before raising any of these, run `node sim_difficulty.js --skill statue` and
+      `--skill anchored`: an untouched phone must not survive floor 1.
 
 ---
 

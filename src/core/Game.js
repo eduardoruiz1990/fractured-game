@@ -11,7 +11,7 @@ import { paletteIndexForFloor } from './Endless.js';
 // Patch 136 (V2 plan D1): playable Patients.
 import { PATIENTS, resolvePatient, DEFAULT_PATIENT } from '../data/Patients.js';
 import { applyWeaponLevelUp } from '../ui/LevelUpUI.js';
-import { autoAimStep } from '../systems/AutoAim.js';   // Patch 148 (V2 plan F1)
+import { autoAimStep, AUTO_AIM_IDLE_STEPS } from '../systems/AutoAim.js';   // Patch 148 (V2 plan F1)
 import { bossTelegraphing } from './Haptics.js';   // Patch 149 (V2 plan F6)
 import { updateArena } from '../systems/Arena.js';   // Patch 137
 import { lockedWeapons } from '../data/Unlocks.js';   // Patch 139
@@ -719,6 +719,11 @@ export class Game {
         let aimAngle = inputState.aimAngle;
         if (this.autoAimOn && !inputState.aimHeld && this.state.player) {
             aimAngle = autoAimStep(this.state, inputState);
+            // Patch 164: once assist lets go (no input for 1.5 s), a mouse aims again, so
+            // a desktop player with assist ON is never left with a frozen light. On touch
+            // the right stick's angle is stale, so the light just holds.
+            if (this.state.autoAim.idle > AUTO_AIM_IDLE_STEPS && inputState.mouseAim && Number.isFinite(inputState.aimAngle)) aimAngle = inputState.aimAngle;
+            inputState.pointerMoved = false;
         } else if (this.state.autoAim) {
             this.state.autoAim.targetId = null;
         }

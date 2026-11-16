@@ -36,7 +36,9 @@ export class InputManager {
         // Added 'dash' intent to state
         // Patch 148: aimHeld — the right stick is held AND pulled past its dead zone. Aim
         // assist (systems/AutoAim.js) yields to it.
-        this.state = { moveX: 0, moveY: 0, aimAngle: 0, isMoving: false, isAiming: true, dash: false, aimHeld: false };
+        this.state = { moveX: 0, moveY: 0, aimAngle: 0, isMoving: false, isAiming: true, dash: false, aimHeld: false, touchHeld: false };
+        // Patch 164: touchHeld — a thumb is on either stick (moving or not). Aim assist
+        // counts it as playing; with no thumb down for 1.5 s, assist lets go.
         
         this.isTouchDevice = false;
         this.dashBtnShown = false;
@@ -101,6 +103,8 @@ export class InputManager {
             this.mouseX = e.clientX - rect.left;
             this.mouseY = e.clientY - rect.top;
             this.state.isAiming = true;
+            this.state.pointerMoved = true;   // Patch 164: a moving mouse is a player (Game consumes it)
+            this.state.mouseAim = true;
         });
 
         // Mobile Touch
@@ -299,6 +303,7 @@ export class InputManager {
         // A finger swapped onto the move stick mid-touch is never the first half of a tap.
         if (side === 'left') { this.leftTap.travel = 0; this.leftTap.sx = x; this.leftTap.sy = y; if (!isNewFinger) this.leftTap.startAt = -1e9; }
         slot.id = id; slot.ox = x; slot.oy = y; slot.cx = x; slot.cy = y;
+        this.state.touchHeld = true;   // Patch 164
         if (ring) {
             ring.style.display = 'block';
             ring.style.left = (geo.localX(x) - 60) + 'px';
@@ -319,6 +324,7 @@ export class InputManager {
             if (which === 'right' && this.joyRight) this.joyRight.style.display = 'none';
             if (this.knobRight) this.knobRight.style.transform = 'translate(-50%, -50%)';
         }
+        this.state.touchHeld = this.leftTouch.id !== null || this.rightTouch.id !== null;   // Patch 164
     }
 
     /**
@@ -430,6 +436,7 @@ export class InputManager {
         this.state.isMoving = false;
         this.state.isDashing = false;
         this.state.aimHeld = false;   // Patch 148
+        this.state.touchHeld = false;   // Patch 164
         this.state.dashPulse = false;   // Patch 149: no stale gesture across a menu
         this.leftTap.prev = null;
         if (this.knobLeft) this.knobLeft.style.transform = 'translate(-50%, -50%)';

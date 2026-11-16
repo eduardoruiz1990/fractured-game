@@ -2,9 +2,10 @@
 // Assertion-based: exits 1 on any failure. Needs the dev server on :5199.
 //   node qa/aim_check.cjs <dir with sdkmock.js>
 //
-// A touch phone: with nothing touching the right half, the light turns to an enemy by
-// itself; a held right stick overrides it; letting go hands it back. A mouse desktop:
-// AUTO leaves aiming to the mouse; the Settings select switches it ON.
+// A touch phone: with a thumb resting on the move side and nothing on the right half, the
+// light turns to an enemy by itself; a held right stick overrides it; letting go hands it
+// back. Patch 164: a phone nobody touches lets go after 1.5 s and the light holds still.
+// A mouse desktop: AUTO leaves aiming to the mouse; the Settings select switches it ON.
 const { chromium } = require('playwright');
 const S = process.argv[2] || __dirname;
 let fails = 0;
@@ -44,25 +45,40 @@ const near = (a, b, eps = 0.2) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(
   // --- a touch phone -----------------------------------------------------------------------
   {
     const { ctx, page, errors } = await start(browser, { width: 384, height: 717, touch: true });
-    await page.waitForTimeout(700);
-    const a = await angle(page);
     const mode = await page.evaluate(() => ({ on: window.__fractured.game.autoAimOn, m: window.__fractured.inputManager ? window.__fractured.inputManager.getInputMode() : '?' }));
     ok(mode.on === true, `touch: assist is on by default (${JSON.stringify(mode)})`);
+    // Patch 164: nobody touching the phone. Past the 1.5 s grace the light holds still.
+    await page.waitForTimeout(1800);
+    await page.evaluate(() => { window.__fractured.game.state.player.angle = 0; });
+    await page.waitForTimeout(700);
+    const idle = await page.evaluate(() => ({ a: window.__fractured.game.state.player.angle, n: window.__fractured.game.state.autoAim && window.__fractured.game.state.autoAim.idle }));
+    ok(near(idle.a, 0, 0.05), `touch: an untouched phone does not aim for you (${idle.a.toFixed(2)}, idle ${idle.n})`);
+
+    // A thumb resting on the move side, not moving: assist wakes and turns the light, slowly.
+    const cdp = await ctx.newCDPSession(page);
+    const rest = { x: 100, y: 600, id: 5 };
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [rest] });
+    await page.waitForTimeout(250);
+    const early = await angle(page);
+    ok(!near(early, -Math.PI / 2, 0.3), `touch: standing still it turns at a human pace, not a snap (${early.toFixed(2)} after 0.25 s)`);
+    await page.waitForTimeout(1200);
+    const a = await angle(page);
     ok(near(a, -Math.PI / 2), `touch: the light turned to the enemy above with no aiming (${a.toFixed(2)})`);
     await page.screenshot({ path: `${S}/aim_touch.png` });
 
     // Hold the right stick pulling right (+x): the player's aim wins.
-    const cdp = await ctx.newCDPSession(page);
-    const tp = (x, y) => [{ x, y, id: 7 }];
+    const tp = (x, y) => [rest, { x, y, id: 7 }];
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: tp(300, 420) });
     for (let i = 1; i <= 6; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: tp(300 + i * 10, 420) }); await page.waitForTimeout(20); }
     await page.waitForTimeout(400);
     const held = await page.evaluate(() => ({ a: window.__fractured.game.state.player.angle, h: window.__fractured.inputManager.state.aimHeld }));
     ok(held.h === true && near(held.a, 0), `touch: a held right stick overrides assist (${held.a.toFixed(2)}, held=${held.h})`);
+    // A touchEnd lists the point being lifted; the resting thumb stays down.
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ x: 360, y: 420, id: 7 }] });
+    await page.waitForTimeout(1300);
+    const back = await page.evaluate(() => ({ a: window.__fractured.game.state.player.angle, h: window.__fractured.inputManager.state.aimHeld }));
+    ok(back.h === false && near(back.a, -Math.PI / 2), `touch: letting go hands aiming back to assist (${back.a.toFixed(2)}, held=${back.h})`);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await page.waitForTimeout(600);
-    const back = await angle(page);
-    ok(near(back, -Math.PI / 2), `touch: letting go hands aiming back to assist (${back.toFixed(2)})`);
     // Patch 149: double-tap the move side to dash, in the last heading.
     const L = (x, y) => [{ x, y, id: 3 }];
     await page.evaluate(() => { const p = window.__fractured.game.state.player; p.dash.charges = p.dash.maxCharges; p.dash.active = false; window.__vib = []; navigator.vibrate = (pt) => { window.__vib.push(pt); return true; }; });
@@ -124,7 +140,8 @@ const near = (a, b, eps = 0.2) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(
     const a = await angle(page);
     ok(near(a, 0, 0.3), `desktop AUTO: the mouse aims, assist stays off (${a.toFixed(2)})`);
     await page.evaluate(() => { const s = document.getElementById('select-aim'); s.value = 'on'; s.dispatchEvent(new Event('change')); });
-    await page.waitForTimeout(600);
+    // Patch 164: assist needs a player at the controls, so keep a hand on the mouse.
+    for (let i = 0; i < 15; i++) { await page.mouse.move(1200 + (i % 2) * 4, 360); await page.waitForTimeout(100); }
     const b = await angle(page);
     ok(near(b, -Math.PI / 2), `desktop ON: assist aims at the enemy (${b.toFixed(2)})`);
     // Saved through the portal adapter (the SDK mock's data module here).
