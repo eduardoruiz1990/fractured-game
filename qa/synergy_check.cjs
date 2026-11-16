@@ -24,7 +24,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
     // Form The Blinding Signal through a REAL level-up card: flashlight 5, static 4,
     // and pick the Static Receiver card when it is offered.
     let formed = false;
-    for (let i = 0; i < 15 && !formed; i++) {
+    for (let i = 0; i < 40 && !formed; i++) {   // random cards: enough tries not to flake
       formed = await page.evaluate(() => {
         const f = window.__fractured, g = f.game, w = g.state.player.weapons;
         w.flashlight.level = 5; w.static.level = 4;

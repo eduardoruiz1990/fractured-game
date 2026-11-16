@@ -13,7 +13,8 @@ import { ARENA_LAYOUTS, ARENA_RISE_STEPS, ARENA_FADE_STEPS, GRID_TELEGRAPH_STEPS
 // depth escalation layered over them. The cap is a memory bound, not a taste one —
 // see CYCLE_VISUAL_CAP in src/core/Endless.js.
 import { paletteIndexForFloor, visualCycle, cycleGrade } from './Endless.js';
-import { bossIntroLines, bossEpithet, BOSS_DEATH_SUBTITLE_STEPS } from '../data/Story.js';   // Patch 146 (V2 plan E4)
+import { bossIntroLines, bossEpithet, BOSS_DEATH_SUBTITLE_STEPS } from '../data/Story.js';
+import { bossTelegraphing } from './Haptics.js';   // Patch 150 (V2 plan F4)   // Patch 146 (V2 plan E4)
 
 // Patch 109: upper bound on Renderer.spriteCache (see cacheSprite). Comfortably above
 // the real working set — entity bodies x phase buckets x variants, glows per colour.
@@ -1082,6 +1083,7 @@ export class Renderer {
                 if (this.diag.fog) this.drawFog(state);
                 if (this.diag.lights) this.drawLightingMasks(state, curShakeX, curShakeY);
                 this.drawObstacleOutlines(state);   // Patch 137: walls stay readable in the dark
+                if (this.cbAssist) this.drawTelegraphRings(state);   // Patch 150: Colour-Blind Assist
                 this.drawEffectsAndAuras(state);
                 this.drawPlayer(state, audioEngine);
                 this.drawDamageText(state);
@@ -4348,7 +4350,7 @@ export class Renderer {
             const lines = bossIntroLines(bossType, state.floor || 1);
             if (lines.length) {
                 const t = this.bossAnnouncementTimer;
-                const lineBase = Math.max(13, Math.min(20, PANEL_H * 0.085));
+                const lineBase = Math.max(13, Math.min(20, PANEL_H * 0.085)) * (Number.isFinite(this.textScale) ? this.textScale : 1);
                 // Wide: just inside the bottom rule. Narrow (a phone): tucked under the
                 // subtitle, so the lines stay above the touch controls.
                 const bottomY = PANEL_H - lineBase * 1.1;
@@ -4389,7 +4391,8 @@ export class Renderer {
         const w = this.canvas.width;
         const cy = Number.isFinite(this.cameraCenterY) ? this.cameraCenterY : this.canvas.height / 2;
         const viewBottom = Math.min(this.canvas.height, cy * 2);
-        const size = Math.max(14, Math.min(22, w * 0.042));
+        const ts = Number.isFinite(this.textScale) ? this.textScale : 1;   // Patch 150: Text Size
+        const size = Math.max(14, Math.min(22, w * 0.042)) * ts;
         const ctx = this.ctx;
         ctx.save();
         ctx.font = `italic ${size}px 'Courier New', Courier, monospace`;
@@ -4414,6 +4417,37 @@ export class Renderer {
         ctx.globalAlpha = a;
         ctx.fillStyle = '#e8dcc8';
         rows.forEach((r, i) => ctx.fillText(r, w / 2, y0 + i * lh));
+        ctx.restore();
+    }
+
+    /**
+     * Patch 150 (V2 plan F4): with Colour-Blind Assist on, every enemy winding up an
+     * attack gets a white dashed ring that tightens as it pulses — a cue that does not
+     * depend on telling red from anything else. World space, after the lighting mask
+     * so it reads in the dark. Bosses (Haptics.bossTelegraphing) and the Hall Monitor
+     * (Predator) lunge are the wind-ups the game has.
+     */
+    drawTelegraphRings(state) {
+        const ents = state.entities;
+        if (!ents || !ents.length) return;
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.strokeStyle = '#ffffff';
+        ctx.setLineDash([8, 6]);
+        const pulse = 0.5 + 0.5 * Math.sin(this.renderFrame * 0.35);
+        for (const ent of ents) {
+            if (!ent || ent.dead) continue;
+            if (!(bossTelegraphing(ent) || ent.attackState === 'telegraphing')) continue;
+            if (!Number.isFinite(ent.x) || !Number.isFinite(ent.y) || !this.inView(ent.x, ent.y)) continue;
+            const r = (Number.isFinite(ent.radius) ? ent.radius : 20) + 10 + pulse * 8;
+            ctx.globalAlpha = 0.55 + pulse * 0.4;
+            ctx.lineWidth = 3;
+            ctx.lineDashOffset = -this.renderFrame;
+            ctx.beginPath();
+            ctx.arc(ent.x, ent.y, r, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        ctx.setLineDash([]);
         ctx.restore();
     }
 

@@ -79,8 +79,13 @@ body.quality-low #crt-scanlines { display: none; }
 
 /* --- EPIC 6: DYNAMIC BACKGROUND TRANSPARENCIES --- */
 #title-screen { display: flex; background: transparent; backdrop-filter: none; } 
-#clinical-folder-menu { display: none; background: rgba(5, 5, 5, 0.7); backdrop-filter: blur(2px); } 
-#pause-menu { display: none; z-index: 300; background: rgba(5, 5, 5, 0.85); backdrop-filter: blur(8px); }
+/* Patch 151: no backdrop-filter on these two. Each sits over a canvas that repaints
+   every frame, so the blur was recomputed every frame over the whole screen — the
+   "Mind Palace is rough on fps" report on a phone, where the folder is full-screen.
+   A little more opacity stands in for the blur. Same rule as .action-btn and the
+   tutorial banner. */
+#clinical-folder-menu { display: none; background: rgba(5, 5, 5, 0.78); } 
+#pause-menu { display: none; z-index: 300; background: rgba(5, 5, 5, 0.9); }
 #death-screen { display: none; z-index: 1000; background: rgba(10, 0, 0, 0.95); }
 
 /* --- EPIC 6: THE MEDICAL FILE AESTHETIC --- */
@@ -104,7 +109,7 @@ body.quality-low #crt-scanlines { display: none; }
 .folder-header {
     border-bottom: 3px solid var(--ink-black); padding: 20px;
     display: flex; justify-content: space-between; align-items: center;
-    background: rgba(232, 220, 196, 0.88); backdrop-filter: blur(4px);
+    background: rgba(232, 220, 196, 0.96);   /* Patch 151: was 0.88 + blur(4px), see #clinical-folder-menu */
     z-index: 5; position: relative;
 }
 
@@ -1245,13 +1250,16 @@ body.quality-low #crt-scanlines { display: none; }
     max-width: 100%;
 }
 
+/* Patch 150 (V2 plan F3): tamed. It was up to 12px of offset and 5deg of skew,
+   flipping every 1.5s on the first screen every player sees. Now about half the
+   offset, a third of the skew; it stops altogether under reduced motion. */
 @keyframes aggressive-glitch {
-    0% { text-shadow: 6px 0 0 #fff, -6px 0 0 #000; transform: skewX(0deg); }
-    20% { text-shadow: -8px 0 0 var(--ui-red), 8px 0 0 var(--ui-gold); transform: skewX(3deg); }
-    40% { text-shadow: 6px 0 0 #fff, -6px 0 0 var(--ui-red); transform: skewX(-3deg); }
-    60% { text-shadow: -12px 3px 0 var(--ui-gold), 12px -3px 0 #000; transform: skewX(5deg); }
-    80% { text-shadow: 4px 0 0 var(--ui-red), -4px 0 0 #fff; transform: skewX(-2deg); }
-    100% { text-shadow: -6px 0 0 var(--ui-gold), 6px 0 0 #000; transform: skewX(0deg); }
+    0% { text-shadow: 3px 0 0 #fff, -3px 0 0 #000; transform: skewX(0deg); }
+    20% { text-shadow: -4px 0 0 var(--ui-red), 4px 0 0 var(--ui-gold); transform: skewX(1deg); }
+    40% { text-shadow: 3px 0 0 #fff, -3px 0 0 var(--ui-red); transform: skewX(-1deg); }
+    60% { text-shadow: -5px 1px 0 var(--ui-gold), 5px -1px 0 #000; transform: skewX(1.5deg); }
+    80% { text-shadow: 2px 0 0 var(--ui-red), -2px 0 0 #fff; transform: skewX(-0.5deg); }
+    100% { text-shadow: -3px 0 0 var(--ui-gold), 3px 0 0 #000; transform: skewX(0deg); }
 }
 
 #glitch-overlay {
@@ -2058,4 +2066,64 @@ body.quality-low #crt-scanlines { display: none; }
 @media (max-width: 600px) {
     .story-text, .story-ending-text { font-size: 0.9rem; }
     .story-title { font-size: 1rem; }
+}
+
+/* ===================================================================================
+   Patch 150 (V2 plan F3, F4): motion and text-size settings.
+   =================================================================================== */
+/* F3: the title stops glitching for OS reduced motion and for the photosensitivity
+   setting (body.calm-motion, set by main.js applyAccessibility). */
+@media (prefers-reduced-motion: reduce) {
+    .title-glitch, #title-screen .title-glitch { animation: none !important; }
+    .story-hint, .story-card.story-in, .story-ending-text.story-in { animation: none !important; }
+}
+body.calm-motion .title-glitch,
+body.calm-motion #title-screen .title-glitch,
+body.calm-motion .story-hint { animation: none !important; }
+
+/* F4: Text Size. Everything sized in rem (menus, HUD, notices, story) scales. */
+html.text-large { font-size: 112.5%; }
+html.text-larger { font-size: 125%; }
+
+/* ===================================================================================
+   Patch 151 (V2 plan F5): the title at short, wide sizes (960x540 — CrazyGames' main
+   iframe — 915x412 and 717x384 phones in landscape). For a returning player the
+   column is BEGIN, the Patient strip, then RECURSION, DAILY, MIND HUB and SETTINGS:
+   ~545 px stacked, so SETTINGS (and on a phone MIND HUB) fell off the bottom with no
+   way to scroll. Here the title scales by height, BEGIN keeps its own line, and the
+   four secondary actions sit in a wrapping row. The column div carries inline styles
+   (flex column, gap 14px), hence !important. A scroll fallback stays underneath.
+   =================================================================================== */
+@media (max-height: 620px) and (min-width: 600px) {
+    #title-screen { overflow-y: auto; justify-content: safe center; padding: 8px 0; box-sizing: border-box; }
+    #title-screen .title-glitch { font-size: clamp(2rem, min(11.5vw, 14vh), 15rem) !important; margin-bottom: 0.5vh !important; }
+    #title-screen .title-subtitle { margin-bottom: clamp(8px, 2.5vh, 20px); }
+    #title-screen > div:nth-of-type(3) {
+        flex-direction: row !important; flex-wrap: wrap; justify-content: center;
+        gap: 8px 10px !important; max-width: min(820px, 96vw);
+    }
+    /* A zero-height, full-width flex item between BEGIN and the rest: a line break. */
+    #title-screen > div:nth-of-type(3)::before { content: ''; flex-basis: 100%; height: 0; order: 2; }
+    #btn-title-resume, #btn-title-begin { order: 1; padding: 10px 44px !important; font-size: 1.3rem !important; }
+    #title-screen > div:nth-of-type(3) > :not(#btn-title-resume):not(#btn-title-begin) { order: 3; margin-top: 0 !important; }
+    #title-patient-strip { flex-basis: 100%; max-width: none !important; }   /* its own 560px cap would let a button share its line */
+}
+
+/* Patch 151: while the level-up cards are up, a notice waits instead of covering a card. */
+body.levelup-open #synergy-banner { visibility: hidden; }
+
+/* Patch 151 (V2 plan F5): on a short screen (a phone either way up, an 800x600 iframe)
+   AUTHORIZE DESCENT sat below the fold of DESCEND, reachable only by scrolling a pane
+   nobody knew scrolled. There, the Patient choice and the button come first and the
+   evaluation copy and Patient-level bar follow; the header gets thinner. */
+@media (max-height: 680px) {
+    #tab-main > #folder-patient-strip { order: 1; margin-bottom: 10px; }
+    #tab-main > #curse-status-line { order: 2; margin-bottom: 8px !important; }
+    #tab-main > div:has(> #btn-start) { order: 3; gap: 10px !important; }
+    #tab-main > div:first-child { order: 4; margin: 14px 0 0 !important; }
+    #tab-main > div:first-child .typewriter-text { font-size: 0.95rem !important; margin: 0 0 6px; }
+    #patient-xp-text { margin-bottom: 4px !important; }
+    .folder-header { padding: 6px 12px; }
+    .folder-header .title-typewriter { font-size: 0.95rem; letter-spacing: 1px; }
+    .folder-header .patient-stamp { font-size: 0.85rem; padding: 2px 8px; border-width: 2px; }
 }

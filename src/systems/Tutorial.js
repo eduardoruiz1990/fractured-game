@@ -47,7 +47,10 @@ export const TUTORIAL_COPY = {
     },
     ENGAGE: {
         keyboard: "An enemy. Point your mouse at it — your light attacks on its own.",
-        touch: "An enemy. Slide your right thumb to aim — your light attacks on its own."
+        touch: "An enemy. Slide your right thumb to aim — your light attacks on its own.",
+        // Patch 148: with aim assist on there is nothing to aim. state.autoAimOn is
+        // published by main.js beside inputMode.
+        assist: "An enemy. Your light turns to it by itself and attacks on its own. Keep moving."
     },
     // FIGHT: intentionally absent. Once the player has moved, aimed and dashed, the
     // banner gets out of the way until there is something new to say.
@@ -295,6 +298,7 @@ export class Tutorial {
         if (!state || !state.isTutorial) return null;
         const line = TUTORIAL_COPY[state.tutorialStep];
         if (!line) return null;
+        if (state.autoAimOn && line.assist) return line.assist;   // Patch 148
         return (mode === 'touch' && line.touch) ? line.touch : line.keyboard;
     }
 }

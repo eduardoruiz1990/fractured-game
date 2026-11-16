@@ -36,6 +36,7 @@ There is no test runner configured (no `test` script, no framework installed). T
 | `test_arena.js` | `src/systems/Arena.js` (room shapes, spawn sectors, wall collision), `src/systems/RoomEvents.js`, `Director.spawnRoom`'s layout/event choice, the room-clear path |
 | `test_progress.js` | `src/data/Achievements.js`, `src/data/Unlocks.js`, the `achievements`/`stats` save fields, `claimAchievements`, the Daily Session |
 | `test_story.js` | `src/data/Story.js`, `src/data/Strings.js`, `metaState.story`, Case File drops, session notes, boss lines, the ending choice, the Patients' page unlocks |
+| `test_input.js` | `src/systems/AutoAim.js`, the aim-assist hook in `Game.update`, `InputManager`'s touch state (`aimHeld`, the dash gesture), input-dependent tutorial copy |
 | `test_endless.js` | `src/core/Endless.js`, boss-per-floor dispatch, endless scaling/cadence, the run-completion latch, per-floor palettes or enemy tints, `LevelUpUI`'s weapon cap or `DEEP_BOONS` |
 
 `test_director.js` and `test_save.js` are exploratory only (they print, they don't assert).

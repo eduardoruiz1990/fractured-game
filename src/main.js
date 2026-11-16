@@ -26,6 +26,8 @@ import { Pacing } from './core/Pacing.js';
 import { showColdOpen, dismissColdOpen, playEnding, endingShowing } from './ui/StoryUI.js';   // Patches 143–147 (V2 plan E)
 import * as Story from './data/Story.js';
 import { STRINGS } from './data/Strings.js';
+import { autoAimEnabled, AUTO_AIM_MODES } from './systems/AutoAim.js';   // Patch 148
+import { haptic, setHapticsEnabled } from './core/Haptics.js';   // Patch 149
 // Patch 93/97 — THE RECURSION: the endless floors past the Architect, and the mode
 // that launches straight into them. See src/core/Endless.js.
 import {
@@ -599,9 +601,23 @@ function maybeHappytimeForBossKill(floor) {
 // portalSDK.init(); reloadSettingsFromPortal() re-reads through the portal once init
 // has resolved, and saveSettings() writes through it. Try/caught, so a SecurityError
 // degrades to default settings rather than killing boot.
-let gameSettings = { screenShake: true, photosensitive: false, musicVolume: 1, sfxVolume: 1,
+// Patch 150 (V2 plan F3): a player whose OS asks for reduced motion starts with screen
+// shake off and photosensitivity mode on. Only the DEFAULTS follow the OS; a saved
+// choice (merged over these below) always wins.
+const osReducedMotion = (() => {
+    try { return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+    catch (e) { return false; }
+})();
+let gameSettings = { screenShake: !osReducedMotion, photosensitive: osReducedMotion, musicVolume: 1, sfxVolume: 1,
                      // Patch 115: 'auto' | 'high' | 'low'; autoQuality is what AUTO settled on.
-                     quality: 'auto', autoQuality: 'high' };
+                     quality: 'auto', autoQuality: 'high',
+                     // Patch 148 (V2 plan F1): aim assist — 'auto' (on for touch, off with a
+                     // mouse) | 'on' | 'off'. See systems/AutoAim.js.
+                     aimAssist: 'auto',
+                     // Patch 149 (V2 plan F2/F6): double-tap the move side to dash; vibration.
+                     doubleTapDash: true, haptics: true,
+                     // Patch 150 (V2 plan F4): colour-blind assist; menu/HUD text size.
+                     colorAssist: false, textSize: 'normal' };
 try {
     const savedSettings = localStorage.getItem('fractured_settings');
     if (savedSettings) gameSettings = { ...gameSettings, ...JSON.parse(savedSettings) };
@@ -695,12 +711,44 @@ function probeQualityOnDraw(time) {
     }
 }
 
+/** Patch 149: pushes the input-side settings (double-tap dash, haptics) where they act. */
+function applyInputSettings() {
+    setHapticsEnabled(gameSettings.haptics !== false);
+    if (inputManager) inputManager.doubleTapDash = gameSettings.doubleTapDash !== false;
+    applyAccessibility();
+}
+
+// Patch 150 (V2 plan F4): the Sanity bar's three states. The assist ramp avoids the
+// red/green pair (blue, orange, pink), and low/breakdown are also hatched (Patch 128).
+const SANITY_COLOURS = {
+    standard: { ok: 'var(--hud-green)', low: '#ffaa00', breakdown: 'var(--ui-red)' },
+    assist:   { ok: '#4da3ff', low: '#ff9a1f', breakdown: '#ff4fa3' }
+};
+const TEXT_SIZES = { normal: '', large: 'text-large', larger: 'text-larger' };
+
+/** Patch 150: body/html classes and renderer flags for the accessibility settings. */
+function applyAccessibility() {
+    try {
+        const html = document.documentElement;
+        Object.values(TEXT_SIZES).forEach(c => { if (c) html.classList.remove(c); });
+        const cls = TEXT_SIZES[gameSettings.textSize];
+        if (cls) html.classList.add(cls);
+        document.body.classList.toggle('calm-motion', !!gameSettings.photosensitive);
+        document.body.classList.toggle('cb-assist', !!gameSettings.colorAssist);
+        if (renderer) {
+            renderer.cbAssist = !!gameSettings.colorAssist;
+            renderer.textScale = gameSettings.textSize === 'larger' ? 1.25 : (gameSettings.textSize === 'large' ? 1.12 : 1);
+        }
+    } catch (e) { /* cosmetic */ }
+}
+
 function reloadSettingsFromPortal() {
     if (!portalSDK.available) return;
     try {
         const fromPortal = portalSDK.getItem('fractured_settings');
         if (fromPortal) {
             gameSettings = { ...gameSettings, ...JSON.parse(fromPortal) };
+            applyInputSettings();   // Patch 149
         } else {
             saveSettings();   // migrate whatever the import-time localStorage read found
         }
@@ -965,6 +1013,7 @@ function enterPlayingState() {
     // Patch 65: on a touch device the controls are now visible from the first frame of
     // play rather than from the first touch. Called here, after every menu close, so it
     // also undoes hideJoysticks()' latch reset on the way back into a run.
+    document.body.classList.remove('levelup-open');   // Patch 151: never carried into a new run
     if (inputManager && typeof inputManager.revealTouchControls === 'function') {
         inputManager.revealTouchControls();
     }
@@ -1115,6 +1164,21 @@ function autoSaveRun() {
     } catch (e) {
         errorLog.capture(e, 'autosave');
     }
+}
+
+// Patch 151 (V2 plan F5): whether the open folder covers the whole canvas (it does on a
+// phone, where .medical-folder goes full-screen). Re-measured at most twice a second
+// rather than every frame, so it never forces a layout of its own.
+let folderCoverCheckedAt = -Infinity;
+let folderCovers = false;
+function folderHidesCanvas(now) {
+    if (now - folderCoverCheckedAt < 500) return folderCovers;
+    folderCoverCheckedAt = now;
+    const f = document.querySelector('#clinical-folder-menu .medical-folder');
+    if (!f || f.offsetParent === null) return (folderCovers = false);
+    const r = f.getBoundingClientRect();
+    folderCovers = r.left <= 1 && r.top <= 1 && r.right >= window.innerWidth - 1 && r.bottom >= window.innerHeight - 1;
+    return folderCovers;
 }
 
 /** The walkable Mind Hub — the old INITIALIZE destination, now opt-in. */
@@ -1821,6 +1885,40 @@ function initEngine() {
                     </label>
                     <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Disables strobing lights, camera flashes, and softens glitch overlays.</p>
 
+                    <label for="select-aim" style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem;">Aim Assist</label>
+                    <select id="select-aim" style="margin-top: -12px; font-family: inherit; font-size: 1rem; padding: 8px; min-height: 44px; background: var(--paper-bg); color: var(--ink-black); border: 1px solid var(--ink-black);">
+                        <option value="auto">AUTO (on for touch, off with a mouse)</option>
+                        <option value="on">ON</option>
+                        <option value="off">OFF</option>
+                    </select>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px;">Your light turns to the nearest threat by itself. On touch, the right stick still aims while you hold it.</p>
+
+                    <label style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="toggle-doubletap" style="width: 20px; height: 20px; cursor: pointer;">
+                        Double-Tap to Dash (touch)
+                    </label>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Tap twice quickly on the left side to dash the way you were going.</p>
+
+                    <label style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="toggle-haptics" style="width: 20px; height: 20px; cursor: pointer;">
+                        Vibration
+                    </label>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Buzzes when you are hit, when a boss arrives or winds up, and on rewards. Phones only.</p>
+
+                    <label style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="toggle-colorassist" style="width: 20px; height: 20px; cursor: pointer;">
+                        Colour-Blind Assist
+                    </label>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px; margin-left: 30px;">Sanity reads blue, orange, pink instead of green to red, and enemies winding up an attack get a white dashed ring.</p>
+
+                    <label for="select-textsize" style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem;">Text Size</label>
+                    <select id="select-textsize" style="margin-top: -12px; font-family: inherit; font-size: 1rem; padding: 8px; min-height: 44px; background: var(--paper-bg); color: var(--ink-black); border: 1px solid var(--ink-black);">
+                        <option value="normal">NORMAL</option>
+                        <option value="large">LARGE</option>
+                        <option value="larger">LARGER</option>
+                    </select>
+                    <p class="typewriter-text" style="color: #666; font-size: 0.9rem; margin-top: -15px;">Menus, the HUD, notices and story text.</p>
+
                     <label for="select-quality" style="color: var(--ink-black); font-weight: bold; font-size: 1.2rem;">Graphics Quality</label>
                     <select id="select-quality" style="margin-top: -12px; font-family: inherit; font-size: 1rem; padding: 8px; min-height: 44px; background: var(--paper-bg); color: var(--ink-black); border: 1px solid var(--ink-black);">
                         <option value="auto">AUTO (recommended)</option>
@@ -2017,6 +2115,40 @@ function initEngine() {
             });
         }
 
+        // Patch 148 (V2 plan F1): aim assist, applied the moment it changes.
+        const selectAim = document.getElementById('select-aim');
+        if (selectAim) {
+            selectAim.value = AUTO_AIM_MODES.includes(gameSettings.aimAssist) ? gameSettings.aimAssist : 'auto';
+            selectAim.addEventListener('change', () => {
+                gameSettings.aimAssist = AUTO_AIM_MODES.includes(selectAim.value) ? selectAim.value : 'auto';
+                saveSettings();
+            });
+        }
+
+        // Patch 150 (V2 plan F4): text size, applied the moment it changes.
+        const selectText = document.getElementById('select-textsize');
+        if (selectText) {
+            selectText.value = TEXT_SIZES[gameSettings.textSize] !== undefined ? gameSettings.textSize : 'normal';
+            selectText.addEventListener('change', () => {
+                gameSettings.textSize = TEXT_SIZES[selectText.value] !== undefined ? selectText.value : 'normal';
+                applyAccessibility();
+                saveSettings();
+            });
+        }
+
+        // Patch 149 (V2 plan F2/F6): applied the moment they change.
+        [['toggle-doubletap', 'doubleTapDash'], ['toggle-haptics', 'haptics'], ['toggle-colorassist', 'colorAssist']].forEach(([id, key]) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.checked = gameSettings[key] !== false;
+            el.addEventListener('change', () => {
+                gameSettings[key] = el.checked;
+                applyInputSettings();
+                saveSettings();
+                if (key === 'haptics' && el.checked) haptic('dash');   // a sample buzz
+            });
+        });
+
         // --- VOLUME SLIDERS (Patch 80) ---
         // Applied and persisted on 'input', not on APPLY & CLOSE like the toggles.
         // Both are deliberate. A player reaching this panel because the audio is
@@ -2063,6 +2195,7 @@ function initEngine() {
         document.getElementById('btn-close-settings').addEventListener('click', () => {
             gameSettings.screenShake = toggleShake.checked;
             gameSettings.photosensitive = togglePhoto.checked;
+            applyAccessibility();   // Patch 150: calm-motion follows photosensitivity
             saveSettings();
             settingsUI.style.display = 'none';
         });
@@ -2240,7 +2373,9 @@ function initEngine() {
     try { saveManager.claimAchievements(); } catch (e) { errorLog.capture(e, 'achievements-boot'); }
     knownLockedWeapons = lockedWeapons(saveManager.metaState);
     inputManager = new InputManager(canvas);
+    inputManager.onDashGesture = () => haptic('dash');   // Patch 149
     renderer = new Renderer(canvas, ctx);
+    applyInputSettings();   // after the renderer: it also applies the accessibility flags
     audioEngine = new AudioEngine();
     // Push the persisted volumes in BEFORE preload() builds the graph, so the buses
     // are created at the player's level. Doing it after would open every session at
@@ -2251,6 +2386,7 @@ function initEngine() {
     levelUpUI = new LevelUpUI(audioEngine, saveManager);
 
     game.audioEngine = audioEngine;
+    game.onHaptic = (kind) => haptic(kind);   // Patch 149: hits, boss arrivals and wind-ups
     applyQualityTier();   // Patch 115: renderer + Director caps from the saved tier
 
     // V2 plan G1: a DEV-ONLY inspection hook for the headless Playwright checks
@@ -2267,7 +2403,8 @@ function initEngine() {
             get qualityTier() { return currentQualityTier(); },
             get qualitySetting() { return gameSettings.quality; },  // Patch 120
             get levelUpUI() { return levelUpUI; },                 // Patch 125
-            get uiManager() { return uiManager; }                  // Patch 126
+            get uiManager() { return uiManager; },                 // Patch 126
+            get inputManager() { return inputManager; }            // Patch 148
         };
         // Patch 120: the on-screen perf panel, playtest builds only. MODE is a string
         // literal after Vite's replacement, so every other build drops this branch and
@@ -2812,6 +2949,10 @@ function initEngine() {
         gameState = 'LEVEL_UP';
         inputManager.keys = { w: false, a: false, s: false, d: false, space: false }; 
         inputManager.updateKeyboardInput();
+        // Patch 151 (V2 plan F5): the touch controls (DASH sat over the right-hand card
+        // in phone landscape) and the notice strip step aside while the cards are up.
+        inputManager.hideJoysticks();
+        document.body.classList.add('levelup-open');
         audioEngine.playSFX('levelup');
         // Patch 130 (C8): a gold radial flash behind the cards (none in
         // photosensitivity mode); the cards themselves deal in via CSS.
@@ -2825,6 +2966,8 @@ function initEngine() {
             // this pick sets a longer slowMo first, and Math.max keeps that one.
             if (game.state) game.state.slowMo = Math.max(game.state.slowMo || 0, LEVELUP_EASE_STEPS);
             gameState = 'PLAYING';
+            document.body.classList.remove('levelup-open');   // Patch 151
+            inputManager.revealTouchControls();
         });
     };
 
@@ -2843,7 +2986,7 @@ function initEngine() {
         if (game.state) game.state.slowMo = Math.max(game.state.slowMo || 0, SYNERGY_SLOWMO_STEPS);
         audioEngine.playSFX('ui_upgrade', 3, false);
         announceProgress(claimProgress());   // Patch 139
-        try { if (navigator.vibrate) navigator.vibrate([30, 40, 80]); } catch (e) {}
+        haptic('synergy');   // Patch 149
         if (anyNew && !happySynergyThisSession) {
             happySynergyThisSession = true;
             portalSDK.happytime();
@@ -2877,7 +3020,7 @@ function initEngine() {
             tone: evo ? 'evolution' : 'chest',
             calm: !!gameSettings.photosensitive
         });
-        try { if (navigator.vibrate) navigator.vibrate(evo ? [40, 40, 120] : [30, 30, 60]); } catch (e) {}
+        haptic(evo ? 'evolution' : 'chest');   // Patch 149
         announceProgress(claimProgress());   // Patch 139
     };
 
@@ -2896,7 +3039,7 @@ function initEngine() {
             tone: 'story',
             calm: !!gameSettings.photosensitive
         });
-        try { if (navigator.vibrate) navigator.vibrate([15, 30, 15]); } catch (e) {}
+        haptic('page');   // Patch 149
         if (audioEngine) audioEngine.playSFX('ui_click', 0.8);
         announceProgress(claimProgress());
     };
@@ -2911,7 +3054,7 @@ function initEngine() {
             tone: 'event',
             calm: !!gameSettings.photosensitive
         });
-        try { if (!ev.end && navigator.vibrate) navigator.vibrate([20, 40, 20]); } catch (e) {}
+        if (!ev.end) haptic('event');   // Patch 149
         // Patch 139: the outcomes the achievements and the Lullaby's unlock count.
         if (ev.outcome === 'restored') saveManager.recordStat('outagesRestored');
         else if (ev.outcome === 'survived') saveManager.recordStat('lockdownsSurvived');
@@ -3111,7 +3254,9 @@ function gameLoop(time) {
         }
 
         if (gameState === 'MENU' || gameState === 'TITLE') {
-            renderer.drawMenuBackground(time, gameState);
+            // Patch 151: on a phone the folder covers every pixel, so the storm behind
+            // it was drawn each frame for nobody to see.
+            if (!(gameState === 'MENU' && folderHidesCanvas(time))) renderer.drawMenuBackground(time, gameState);
         } 
         else if (gameState === 'PLAYING' || gameState === 'LEVEL_UP' || gameState === 'PAUSED' || gameState === 'EXIT_REACHED' || gameState === 'HUB') {
             
@@ -3138,6 +3283,8 @@ function gameLoop(time) {
             // It must land BEFORE the simulation steps below, which is where
             // Tutorial.update runs.
             game.state.inputMode = inputManager.getInputMode();
+            // Patch 148: whether aim assist is on, for the tutorial's ENGAGE line.
+            game.state.autoAimOn = autoAimEnabled(gameSettings.aimAssist, game.state.inputMode);
 
             // Patch 71: the WORLD viewport, not the canvas. Identical to canvas
             // width/height on every layout except portrait, where the bottom band is
@@ -3150,6 +3297,8 @@ function gameLoop(time) {
             const simSteps = pacing.takeSteps();
             renderer.simStepsThisFrame = simSteps;
 
+            // Patch 148: aim assist follows the setting and the control scheme in use.
+            game.autoAimOn = autoAimEnabled(gameSettings.aimAssist, inputManager.getInputMode());
             for (let s = 0; s < simSteps; s++) {
                 // gameState is READ FRESH each iteration on purpose: onLevelUp and
                 // onDeath fire from inside update() and change it, and Game.update
@@ -3205,9 +3354,11 @@ function gameLoop(time) {
                 if (!Number.isFinite(ratio)) ratio = 0;
                 hudStyle(sanityBar, 'width', hudPct(Math.max(0, ratio)));
                 
-                if (isBreakdown) { hudStyle(sanityBar, 'backgroundColor', 'var(--ui-red)'); hudStyle(sanityBar, 'boxShadow', '0 0 15px var(--ui-red)'); }
-                else if (ratio < 0.3) { hudStyle(sanityBar, 'backgroundColor', '#ffaa00'); hudStyle(sanityBar, 'boxShadow', '0 0 10px #ffaa00'); }
-                else { hudStyle(sanityBar, 'backgroundColor', 'var(--hud-green)'); hudStyle(sanityBar, 'boxShadow', '0 0 10px var(--hud-green)'); }
+                // Patch 150: the palette follows Colour-Blind Assist.
+                const sc = gameSettings.colorAssist ? SANITY_COLOURS.assist : SANITY_COLOURS.standard;
+                if (isBreakdown) { hudStyle(sanityBar, 'backgroundColor', sc.breakdown); hudStyle(sanityBar, 'boxShadow', `0 0 15px ${sc.breakdown}`); }
+                else if (ratio < 0.3) { hudStyle(sanityBar, 'backgroundColor', sc.low); hudStyle(sanityBar, 'boxShadow', `0 0 10px ${sc.low}`); }
+                else { hudStyle(sanityBar, 'backgroundColor', sc.ok); hudStyle(sanityBar, 'boxShadow', `0 0 10px ${sc.ok}`); }
 
                 // Patch 128 (V2 plan C7): the state in WORDS and a hatch pattern, not
                 // only the bar's colour. Thresholds are the colour thresholds above.

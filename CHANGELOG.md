@@ -2479,6 +2479,124 @@ small box... that if the player presses it, then it gets the large screen."
   subtitle, the session and end-of-session notes, the first ending → credits → AWAKEN,
   every page → the true ending → RECURSE into floor 6, a replay, the Guide's content note.
 
+### Phase F — mobile and accessibility (Patches 148+)
+
+**Patch 148 — aim assist (plan F1; the A56 playtest: "there's no auto aim on mobile").**
+
+- New pure `src/systems/AutoAim.js`. With assist on, the player's angle (the flashlight
+  and every weapon that reads it) turns to the nearest live, visible enemy within 520
+  px — skipping the dead, the burrowed and non-finite positions — keeping the current
+  target while it is within 1.25× the nearest's distance (no flicking between two),
+  and turning at most 0.2 rad a sim step (a half turn in ~0.3 s). With nothing in range
+  it follows the direction of travel; standing still, it holds.
+- **The right stick overrides it.** `InputManager.state.aimHeld` is true while the
+  right stick is held past its dead zone (cleared on release and in `hideJoysticks`);
+  assist yields to it and takes over again from wherever it was left. This frees the
+  right thumb for DASH.
+- Hooked in `Game.update` before the input snapshot, so it runs once per sim step at
+  any refresh rate. `game.autoAimOn` is set by `main.js` each frame from the new
+  setting **Aim Assist: AUTO (on for touch, off with a mouse) / ON / OFF**
+  (`gameSettings.aimAssist`, default `auto`, saved through the portal like the others).
+- The tutorial's ENGAGE line has an `assist` variant ("Your light turns to it by
+  itself…"), chosen when `state.autoAimOn` (published beside `inputMode`).
+- The dev hook gains `inputManager`.
+- New `test_input.js` (24 assertions) and `qa/aim_check.cjs` (a touch phone: assist on,
+  the light turns by itself, a held stick overrides, letting go hands it back; a mouse
+  desktop: AUTO leaves the mouse in charge, ON aims, the choice is saved).
+
+**Patch 149 — the double-tap dash and one place for vibration (plan F2, F6).**
+
+- **Double-tap to dash (F2; the CHANGELOG known issue "can't dash while aiming").** A
+  tap on the left half (shorter than 220 ms, travelling under 20 px) followed within
+  300 ms by a second touch within 80 px fires ONE dash; the second touch then steers as
+  usual. The dash goes along the last real heading (`InputManager.lastMoveAngle`,
+  recorded only past 25 px of pull so tap jitter never sets it), falling back to the
+  aim when there is none. A hold-and-release followed by a touch is steering, not a
+  dash. The decision is the pure `isDoubleTap` / `wasTap` in `Input.js`.
+  - Plumbing: `InputManager.state.dashPulse` + `dashAngle`; `Game.update` consumes the
+    pulse exactly once (even without a charge) and passes `dashAngle`, which the dash
+    uses when not moving. `hideJoysticks` clears both.
+  - Setting **Double-Tap to Dash (touch)**, default on.
+- **Haptics (F6).** New `src/core/Haptics.js`: `haptic(kind)` with named patterns, a
+  per-kind minimum gap (hits 350 ms, wind-ups 600 ms) so a crowd's hits cannot become
+  one long drone, the player's setting, and no throw where vibrate is missing or
+  throws. Every existing `navigator.vibrate` (level-up, synergy, chest/evolution, page,
+  room event) now goes through it, and three moments that had none now buzz:
+  - being hit (`Game.takeDamage` → `game.onHaptic('hit')`);
+  - a boss arriving (once per floor, `state.bossHapticDone`);
+  - a boss starting a wind-up — edge-triggered per boss (`ent.wasTelegraph`) from
+    `Haptics.bossTelegraphing` (the Sphere Head's and Panopticon's `charging`, the
+    Architect's `charging_collapse`, the Rorschach's `telegraphing`);
+  - a double-tap dash.
+  The sim only emits `onHaptic(kind)`; `main.js` forwards it, so Node tests stay free
+  of browser APIs. Setting **Vibration**, default on (a sample buzz when turned on).
+- `test_input.js` +20 (the tap rules, the throttle, off, no navigator, a throwing
+  vibrate, the telegraph states, the pulse dashing once along `dashAngle`, the hit /
+  arrival / single wind-up buzzes); `qa/aim_check.cjs` drives a real double-tap with
+  CDP touches (it dashes, along the last heading, with a buzz; a hold then a touch
+  does not).
+
+**Patch 150 — reduced-motion defaults, colour-blind assist, text size (plan F3, F4).**
+
+- **F3.** `prefers-reduced-motion: reduce` now sets the DEFAULTS: screen shake off and
+  photosensitivity mode on. A saved choice still wins (the saved settings are merged
+  over these defaults, as before). The title's `aggressive-glitch` is tamed for
+  everyone (about half the offset, a third of the skew) and stops entirely under
+  reduced motion or with photosensitivity on (`body.calm-motion`), as do the cold
+  open's pulsing hint and the story fade-ins.
+- **F4, Colour-Blind Assist** (`gameSettings.colorAssist`, default off):
+  - the Sanity bar reads blue → orange → pink in place of green → amber → red
+    (`SANITY_COLOURS`; low and breakdown keep Patch 128's hatching and text);
+  - every enemy winding up an attack gets a white dashed ring that pulses
+    (`Renderer.drawTelegraphRings`, after the lighting mask): bosses by
+    `Haptics.bossTelegraphing`, Hall Monitors by `attackState === 'telegraphing'`.
+    XP orbs were already blue-white and are unchanged.
+- **F4, Text Size** NORMAL / LARGE / LARGER (`gameSettings.textSize`): `html.text-large`
+  (112.5%) / `html.text-larger` (125%) scale everything in rem — menus, HUD, notices,
+  story — and `renderer.textScale` scales the canvas subtitles and boss lines.
+- `applyAccessibility()` (main.js) sets the classes and renderer flags; it runs at boot,
+  after the portal settings load, and on every change.
+- New `qa/access_check.cjs`: the OS reduced-motion defaults and the still title, the
+  usual defaults without it, a saved choice beating the OS across a reload, and on a
+  384 px phone the assist palette (blue, then orange), LARGER text (20 px root, ×1.25
+  canvas) with the HUD still on screen, both saved.
+- `qa/synergy_check.cjs`: up to 40 level-up rolls for the Static Receiver card (15
+  occasionally missed it by chance).
+
+**Patch 151 — iframe and phone layouts, and the Mind Palace frame rate (plan F5).**
+
+Measured at 960×540, 800×600, 1280×720, 1024×768 and on phones both ways up (384×717,
+360×640, 717×384, 915×412). What did not fit, and the fix:
+
+- **Title, short heights** (the Patch 83 known issue). Under 620 px tall and at least
+  600 px wide, the title shrinks with the viewport height, BEGIN DESCENT and RESUME sit
+  side by side, the secondary buttons wrap in a row below them, and the returning
+  player's Patient strip takes a full row. The screen scrolls rather than clips if it
+  still does not fit.
+- **DESCEND pane, under 680 px tall.** AUTHORIZE DESCENT sat below the fold on every
+  phone and at 800×600, in a pane that scrolls without saying so. There, the Patient
+  strip and AUTHORIZE come first (flex `order`) and the evaluation copy and Patient-level
+  bar follow; the folder header is thinner. No markup changed.
+- **Level-up on touch.** In phone landscape DASH sat on top of the right-hand card, and
+  a notice (synergy / codex / event) could cover the bottom of the cards. `onLevelUp`
+  now calls `inputManager.hideJoysticks()` and sets `body.levelup-open`, which hides
+  `#synergy-banner`; the pick removes the class and calls `revealTouchControls()`.
+  `startNewRun` also clears the class, so it can never carry into a run.
+- **Mind Palace fps** (the A56 report). `#clinical-folder-menu` and `.folder-header`
+  both had a `backdrop-filter` blur over the canvas, which repaints every frame, so the
+  blur was recomputed every frame — over the whole screen on a phone, where the folder
+  is full-screen. Both removed (the overlay goes from 0.7 to 0.78 opacity, the header
+  from 0.88 to 0.96), and `#pause-menu`'s blur(8px) with it, for the same reason. On top
+  of that, while the folder covers every pixel (`folderHidesCanvas`, re-measured at most
+  twice a second) the storm behind it is not drawn at all. Headless, 384×717 with a 4×
+  CPU throttle and the Mind Palace open: main-thread task time per 2 s went from 487 ms
+  to 50 ms. Desktop sizes still draw the storm around the folder.
+- New `qa/sizes_check.cjs`: at all eight sizes, title, DESCEND (AUTHORIZE, the Patient
+  strip, the tabs, opened from the hub desk), HUD, level-up cards and pause buttons are
+  fully on screen without scrolling; on touch DASH and the notice strip stay off the
+  cards and DASH comes back after the pick; on a phone no storm is drawn behind the
+  folder; no `backdrop-filter` remains on the folder, its header or the pause menu.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
