@@ -10,6 +10,7 @@ import { SynergyBanner } from './ui/SynergyBanner.js';
 import { EVOLUTIONS } from './systems/Evolutions.js';   // Patch 134
 import { PATIENTS, newlyAdmitted } from './data/Patients.js';   // Patch 136
 import { roomEventHud } from './systems/RoomEvents.js';   // Patch 138
+import { BUILD_ID } from './data/Build.js';   // Patch 159
 import { lockedWeapons } from './data/Unlocks.js';   // Patch 139
 import { ACHIEVEMENTS } from './data/Achievements.js';
 import { dailyKey, dailySetup, dailyScore } from './systems/Daily.js';   // Patch 140
@@ -249,7 +250,7 @@ function syncPortalContext() {
     portalCtx.tier = tier; portalCtx.errors = errCount;
     const errs = errorLog.getEntries();
 
-    const ctx = { screen: gameState, quality: tier, errors: errs.length };
+    const ctx = { build: BUILD_ID, screen: gameState, quality: tier, errors: errs.length };   // build: Patch 159
     if (st && gameState !== 'TITLE' && gameState !== 'MENU') {
         ctx.floor = floor;
         ctx.room = room;
@@ -1940,6 +1941,7 @@ function initEngine() {
                     <p class="typewriter-text" id="quality-note" style="color: #666; font-size: 0.9rem; margin-top: -15px;">AUTO lowers detail by itself if the game runs slowly.</p>
 
                     <button class="file-btn primary" id="btn-close-settings" style="margin-top: 20px;">APPLY & CLOSE</button>
+                    <p class="typewriter-text" id="settings-build" style="color: #888; font-size: 0.75rem; margin: 12px 0 0; text-align: center;">build ${BUILD_ID}</p>
                 </div>
             </div>
         `;

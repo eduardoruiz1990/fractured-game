@@ -50,6 +50,14 @@ export class Renderer {
         // Patch 120: per-effect switches for the playtest perf panel (src/dev/PerfOverlay.js).
         // Always all-true in shipped builds; nothing outside that panel writes them.
         this.diag = { fog: true, lights: true, vignette: true };
+        // Patch 157: the Mind Hub's layers, switchable by the playtest benchmark (a
+        // phone's GPU cost is invisible headless). The defaults are what ships:
+        //   floor   the baked floor + furniture image (HubWorld.draw)
+        //   light   the darkness mask;  tints  the flashlight tint, zone pools, beams
+        //   dust    the drifting motes
+        // Patch 158 removed 155's two losing variants (the ImageBitmap floor and the
+        // one-path dust) after the A56 measured them; see CHANGELOG 157-158.
+        this.hubDiag = { floor: true, light: true, tints: true, dust: true };
         
         // Camera zoom. 1.3 is the desktop look and the MAXIMUM — updateZoom() only
         // ever scales DOWN, on viewports too small to show a usable amount of world.
@@ -879,9 +887,11 @@ export class Renderer {
     }
 
     drawHubDust(state) {
-        // Patch 155: four fills (one per brightness band) instead of one per mote. Each
-        // mote's alpha is quantised to the band's midpoint; at <= 0.5 alpha on 1-3 px
-        // specks the difference is not visible, and 80 draw calls become 4.
+        // Each mote is a 1-3 px square, one fillRect each: the cheapest shape there is,
+        // and at this size and alpha it looks the same as a disc. Patch 155 batched the
+        // motes into one path of circles per band instead, and on the A56 that cost the
+        // hub ~20 ms a frame (Patch 157's benchmark): a many-circle path loses the GPU's
+        // simple-shape fast path. Brightness is quantised into 4 bands.
         const BANDS = 4;
         if (!this._dustBands) this._dustBands = Array.from({ length: BANDS }, () => []);
         const bands = this._dustBands;
@@ -904,13 +914,10 @@ export class Renderer {
             const list = bands[b];
             if (!list.length) continue;
             this.ctx.globalAlpha = ((b + 0.5) / BANDS) * 0.5;
-            this.ctx.beginPath();
             for (let i = 0; i < list.length; i++) {
                 const d = list[i];
-                this.ctx.moveTo(d.x + d.size, d.y);
-                this.ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+                this.ctx.fillRect(d.x - d.size, d.y - d.size, d.size * 2, d.size * 2);
             }
-            this.ctx.fill();
         }
         this.ctx.globalAlpha = 1.0;
     }
@@ -1003,9 +1010,17 @@ export class Renderer {
             if (gameState === 'HUB') {
                 if (state.hubWorld) {
                     
+                    const hd = this.hubDiag;
                     state.hubWorld.draw(this.ctx, state, this);
                     this.drawPlayer(state, audioEngine);
-                    
+
+                    let fl = state.player.weapons.flashlight;
+                    // CRITICAL FIX: Safe Fallbacks for non-finite values that crash Canvas API
+                    let flRadius = (fl && Number.isFinite(fl.radius) && fl.radius > 0) ? fl.radius : 250;
+                    let currentAngle = (fl && Number.isFinite(fl.angle)) ? fl.angle : 0.6;
+                    let jitter = (Math.random() - 0.5) * 0.02;
+
+                    if (hd.light) {
                     const hubLs = this.prepareLightCanvas();   // Patch 115
 
                     this.lightCtx.save();
@@ -1019,13 +1034,6 @@ export class Renderer {
                     this.lightCtx.fillRect(state.player.x - 2000, state.player.y - 2000, 4000, 4000);
 
                     this.lightCtx.globalCompositeOperation = 'destination-out';
-                    
-                    let fl = state.player.weapons.flashlight;
-                    
-                    // CRITICAL FIX: Safe Fallbacks for non-finite values that crash Canvas API
-                    let flRadius = (fl && Number.isFinite(fl.radius) && fl.radius > 0) ? fl.radius : 250;
-                    let currentAngle = (fl && Number.isFinite(fl.angle)) ? fl.angle : 0.6;
-                    let jitter = (Math.random() - 0.5) * 0.02;
 
                     let flGrad = this.lightCtx.createRadialGradient(
                         state.player.x, state.player.y, 0, 
@@ -1067,8 +1075,10 @@ export class Renderer {
                     this.ctx.globalCompositeOperation = 'source-over';
                     this.ctx.drawImage(this.lightCanvas, 0, 0, this.canvas.width, this.canvas.height);
                     this.ctx.restore();
+                    }   // hd.light
 
                     this.ctx.save();
+                    if (hd.tints) {
                     // Patch 155: 'lighter' (additive), not 'screen'. Both brighten; on a dark
                     // room at these alphas they look alike, but 'screen' is an advanced blend
                     // that many mobile GPUs can only do by first copying what is underneath —
@@ -1104,8 +1114,10 @@ export class Renderer {
                         });
                         this.ctx.globalAlpha = 1;
                     }
+                    this.ctx.globalCompositeOperation = 'source-over';
+                    }   // hd.tints
 
-                    this.drawHubDust(state);
+                    if (hd.dust) this.drawHubDust(state);
 
                     this.ctx.restore();
                     
@@ -1150,7 +1162,9 @@ export class Renderer {
                 }
                 
                 if (this.filmGrainEnabled !== false) this.drawFilmGrain();   // Patch 115: off on LOW
-            } else {
+            } else if (this.filmGrainEnabled !== false) {
+                // Patch 157: the hub honours the tier's film grain like gameplay does. It
+                // drew this full-screen pattern pass every frame even on LOW.
                 this.ctx.globalAlpha = 0.08; 
                 this.drawFilmGrain();
                 this.ctx.globalAlpha = 1.0;

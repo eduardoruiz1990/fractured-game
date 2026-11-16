@@ -159,30 +159,30 @@ export class HubWorld {
      * at 60. Re-baked whenever Game.init builds a new state (every hub entry), which is
      * when the trophy statues can have changed.
      */
-    draw(ctx, state) {
+    draw(ctx, state, renderer) {
         if (!this.baked || this.bakedFor !== state) this.bake(state);
-        ctx.drawImage(this.bakedBitmap || this.baked, -600, -600);
+        const hd = renderer && renderer.hubDiag;
+        // Patch 157/158: drawn from the canvas, never an ImageBitmap of it. On the A56
+        // (Patch 157's hub benchmark) the bitmap held the hub at 26 fps, and once one had
+        // been made the hub STAYED slow (28 fps) after going back to the canvas — the
+        // canvas it was read from had been moved to a slow path for good. Do not call
+        // createImageBitmap, getImageData or toDataURL on this canvas.
+        if (!hd || hd.floor !== false) ctx.drawImage(this.baked, -600, -600);
         if (this.activeZone) this.drawHighlight(ctx, this.activeZone);
     }
 
     bake(state) {
         this.bakedFor = state;
-        if (this.bakedBitmap && typeof this.bakedBitmap.close === 'function') this.bakedBitmap.close();
-        this.bakedBitmap = null;
-        const c = (this.baked && this.baked.width === 1200) ? this.baked : document.createElement('canvas');
-        c.width = 1200; c.height = 1200;   // also clears a reused canvas
+        // Patch 158: a new canvas every visit, never a reused one, so a canvas the
+        // browser has demoted to a slow path (see draw) is dropped at the next hub entry.
+        if (this.baked) { this.baked.width = 0; this.baked.height = 0; }   // free its memory now
+        const c = document.createElement('canvas');
+        c.width = 1200; c.height = 1200;
         const cx = c.getContext('2d');
         cx.drawImage(this.cachedFloor, 0, 0);
         cx.translate(600, 600);
         this.drawFurniture(cx, state);
         this.baked = c;
-        // An ImageBitmap is an immutable GPU-ready texture: uploaded once, never re-snapshotted.
-        if (typeof createImageBitmap === 'function') {
-            createImageBitmap(c).then(bm => {
-                if (this.baked === c && this.bakedFor === state && !this.bakedBitmap) this.bakedBitmap = bm;
-                else if (bm && bm.close) bm.close();
-            }).catch(() => {});
-        }
     }
 
     /**

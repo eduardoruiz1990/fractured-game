@@ -2770,6 +2770,137 @@ any tuning I built a way to measure it.
     clamp.
   - Every other suite, the 200-run fuzz and the soak are unchanged.
 
+**Patch 157 — the Mind Hub, round three: back off 155's two risky choices; a hub benchmark.**
+
+The A56 reported the hub at **26 fps after Patch 155**, down from ~45, with JS still
+0.8 ms a frame. 155 made the GPU's work worse. Two of its changes are known risks on
+an Android WebView, and both are now reverted to the safer form:
+
+- **The baked floor is drawn from its canvas, not an `ImageBitmap`.** A WebView can
+  keep an `ImageBitmap` made from a canvas in CPU memory. Drawing it then re-uploads
+  all 1200×1200×4 = 5.8 MB to the GPU every frame, where a canvas stays a GPU texture.
+  The bitmap is now made only if the benchmark asks for it (`HubWorld.requestBitmap`).
+- **Dust motes are 1–3 px squares again, one `fillRect` each** (`drawHubDust(state,
+  'rect')`). 155 batched them into one path of many circles per brightness band, which
+  loses the GPU's single-shape fast path.
+
+One more cost was found while reading the hub branch:
+
+- **Film grain in the hub ignored the tier.** It was a full-screen pattern pass every
+  frame, even on LOW. Gameplay has turned it off on LOW since Patch 115. The hub now
+  honours `filmGrainEnabled`.
+
+What stays from 155: the baked furniture, the sprite glows, and `'lighter'` in place of
+`'screen'`.
+
+The headless checks cannot measure GPU cost (Known issues), so this patch also adds a
+way for the phone to say which layer costs what:
+
+- **`Renderer.hubDiag`** `{ floor, bitmap, light, tints, dust }` switches each hub
+  layer. The defaults are what ships.
+- **Hub benchmark.** In the playtest build's perf panel, pressing RUN BENCHMARK in the
+  Mind Hub (about 1 minute, all on LOW) runs:
+  1. the default, twice;
+  2. each 155 choice put back alone (bitmap floor, path dust, film grain), plus all
+     three together;
+  3. each layer removed (floor image, darkness, tints and beams, dust);
+  4. everything off;
+  5. the default again.
+
+  It restores every switch afterwards and stops early if the player leaves the hub.
+  Pressed during a run, the button runs the gameplay benchmark as before.
+
+**Patch 158 — the Mind Hub: what the A56 hub benchmark said, acted on.**
+
+Patch 157's hub benchmark on the A56 (Android 10 WebView, 120 Hz, LOW), in order:
+
+| setup | fps |
+|---|---|
+| default 0–8 s, 8–16 s | **60, 60** |
+| as 155 (bitmap floor + path dust + grain) | 34 (js 9.3 ms: the bitmap being made) |
+| default + bitmap floor | 26 |
+| default + path dust | 26 |
+| default + film grain | 26 |
+| minus floor image | 41 |
+| minus darkness | 30 |
+| minus tints & beams | 46 |
+| minus dust | 26 |
+| everything off | 60 |
+| **default again** | **28** |
+
+Reading it:
+- **157 fixed the hub.** The shipped default ran at 60 fps for as long as it was measured.
+- **Making an `ImageBitmap` from the baked floor canvas broke the hub for the rest of
+  the visit.** Every row after it is slow, including the identical default, and the
+  floor image is the layer whose removal helps most (+15 fps).
+  - The likely mechanism is that Chrome demotes a canvas that has been read back to a
+    slow path, after which drawing it costs ~20 ms a frame.
+  - Shipped builds stopped making the bitmap in 157. Only the benchmark row could.
+
+Changes:
+- **`HubWorld`:** `requestBitmap` and every `ImageBitmap` path are deleted.
+- **`HubWorld.bake`** makes a *new* canvas on every hub entry and zeroes the old one, so
+  a demoted canvas can never outlive a visit.
+- **`Renderer.hubDiag`** loses its `bitmap` switch and its `'path'` dust mode;
+  `drawHubDust` draws one `fillRect` per mote only.
+- **Hub benchmark v2:**
+  - It holds the default for 60 s in 10 s windows, because sustained fps is what
+    matters on a phone that has throttled before (Patch 122).
+  - Then come the single-layer rows, everything off, default + film grain, and the
+    default again.
+  - The 155 variants are gone, so the benchmark can no longer poison its own rows.
+- **Keep clause 51** and **QA_CHECKLIST** §5 are updated.
+
+**Patch 159 — release candidate 2.0.0: build id, screen-text check, packaging, submission sheet.**
+
+V2_PLAN phases A–G and the difficulty pass are done. This is the release set: the
+automatable parts of `QA_CHECKLIST.md` §0, §7 and §8.
+
+- **Version and build id.**
+  - `package.json` is now `2.0.0`.
+  - `vite.config.js` defines `__FRACTURED_BUILD__` = version-mode-commit, with `+dirty`
+    when the tree has uncommitted changes. `src/data/Build.js` exports it as `BUILD_ID`,
+    which reads `'dev'` outside Vite, so the Node suites are unaffected.
+  - It is sent as `build` in the portal feedback context (`syncPortalContext`), so a
+    player report names the exact upload. This is the "build id" the B11 decision
+    called for. `qa/context_check.cjs` asserts it.
+  - It is shown in small type at the bottom of Settings (`#settings-build`).
+- **New `qa/text_check.cjs`** (QA §7). It walks every screen a player reaches:
+  - title, Settings and the hub;
+  - every folder group and sub-pane (9);
+  - a run's HUD, the level-up cards, pause and the death screen;
+  - every card of the ending, the credits and the choice.
+
+  It fails on:
+  - placeholder words;
+  - `undefined`, `NaN`, `null`, `[object …]` or `Infinity`;
+  - lowercase snake_case raw ids;
+  - an email address anywhere;
+  - credits other than the generic team line.
+
+  It scanned 22 screens clean. The detectors were checked against planted bad
+  strings.
+- **New `npm run package`** (`scripts/package_release.cjs`):
+  1. Refuses a dirty tree unless given `--allow-dirty`.
+  2. Builds the CrazyGames bundle.
+  3. Fails if the SDK tag is missing, if the dev hook or perf overlay leaked in
+     (Keep clause 41), on source maps, or on unsafe file names.
+  4. Zips the contents of `dist/` to `release/fractured-<build id>.zip` (git-ignored)
+     and prints the sizes: 23 files, 533 KB of code, 4.1 MB in all, mostly audio
+     streamed after the loading window.
+- **New `SUBMISSION.md`**: the developer-portal form text, written from the build:
+  - title, short and long description, keyboard and touch controls;
+  - suggested category and tags, and content and age-rating notes;
+  - a resubmission note to the CrazyGames team on what v2 changed against v1's
+    metrics.
+
+  Its counts were read from the data files: 12 weapons, 14 synergies, 12 evolutions,
+  6 enemies and 5 bosses, 31 Synapse nodes, 16 tokens, 4 Patients, 7 Intrusive
+  Thoughts, 37 achievements and 25 Case File pages. The controls were checked against
+  `Input.js` and `main.js`.
+- `QA_CHECKLIST.md` §0, §7 and §8, `qa/README.md` and `CLAUDE.md` (commands,
+  releasing) are updated.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -3023,6 +3154,12 @@ any tuning I built a way to measure it.
 50. **Run `node qa/smoke_check.cjs` before every upload (Patch 153).** It is the only
     check that exercises the shipped bundle — the SDK tag, the absence of the dev hook,
     the real asset paths — rather than the dev server.
+51. **Never read back a canvas that is drawn every frame, or that is the source of an
+    every-frame `drawImage`: no `createImageBitmap`, `getImageData` or `toDataURL` on
+    it (Patch 158).** On the A56, one `createImageBitmap` of the hub's baked floor held
+    the Mind Hub at 26–28 fps for the rest of the visit, against 60 before. The
+    browser demotes a read-back canvas to a slow path, and nothing in JS says so. If
+    pixels are needed, read them from a separate scratch canvas made for that.
 
 ---
 
@@ -3055,8 +3192,8 @@ any tuning I built a way to measure it.
 - **GPU cost is invisible to the headless checks.** Headless Chromium rasterises the
   canvas in software and composites without a GPU, so a compositor-bound slowdown (the
   Mind Hub, Patch 152; the folder blur, Patch 151) shows up only on a device. The
-  playtest bundle's perf overlay report is the measurement; the Mind Hub fix awaits a
-  device report.
+  playtest bundle's perf overlay report is the measurement. Its hub benchmark (Patch
+  157) confirmed the Mind Hub at 60 fps on the A56 (Patch 158).
 - **The canvas renders at CSS-pixel resolution, ignoring DPR.** Deliberate — it is a
   large performance saving on phones — but it means the image is upscaled by the
   compositor. Patch 67 made that upscale smooth; it did not make it sharp. If this is

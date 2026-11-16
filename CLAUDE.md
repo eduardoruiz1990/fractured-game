@@ -15,7 +15,10 @@ npm run build            # production build to dist/ — the CrazyGames target (
 npm run build:itch       # production build without the SDK tag (itch.io / self-hosted)
 npm run build:playtest   # itch-style build + on-screen PERF panel/benchmark for real-device testing (Patch 120)
 npm run preview          # preview the production build
+npm run package          # Patch 159: build + check the CrazyGames bundle, zip it to release/fractured-<build id>.zip (needs a clean tree)
 ```
+
+**Releasing:** the version is `package.json`'s; the build id (`src/data/Build.js`, set by `vite.config.js`: version-mode-commit, `+dirty` for uncommitted builds) is shown in Settings and sent in the portal feedback context. The upload flow is `QA_CHECKLIST.md` §0 → `npm run package` → upload → the rest of the checklist; the form text is `SUBMISSION.md`.
 
 The SDK `<script>` is injected by `vite.config.js` per Vite mode (Patch 102) — never add
 it to `index.html` by hand. **The v2 resubmission roadmap is `V2_PLAN.md`** (phases A–G,
@@ -43,7 +46,7 @@ There is no test runner configured (no `test` script, no framework installed). T
 
 **Balance:** `node sim_difficulty.js` (Patch 156) plays whole runs headless with a scripted player and reports Sanity lows, damage and deaths per floor (`--detail`, `--sources`, `--ttk`; `--pressure '{"3":{"hp":1.6}}'` tries a row of `src/data/Difficulty.js` without editing it). It measures, it doesn't assert; run it before and after any change to enemy stats, spawning, healing or that table. Add `test_content.js` to the table above for `Difficulty.js`.
 
-**Browser checks (`qa/`, V2):** Playwright scripts that drive the real game against the dev server (`npx vite --port 5199 --strictPort`). They cover ads against an SDK mock, dialogs, focus and keys, the sprite cache, render recovery, high refresh, the portal context, and a perf soak (`qa/soak_check.cjs`) that fails on invariant breaks. See `qa/README.md`. Run the relevant ones after touching `main.js` flows, `PortalSDK`, `Renderer` caching or Director caps. Keep clauses 36–50 in `CHANGELOG.md` cover the V2 guards. `qa/smoke_check.cjs` is the one browser check that needs no dev server: it builds the CrazyGames and playtest bundles, serves them with `vite preview` and plays them with no dev hook — run it before every upload.
+**Browser checks (`qa/`, V2):** Playwright scripts that drive the real game against the dev server (`npx vite --port 5199 --strictPort`). They cover ads against an SDK mock, dialogs, focus and keys, the sprite cache, render recovery, high refresh, the portal context, and a perf soak (`qa/soak_check.cjs`) that fails on invariant breaks. See `qa/README.md`. Run the relevant ones after touching `main.js` flows, `PortalSDK`, `Renderer` caching or Director caps. Keep clauses 36–51 in `CHANGELOG.md` cover the V2 guards. `qa/smoke_check.cjs` is the one browser check that needs no dev server: it builds the CrazyGames and playtest bundles, serves them with `vite preview` and plays them with no dev hook — run it before every upload.
 
 Anything *visual* cannot be covered by these — `Renderer` needs a real canvas. Use the in-game **VISUAL TEST BENCH** instead: press `0` at the title/hub to reveal the dev panel (now also visible during `PLAYING`), then use SPAWN ONE OF EACH ENEMY / SPAWN ALL 5 BOSSES, FREEZE ENEMY AI (sets `state.devFreezeEntities`, which halts `entity.update()` and further spawning in `Game.processGameLogic()` while rendering keeps animating), and the scenario dropdown (IDLE / TELEGRAPH / ATTACK / HIT FLASH) to pin every entity into a state that would otherwise tick past in well under a second. `patch_game.cjs` is a one-off migration script (regex-based source patcher), not part of any workflow — don't run it against current source without reading it first, it assumes an older shape of `Game.js`.
 
@@ -58,9 +61,9 @@ invisible on a dev machine and only appear on a real player's device, so the dif
 alone does not explain them. Its **Keep clauses** and **Known issues** sections are
 the parts most likely to be broken by accident; read them before touching storage,
 the save schema, the run-launch path, enemy movement, the tutorial, or anything that
-reads canvas dimensions. Clauses 36–50 are the v2 ones: performance guards, per-frame
+reads canvas dimensions. Clauses 36–51 are the v2 ones: performance guards, per-frame
 DOM writes, no `backdrop-filter` over the canvas, the level-up overlay rule, haptics,
-aim assist and the SDK loading-window budget.
+aim assist, the SDK loading-window budget, and never reading back a canvas that is drawn every frame.
 
 **Before an upload** run `node qa/smoke_check.cjs` (it builds and plays the shipped
 bundles) and work through `QA_CHECKLIST.md` in the CrazyGames developer-portal preview.
