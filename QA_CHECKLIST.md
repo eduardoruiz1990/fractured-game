@@ -79,5 +79,7 @@ Use `npm run build:playtest`; open the perf overlay and RUN BENCHMARK, or copy a
 ## 8. Submission form
 
 - [ ] Title, description, controls text (keyboard + touch), and tags match the build — paste from `SUBMISSION.md`, re-checking its counts.
-- [ ] Thumbnail/cover art is current and gore-free.
+- [ ] Cover art is current and gore-free. Upload all three covers from `marketing/covers/`. The title is the only text on them.
+  - Look at them as small tiles in the portal; cover click-through rate is a Basic Launch metric from 23 Nov 2026.
+- [ ] Both preview videos from `marketing/videos/` are uploaded and open on the cover. If the art changed since Patch 160, rebuild them (`marketing/README.md`).
 - [ ] "Mobile friendly" ticked only if section 4's phone runs all passed.

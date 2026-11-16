@@ -18,7 +18,7 @@ npm run preview          # preview the production build
 npm run package          # Patch 159: build + check the CrazyGames bundle, zip it to release/fractured-<build id>.zip (needs a clean tree)
 ```
 
-**Releasing:** the version is `package.json`'s; the build id (`src/data/Build.js`, set by `vite.config.js`: version-mode-commit, `+dirty` for uncommitted builds) is shown in Settings and sent in the portal feedback context. The upload flow is `QA_CHECKLIST.md` §0 → `npm run package` → upload → the rest of the checklist; the form text is `SUBMISSION.md`.
+**Releasing:** the version is `package.json`'s; the build id (`src/data/Build.js`, set by `vite.config.js`: version-mode-commit, `+dirty` for uncommitted builds) is shown in Settings and sent in the portal feedback context. The upload flow is `QA_CHECKLIST.md` §0 → `npm run package` → upload → the rest of the checklist; the form text is `SUBMISSION.md`. The covers, preview videos and logo are in `marketing/` (Patch 160), made from engine renders by `marketing/tools/`. `marketing/README.md` explains how to rebuild them after the art changes.
 
 The SDK `<script>` is injected by `vite.config.js` per Vite mode (Patch 102) — never add
 it to `index.html` by hand. **The v2 resubmission roadmap is `V2_PLAN.md`** (phases A–G,
