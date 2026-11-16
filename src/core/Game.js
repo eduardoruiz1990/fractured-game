@@ -218,6 +218,7 @@ export class Game {
             // Patch 137 (V2 plan D5): the room's shape (see systems/Arena.js).
             obstacles: [], arenaLayout: null, arenaOrigin: null, spawnSectors: null,
             arenaRise: 0, arenaFade: 0, arenaShiftTimer: 0,
+            roomEvent: null, powerOut: 0, lockdown: 0,   // Patch 138 (systems/RoomEvents.js)
             bossSpawned: false,
             activeBoss: null,
             // Patch 93: read back from the carry (see getCarriedState) so a run that

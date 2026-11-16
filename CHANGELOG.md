@@ -2198,6 +2198,37 @@ player when a combat room starts and lowered when it is cleared:
   Blueprint's shift and its never-on-the-player rise, and the Director/Game seams).
   `qa/arena_check.cjs` draws all five in game.
 
+**Patch 138 — room events: Power Outage, Lockdown, Session Bell (D5, second half).**
+
+A room that changes its rules partway through (`src/systems/RoomEvents.js`):
+
+| Event | When | What happens | The answer / the reward |
+|---|---|---|---|
+| POWER OUTAGE | 40% of the budget spent | Up to 15 s with no ambient light and the beam at 80%. A breaker box appears 320 px away (toward the arena centre, out of any wall), blinking through the dark with a pointer. | Hold the flashlight on it for a second: the power comes back, and the box's repelling, damaging field (the `BREAKER_BOX` interactable, dormant since the early patches) holds for 7.5 s. The Insomniac keeps their ambient light. |
+| LOCKDOWN (floor 2+) | at once | "The doors seal": 1.5 s of warning, then 30 s in which the arrivals never run out (the budget is held at ≥ 4). | Survive. When it lifts, the rest of the crowd dissolves (released to its pool, no XP), a named elite stays, and a chest drops at the player's feet. |
+| SESSION BELL | half the budget spent | A wave of `4 + floor` (max 10) arrives at once through the room's spawn sectors, the floor's own new enemy included, led by a named elite (its chest). The wave does not spend the budget and respects the live-entity cap. | Area damage, and kill the named one. |
+
+- **When:** only in rooms where no room modifier (ELITE/BLACKOUT/SWARM/HAZARD) was
+  rolled, so the systems never stack and the modifier distribution is unchanged; then
+  at `EVENT_CHANCE` 0.5 (about 20% of rooms). Never in the tutorial, a boss room, or the
+  first two rooms of floor 1; LOCKDOWN only from floor 2.
+- **Wiring:** `armRoomEvent` at the end of `Director.spawnRoom`, `tickRoomEvent` in
+  `spawnWave` before spawning (not during a boss fight), `endRoomEvent` on the clear
+  (an unpowered breaker is removed, the outage ends). State: `state.roomEvent`,
+  `state.powerOut`, `state.lockdown` (defaults in `Game.init`).
+- **Telling the player:** each start and end gets the stamped notice card (`ROOM EVENT`,
+  red tone, through the same queue as synergies and chests, via `game.onRoomEvent`),
+  and the HUD's NIGHTMARES LEFT line says what to do instead ("LOCKDOWN · SURVIVE 23s",
+  "POWER OUT · FIND THE BREAKER").
+- **Test fix:** the Patch 135 floor-table test in `test_content.js` was flaky (about 1
+  run in 4): a SWARM room forces every spawn to SCAVENGER. It now pins the modifier and
+  event off.
+- Tests: `test_arena.js` now also covers the events (107 assertions): eligibility, the
+  floor-1 pool, the outage powered through Combat's real breaker logic, an ignored
+  outage ending on its own, the lockdown's top-up, its lift (crowd released, elite
+  kept, no XP, chest), the bell's wave and elite, and spawnRoom's wiring.
+  `qa/events_check.cjs` runs all three in game at phone size.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

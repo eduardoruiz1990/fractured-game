@@ -16,6 +16,7 @@ import { Burrower } from '../entities/Burrower.js';
 import { errorLog } from '../core/ErrorLog.js';
 import { eliteChanceForRoom, promoteToElite } from './Elites.js';   // Patch 133
 import { layoutForRoom, raiseArena, lowerArena, arenaSolid, resolveObstacles, spawnAngle, ARENA_LAYOUTS } from './Arena.js';   // Patch 137
+import { eventForRoom, armRoomEvent, tickRoomEvent, endRoomEvent } from './RoomEvents.js';   // Patch 138
 // The spawn clamp is derived from the arena's void radius rather than repeated as a
 // literal — see the note on ARENA_VOID_RADIUS in Config.js for why the two must agree.
 import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE, isBossType, ROOM_PACE } from '../data/Config.js';
@@ -136,6 +137,7 @@ export class Director {
         if (floor === 1 && roomNumber === 1 && this.game.saveManager && !this.game.saveManager.metaState.tutorialCompleted) {
             state.isTutorial = true;
             raiseArena(state, null);   // Patch 137: the tutorial room is always open
+            armRoomEvent(state, null);  // Patch 138: and has no event
             state.enemyBudget = 1;
             state.stress = 0;
             state.budgetTimer = 0;
@@ -186,6 +188,9 @@ export class Director {
         state.eliteSpawned = false;
         state.eliteAt = Math.random() < eliteChanceForRoom(floor, roomNumber, isBossRoom, false)
             ? Math.floor(state.enemyBudget * 0.5) : -1;
+
+        // Patch 138 (V2 plan D5): a room event, only where no modifier was rolled.
+        armRoomEvent(state, eventForRoom(floor, roomNumber, { isBossRoom, hasModifier: !!state.roomModifier }));
 
         if (roomNumber >= state.maxRoomsPerFloor && !state.bossSpawned) {
             state.enemyBudget = 0;
@@ -347,6 +352,9 @@ export class Director {
             this.spawnRoom(state.floor, state.roomNumber);
         }
 
+        // Patch 138: the room's event (triggers on budget spent; LOCKDOWN tops it up).
+        if (!bossAlive && !state.isTutorial && state.roomEvent) tickRoomEvent(this.game);
+
         // HAZARD room modifier: environmental ink puddles independent of the
         // spilled_ink weapon, ticking on its own timer so it keeps firing even
         // after enemyBudget is spent, until the room itself clears.
@@ -483,6 +491,7 @@ export class Director {
             state.combatActive = false;
             state.roomCleared = true;
             lowerArena(state);   // Patch 137: the walls sink before the doors appear
+            endRoomEvent(state); // Patch 138
             this.spawnRewardDoors();
         }
     }

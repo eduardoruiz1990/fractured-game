@@ -200,5 +200,150 @@ for (const id of Object.keys(ARENA_LAYOUTS)) {
     ok(s.arenaLayout === null && s.obstacles.length === 0, 'the boss room is open');
 }
 
+// ============================================================================
+// Patch 138: room events.
+// ============================================================================
+{
+    const RE = await import('./src/systems/RoomEvents.js');
+    const { ROOM_EVENTS, eventForRoom, armRoomEvent, tickRoomEvent, endRoomEvent, roomEventHud,
+            OUTAGE_STEPS, LOCKDOWN_STEPS, LOCKDOWN_WARN_STEPS, bellWaveSize, EVENT_CHANCE } = RE;
+    ok(eventForRoom(3, 2, { isTutorial: true, rng: () => 0 }) === null, 'events: never in the tutorial');
+    ok(eventForRoom(3, 5, { isBossRoom: true, rng: () => 0 }) === null, 'events: never in a boss room');
+    ok(eventForRoom(3, 2, { hasModifier: true, rng: () => 0 }) === null, 'events: never with a room modifier');
+    ok(eventForRoom(1, 2, { rng: () => 0 }) === null, 'events: not in the first two rooms of floor 1');
+    ok(eventForRoom(3, 2, { rng: () => EVENT_CHANCE + 0.01 }) === null, 'events: past EVENT_CHANCE, none');
+    const f1 = new Set(), f2 = new Set();
+    for (let i = 0; i < 40; i++) {
+        const v = i / 40 * EVENT_CHANCE;
+        let k = 0; const seq = [0, (i % 20) / 20];
+        f1.add(eventForRoom(1, 3, { rng: () => seq[k++ % 2] }));
+        k = 0; f2.add(eventForRoom(2, 2, { rng: () => seq[k++ % 2] }));
+    }
+    ok(!f1.has('LOCKDOWN') && f1.has('POWER_OUTAGE') && f1.has('SESSION_BELL'), `floor 1: outage and bell, no lockdown (${[...f1]})`);
+    ok(f2.has('LOCKDOWN') && f2.size === 3, `floor 2: all three (${[...f2]})`);
+
+    const { Game } = await import('./src/core/Game.js');
+    const meta = { upgrades: { hp: 0, speed: 0, light: 0, magnet: 0 }, killCounts: {}, inventory: [], equippedTokens: {},
+                   selectedCurses: [], maxFloorReached: 1, tutorialCompleted: true };
+    const mk = (floor) => {
+        const g = new Game();
+        g.init({ metaState: meta, saveGame: () => {} });
+        const s = g.state;
+        s.floor = floor; s.roomNumber = 2; s.stress = 1;
+        s.mapOriginX = 0; s.mapOriginY = 0; s.player.x = 0; s.player.y = 0;
+        s.viewHalfW = 400; s.viewHalfH = 300; s.viewZoom = 1;
+        g.director.lastViewW = 800; g.director.lastViewH = 600;
+        g.events = [];
+        g.onRoomEvent = (e) => g.events.push(e);
+        return g;
+    };
+
+    // --- POWER OUTAGE ----------------------------------------------------------
+    {
+        const g = mk(3), s = g.state;
+        s.enemyBudget = 20;
+        armRoomEvent(s, 'POWER_OUTAGE');
+        ok(s.roomEvent.trigger === 12 && s.powerOut === 0, 'outage armed: triggers at 60% budget');
+        tickRoomEvent(g);
+        ok(s.roomEvent.phase === 'pending', 'outage: not before the trigger');
+        s.enemyBudget = 12;
+        tickRoomEvent(g);
+        const box = s.interactables.find(o => o.type === 'BREAKER_BOX');
+        ok(s.powerOut === OUTAGE_STEPS && box && !box.active && box.roomEvent, 'outage: lights out, a breaker box appears');
+        ok(box && Math.abs(Math.hypot(box.x, box.y) - 320) < 1 && Math.hypot(box.x, box.y) < 1550, `the breaker is 320px away, inside the arena`);
+        ok(g.events.length === 1 && g.events[0].name === 'POWER OUTAGE', 'outage announced');
+        ok(roomEventHud(s) === 'POWER OUT · FIND THE BREAKER', 'outage HUD line');
+        // Charge it the real way: aim the flashlight at it through Combat.
+        const { Combat } = await import('./src/systems/Combat.js');
+        s.player.angle = Math.atan2(box.y - s.player.y, box.x - s.player.x);
+        s.player.weapons.flashlight.radius = 400;
+        for (let i = 0; i < 70; i++) Combat.resolveWeapons(g);
+        ok(box.active, 'holding the light on the breaker powers it');
+        tickRoomEvent(g);
+        ok(s.powerOut === 0 && s.roomEvent.phase === 'done' && s.roomEvent.restored, 'power restored ends the outage');
+        ok(g.events[1] && g.events[1].name === 'POWER RESTORED' && g.events[1].end, 'restoration announced');
+        ok(roomEventHud(s) === null, 'no HUD line after');
+    }
+    {
+        const g = mk(3), s = g.state;
+        s.enemyBudget = 10;
+        armRoomEvent(s, 'POWER_OUTAGE');
+        s.enemyBudget = 0;
+        tickRoomEvent(g);
+        for (let i = 0; i < OUTAGE_STEPS + 2; i++) tickRoomEvent(g);
+        const box = s.interactables.find(o => o.type === 'BREAKER_BOX');
+        ok(s.powerOut === 0 && s.roomEvent.phase === 'done' && box.dead, 'an ignored outage ends on its own, and its box goes');
+    }
+    {
+        const g = mk(3), s = g.state;
+        s.enemyBudget = 10;
+        armRoomEvent(s, 'POWER_OUTAGE');
+        s.enemyBudget = 0;
+        tickRoomEvent(g);
+        endRoomEvent(s);
+        ok(s.powerOut === 0 && s.interactables.find(o => o.type === 'BREAKER_BOX').dead, 'the room clearing ends an outage');
+    }
+
+    // --- LOCKDOWN ----------------------------------------------------------------
+    {
+        const g = mk(3), s = g.state;
+        s.enemyBudget = 30;
+        armRoomEvent(s, 'LOCKDOWN');
+        tickRoomEvent(g);
+        ok(s.roomEvent.phase === 'warn' && s.lockdown > LOCKDOWN_STEPS, 'lockdown: starts at once, with a warning');
+        ok(/^LOCKDOWN · SURVIVE \d+s$/.test(roomEventHud(s)), `lockdown HUD: ${roomEventHud(s)}`);
+        for (let i = 0; i < LOCKDOWN_WARN_STEPS; i++) tickRoomEvent(g);
+        ok(s.roomEvent.phase === 'active', 'then holds');
+        s.enemyBudget = 0;
+        tickRoomEvent(g);
+        ok(s.enemyBudget >= 4, 'arrivals never run out while it holds');
+        const a = g.director.spawnEntity('SCAVENGER', 800, 600);
+        const b = g.director.spawnEntity('PREDATOR', 800, 600);
+        const e = g.director.spawnEntity('SCAVENGER', 800, 600);
+        e.elite = true;
+        const poolFree = g.director.pools.scavenger.pool ? g.director.pools.scavenger.pool.length : null;
+        const xp0 = s.xpDrops.length;
+        for (let i = 0; i < LOCKDOWN_STEPS + 5; i++) tickRoomEvent(g);
+        ok(s.roomEvent.phase === 'done' && s.lockdown === 0 && s.enemyBudget === 0, 'lockdown lifts after 30 s');
+        ok(s.entities.length === 1 && s.entities[0] === e, 'the crowd dissolves, the named elite stays');
+        ok(!a.active && !b.active && s.xpDrops.length === xp0, 'dissolved without XP, released');
+        if (poolFree !== null) ok(g.director.pools.scavenger.pool.length === poolFree + 1, 'the scavenger went back to its pool');
+        ok(s.interactables.some(o => o.type === 'CHEST'), 'a chest is left for the player');
+        ok(g.events.some(x => x.name === 'LOCKDOWN LIFTED'), 'the lift is announced');
+    }
+
+    // --- SESSION BELL --------------------------------------------------------------
+    {
+        const g = mk(3), s = g.state;
+        s.enemyBudget = 20;
+        armRoomEvent(s, 'SESSION_BELL');
+        ok(s.roomEvent.trigger === 10, 'bell armed at half budget');
+        s.enemyBudget = 10;
+        const n0 = s.entities.length;
+        tickRoomEvent(g);
+        const n = s.entities.length - n0;
+        ok(n === bellWaveSize(3) && bellWaveSize(3) === 7, `the bell brings a wave of ${n}`);
+        ok(s.entities.filter(x => x.elite).length === 1 && s.eliteSpawned, 'led by one named elite');
+        ok(s.enemyBudget === 10, 'the wave does not spend the budget');
+        ok(s.entities.some(x => x.type === 'WARDEN'), "floor 3's bell includes the Fire Warden");
+        ok(g.events[0] && g.events[0].name === 'SESSION BELL', 'announced');
+        ok(bellWaveSize(40) === 10, 'the wave is capped');
+    }
+
+    // --- Director wiring ------------------------------------------------------------
+    {
+        const g = mk(3), s = g.state;
+        const real = Math.random;
+        Math.random = () => 0.05;
+        g.director.spawnRoom(3, 2);
+        Math.random = real;
+        ok(s.roomModifier === null && s.roomEvent && s.roomEvent.id === 'POWER_OUTAGE', `spawnRoom arms an event in an unmodified room (${s.roomEvent && s.roomEvent.id})`);
+        Math.random = () => 0.5;   // modifier roll 0.5 -> ELITE
+        g.director.spawnRoom(3, 3);
+        Math.random = real;
+        ok(s.roomModifier === 'ELITE' && s.roomEvent === null, 'a modified room has no event');
+    }
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

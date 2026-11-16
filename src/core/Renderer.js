@@ -1382,6 +1382,16 @@ export class Renderer {
                     this.lightCtx.beginPath();
                     this.lightCtx.arc(obj.x, obj.y, 120, 0, Math.PI * 2);
                     this.lightCtx.fill();
+                } else if (obj.type === 'BREAKER_BOX' && obj.roomEvent) {
+                    // Patch 138: the outage's breaker blinks through the dark, so it can be found.
+                    const blink = 0.35 + 0.3 * (Math.sin(this.renderFrame * 0.3) * 0.5 + 0.5);
+                    const bHole = this.lightCtx.createRadialGradient(obj.x, obj.y, 0, obj.x, obj.y, 80);
+                    bHole.addColorStop(0, `rgba(255, 255, 160, ${blink})`);
+                    bHole.addColorStop(1, 'rgba(255, 255, 160, 0)');
+                    this.lightCtx.fillStyle = bHole;
+                    this.lightCtx.beginPath();
+                    this.lightCtx.arc(obj.x, obj.y, 80, 0, Math.PI * 2);
+                    this.lightCtx.fill();
                 } else if (obj.type === 'CHEST') {
                     // Patch 133: a chest is lit, so it is never lost in the dark.
                     const chestHole = this.lightCtx.createRadialGradient(obj.x, obj.y, 0, obj.x, obj.y, 110);
@@ -1436,6 +1446,13 @@ export class Renderer {
 
         if (state.roomCleared) {
             ambientRad = 3000;
+        }
+
+        // Patch 138: a Power Outage takes the ambient light and shortens the beam.
+        // The Insomniac (blackoutImmune) keeps their ambient light.
+        if (state.powerOut > 0 && !state.roomCleared) {
+            if (!state.player.blackoutImmune) ambientRad = 0;
+            flRadius *= 0.8;
         }
 
         if (ambientRad > 0) {
@@ -2029,7 +2046,8 @@ export class Renderer {
     drawObjectivePointers(state) {
         if (state.interactables) {
             state.interactables.forEach(obj => {
-                if (obj.type === 'OBJECTIVE_BACKPACK' || obj.type === 'EXIT_ELEVATOR' || obj.type === 'ROOM_DOOR' || (obj.type === 'CHEST' && !obj.opening)) {
+                if (obj.type === 'OBJECTIVE_BACKPACK' || obj.type === 'EXIT_ELEVATOR' || obj.type === 'ROOM_DOOR' || (obj.type === 'CHEST' && !obj.opening)
+                    || (obj.type === 'BREAKER_BOX' && obj.roomEvent && !obj.active)) {   // Patch 138
                     let dx = obj.x - state.player.x;
                     let dy = obj.y - state.player.y;
                     let dist = Math.hypot(dx, dy);
@@ -2064,6 +2082,14 @@ export class Renderer {
                             this.ctx.fillStyle = `rgba(200, 200, 255, ${0.4 + pulse * 0.6})`;
                             this.ctx.beginPath();
                             this.ctx.moveTo(20, 0); this.ctx.lineTo(-15, 15); this.ctx.lineTo(-10, 0); this.ctx.lineTo(-15, -15);
+                            this.ctx.closePath();
+                            this.ctx.fill();
+                        } else if (obj.type === 'BREAKER_BOX') {
+                            // Patch 138: the Power Outage's breaker, pulsing like a failing bulb.
+                            let pulse = Math.sin(this.renderFrame * 0.3) * 0.5 + 0.5;
+                            this.ctx.fillStyle = `rgba(255, 255, 160, ${0.45 + pulse * 0.55})`;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(18, 0); this.ctx.lineTo(-12, 12); this.ctx.lineTo(-8, 0); this.ctx.lineTo(-12, -12);
                             this.ctx.closePath();
                             this.ctx.fill();
                         } else if (obj.type === 'CHEST') {

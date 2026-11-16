@@ -744,6 +744,9 @@ console.log('\nPhase D enemies (Patch 135)');
     // Floor tables: nothing new on floor 1; the Photocopy on 2; all three by 4.
     const seen = (floor) => {
         const gg = fresh(); gg.state.floor = floor; gg.director.spawnRoom(floor, 2);
+        // The floor's own table: a SWARM room (15%) forces every spawn to SCAVENGER, and
+        // a room event would change the budget, so both are pinned off here.
+        gg.state.roomModifier = null; gg.state.roomEvent = null;
         gg.director.hasRoomForEnemy = () => true;
         const types = new Set();
         for (let i = 0; i < 1500; i++) {

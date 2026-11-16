@@ -9,6 +9,7 @@ import { LevelUpUI } from './ui/LevelUpUI.js';
 import { SynergyBanner } from './ui/SynergyBanner.js';
 import { EVOLUTIONS } from './systems/Evolutions.js';   // Patch 134
 import { PATIENTS, newlyAdmitted } from './data/Patients.js';   // Patch 136
+import { roomEventHud } from './systems/RoomEvents.js';   // Patch 138
 import { screenFlash } from './ui/Juice.js';
 import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies, ENEMY_BESTIARY } from './data/Manifestations.js';
 import { portalSDK } from './systems/PortalSDK.js';
@@ -2670,6 +2671,19 @@ function initEngine() {
         try { if (navigator.vibrate) navigator.vibrate(evo ? [40, 40, 120] : [30, 30, 60]); } catch (e) {}
     };
 
+    // Patch 138 (V2 plan D5): a room event starting (or ending) gets the stamped card.
+    game.onRoomEvent = (ev) => {
+        if (!ev) return;
+        synergyBanner.pushNotice({
+            stamp: ev.end ? 'ROOM EVENT · OVER' : 'ROOM EVENT',
+            name: ev.name,
+            desc: ev.desc || '',
+            tone: 'event',
+            calm: !!gameSettings.photosensitive
+        });
+        try { if (!ev.end && navigator.vibrate) navigator.vibrate([20, 40, 20]); } catch (e) {}
+    };
+
     game.onFloorComplete = () => {
         gameState = 'EXIT_REACHED';
         maybeHappytimeForBossKill(game.state.floor);   // Patch 104
@@ -2978,7 +2992,8 @@ function gameLoop(time) {
                 if (enemyCounter) {
                     if (game.state.combatActive && !activeBoss) {
                         let totalRemaining = game.state.enemyBudget + game.state.entities.length;
-                        hudText(enemyCounter, `NIGHTMARES LEFT: ${totalRemaining}`);
+                        // Patch 138: an event in progress says what to do instead.
+                        hudText(enemyCounter, roomEventHud(game.state) || `NIGHTMARES LEFT: ${totalRemaining}`);
                         hudStyle(enemyCounter, 'display', 'block');
                     } else {
                         hudStyle(enemyCounter, 'display', 'none');
