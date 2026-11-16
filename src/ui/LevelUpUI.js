@@ -597,7 +597,9 @@ export class LevelUpUI {
             }
         }
 
-        game.state.player.synergies = getActiveSynergies(game.state.player.weapons);
+        // Patch 126: through Game so a synergy this pick completes is announced.
+        if (typeof game.refreshSynergies === 'function') game.refreshSynergies();
+        else game.state.player.synergies = getActiveSynergies(game.state.player.weapons);
 
         if (this.audioEngine) this.audioEngine.playSFX('levelup', 5);
         

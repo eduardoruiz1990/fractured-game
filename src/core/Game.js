@@ -163,6 +163,7 @@ export class Game {
             cameraShake: 0,
             cameraFlash: 0,
             hitStop: 0,
+            slowMo: 0,   // Patch 126: sim steps of half-speed after a synergy forms
             bossSpawned: false,
             activeBoss: null,
             // Patch 93: read back from the carry (see getCarriedState) so a run that
@@ -590,6 +591,27 @@ export class Game {
         return rarity;
     }
 
+    /**
+     * Patch 126: the ONE place a run's synergy list is recomputed after init.
+     * Both level-up cards (LevelUpUI.selectCard) and the WEAPON_UPGRADE door
+     * (Combat) route here, so a newly formed synergy is noticed no matter which
+     * path completed it, and onSynergyFormed (main.js: banner, slow-motion, codex)
+     * fires exactly once per synergy per run. Game.init's own assignment does NOT
+     * route here — a synergy carried down a floor was already announced.
+     * @returns {string[]} synergy ids that were not active before this call
+     */
+    refreshSynergies() {
+        const p = this.state && this.state.player;
+        if (!p) return [];
+        const before = Array.isArray(p.synergies) ? p.synergies : [];
+        p.synergies = getActiveSynergies(p.weapons);
+        const formed = p.synergies.filter(id => !before.includes(id));
+        if (formed.length && typeof this.onSynergyFormed === 'function') {
+            try { this.onSynergyFormed(formed); } catch (e) { console.error(e); }
+        }
+        return formed;
+    }
+
     update(inputState, canvasWidth, canvasHeight, currentGameState) {
         if (currentGameState === 'HUB') {
             this.state.input = inputState;
@@ -604,6 +626,18 @@ export class Game {
             this.state.hitStop--;
             this.state.frame++; 
             return false;
+        }
+
+        // Patch 126: the synergy-formed beat. Half speed — every other sim step is
+        // skipped exactly like a hitStop step (frame still advances, so render-side
+        // animation keeps moving). Counted in sim steps, so it lasts the same at
+        // 60 Hz and 144 Hz (Patch 114's rule).
+        if (this.state.slowMo > 0) {
+            this.state.slowMo--;
+            if (this.state.slowMo % 2 === 1) {
+                this.state.frame++;
+                return false;
+            }
         }
 
         const currentInput = {

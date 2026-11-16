@@ -459,6 +459,81 @@ console.log('\nWeapon level-ups (LevelUpUI.WEAPON_LEVEL_UPS)');
     check('no boon icon uses an alchemical symbol', alchemical.length === 0, alchemical.map(b => b.id).join(', '));
 }
 
+console.log('\nSynergy discovery (Patch 126)');
+{
+    const { SaveManager } = await import('./src/core/SaveManager.js');
+    const { synergyRecipe } = await import('./src/ui/SynergyBanner.js');
+
+    // refreshSynergies is the one recompute path; it announces each synergy once.
+    const g = new Game();
+    g.init(new SaveManager());
+    const fired = [];
+    g.onSynergyFormed = (ids) => fired.push(...ids);
+    check('Game.init itself announces nothing', fired.length === 0);
+    const w = g.state.player.weapons;
+    w.flashlight.level = 5; w.static.level = 4;
+    check('no synergy at 5 + 4', g.refreshSynergies().length === 0 && fired.length === 0);
+    w.static.level = 5;
+    const formed = g.refreshSynergies();
+    check('5 + 5 forms The Blinding Signal, announced once',
+          formed.length === 1 && formed[0] === 'blinding_signal' && fired.length === 1, JSON.stringify(fired));
+    g.refreshSynergies();
+    check('a second recompute does not re-announce it', fired.length === 1);
+    check('player.synergies holds it', g.state.player.synergies.includes('blinding_signal'));
+
+    // Carried down a floor: init with carried weapons must not re-announce.
+    const carried = g.getCarriedState();
+    const g2 = new Game();
+    g2.onSynergyFormed = (ids) => fired.push(...ids);
+    g2.init(new SaveManager(), carried);
+    check('a synergy carried down a floor is not announced again',
+          fired.length === 1 && g2.state.player.synergies.includes('blinding_signal'));
+    check('slowMo starts at 0 each init', g2.state.slowMo === 0);
+
+    // slowMo: half speed — every other PLAYING step skips the sim.
+    let steps = 0;
+    g2.processGameLogic = () => { steps++; };
+    g2.state.hitStop = 0;
+    g2.state.slowMo = 8;
+    const input = { moveX: 0, moveY: 0, aimAngle: 0, isMoving: false, isDashing: false };
+    for (let i = 0; i < 8; i++) g2.update(input, 800, 600, 'PLAYING');
+    check('slowMo 8 runs exactly 4 of 8 sim steps', steps === 4 && g2.state.slowMo === 0, `steps=${steps}`);
+    for (let i = 0; i < 4; i++) g2.update(input, 800, 600, 'PLAYING');
+    check('after slowMo every step runs again', steps === 8, `steps=${steps}`);
+
+    // SaveManager.recordSynergy: true only the first time; back-filled and wiped.
+    const store = {};
+    global.localStorage = { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } };
+    const sm = new SaveManager();
+    check('fresh profile has an empty codex', sm.metaState.discoveredSynergies
+          && Object.keys(sm.metaState.discoveredSynergies).length === 0);
+    check('first recordSynergy is a new entry', sm.recordSynergy('centrifuge') === true);
+    check('second recordSynergy is not', sm.recordSynergy('centrifuge') === false
+          && sm.metaState.discoveredSynergies.centrifuge === 2);
+    // An old save without the field loads with it back-filled.
+    const old = JSON.parse(store.fractured_meta || '{}');
+    delete old.discoveredSynergies;
+    store.fractured_meta = JSON.stringify(old);
+    const sm2 = new SaveManager();
+    check('an old save is back-filled with an empty codex',
+          sm2.metaState.discoveredSynergies && typeof sm2.metaState.discoveredSynergies === 'object'
+          && Object.keys(sm2.metaState.discoveredSynergies).length === 0);
+    // An import never inherits the current profile's codex.
+    const sm3 = new SaveManager();
+    sm3.metaState.discoveredSynergies = { overexposure: 3 };
+    const exported = Buffer.from(JSON.stringify({ ...old, lucidityBank: 5 })).toString('base64');
+    if (typeof sm3.importSave === 'function') {
+        try { sm3.importSave(exported); } catch (e) { /* import may reload; state is what we check */ }
+        check('an import without a codex does not inherit this profile\'s',
+              !sm3.metaState.discoveredSynergies.overexposure, JSON.stringify(sm3.metaState.discoveredSynergies));
+    }
+
+    // Recipes read in display names.
+    check('recipe uses display names', /Flashlight .*\+ .*Static/.test(synergyRecipe(SYNERGIES.blinding_signal)),
+          synergyRecipe(SYNERGIES.blinding_signal));
+    check('no recipe contains a raw id', Object.values(SYNERGIES).every(sy => !/_/.test(synergyRecipe(sy))));
+}
+
 // ---------------------------------------------------------------------------
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

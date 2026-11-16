@@ -753,6 +753,88 @@ body.quality-low #crt-scanlines { display: none; }
     to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
+/* Patch 126: synergy-formed notice (src/ui/SynergyBanner.js creates the element).
+   Above the scanlines (z 100) and the tutorial note (150), below the level-up modal
+   and menus. Never takes input. Shown for SYNERGY_BANNER_MS; the whole lifetime is
+   one animation, so nothing has to time the fade-out from JS. */
+#synergy-banner {
+    position: absolute;
+    top: 18%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(460px, calc(100vw - 24px));
+    box-sizing: border-box;
+    padding: 12px 18px 14px;
+    display: none;
+    z-index: 160;
+    pointer-events: none;
+    text-align: center;
+    font-family: var(--ui-font);
+    color: #e4dbc8;
+    background: rgba(8, 6, 6, 0.86);
+    border: 2px solid var(--ui-gold);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8), 0 8px 30px rgba(0, 0, 0, 0.6);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+#synergy-banner .syn-stamp {
+    display: inline-block;
+    padding: 2px 10px;
+    border: 2px solid #c0392b;
+    color: #e0574a;
+    font-size: 0.72rem;
+    font-weight: bold;
+    letter-spacing: 0.22em;
+    transform: rotate(-3deg);
+}
+#synergy-banner .syn-name {
+    margin-top: 8px;
+    color: var(--ui-gold);
+    font-size: clamp(1.15rem, 4.6vw, 1.5rem);
+    font-weight: bold;
+    letter-spacing: 0.06em;
+}
+#synergy-banner .syn-recipe {
+    margin-top: 2px;
+    color: #b8ad96;
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+#synergy-banner .syn-desc {
+    margin-top: 8px;
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+#synergy-banner .syn-new {
+    margin-top: 8px;
+    color: #9fd3a8;
+    font-size: 0.72rem;
+    font-weight: bold;
+    letter-spacing: 0.14em;
+}
+#synergy-banner.syn-in { animation: synergyBanner 3600ms ease-out forwards; }
+#synergy-banner.syn-in .syn-stamp { animation: synergyStamp 420ms cubic-bezier(.2,1.6,.4,1) both; }
+#synergy-banner.calm.syn-in .syn-stamp { animation: none; }
+@keyframes synergyBanner {
+    0%   { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+    8%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    86%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+}
+@keyframes synergyStamp {
+    from { opacity: 0; transform: rotate(-3deg) scale(1.8); }
+    to   { opacity: 1; transform: rotate(-3deg) scale(1); }
+}
+/* Short landscape (phones on their side): the top of the screen is all HUD and the
+   player sits at mid-height, so the notice anchors to the bottom edge instead —
+   between the thumbs, clear of the DASH button. */
+@media (max-height: 500px) and (orientation: landscape) {
+    #synergy-banner { top: auto; bottom: 8px; padding: 7px 14px 9px; }
+    #synergy-banner .syn-name { margin-top: 4px; }
+    #synergy-banner .syn-desc { margin-top: 4px; }
+    #synergy-banner .syn-new { margin-top: 4px; }
+}
+
 /* Level Up Modal */
 .level-up-modal {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);

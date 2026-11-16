@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–125)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–126)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1715,6 +1715,51 @@ New `qa/levelup_check.cjs` (384×717, 915×412, 1280×720) checks:
 
 `test_content` is up to 225 passing. The dev hook gains `levelUpUI`.
 
+**Patch 126 — the synergy-formed moment and the Synergy Codex (C3).**
+
+Before this, a synergy switched on in silence: the flashlight started strobing and
+nothing said why. Synergies are the build-defining reward of a run.
+
+- **One recompute path.** `Game.refreshSynergies()` replaces the two direct
+  `getActiveSynergies()` assignments (the level-up pick in `LevelUpUI.selectCard`, and
+  the WEAPON_UPGRADE door in `Combat`). It diffs against the previous list and calls
+  `game.onSynergyFormed(ids)` once per newly active synergy. `Game.init`'s own
+  assignment does not go through it, so a synergy carried down a floor is not announced
+  again.
+- **The moment** (`main.js` `onSynergyFormed`):
+  - a stamped **SYNERGY FORMED** notice (`src/ui/SynergyBanner.js`, a DOM element created
+    lazily in `#game-container`, `pointer-events: none`, z 160 so it sits above the
+    scanlines). It shows the name, the recipe in display names, the effect, and — the
+    first time this profile forms it — **NEW CODEX ENTRY · n / 10**. Notices queue, so
+    two synergies from one door play one after the other. Death and a new run clear it.
+    Photosensitivity mode drops the stamp's slam;
+  - **half-speed slow motion** for 48 sim steps (`state.slowMo`; `Game.update` skips
+    every other step like a hitStop step, so it is the same length at 60 Hz and 144 Hz);
+  - the `ui_upgrade` sting and a short vibration;
+  - **`happytime()`** the first time a profile ever forms a synergy, at most once per
+    session.
+  - In short landscape the notice anchors to the bottom edge: the top is all HUD and
+    the player sits at mid-height.
+- **Synergy Codex** in the Mind Palace (`UIManager.renderTrophies`). Formed entries show
+  the name, recipe, effect and "FORMED ×n". Unformed ones are silhouettes that withhold
+  the name and effect but still show the **recipe**, so a locked entry is a goal the
+  player can act on next run.
+- **Save schema:** new `metaState.discoveredSynergies` (id → times formed), recorded by
+  `SaveManager.recordSynergy(id)`, which returns true on the first time. Back-filled in
+  `loadGame`, derived from the imported file in `importSave` (never inherited), cleared
+  by `wipeSave` — Keep clauses 1–2.
+- **Guide:** the SYNERGIES section said "at sufficient level" and printed raw ids
+  ("lead_pipe + spilled_ink"). It now says both instruments at level 5, uses display
+  names, and points to the codex.
+
+`test_content` (241 passing) covers: no announcement from `init` or a carried floor, one
+announcement per synergy, slow motion running exactly half the steps, `recordSynergy`'s
+first-time flag, the back-fill, imports not inheriting a codex, and recipes without raw
+ids. New `qa/synergy_check.cjs` (three viewports) forms a synergy through a real card and
+checks the banner text, z-order, on-screen, ≥ 11 px, slow motion, codex record,
+happytime once per session, the second notice, the codex (2 formed, 8 locked with
+recipes and no names) and that death clears the banner. The dev hook gains `uiManager`.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -1937,6 +1982,10 @@ New `qa/levelup_check.cjs` (384×717, 915×412, 1280×720) checks:
 42. **Anything that scales with the room number uses `roomNumber * ROOM_PACE`, and the
     room count comes from `ROOMS_PER_FLOOR` (Patch 123).** Never hardcode 10 or 5. A raw
     `roomNumber` in a ramp silently halves that ramp on 5-room floors.
+43. **After `Game.init`, a run's synergy list changes only through
+    `game.refreshSynergies()` (Patch 126).** Assigning `state.player.synergies =
+    getActiveSynergies(...)` directly works in play but skips the banner, the slow
+    motion and the codex record, so that synergy is never "discovered".
 
 ---
 

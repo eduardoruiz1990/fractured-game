@@ -245,7 +245,9 @@ export class Combat {
                                 state.xp += 50;
                                 game.spawnDamageText(state.player.x, state.player.y - 20, "+50 LUCIDITY", '#ffddaa', 1.5, 2.0);
                             }
-                            state.player.synergies = getActiveSynergies(state.player.weapons);
+                            // Patch 126: through Game so a synergy this door completes is announced.
+                            if (typeof game.refreshSynergies === 'function') game.refreshSynergies();
+                            else state.player.synergies = getActiveSynergies(state.player.weapons);
                         } else if (obj.rewardType === 'TOKEN_DOOR') {
                             // Patch 75: grantToken, NOT spawnTokenDrop. A pickup spawned
                             // here is wiped by `state.tokenDrops = []` a few lines below,

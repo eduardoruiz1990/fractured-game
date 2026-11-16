@@ -6,6 +6,7 @@ import { Renderer } from './core/Renderer.js';
 import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
+import { SynergyBanner } from './ui/SynergyBanner.js';
 import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies, ENEMY_BESTIARY } from './data/Manifestations.js';
 import { portalSDK } from './systems/PortalSDK.js';
 import { showConfirm } from './ui/Dialog.js';
@@ -518,6 +519,13 @@ function setDeathLayout(isDeath) {
 // on the player's deepest floor so far, once per floor per session, so farming floor
 // 1 does not spam it.
 const happyFloorsThisSession = new Set();
+// Patch 126: a synergy formed for the first time on this profile is the other
+// "achievement" moment. Once per session at most, so it stays sparing.
+let happySynergyThisSession = false;
+const synergyBanner = new SynergyBanner();
+// Sim steps of half speed after a synergy forms (Game.update skips every other
+// step while state.slowMo > 0), so ~0.8 s at 60 Hz of real time at half speed.
+const SYNERGY_SLOWMO_STEPS = 48;
 function maybeHappytimeForBossKill(floor) {
     if (!saveManager || !Number.isFinite(floor)) return;
     if (floor < (saveManager.metaState.maxFloorReached || 1)) return;
@@ -925,6 +933,7 @@ function enterPlayingState() {
  * fresh run must be built from the meta state as it is at launch.
  */
 function startNewRun() {
+    synergyBanner.clear();   // Patch 126: a notice from the last run must not linger
     game.init(saveManager);
     applyDevOverrides();
     // Patch 59: counted here rather than in enterPlayingState(), which RESUMING also
@@ -2017,7 +2026,8 @@ function initEngine() {
             setQuality(q) { gameSettings.quality = q; applyQualityTier(); },   // Patch 115
             get qualityTier() { return currentQualityTier(); },
             get qualitySetting() { return gameSettings.quality; },  // Patch 120
-            get levelUpUI() { return levelUpUI; }                  // Patch 125
+            get levelUpUI() { return levelUpUI; },                 // Patch 125
+            get uiManager() { return uiManager; }                  // Patch 126
         };
         // Patch 120: the on-screen perf panel, playtest builds only. MODE is a string
         // literal after Vite's replacement, so every other build drops this branch and
@@ -2436,6 +2446,7 @@ function initEngine() {
 
     game.onDeath = () => {
         gameState = 'DEAD';
+        synergyBanner.clear();   // Patch 126
         // Patch 54: the run is over, so its autosave must go with it. Before this
         // patch nothing wrote a suspended run mid-floor, so death had nothing to
         // clean up; now that autoSaveRun() persists one continuously, leaving it
@@ -2550,6 +2561,28 @@ function initEngine() {
             }
             gameState = 'PLAYING';
         });
+    };
+
+    // Patch 126 (V2 plan C3): Game.refreshSynergies() calls this with the ids that
+    // just became active, from a level-up card or a WEAPON_UPGRADE door.
+    game.onSynergyFormed = (ids) => {
+        if (!Array.isArray(ids) || !ids.length) return;
+        let anyNew = false;
+        ids.forEach(id => {
+            const isNew = saveManager.recordSynergy(id);
+            if (isNew) anyNew = true;
+            const discovered = Object.keys(saveManager.metaState.discoveredSynergies || {})
+                .filter(k => SYNERGIES[k]).length;
+            synergyBanner.push(id, { isNew, discovered, calm: !!gameSettings.photosensitive });
+        });
+        if (game.state) game.state.slowMo = Math.max(game.state.slowMo || 0, SYNERGY_SLOWMO_STEPS);
+        audioEngine.playSFX('ui_upgrade', 3, false);
+        try { if (navigator.vibrate) navigator.vibrate([30, 40, 80]); } catch (e) {}
+        if (anyNew && !happySynergyThisSession) {
+            happySynergyThisSession = true;
+            portalSDK.happytime();
+        }
+        // The codex itself re-renders with the Mind Palace in updateMenuUI().
     };
 
     game.onFloorComplete = () => {
