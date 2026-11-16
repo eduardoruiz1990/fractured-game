@@ -24,6 +24,10 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
       s.sanity = s.player.maxHp = 9999;
       s.player.weapons.flashlight.radius = 0;   // keep it alive for the screenshot
       s.level = 60;   // the elite's orbs must not open the level-up modal mid-check
+      // Patch 144: an elite also drops a Case File page half the time, whose notice would
+      // go ahead of the chest's. File every page first so this check stays about chests
+      // (qa/story_check.cjs covers pages).
+      for (let i = 1; i <= 25; i++) window.__fractured.saveManager.collectPage('p' + String(i).padStart(2, '0'));
       const e = g.director.spawnEntity('PREDATOR', null, null, s.player.x + 140, s.player.y);
       promoteToElite(e);
       e.update = () => {};
