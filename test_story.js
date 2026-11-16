@@ -62,6 +62,8 @@ ok(CHAPTERS.every((c, i) => c.boss === BOSSES[i]), 'chapter n is boss n');
 ok(bossIntroLines('BOSS', 1) === BOSS_LINES.BOSS.intro && bossIntroLines('BOSS', 6) === BOSS_LINES.BOSS.relapse, 'relapse lines on floor 6+');
 ok(bossIntroLines('NOPE', 1).length === 0 && bossDeathLine('NOPE') === '', 'unknown type: no lines (no throw)');
 ok(bossDeathLine('ARCHITECT') === BOSS_LINES.ARCHITECT.death, 'death line');
+ok(BOSSES.every(b => Story.bossEpithet(b) && Story.bossEpithet(b).length <= 28), 'every boss has a short epithet (its defense)');
+ok(BOSSES.every((b, i) => Story.bossEpithet(b).includes(CHAPTERS[i].defense)), 'the epithet names the chapter\'s defense');
 
 // Strings and credits.
 ok(typeof STRINGS.pageFiled === 'function' && STRINGS.pageFiled(3, 25) === 'PAGE FILED · 3 / 25', 'pageFiled label');

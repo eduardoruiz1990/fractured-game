@@ -2048,10 +2048,11 @@ body.quality-low #crt-scanlines { display: none; }
 /* E2: the session note on the floor-clear and AWAKEN screens. */
 .session-note {
     margin: 12px auto 0; max-width: 520px; text-align: left;
-    border-left: 4px solid #8fb3c9; padding: 6px 10px;
-    font-size: 0.85rem; line-height: 1.45; color: #d8e4ea;
+    border-left: 4px solid #4f7e9a; padding: 6px 10px;
+    background: rgba(79, 126, 154, 0.08);
+    font-size: 0.8rem; line-height: 1.45; color: var(--ink-black); font-style: italic;
 }
-.session-note-label { display: block; font-size: 0.7rem; letter-spacing: 2px; color: #8fb3c9; margin-bottom: 4px; }
+.session-note-label { display: block; font-size: 0.7rem; letter-spacing: 2px; color: #2f5d78; margin-bottom: 4px; font-style: normal; font-weight: bold; }
 
 @media (max-width: 600px) {
     .story-text, .story-ending-text { font-size: 0.9rem; }

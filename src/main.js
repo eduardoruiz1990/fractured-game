@@ -986,6 +986,33 @@ function enterPlayingState() {
  * bought during that hub visit were not applied to the run launched from it. A
  * fresh run must be built from the meta state as it is at launch.
  */
+/** Patch 145: a session-note block (label + text), built as text. */
+function sessionNoteEl(note) {
+    const box = document.createElement('div');
+    box.className = 'session-note';
+    const label = document.createElement('span');
+    label.className = 'session-note-label';
+    label.textContent = note.label;
+    box.appendChild(label);
+    box.appendChild(document.createTextNode(note.text));
+    return box;
+}
+
+/** Patch 145: the note under the pause menu's text on a floor clear; null hides it. */
+function showSessionNote(note) {
+    const desc = document.getElementById('pause-desc');
+    if (!desc) return;
+    let host = document.getElementById('session-note');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'session-note';
+        desc.insertAdjacentElement('afterend', host);
+    }
+    host.textContent = '';
+    if (note) host.appendChild(sessionNoteEl(note));
+    host.style.display = note ? 'block' : 'none';
+}
+
 function startNewRun(opts = {}) {
     synergyBanner.clear();   // Patch 126: a notice from the last run must not linger
     game.init(saveManager, null, opts);   // Patch 140: opts.daily for a Daily Session
@@ -2482,6 +2509,7 @@ function initEngine() {
             pauseTitle.innerText = "PROTOCOL SUSPENDED";
             pauseTitle.style.color = "var(--ink-black)";
             document.getElementById('pause-desc').innerText = "The nightmare pauses, but it does not end.";
+            showSessionNote(null);   // Patch 145: the note belongs to a cleared floor only
             btnDescend.style.display = 'none';
             pauseMenu.style.display = 'flex';
             inputManager.hideJoysticks();
@@ -2623,6 +2651,12 @@ function initEngine() {
                 Total Banked: <strong>${saveManager.metaState.lucidityBank}</strong>
                 ${buildRunSummaryHtml(game)}
             `;
+        }
+
+        // Patch 145 (V2 plan E2): the end-of-session note.
+        {
+            const an = Story.awakenNote(game.state.floor || 1);
+            document.getElementById('final-stats').insertAdjacentElement('beforeend', sessionNoteEl(an));
         }
 
         // Patch 140: a Daily Session's score (an extraction or a suspend: the best so far counts).
@@ -2884,6 +2918,21 @@ function initEngine() {
         if (ev.end) announceProgress(claimProgress());
     };
 
+    // Patch 146 (V2 plan E4): the boss banner (and its two lines) can be skipped. Any
+    // NEW key, click or touch once it has been up ~0.75 s drops it to its fade-out,
+    // along with the freeze it announces. Held keys (repeats) do not count, and the
+    // input is not consumed.
+    const skipBossIntro = (e) => {
+        if (e && e.type === 'keydown' && e.repeat) return;
+        if (gameState !== 'PLAYING' || !renderer || !game.state) return;
+        const t = renderer.bossAnnouncementTimer;
+        if (!(t > 30 && t <= 195)) return;
+        renderer.bossAnnouncementTimer = 30;
+        game.state.hitStop = Math.min(game.state.hitStop || 0, 30);
+    };
+    window.addEventListener('keydown', skipBossIntro, true);
+    window.addEventListener('pointerdown', skipBossIntro, true);
+
     game.onFloorComplete = () => {
         gameState = 'EXIT_REACHED';
         maybeHappytimeForBossKill(game.state.floor);   // Patch 104
@@ -2923,6 +2972,18 @@ function initEngine() {
             }
         } else {
             document.getElementById('pause-desc').innerText = `You survived Floor ${game.state.floor}. Awaken with your Lucidity, or risk descending deeper into the nightmare?`;
+        }
+
+        // Patch 145 (V2 plan E2): the clinician's note on this floor, and a line on how
+        // it went (Sanity at the clear, the floor's time, lifetime returns).
+        {
+            const st = game.state;
+            const maxHp = st.player && st.player.maxHp;
+            showSessionNote(Story.sessionNoteForFloor(st.floor || 1, {
+                sanityRatio: maxHp > 0 ? st.sanity / maxHp : 1,
+                floorSteps: (st.runFrames || 0) - (st.floorStartFrames || 0),
+                deaths: saveManager.metaState.deaths || 0
+            }));
         }
 
         // Patch 93: THE seam this feature opens. This used to be

@@ -238,6 +238,10 @@ export class Game {
             // a run suspended by an older build has neither and starts them at 0.
             runKills: (carriedState && Number.isFinite(carriedState.runKills)) ? carriedState.runKills : 0,
             runFrames: (carriedState && Number.isFinite(carriedState.runFrames)) ? carriedState.runFrames : 0,
+            // Patch 145: runFrames when this floor began (a descent or a resume), for the
+            // session note's "fast clear" reaction. Not carried: each floor starts its own.
+            floorStartFrames: (carriedState && Number.isFinite(carriedState.runFrames)) ? carriedState.runFrames : 0,
+            subtitle: null,   // Patch 146: { text, steps, total } — a boss's last line (Renderer.drawSubtitle)
             lastDamageSource: null,
             // Patch 124: the deepest floor on record when this run began, so the death
             // screen can say "new deepest floor". Taken before the run can raise it.
@@ -732,6 +736,7 @@ export class Game {
         // Patch 124: sim steps of real play this run (60 per second; the hub and the
         // boss-intro freeze are not counted), for the death screen's "time survived".
         if (!isHub) this.state.runFrames = (this.state.runFrames || 0) + 1;
+        if (this.state.subtitle && this.state.subtitle.steps > 0) this.state.subtitle.steps--;   // Patch 146
 
         // DEV: run telemetry tick (Patch 13). One-frame-late detection of room
         // clears / boss spawn is fine at this granularity; keeps this out of

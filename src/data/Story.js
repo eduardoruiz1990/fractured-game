@@ -171,6 +171,16 @@ export const BOSS_LINES = {
     }
 };
 export const BOSS_LINE_MAX = 38;
+
+// The banner's subtitle under each boss's name: which defense it is.
+export const BOSS_EPITHETS = {
+    BOSS: 'The Face of Denial',
+    RORSCHACH: 'The Shape of Projection',
+    PANOPTICON: 'The Eye of Hypervigilance',
+    AMALGAMATION: 'The Weight of Repression',
+    ARCHITECT: 'The Will to Control'
+};
+export function bossEpithet(type) { return BOSS_EPITHETS[type] || ''; }
 export const BOSS_DEATH_SUBTITLE_STEPS = 330;   // 5.5 s at 60 Hz
 
 /** Intro lines for a boss on a floor: the relapse pair in the Recursion (floor 6+). */

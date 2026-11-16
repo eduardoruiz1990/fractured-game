@@ -55,6 +55,7 @@ import { resolveArsenal, applyArsenalStatus } from './Arsenal.js';
 // Patch 133 (V2 plan D4): named elites drop chests. See src/systems/Elites.js.
 import { dropChest, resolveChest, CHEST_OPEN_STEPS } from './Elites.js';
 import { dropPage, updatePage, collectLoosePages } from './CasePages.js';   // Patch 144
+import { bossDeathLine, BOSS_DEATH_SUBTITLE_STEPS } from '../data/Story.js';   // Patch 146
 // Patch 134 (V2 plan D2): a chest evolves a qualifying weapon first.
 import { evolveForChest } from './Evolutions.js';
 
@@ -815,6 +816,9 @@ export class Combat {
                         // Patch 144: the floor's boss files the next page of its chapter,
                         // opposite the token so the two never land on one spot.
                         dropPage(game, ent.x - Math.cos(dropAngle) * dropDist, ent.y - Math.sin(dropAngle) * dropDist, 'boss');
+                        // Patch 146 (V2 plan E4): the defense's last line, as a subtitle.
+                        const lastLine = bossDeathLine(ent.type);
+                        if (lastLine) state.subtitle = { text: lastLine, steps: BOSS_DEATH_SUBTITLE_STEPS, total: BOSS_DEATH_SUBTITLE_STEPS };
                         state.cameraShake = 50;
                         if (game.audioEngine) game.audioEngine.playSFX('death', 1.5);
                         // Patch 130 (V2 plan C8): the kill lands. A short impact freeze,

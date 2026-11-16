@@ -13,6 +13,7 @@ import { ARENA_LAYOUTS, ARENA_RISE_STEPS, ARENA_FADE_STEPS, GRID_TELEGRAPH_STEPS
 // depth escalation layered over them. The cap is a memory bound, not a taste one —
 // see CYCLE_VISUAL_CAP in src/core/Endless.js.
 import { paletteIndexForFloor, visualCycle, cycleGrade } from './Endless.js';
+import { bossIntroLines, bossEpithet, BOSS_DEATH_SUBTITLE_STEPS } from '../data/Story.js';   // Patch 146 (V2 plan E4)
 
 // Patch 109: upper bound on Renderer.spriteCache (see cacheSprite). Comfortably above
 // the real working set — entity bodies x phase buckets x variants, glows per colour.
@@ -1091,6 +1092,11 @@ export class Renderer {
 
             if (gameState !== 'HUB') {
                 if (this.diag.vignette) this.drawVignette(state);
+
+                // Patch 146: a defeated boss's last line, as a subtitle.
+                if (state.subtitle && state.subtitle.steps > 0) {
+                    try { this.drawSubtitle(state); } catch (e) { /* text only; never fatal */ }
+                }
 
                 if (this.bossAnnouncementTimer > 0) {
                     try {
@@ -4284,6 +4290,8 @@ export class Renderer {
                 titleText = "THE ARCHITECT";
                 subText = "Constructor of the Void";
             }
+            // Patch 146 (V2 plan E): the subtitle names the defense the boss embodies.
+            if (bossEpithet(bossType)) subText = bossEpithet(bossType);
             
             // Patch 63: the banner used to hardcode "900 110px" and trust that it fit.
             // It does not: the text is left-aligned from x=-100 with the panel centred,
@@ -4331,10 +4339,82 @@ export class Renderer {
             fitFont(subText, subBase, 'italic', 14);
             this.ctx.fillStyle = '#c5a059';
             this.ctx.fillText(subText, TEXT_X + (narrow ? 0 : 10) + textJitter, subY);
+
+            // Patch 146 (V2 plan E4): the boss speaks — two lines (data/Story.js, each
+            // <= 38 characters so they fit a phone), in the band just inside the bottom
+            // rule, below the name and clear of the portrait. The first appears ~0.7 s in,
+            // the second ~1.5 s; a skip (main.js) drops the timer to the fade, where both
+            // show. Counted on the same sim-step timer as the banner.
+            const lines = bossIntroLines(bossType, state.floor || 1);
+            if (lines.length) {
+                const t = this.bossAnnouncementTimer;
+                const lineBase = Math.max(13, Math.min(20, PANEL_H * 0.085));
+                // Wide: just inside the bottom rule. Narrow (a phone): tucked under the
+                // subtitle, so the lines stay above the touch controls.
+                const bottomY = PANEL_H - lineBase * 1.1;
+                const y1 = narrow ? Math.min(subY + subBase * 0.5 + lineBase * 1.5, bottomY - lineBase * 1.6) : bottomY - lineBase * 1.6;
+                const ys = [y1, y1 + lineBase * 1.6];
+                const reveal = [200, 150];
+                this.ctx.textBaseline = 'middle';
+                for (let i = 0; i < Math.min(2, lines.length); i++) {
+                    if (t > reveal[i]) continue;
+                    const a = Math.min(1, (reveal[i] - t) / 20);
+                    const text = `\u201C${lines[i]}\u201D`;
+                    this.ctx.save();
+                    this.ctx.globalAlpha = alpha * a;
+                    fitFont(text, lineBase, 'italic bold', 11);
+                    this.ctx.fillStyle = '#e8dcc8';
+                    this.ctx.fillText(text, TEXT_X + (narrow ? 0 : 10), ys[i]);
+                    this.ctx.restore();
+                }
+            }
             
         } finally {
             this.ctx.restore();
         }
+    }
+
+    /**
+     * Patch 146 (V2 plan E4): state.subtitle = { text, steps, total } — a line centred
+     * near the bottom of the world view, word-wrapped to the width, fading in and out.
+     * Screen space; called after the camera transform is restored.
+     */
+    drawSubtitle(state) {
+        const sub = state.subtitle;
+        if (!sub || !sub.text) return;
+        const total = sub.total || BOSS_DEATH_SUBTITLE_STEPS;
+        const shown = total - sub.steps;
+        const a = Math.max(0, Math.min(1, shown / 20, sub.steps / 30));
+        if (!(a > 0)) return;
+        const w = this.canvas.width;
+        const cy = Number.isFinite(this.cameraCenterY) ? this.cameraCenterY : this.canvas.height / 2;
+        const viewBottom = Math.min(this.canvas.height, cy * 2);
+        const size = Math.max(14, Math.min(22, w * 0.042));
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.font = `italic ${size}px 'Courier New', Courier, monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const maxW = Math.min(w - 40, 760);
+        const words = `\u201C${sub.text}\u201D`.split(' ');
+        const rows = [];
+        let row = '';
+        for (const word of words) {
+            const tryRow = row ? row + ' ' + word : word;
+            if (ctx.measureText(tryRow).width > maxW && row) { rows.push(row); row = word; } else row = tryRow;
+        }
+        if (row) rows.push(row);
+        const lh = size * 1.35;
+        // On a phone the touch controls sit at the bottom of the view; keep clear of them.
+        const y0 = viewBottom - (w < 720 ? 170 : 70) - (rows.length - 1) * lh;
+        const boxW = Math.min(w - 16, Math.max(...rows.map(r => ctx.measureText(r).width)) + 32);
+        ctx.globalAlpha = a * 0.7;
+        ctx.fillStyle = '#050303';
+        ctx.fillRect(w / 2 - boxW / 2, y0 - lh / 2 - 8, boxW, rows.length * lh + 16);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = '#e8dcc8';
+        rows.forEach((r, i) => ctx.fillText(r, w / 2, y0 + i * lh));
+        ctx.restore();
     }
 
     drawPlayer(state, audioEngine) {

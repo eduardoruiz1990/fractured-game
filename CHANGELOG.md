@@ -2424,6 +2424,38 @@ small box... that if the player presses it, then it gets the large screen."
   is lying, none in the tutorial or without a save), drift and pickup, `onCasePage`,
   `collectLoosePages` filing the rest once, backfill, and floor 6 telling chapter 1.
 
+**Patch 145 — session notes (plan E2).**
+
+- On a floor clear (the THE DESCENT CALLS screen) a **SESSION NOTE · FLOOR n** from Dr.
+  Marlow now sits under the pause text: the floor's own note (a different one for each
+  of the five floors; RELAPSE NOTE ones in the Recursion), then one line reacting to
+  how it went — finished on under 25% Sanity, cleared inside 2.5 minutes, 5+ lifetime
+  deaths ("coming back is the treatment working"), or steady (`Story.sessionReaction`).
+- AWAKEN (an extraction or a suspend) ends its summary with an **END OF SESSION** note
+  for the floor's chapter.
+- `Game.state.floorStartFrames` (runFrames when the floor began; not carried) times the
+  floor. The note is built with `textContent` into a `#session-note` host created after
+  `#pause-desc`; the ordinary pause hides it. Ink on paper, like the rest of the folder.
+
+**Patch 146 — the bosses speak (plan E4).**
+
+- `Renderer.drawBossAnnouncement` draws the boss's **two lines** (`Story.bossIntroLines`;
+  a "relapse" pair on floor 6+) in quotes: on a wide screen in the band just inside the
+  bottom rule, on a phone tucked under the subtitle so they stay above the touch
+  controls. The first fades in ~0.7 s into the banner, the second ~1.5 s. Every line
+  is ≤ 38 characters (asserted), so none needs wrapping at 384 px.
+- The banner subtitle now names the defense: The Face of Denial, The Shape of
+  Projection, The Eye of Hypervigilance, The Weight of Repression, The Will to Control
+  (`Story.bossEpithet`), in place of "Apex Predator of the Wastes" and the like.
+- **Skippable**: any NEW key, click or touch once the banner has been up ~0.75 s drops
+  it to its fade-out and the 240-step freeze with it (both to 30 steps). Key repeats
+  do not count and the input is not consumed.
+- **At the death**, the boss's last line ("Something did happen. I'm so sorry.") plays
+  as a subtitle for 5.5 s: `state.subtitle = {text, steps, total}`, set in Combat at
+  the final boss death, counted down in `Game.processGameLogic`, drawn in screen space
+  by the new `Renderer.drawSubtitle` (word-wrapped, a dark band behind it, raised on a
+  phone to clear DASH).
+
 ---
 
 ## Keep clauses (things future patches break by accident)
