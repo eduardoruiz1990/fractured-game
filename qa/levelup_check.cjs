@@ -82,7 +82,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
 
     // SYNERGY READY appears on the static card when it would complete Blinding Signal.
     let sawReady = false;
-    for (let i = 0; i < 12 && !sawReady; i++) {
+    for (let i = 0; i < 60 && !sawReady; i++) {   // a random draw: up to 60 offers
       await open(); await page.waitForTimeout(20);
       sawReady = await page.evaluate(() => [...document.querySelectorAll('#cards-container .card')].some(c => /Static Receiver/.test(c.innerText) && /SYNERGY READY/.test(c.innerText)));
       await page.evaluate(() => { const ui = window.__fractured.levelUpUI; if (ui) { ui.armedAt = 0; ui.tryPick(0); } });
