@@ -761,6 +761,82 @@ console.log('\nPhase D enemies (Patch 135)');
     check('floor 4 has all three', f4.has('SPLITTER') && f4.has('WARDEN') && f4.has('BURROWER'), [...f4].join(','));
 }
 
+// ---------------------------------------------------------------------------
+// Patch 136 (V2 plan D1): playable Patients.
+console.log('\nPatients (Patch 136)');
+{
+    const P = await import('./src/data/Patients.js');
+    const { Combat } = await import('./src/systems/Combat.js');
+    const { SaveManager } = await import('./src/core/SaveManager.js');
+    const { BOONS } = await import('./src/ui/LevelUpUI.js');
+    const meta = (over = {}) => ({ ...JSON.parse(JSON.stringify(mockSave.metaState)), ...over });
+    const run = (m, carried = null) => { const g = new Game(); g.init({ metaState: m, saveGame: () => {} }, carried); g.state.stress = 1; g.state.isTutorial = false; return g; };
+
+    check('four Patients, the Insomniac first and always admitted',
+          P.PATIENT_ORDER.length === 4 && P.PATIENT_ORDER[0] === 'insomniac' && P.isPatientUnlocked('insomniac', {}));
+    check('every Patient names a real starting weapon',
+          P.PATIENT_ORDER.every(id => Game && P.PATIENTS[id].weapon && run(meta()).state.player.weapons[P.PATIENTS[id].weapon]));
+    check('locked until their milestone', !P.isPatientUnlocked('vandal', meta()) && P.isPatientUnlocked('vandal', meta({ killCounts: { BOSS: 1 } }))
+          && P.isPatientUnlocked('artist', meta({ maxFloorReached: 3 })) && P.isPatientUnlocked('photographer', meta({ killCounts: { PANOPTICON: 1 } })));
+    check('a locked or unknown choice falls back to the Insomniac',
+          P.resolvePatient('vandal', meta()) === 'insomniac' && P.resolvePatient('nobody', meta()) === 'insomniac');
+
+    // The default run is the Insomniac: flashlight only, +10% reach, blackout-immune.
+    let g = run(meta());
+    check('a default run is the Insomniac', g.state.player.character === 'insomniac' && g.state.player.blackoutImmune
+          && Object.values(g.state.player.weapons).filter(w => w.level > 0).length === 1
+          && Math.abs(g.state.player.weapons.flashlight.radius - 275) < 1e-9);
+
+    // The Vandal: pipe at 1 (one card-level step applied), +20 Sanity, slower.
+    const base = run(meta());
+    g = run(meta({ killCounts: { BOSS: 1 }, selectedCharacter: 'vandal' }));
+    const pipe = g.state.player.weapons.lead_pipe;
+    check('the Vandal starts with the pipe at level 1, exactly as a card would give it',
+          g.state.player.character === 'vandal' && pipe.level === 1 && pipe.damage === 65 && pipe.radius === 85);
+    check('...with +20 max Sanity and 5% less speed',
+          g.state.player.maxHp === base.state.player.maxHp + 20 && g.state.player.speed < base.state.player.speed);
+    // Lifesteal on a pipe swing.
+    g.state.player.weapons.flashlight.radius = 0; g.state.sanity = 50;
+    const e = g.director.spawnEntity('SCAVENGER', null, null, 40, 0); e.update = () => {}; e.hp = e.maxHp = 999;
+    pipe.timer = 0; Combat.resolveWeapons(g);
+    check('the Vandal\'s pipe hit restores Sanity', g.state.sanity > 50, `${g.state.sanity}`);
+
+    // Carried down a floor: same Patient, no second starting grant.
+    const carried = g.getCarriedState();
+    carried.weapons.lead_pipe.level = 3;
+    const g2 = run(meta({ killCounts: { BOSS: 1 }, selectedCharacter: 'insomniac' }), carried);
+    check('a descent keeps the run\'s Patient and its passive', g2.state.player.character === 'vandal' && g2.state.player.meleeLifesteal);
+    check('...and does not grant the start weapon again', g2.state.player.weapons.lead_pipe.level === 3);
+
+    // The Artist's ink.
+    g = run(meta({ maxFloorReached: 3, selectedCharacter: 'artist' }));
+    check('the Artist starts with ink', g.state.player.weapons.spilled_ink.level === 1 && g.state.player.inkMaster);
+    g.director.spawnInkPuddle(300, 0, 60, 5);
+    const ie = g.director.spawnEntity('SCAVENGER', null, null, 300, 0); ie.update = () => {};
+    g.state.player.weapons.flashlight.radius = 0;
+    Combat.resolveWeapons(g);
+    check('the Artist\'s pools slow to 0.3', ie.speedModifier === 0.3, `${ie.speedModifier}`);
+
+    // The Photographer's crit.
+    g = run(meta({ killCounts: { PANOPTICON: 1 }, selectedCharacter: 'photographer' }));
+    check('the Photographer starts with the camera', g.state.player.weapons.polaroid_camera.level === 1);
+    const pe = g.director.spawnEntity('SCAVENGER', null, null, 300, 0); pe.hp = pe.maxHp = 100;
+    pe.confused = 10; pe.takeDamage(10, g);
+    check('hits on a confused target are x1.5', pe.hp === 85);
+    pe.confused = 0; pe.takeDamage(10, g);
+    check('...and normal otherwise', pe.hp === 75);
+
+    // Save field + the NEW badge.
+    const sm = new SaveManager();
+    delete sm.metaState.selectedCharacter; delete sm.metaState.announcedPatients;
+    sm.saveGame(); sm.loadGame();
+    check('an old save gets the Patient fields back-filled', sm.metaState.selectedCharacter === 'insomniac' && Array.isArray(sm.metaState.announcedPatients));
+    sm.metaState.killCounts.BOSS = 1;
+    check('a newly unlocked Patient is NEW until chosen', P.newlyAdmitted(sm.metaState).includes('vandal'));
+    sm.setSelectedCharacter('vandal');
+    check('...and not after', !P.newlyAdmitted(sm.metaState).includes('vandal') && sm.metaState.selectedCharacter === 'vandal');
+}
+
 console.log('\nSynergy discovery (Patch 126)');
 {
     const { SaveManager } = await import('./src/core/SaveManager.js');

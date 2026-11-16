@@ -80,6 +80,10 @@ export class Enemy {
         // Patch 135: under a Fire Warden's ward, half damage (WARDEN_SHIELD_FACTOR in
         // Warden.js — CHANGE BOTH).
         if (this.shieldTimer > 0) amount *= 0.5;
+        // Patch 136: the Photographer's passive — hits on a confused target are critical.
+        if (this.confused > 0 && game && game.state && game.state.player && game.state.player.critConfused) {
+            amount *= game.state.player.critConfused;
+        }
         this.hp -= amount;
         this.flashTime = 5;
         this.lastHitByMelee = false;

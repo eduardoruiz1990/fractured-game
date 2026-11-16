@@ -22,6 +22,7 @@ node qa/arsenal_check.cjs          # the four Phase D weapons fire and kill, the
 node qa/elite_check.cjs            # a named elite spawns, drops a chest, the chest opens with its notice, phone + desktop (Patch 133)
 node qa/evolution_check.cjs        # EVOLUTION READY card, a chest evolves the pipe, the notice, the evolution codex (Patch 134)
 node qa/enemies_check.cjs          # the Photocopy, Fire Warden and Crawlspace drawn in game, the Photocopy split (Patch 135)
+node qa/patients_check.cjs         # the Patient picker on the title and in EVALUATION, a run started as the Vandal (Patch 136)
 node qa/sprite_cache_check.cjs     # sprite cache plateaus while the tutorial cue fades (Patch 109)
 node qa/soak_check.cjs [--seconds 45] [--throttle 4] [--phone] [--floor 9]   # perf soak: all bosses + capped crowd; exits 1 on invariant breaks
 node qa/render_recovery_check.cjs   # injected render faults do not leak canvas state (Patch 113)

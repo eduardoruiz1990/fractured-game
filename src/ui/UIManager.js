@@ -10,6 +10,7 @@ const escapeText = (v) => String(v == null ? '' : v)
 import { SynapseTree } from './SynapseTree.js';
 import { GuideUI } from './GuideUI.js';
 import { FolderTabs } from './FolderTabs.js';
+import { PatientStrips } from './PatientStrip.js';   // Patch 136
 import { showConfirm } from './Dialog.js';
 import { BOONS } from './LevelUpUI.js';
 // Patch 98 — the roadmap reports depth past floor 5. See src/core/Endless.js.
@@ -238,6 +239,24 @@ export class UIManager {
         // Patch 129: the eight tabs grouped into four (see FolderTabs.js). Built after
         // tabBtns is captured: the same buttons, regrouped, keep their handlers.
         this.folderTabs = new FolderTabs();
+
+        // Patch 136 (V2 plan D1): the Patient picker, on the title (compact) and in
+        // the EVALUATION pane. Hosts are created here so index.html is untouched.
+        this.patientStrips = new PatientStrips(this.saveManager);
+        const titleBegin = document.getElementById('btn-title-begin');
+        if (titleBegin && titleBegin.parentNode) {
+            const t = document.createElement('div');
+            t.id = 'title-patient-strip';
+            titleBegin.parentNode.insertBefore(t, titleBegin.nextSibling);
+            this.patientStrips.mount(t, { compact: true });
+        }
+        const startBtn = document.getElementById('btn-start');
+        if (startBtn && startBtn.parentNode && startBtn.parentNode.parentNode) {
+            const f = document.createElement('div');
+            f.id = 'folder-patient-strip';
+            startBtn.parentNode.parentNode.insertBefore(f, startBtn.parentNode);
+            this.patientStrips.mount(f, { compact: false });
+        }
 
         // Patch 34b: one shared floating tooltip appended directly to <body>,
         // outside .inventory-panel's DOM subtree so its overflow-y:auto (which
@@ -519,6 +538,7 @@ export class UIManager {
 
     updateMenuUI() {
         const meta = this.saveManager.metaState;
+        if (this.patientStrips) this.patientStrips.render();   // Patch 136
         const levelInfo = this.saveManager.getPatientLevelInfo();
         
         const levelDisplays = document.querySelectorAll('.patient-stamp');

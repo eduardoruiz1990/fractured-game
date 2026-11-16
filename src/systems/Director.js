@@ -362,7 +362,8 @@ export class Director {
 
             let spawnRate = bossAlive ? 120 : Math.max(15, 60 - (state.roomNumber * 2 * ROOM_PACE));
             if (!bossAlive) {
-                if (state.roomModifier === 'BLACKOUT') spawnRate = Math.max(8, Math.floor(spawnRate * 0.6));
+                // Patch 136: the Insomniac sees in a blackout — no faster arrivals.
+                if (state.roomModifier === 'BLACKOUT' && !state.player.blackoutImmune) spawnRate = Math.max(8, Math.floor(spawnRate * 0.6));
                 else if (state.roomModifier === 'SWARM') spawnRate = Math.max(8, Math.floor(spawnRate * 0.5));
             }
 

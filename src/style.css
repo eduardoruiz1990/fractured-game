@@ -1866,3 +1866,38 @@ body.quality-low #crt-scanlines { display: none; }
     }
     .file-btn:active:not(:disabled) { transform: none; }
 }
+
+/* Patch 136 (V2 plan D1): the Patient picker — title (compact, dark) and the
+   EVALUATION pane (paper). Chips are >= 44px tall for touch. */
+.patient-strip { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; max-width: 560px; margin: 0 auto; }
+.patient-strip .patient-label { font-family: var(--ui-font); font-size: 0.7rem; letter-spacing: 0.3em; opacity: 0.7; }
+.patient-strip .patient-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.patient-chip {
+    position: relative; display: inline-flex; align-items: center; gap: 6px;
+    min-height: 44px; padding: 6px 12px; cursor: pointer;
+    font-family: var(--ui-font); font-size: 0.78rem; letter-spacing: 0.08em; font-weight: bold;
+    border: 2px solid currentColor; background: transparent;
+}
+.patient-chip .patient-icon { font-size: 1.05rem; line-height: 1; }
+.patient-chip .patient-new {
+    position: absolute; top: -8px; right: -6px; padding: 1px 4px;
+    font-size: 0.6rem; letter-spacing: 0.1em; color: #0a0505; background: #7CFFB2;
+}
+.patient-chip.locked { opacity: 0.45; border-style: dashed; }
+.patient-chip.locked.peek { opacity: 0.8; }
+.patient-strip .patient-detail { font-size: 0.8rem; line-height: 1.4; text-align: center; max-width: 520px; padding: 0 8px; }
+.patient-strip .patient-detail em { opacity: 0.75; }
+
+#title-patient-strip { margin-top: 4px; color: #b8ad96; }
+#title-patient-strip .patient-chip { color: #8a8172; background: rgba(0, 0, 0, 0.45); }
+#title-patient-strip .patient-chip.selected { color: var(--ui-gold); box-shadow: 0 0 12px rgba(197, 160, 89, 0.25); }
+
+#folder-patient-strip { margin-bottom: 18px; color: var(--ink-black, #1a1a1a); }
+#folder-patient-strip .patient-chip { color: #6f6656; background: rgba(255, 255, 255, 0.35); }
+#folder-patient-strip .patient-chip.selected { color: #8b0000; background: rgba(139, 0, 0, 0.06); }
+
+@media (max-width: 600px) {
+    .patient-chip { padding: 6px 9px; font-size: 0.72rem; }
+    #title-patient-strip .patient-name { display: none; }   /* icons only on a phone title */
+    #title-patient-strip .patient-chip { min-width: 48px; justify-content: center; }
+}

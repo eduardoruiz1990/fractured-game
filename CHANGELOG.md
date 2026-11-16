@@ -2113,6 +2113,44 @@ Tests:
 - New `qa/enemies_check.cjs`: all three drawn in the real game, and the split happens
   there.
 
+**Patch 136 — playable Patients and the picker (D1).**
+
+Four ways into a run, in `src/data/Patients.js`. Each is a starting instrument (the
+flashlight is always carried as well, since it is the player's light), one passive and
+a small stat lean. This also gives the Synapse Tree's C2 "starting weapon" capstone a
+real choice.
+
+| Patient | Starts with | Passive (one flag on `state.player`, read at one site) | Lean | Unlocked by |
+|---|---|---|---|---|
+| THE INSOMNIAC 🌙 | Flashlight | `blackoutImmune`: BLACKOUT rooms do not speed spawns up (`Director.spawnWave`); light +10% | — | always (default) |
+| THE VANDAL 🔨 | Lead Pipe | `meleeLifesteal`: pipe hits restore `min(3, hits × 0.75)` Sanity; straps +0.25 per hit (`Arsenal`) | Sanity +20, speed −5% | `killCounts.BOSS ≥ 1` |
+| THE ARTIST 🖋️ | Spilled Ink | `inkMaster`: ink damage ×1.25, pools slow to 0.3 (`Combat`) | speed +6%, Sanity −10 | `maxFloorReached ≥ 3` |
+| THE PHOTOGRAPHER 📷 | Polaroid Camera | `critConfused: 1.5`: ×1.5 damage on a confused target (`Enemy.takeDamage`) | Sanity −10 | `killCounts.PANOPTICON ≥ 1` |
+
+- Phase E's story milestones do not exist yet, so the unlocks use progress the save
+  already records. Players who have it get the Patients immediately. Phase E can swap
+  the predicates without touching anything else.
+- `Game.init`: the Patient comes from the carried state's `character` (a descent keeps
+  it) or from `resolvePatient(meta.selectedCharacter, meta)`, which falls back to the
+  Insomniac if the saved choice is missing or locked. The starting weapon is raised to
+  level 1 through `applyWeaponLevelUp`, on fresh runs only. `getCarriedState` carries
+  `character`.
+- **Save:** `selectedCharacter` (default `'insomniac'`) and `announcedPatients`
+  (`['insomniac']`, drives the NEW badge), each with a constructor default, a
+  `loadGame` back-fill, an `importSave` derivation and a `wipeSave` reset.
+  `setSelectedCharacter(id)` refuses a locked or unknown id.
+- **The picker** (`src/ui/PatientStrip.js`, one component mounted twice):
+  - under BEGIN DESCENT on the title: compact, unlocked Patients only, and **hidden
+    until a second Patient is unlocked**, so a first-time player's title is unchanged;
+  - above AUTHORIZE DESCENT in EVALUATION: all four, a locked chip explains its unlock
+    when tapped and changes nothing.
+  - Launching stays one click: every launch path uses the last choice. Chips are at
+    least 44 px tall.
+- The death screen lists "NEW PATIENT ADMITTED: …" when a run unlocks one.
+- Tests: `test_content.js` Patients block (every Patient's weapon exists, unlocks,
+  `resolvePatient` fallbacks, `newlyAdmitted`, the stat leans in `Game.init`, descent
+  keeps the Patient). `qa/patients_check.cjs` at 384×717 and 1280×720.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

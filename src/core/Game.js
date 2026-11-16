@@ -8,6 +8,9 @@ import { EventBus } from './EventBus.js';
 import { getXPRequiredForLevel, ARENA_VOID_RADIUS, isBossType, ROOMS_PER_FLOOR } from '../data/Config.js';
 // Patch 96 — the biome palettes cycle past floor 5. See src/core/Endless.js.
 import { paletteIndexForFloor } from './Endless.js';
+// Patch 136 (V2 plan D1): playable Patients.
+import { PATIENTS, resolvePatient, DEFAULT_PATIENT } from '../data/Patients.js';
+import { applyWeaponLevelUp } from '../ui/LevelUpUI.js';
 
 /**
  * Patch 132: adds any weapon in `fresh` that `carried` lacks (at level 0), so a run
@@ -86,9 +89,16 @@ export class Game {
             tokenBundle.grants.forEach(g => grants.add(g));
         }
 
-        const maxSanity = 100 + (stats.sanity || 0);
-        const speedBuff = 1.0 + ((stats.speed || 0) / 100);
-        const lightBuff = 1.0 + ((stats.light || 0) / 100);
+        // Patch 136: the Patient. A fresh run takes the saved choice (if unlocked); a
+        // floor descent or a resume keeps the one the run started with.
+        const patientId = carriedState
+            ? (PATIENTS[carriedState.character] ? carriedState.character : DEFAULT_PATIENT)
+            : resolvePatient(meta.selectedCharacter, meta);
+        const patient = PATIENTS[patientId];
+
+        const maxSanity = 100 + (stats.sanity || 0) + (patient.sanity || 0);
+        const speedBuff = (1.0 + ((stats.speed || 0) / 100)) * (1 + (patient.speed || 0) / 100);
+        const lightBuff = (1.0 + ((stats.light || 0) / 100)) * (1 + (patient.light || 0) / 100);
 
         const startFloor = carriedState ? carriedState.floor : 1;
         let effectiveMaxSanity = maxSanity;
@@ -327,6 +337,16 @@ export class Game {
         // { light: 25 } and flows through lightBuff above like every other light
         // source. Re-applying it here would double-count it.
 
+        // Patch 136: the Patient's passive flags (every init — state.player is rebuilt
+        // on each floor) and, on a fresh run only, the starting instrument. A start
+        // level is taken exactly like a level-up card's first level.
+        this.state.player.character = patientId;
+        Object.assign(this.state.player, patient.flags || {});
+        if (!carriedState && patient.weapon) {
+            const w = this.state.player.weapons[patient.weapon];
+            if (w && w.level < 1) { w.level = 1; applyWeaponLevelUp(w, patient.weapon); }
+        }
+
         this.state.player.synergies = getActiveSynergies(this.state.player.weapons);
 
         // Patch 32b: was a flat curses.length*0.15 — every curse paid the same 15%
@@ -374,6 +394,7 @@ export class Game {
             // with a fresh, false latch and bank a second completion — and a third on
             // floor 7, forever.
             runCompletionRecorded: !!this.state.runCompletionRecorded,
+            character: this.state.player.character || DEFAULT_PATIENT,   // Patch 136
             runKills: this.state.runKills || 0,     // Patch 124
             runFrames: this.state.runFrames || 0,   // Patch 124
             bestFloorAtStart: this.state.bestFloorAtStart || 1,   // Patch 124

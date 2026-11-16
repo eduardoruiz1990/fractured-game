@@ -8,6 +8,7 @@ import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
 import { SynergyBanner } from './ui/SynergyBanner.js';
 import { EVOLUTIONS } from './systems/Evolutions.js';   // Patch 134
+import { PATIENTS, newlyAdmitted } from './data/Patients.js';   // Patch 136
 import { screenFlash } from './ui/Juice.js';
 import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies, ENEMY_BESTIARY } from './data/Manifestations.js';
 import { portalSDK } from './systems/PortalSDK.js';
@@ -1142,6 +1143,7 @@ function showRecursionSealedNotice() {
 }
 
 function refreshTitleActions() {
+    if (uiManager && uiManager.patientStrips) uiManager.patientStrips.render();   // Patch 136
     const resumeBtn = document.getElementById('btn-title-resume');
     const note = document.getElementById('title-suspended-note');
     const raw = readSuspendedRun();
@@ -2543,8 +2545,12 @@ function initEngine() {
             const where = st.floor > 0
                 ? `Floor ${st.floor}, room ${Math.min(st.roomNumber || 1, st.maxRoomsPerFloor || ROOMS_PER_FLOOR)}/${st.maxRoomsPerFloor || ROOMS_PER_FLOOR}`
                 : 'Orientation';
-            const record = st.floor > (st.bestFloorAtStart || 1)
+            let record = st.floor > (st.bestFloorAtStart || 1)
                 ? `<span class="death-record">NEW DEEPEST FLOOR: ${st.floor}</span>` : '';
+            // Patch 136: a Patient this run unlocked (shown NEW in the picker until chosen).
+            newlyAdmitted(saveManager.metaState).forEach(id => {
+                record += `<span class="death-record">NEW PATIENT ADMITTED: ${escapeHtml(PATIENTS[id].name)}</span>`;
+            });
             causeEl.innerHTML = `Broken by <strong>${escapeHtml(describeDamageSource(st.lastDamageSource))}</strong>` +
                 `<span class="death-where">${where} · ${formatRunTime(st.runFrames)} survived</span>${record}`;
         }

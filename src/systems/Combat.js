@@ -497,6 +497,10 @@ export class Combat {
                 }
                 
                 if (hitCount > 0) {
+                    // Patch 136: the Vandal's passive — melee hits restore Sanity.
+                    if (state.player.meleeLifesteal) {
+                        state.sanity = Math.min(state.player.maxHp, state.sanity + Math.min(3, hitCount * 0.75));
+                    }
                     state.hitStop = Math.min(25, state.hitStop + 6 + (hitCount * 3));
                     state.cameraShake = Math.max(state.cameraShake, 10 + hitCount * 3);
                     if (game.audioEngine) game.audioEngine.playSFX('pipe_hit', hitCount);
@@ -520,7 +524,8 @@ export class Combat {
             ink.timer -= cooldownTick; 
             if (ink.timer <= 0) {
                 ink.timer = ink.dropRate;
-                game.director.spawnInkPuddle(state.player.x, state.player.y, ink.radius, ink.damage);
+                // Patch 136: the Artist's pools hit 25% harder.
+                game.director.spawnInkPuddle(state.player.x, state.player.y, ink.radius, ink.damage * (state.player.inkMaster ? 1.25 : 1));
             }
         }
         
@@ -582,7 +587,8 @@ export class Combat {
             const hasIonTrail = !!(state.player.synergies && state.player.synergies.includes('ion_trail'));
             for (let p of state.inkPuddles) {
                 if (Math.hypot(ent.x - p.x, ent.y - p.y) < p.radius) {
-                    ent.speedModifier = hasIonTrail ? 0.25 : 0.5;
+                    // Patch 136: the Artist's pools slow far more (0.3, not 0.5).
+                    ent.speedModifier = hasIonTrail ? 0.25 : (state.player.inkMaster ? 0.3 : 0.5);
                     if (state.frame % 30 === 0) {
                         ent.takeDamage(p.damage, game);
                         state.cameraShake = Math.max(state.cameraShake, tagShake(state.player.weapons.spilled_ink.tags, p.damage));

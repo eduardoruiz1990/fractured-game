@@ -52,6 +52,8 @@ export class SaveManager {
             // from the imported file in importSave, cleared by wipeSave.
             discoveredSynergies: {},
             discoveredEvolutions: {},   // Patch 134
+            selectedCharacter: 'insomniac',   // Patch 136 — data/Patients.js
+            announcedPatients: ['insomniac'],
             // Patch 59: lifetime case statistics. runsStarted counts descents begun,
             // deaths counts minds broken, runsCompleted counts Floor 5 clears (the
             // Architect falling). All three are records only — nothing reads them
@@ -135,6 +137,9 @@ export class SaveManager {
                 // recordBoonPick() indexes into it directly.
                 if (!this.metaState.boonHistory) this.metaState.boonHistory = {};
                 // Patch 126.
+                // Patch 136: the chosen Patient and the ones already shown as NEW.
+                if (typeof this.metaState.selectedCharacter !== 'string') this.metaState.selectedCharacter = 'insomniac';
+                if (!Array.isArray(this.metaState.announcedPatients)) this.metaState.announcedPatients = ['insomniac'];
                 // Patch 134: evolution codex, same shape as the synergy one.
                 if (!this.metaState.discoveredEvolutions || typeof this.metaState.discoveredEvolutions !== 'object') {
                     this.metaState.discoveredEvolutions = {};
@@ -264,6 +269,8 @@ export class SaveManager {
                     (parsed.discoveredSynergies && typeof parsed.discoveredSynergies === 'object') ? parsed.discoveredSynergies : {};
                 this.metaState.discoveredEvolutions =   // Patch 134
                     (parsed.discoveredEvolutions && typeof parsed.discoveredEvolutions === 'object') ? parsed.discoveredEvolutions : {};
+                this.metaState.selectedCharacter = typeof parsed.selectedCharacter === 'string' ? parsed.selectedCharacter : 'insomniac';   // Patch 136
+                this.metaState.announcedPatients = Array.isArray(parsed.announcedPatients) ? parsed.announcedPatients : ['insomniac'];
 
                 // Patch 59: same reasoning as boonHistory directly above — these must
                 // come from the IMPORTED file, not survive from whatever profile this
@@ -337,6 +344,15 @@ export class SaveManager {
         this.metaState.discoveredSynergies[id] = prev + 1;
         this.saveGame();
         return prev === 0;
+    }
+
+    /** Patch 136: chooses the Patient for the next run, and marks it as seen. */
+    setSelectedCharacter(id) {
+        if (typeof id !== 'string' || !id) return;
+        this.metaState.selectedCharacter = id;
+        if (!Array.isArray(this.metaState.announcedPatients)) this.metaState.announcedPatients = ['insomniac'];
+        if (!this.metaState.announcedPatients.includes(id)) this.metaState.announcedPatients.push(id);
+        this.saveGame();
     }
 
     /** Patch 134: the same for an evolution. True the first time this profile evolves it. */
@@ -768,6 +784,8 @@ export class SaveManager {
             boonHistory: {},   // Patch 57: a wipe clears the record too.
             discoveredSynergies: {},   // Patch 126
             discoveredEvolutions: {},  // Patch 134
+            selectedCharacter: 'insomniac',   // Patch 136
+            announcedPatients: ['insomniac'],
             runsStarted: 0, deaths: 0, runsCompleted: 0,   // Patch 59
             // Patch 92: a wipe is a new patient file, so the retention notice and the
             // backup prompt are both re-armed. wipeSave() reloads the page, so the

@@ -201,6 +201,7 @@ export function resolveArsenal(game, cooldownTick, h) {
                 const dmg = straps.damage * h.tagDamageMultiplier(straps.tags, state.player.tagDamage) * wardMult(e, state);
                 e.takeDamage(dmg, game, h.tagKnockback(straps.tags, dmg));
                 e.lastHitByMelee = true;   // vampirism counts strap kills as melee
+                if (state.player.meleeLifesteal) state.sanity = Math.min(state.player.maxHp, state.sanity + 0.25);   // Patch 136: Vandal
                 state.cameraShake = Math.max(state.cameraShake, h.tagShake(straps.tags, dmg) * 0.5);
                 game.spawnParticles(e.x, e.y, '#e8dcc0', 2);
                 if (has(state, 'restraint')) e.held = Math.max(e.held || 0, 30);
