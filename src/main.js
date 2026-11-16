@@ -23,6 +23,9 @@ import { errorLog } from './core/ErrorLog.js';
 import { Tutorial } from './systems/Tutorial.js';
 import { isPortraitLayout } from './core/Layout.js';
 import { Pacing } from './core/Pacing.js';
+import { showColdOpen, dismissColdOpen, playEnding, endingShowing } from './ui/StoryUI.js';   // Patches 143–147 (V2 plan E)
+import * as Story from './data/Story.js';
+import { STRINGS } from './data/Strings.js';
 // Patch 93/97 — THE RECURSION: the endless floors past the Architect, and the mode
 // that launches straight into them. See src/core/Endless.js.
 import {
@@ -995,6 +998,16 @@ function startNewRun(opts = {}) {
     }
     enterPlayingState();
     announceProgress(claimProgress());   // Patch 139 (e.g. "Admitted", "Regular Appointments")
+    // Patch 143 (V2 plan E1/E6): the cold open — the content note and three cards —
+    // over the first tutorial room. Once per profile; it adds no click: the first key,
+    // click or touch dismisses it AND is the player's first move.
+    const story = saveManager.metaState.story || {};
+    // (state.isTutorial is set by Director.spawnRoom on the first step, so this reads
+    // the same condition it uses.)
+    if (!saveManager.metaState.tutorialCompleted && (game.state.floor || 1) === 1 && !story.coldOpenSeen) {
+        saveManager.markStory('coldOpenSeen');
+        showColdOpen();
+    }
 }
 
 /**
@@ -2651,6 +2664,7 @@ function initEngine() {
     game.onDeath = () => {
         gameState = 'DEAD';
         synergyBanner.clear();   // Patch 126
+        dismissColdOpen(true);   // Patch 143
         // Patch 54: the run is over, so its autosave must go with it. Before this
         // patch nothing wrote a suspended run mid-floor, so death had nothing to
         // clean up; now that autoSaveRun() persists one continuously, leaving it

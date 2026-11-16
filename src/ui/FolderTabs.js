@@ -22,7 +22,8 @@ export const TAB_GROUPS = [
     { id: 'descend',  label: 'DESCEND',  panes: [['tab-main', 'EVALUATION'], ['tab-roadmap', 'DESCENT ROADMAP']] },
     { id: 'synapses', label: 'SYNAPSES', panes: [['tab-tree', 'SYNAPSE RECORDS']] },
     { id: 'loadout',  label: 'LOADOUT',  panes: [['tab-loadout', 'THERAPY REGIMEN'], ['tab-curses', 'INTRUSIVE THOUGHTS']] },
-    { id: 'records',  label: 'RECORDS',  panes: [['tab-trophies', 'MIND PALACE'], ['tab-history', 'MANIFESTATION LOG'], ['tab-guide', 'CLINICAL GUIDE']] }
+    // Patch 144: CASE FILE (the story's pages) — its button and pane are built by UIManager.
+    { id: 'records',  label: 'RECORDS',  panes: [['tab-trophies', 'MIND PALACE'], ['tab-casefile', 'CASE FILE'], ['tab-history', 'MANIFESTATION LOG'], ['tab-guide', 'CLINICAL GUIDE']] }
 ];
 
 /** Which group a pane id belongs to (null for an unknown pane). */

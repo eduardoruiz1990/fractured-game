@@ -2375,6 +2375,31 @@ small box... that if the player presses it, then it gets the large screen."
   characters for a 384 px phone), a banned-word scan for the tone guardrails, page
   order and drop bookkeeping, notes, endings, the save seams, the page unlocks.
 
+**Patch 143 — the cold open, the content note, and the story's screens (plan E1, E6).**
+
+- New `src/ui/StoryUI.js`, all built at runtime (index.html untouched) and styled by a
+  `.story-*` / `.casefile-*` / `.session-note` block appended to `style.css`. Text is
+  always inserted with `textContent`.
+- **Cold open (E1).** On a profile's first tutorial run, `startNewRun` shows four cards
+  over the tutorial room: the content note, then INTAKE FORM, TREATMENT PLAN, FIRST
+  SESSION. **It adds no click**: the overlay is `pointer-events: none` and the game runs
+  under it; the first key, click or touch (after a 400 ms arm, repeats ignored)
+  dismisses it AND reaches the game as the player's first move. Otherwise each card
+  holds 3.6 s and the overlay fades out. `story.coldOpenSeen` is set when it is shown,
+  so it plays once. Its gate reads `tutorialCompleted` (not `state.isTutorial`, which
+  the Director only sets on the first step). Death dismisses it.
+- **Content note (E6)** — grief and anxiety, a parent's death from illness off screen, no
+  self-harm, no gore, and a pointer to help (findahelpline.com, as text, not a link) — is
+  the first cold-open card and also heads the Clinical Guide (`installContentNote`).
+- `playEnding(kind, meta, {choice})` — the E5 sequence (cards; SKIP to the credits;
+  then AWAKEN/RECURSE, or CLOSE FILE on a replay). A modal at z-index 400 whose keys
+  stay inside it (Enter/Space continue, Escape skips).
+- `renderCaseFile` — the RECORDS → **CASE FILE** pane (sub-tab between MIND PALACE
+  and MANIFESTATION LOG): chapters with filed pages as tap-to-read `<details>`, missing
+  pages as blank slips, a chapter's defense named once it is faced, and REPLAY buttons
+  for endings seen. The pane and its button are created in `UIManager`'s constructor
+  before the tab buttons are captured, so it is an ordinary tab to every handler.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

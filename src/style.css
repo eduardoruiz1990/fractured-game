@@ -1958,3 +1958,102 @@ body.quality-low #crt-scanlines { display: none; }
     #title-patient-strip .patient-name { display: none; }   /* icons only on a phone title */
     #title-patient-strip .patient-chip { min-width: 48px; justify-content: center; }
 }
+
+/* ===================================================================================
+   Patches 143–147 (V2 plan E): the story layer — built by src/ui/StoryUI.js.
+   =================================================================================== */
+
+/* E1 cold open: over the tutorial room, never taking input (the first input dismisses it
+   in StoryUI and still reaches the game). Above the HUD, below the menus. */
+.story-coldopen {
+    position: fixed; inset: 0; z-index: 170;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 16px; box-sizing: border-box;
+    background: rgba(5, 3, 3, 0.62);
+    pointer-events: none;
+    transition: opacity 0.45s ease;
+}
+.story-coldopen.story-out { opacity: 0; }
+.story-card {
+    width: min(520px, 100%); box-sizing: border-box;
+    background: var(--paper-bg); color: var(--ink-black);
+    border-left: 6px solid var(--ui-red);
+    padding: 18px 20px 14px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+    font-family: var(--ui-font);
+}
+.story-card.story-in, .story-ending-text.story-in { animation: storyIn 0.5s ease both; }
+@keyframes storyIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.story-stamp {
+    display: inline-block; font-size: 0.72rem; letter-spacing: 2px; font-weight: bold;
+    color: var(--ui-red); border: 2px solid var(--ui-red); padding: 2px 8px; margin-bottom: 10px;
+    transform: rotate(-1.5deg);
+}
+.story-title { font-size: 1.15rem; font-weight: 900; letter-spacing: 1px; margin-bottom: 8px; }
+.story-text { font-size: 0.95rem; line-height: 1.5; margin: 0 0 10px; }
+.story-dots { font-size: 0.7rem; color: #7a6f60; letter-spacing: 3px; text-align: right; }
+.story-hint {
+    margin-top: 14px; font-size: 0.72rem; letter-spacing: 2px; color: #d8cfb8;
+    animation: storyHint 1.6s ease-in-out infinite alternate;
+}
+@keyframes storyHint { from { opacity: 0.45; } to { opacity: 1; } }
+
+/* E6: the content note at the top of the Clinical Guide. */
+.story-guide-note {
+    border: 2px dashed var(--ui-red); padding: 10px 12px; margin: 0 0 16px;
+    color: var(--ink-black); font-size: 0.85rem; line-height: 1.45;
+}
+.story-guide-note strong { color: var(--ui-red); letter-spacing: 2px; }
+.story-guide-note p { margin: 6px 0 0; }
+
+/* E5: the ending — a modal over everything, including the pause menu. */
+.story-ending {
+    position: fixed; inset: 0; z-index: 400;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px; box-sizing: border-box;
+    background: rgba(3, 2, 2, 0.94);
+}
+.story-ending-panel.medical-folder {
+    width: min(620px, 100%); max-width: 620px; height: auto; max-height: calc(100vh - 32px); overflow-y: auto; box-sizing: border-box;
+    padding: 22px 22px 16px; display: flex; flex-direction: column; gap: 16px;
+}
+.story-ending-true .story-ending-panel { border-color: #d9c38a; }
+.story-ending-body { min-height: 120px; }
+.story-ending-text { font-size: 1.05rem; line-height: 1.55; margin: 0; color: var(--ink-black); }
+.story-ending-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.story-btn { min-height: 44px; min-width: 120px; }
+.story-btn-quiet { opacity: 0.75; }
+.story-credits { display: flex; flex-direction: column; gap: 12px; text-align: center; color: var(--ink-black); }
+.story-credit-h { font-size: 0.75rem; letter-spacing: 3px; color: var(--ui-red); font-weight: bold; }
+.story-credit-t { font-size: 0.95rem; }
+.story-choice { margin-bottom: 14px; }
+.story-choice .story-btn { width: 100%; }
+.story-choice-desc { font-size: 0.85rem; margin: 6px 2px 0; color: #3a332a; }
+
+/* E3: RECORDS → CASE FILE. */
+.casefile-head { text-align: center; margin-bottom: 14px; color: var(--ink-black); }
+.casefile-title { margin: 0 0 8px; letter-spacing: 2px; border-bottom: 2px solid var(--ink-black); padding-bottom: 8px; }
+.casefile-intro { font-size: 0.85rem; color: #555; margin: 0 0 6px; }
+.casefile-count { font-size: 0.8rem; color: var(--ui-red); font-weight: bold; margin: 0; }
+.casefile-replays { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 14px; }
+.casefile-replay { min-height: 44px; font-size: 0.75rem; }
+.casefile-chapter { margin-bottom: 16px; color: var(--ink-black); }
+.casefile-chapter-h { font-size: 0.85rem; letter-spacing: 1px; margin: 0 0 8px; border-bottom: 1px solid #9a8f7d; padding-bottom: 4px; }
+.casefile-locked { font-size: 0.75rem; color: #777; margin: 0 0 6px; }
+.casefile-page { border: 1px solid #b5aa96; background: rgba(255, 255, 255, 0.35); margin-bottom: 6px; padding: 8px 10px; font-size: 0.85rem; }
+.casefile-page summary { cursor: pointer; font-weight: bold; min-height: 28px; display: flex; align-items: center; }
+.casefile-page-text { margin: 6px 0 2px; line-height: 1.45; }
+.casefile-missing { color: #8a8070; font-style: italic; border-style: dashed; background: transparent; }
+
+/* E2: the session note on the floor-clear and AWAKEN screens. */
+.session-note {
+    margin: 12px auto 0; max-width: 520px; text-align: left;
+    border-left: 4px solid #8fb3c9; padding: 6px 10px;
+    font-size: 0.85rem; line-height: 1.45; color: #d8e4ea;
+}
+.session-note-label { display: block; font-size: 0.7rem; letter-spacing: 2px; color: #8fb3c9; margin-bottom: 4px; }
+
+@media (max-width: 600px) {
+    .story-text, .story-ending-text { font-size: 0.9rem; }
+    .story-title { font-size: 1rem; }
+}
