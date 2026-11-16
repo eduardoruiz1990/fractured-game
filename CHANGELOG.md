@@ -2069,6 +2069,50 @@ Tests:
 - New `qa/evolution_check.cjs` (phone): the READY badge, a chest evolving the pipe, the
   notice text with "NEW CODEX ENTRY · 1 / 12", 12 codex cards with one open.
 
+**Patch 135 — three new enemies (D4, second half).**
+
+One per floor from 2 to 4, all set in the school/institution the memory is built from.
+Each archetype asks for a different answer:
+
+| Type (bestiary) | From | Behaviour | The answer |
+|---|---|---|---|
+| `SPLITTER` (Photocopies) | floor 2 | A shuffling paper figure (34 hp, swaying chase). Killing a full-size one tears it into two smaller, faster generation-2 copies (12 hp, 2.2 speed) that do not split again. The split runs in Combat's death path, like the Rorschach's. | Room to breathe, and area damage |
+| `WARDEN` (Fire Wardens) | floor 3 | Slow and sturdy (70 hp). Steers toward the middle of its own crowd and wards every non-boss within 150 px: **half damage** while it stands (`shieldTimer`, refreshed each step, read in `Enemy.takeDamage`). Never wards itself or a boss. Dashed orange ring; warded enemies show an orange arc. | Kill it first |
+| `BURROWER` (Crawlspaces) | floor 4 | Travels under the floor, where nothing can touch it: `takeDamage` is ignored and the homing weapons skip it. It surfaces where the player is standing, shows a 70 px warning ring for 50 steps, erupts (14 damage), then stays exposed and slow for 160 steps before digging back in. The warning ring is lit through the darkness. | Move when the ring appears; hit it while exposed |
+
+- **Spawn tables** (`Director.spawnWave`): each new type is carved out of the
+  Scavenger share (on floor 4+, partly out of the Parasite share), so the older
+  enemies keep their slots.
+  - floor 2: Photocopy 15%;
+  - floor 3: Photocopy 10%, Warden 10%;
+  - floor 4+: Predator 30%, Parasite 30%, Photocopy 8%, Warden 8%, Crawlspace 12%.
+
+  Budget costs are 2 / 3 / 2. Floor 1 is unchanged.
+- **Pools** `splitter` (40), `warden` (12) and `burrower` (20). Combat releases by
+  `type.toLowerCase()` as for every other type. `Enemy.initBase` resets the new
+  `shieldTimer`; each class resets its own state in `init`.
+- **Colours.** Only the original three take the biome tint now. The new types keep
+  their own colours, so the 40-string bound on `drawGlow` keys still holds.
+- **XP** 2/1 (Photocopy full/copy), 6 (Warden), 4 (Crawlspace).
+- **Light recoil resistance** 0.9 / 0.35 / 0.6.
+- Each has elite names (Patch 133) and a bestiary entry (which also gives them
+  Mind Palace kill trophies).
+- The dev bench's SPAWN ONE OF EACH ENEMY includes them, and the scenario dropdown pins
+  the Crawlspace burrowed / warning / exposed.
+
+Tests:
+- `test_content.js` +20:
+  - each type spawns from its pool with a bestiary entry, a resistance and elite names;
+  - a Photocopy splits into two copies that do not split;
+  - new kill types are counted;
+  - a warded enemy takes half damage, the Warden does not ward itself, and the ward
+    fades;
+  - a burrowed Crawlspace takes no damage, surfaces under the player, hurts on
+    eruption if you stay, can be hit when exposed, and stepping out dodges it;
+  - the floor tables: none on floor 1, only the Photocopy on 2, all three by 4.
+- New `qa/enemies_check.cjs`: all three drawn in the real game, and the split happens
+  there.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

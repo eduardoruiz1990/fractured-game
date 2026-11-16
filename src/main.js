@@ -1511,7 +1511,7 @@ function initEngine() {
         };
 
         document.getElementById('dev-btn-spawn-enemies').addEventListener('click', () => {
-            devSpawnRing(['SCAVENGER', 'PREDATOR', 'PARASITE'], 150);
+            devSpawnRing(['SCAVENGER', 'PREDATOR', 'PARASITE', 'SPLITTER', 'WARDEN', 'BURROWER'], 150);   // + Patch 135
         });
 
         document.getElementById('dev-btn-spawn-bosses').addEventListener('click', () => {
@@ -1595,6 +1595,12 @@ function initEngine() {
                         break;
                     case 'ARCHITECT':
                         ent.actionState = pick('hovering', 'charging_collapse', 'collapse_active');
+                        break;
+                    // Patch 135
+                    case 'BURROWER':
+                        ent.burrowState = pick('burrowed', 'warning', 'exposed');
+                        ent.burrowed = ent.burrowState === 'burrowed';
+                        ent.burrowTimer = 25;
                         break;
                 }
             });

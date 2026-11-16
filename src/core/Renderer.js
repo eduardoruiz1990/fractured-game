@@ -1401,6 +1401,21 @@ export class Renderer {
             });
         }
 
+        // Patch 135: a Crawlspace's warning ring is lit, so the tell is never hidden
+        // by the dark (it is the whole counterplay).
+        if (state.entities) {
+            for (const ent of state.entities) {
+                if (ent.type !== 'BURROWER' || ent.burrowState !== 'warning') continue;
+                const g = this.lightCtx.createRadialGradient(ent.x, ent.y, 0, ent.x, ent.y, 110);
+                g.addColorStop(0, 'rgba(255, 200, 140, 0.85)');
+                g.addColorStop(1, 'rgba(255, 200, 140, 0)');
+                this.lightCtx.fillStyle = g;
+                this.lightCtx.beginPath();
+                this.lightCtx.arc(ent.x, ent.y, 110, 0, Math.PI * 2);
+                this.lightCtx.fill();
+            }
+        }
+
         const fl = state.player.weapons.flashlight;
         let flRadius = (fl && Number.isFinite(fl.radius) && fl.radius > 0) ? fl.radius : 250;
         let currentAngle = (fl && Number.isFinite(fl.angle)) ? fl.angle : 0.6;
@@ -2548,6 +2563,16 @@ export class Renderer {
                     this.ctx.stroke();
                 }
 
+                // Patch 135: under a Fire Warden's ward — a small orange shield arc.
+                if (ent.shieldTimer > 0 && ent.type !== 'WARDEN') {
+                    const sr = (ent.radius || 15) + 5;
+                    this.ctx.strokeStyle = 'rgba(240, 170, 60, 0.75)';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, sr, -Math.PI * 0.85, -Math.PI * 0.15);
+                    this.ctx.stroke();
+                }
+
                 // Patch 133 (V2 plan D4): a named elite — gold double ring, its name and
                 // its own health bar above it, and the body drawn ELITE_SCALE larger
                 // (the scale is undone right after the per-type dispatch below).
@@ -2946,6 +2971,99 @@ export class Renderer {
                     }
 
                     this.ctx.restore();
+                }
+                // Patch 135 (V2 plan D4): the three Phase D enemies. Plain paths, no
+                // sprites — each is a handful of shapes, and none uses shadowBlur.
+                else if (ent.type === 'SPLITTER') {
+                    // A photocopied paper figure: a sheet with a smudged face; the
+                    // copies (generation 2) are smaller and a shade greyer.
+                    const k = ent.generation === 2 ? 0.65 : 1;
+                    const sw = Math.sin(ent.phase || 0) * 0.15;
+                    this.ctx.save();
+                    this.ctx.rotate(sw);
+                    this.ctx.scale(k, k);
+                    this.ctx.fillStyle = isFlashed ? '#ffffff' : (ent.generation === 2 ? '#b9b2a2' : '#e8e0cc');
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(-11, -15); this.ctx.lineTo(7, -15); this.ctx.lineTo(12, -10);
+                    this.ctx.lineTo(12, 15); this.ctx.lineTo(-11, 15);
+                    this.ctx.closePath();
+                    this.ctx.fill();
+                    this.ctx.strokeStyle = '#6b6352';
+                    this.ctx.lineWidth = 1.5;
+                    this.ctx.stroke();
+                    this.ctx.fillStyle = '#2a2620';
+                    this.ctx.fillRect(-6, -6, 3, 3);
+                    this.ctx.fillRect(3, -6, 3, 3);
+                    this.ctx.fillRect(-5, 4, 10, 2);
+                    this.ctx.strokeStyle = 'rgba(40, 36, 30, 0.5)';
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(-11, 9); this.ctx.lineTo(-6, 7); this.ctx.lineTo(-1, 10); this.ctx.lineTo(5, 7); this.ctx.lineTo(12, 9);
+                    this.ctx.stroke();
+                    this.ctx.restore();
+                }
+                else if (ent.type === 'WARDEN') {
+                    // Hi-vis vest and helmet; its ward is the dashed orange ring.
+                    const wr = 150 / (isElite ? 1.45 : 1);   // WARDEN_SHIELD_RADIUS, in world px under the elite scale
+                    const pulse = 0.12 + Math.sin(this.renderFrame * 0.08 + (ent.phase || 0)) * 0.05;
+                    this.ctx.strokeStyle = `rgba(240, 170, 60, ${pulse + 0.15})`;
+                    this.ctx.lineWidth = 2;
+                    this.ctx.setLineDash([10, 8]);
+                    this.ctx.beginPath(); this.ctx.arc(0, 0, wr, 0, Math.PI * 2); this.ctx.stroke();
+                    this.ctx.setLineDash([]);
+                    this.ctx.fillStyle = `rgba(240, 170, 60, ${pulse * 0.5})`;
+                    this.ctx.fill();
+                    this.ctx.fillStyle = isFlashed ? '#ffffff' : '#e0a030';
+                    this.ctx.beginPath(); this.ctx.arc(0, 0, 15, 0, Math.PI * 2); this.ctx.fill();
+                    this.ctx.fillStyle = '#f4f0d0';
+                    this.ctx.fillRect(-15, -3, 30, 4);
+                    this.ctx.fillStyle = '#c2381e';
+                    this.ctx.beginPath(); this.ctx.arc(0, -6, 8, Math.PI, 0); this.ctx.fill();
+                    this.ctx.fillStyle = '#111';
+                    this.ctx.fillRect(-5, 3, 3, 3); this.ctx.fillRect(2, 3, 3, 3);
+                }
+                else if (ent.type === 'BURROWER') {
+                    const st = ent.burrowState;
+                    if (st === 'burrowed') {
+                        // Only the floor moving: a travelling mound of cracks.
+                        this.ctx.strokeStyle = 'rgba(160, 125, 85, 0.75)';
+                        this.ctx.lineWidth = 2;
+                        for (let k = 0; k < 3; k++) {
+                            const a = (ent.phase || 0) * 0.7 + k * 2.1;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(Math.cos(a) * 4, Math.sin(a) * 4);
+                            this.ctx.lineTo(Math.cos(a) * 14, Math.sin(a) * 14);
+                            this.ctx.stroke();
+                        }
+                        this.ctx.fillStyle = 'rgba(120, 90, 60, 0.6)';
+                        this.ctx.beginPath(); this.ctx.ellipse(0, 0, 12, 7, 0, 0, Math.PI * 2); this.ctx.fill();
+                    } else if (st === 'warning') {
+                        // The tell: the eruption's exact radius (ERUPT_RADIUS), filling in.
+                        const t = 1 - Math.max(0, ent.burrowTimer) / 50;
+                        this.ctx.fillStyle = `rgba(255, 120, 60, ${0.12 + 0.25 * t})`;
+                        this.ctx.beginPath(); this.ctx.arc(0, 0, Math.max(0, 70 * t), 0, Math.PI * 2); this.ctx.fill();
+                        this.ctx.strokeStyle = `rgba(255, 140, 80, ${0.6 + 0.4 * Math.sin(this.renderFrame * 0.6)})`;
+                        this.ctx.lineWidth = 3;
+                        this.ctx.beginPath(); this.ctx.arc(0, 0, 70, 0, Math.PI * 2); this.ctx.stroke();
+                    } else {
+                        // Exposed (or digging back in): a clawed thing half out of the floor.
+                        const down = st === 'digging' ? Math.max(0.05, ent.burrowTimer / 24) : 1;
+                        this.ctx.save();
+                        this.ctx.scale(down, down);
+                        this.ctx.fillStyle = 'rgba(70, 50, 30, 0.8)';
+                        this.ctx.beginPath(); this.ctx.ellipse(0, 6, 20, 9, 0, 0, Math.PI * 2); this.ctx.fill();
+                        this.ctx.fillStyle = isFlashed ? '#ffffff' : '#8a6a46';
+                        this.ctx.beginPath(); this.ctx.arc(0, -2, 13, 0, Math.PI * 2); this.ctx.fill();
+                        this.ctx.strokeStyle = '#d9c3a0';
+                        this.ctx.lineWidth = 2;
+                        for (const sx of [-1, 1]) {
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(sx * 9, -6); this.ctx.lineTo(sx * 17, -14); this.ctx.lineTo(sx * 14, -4);
+                            this.ctx.stroke();
+                        }
+                        this.ctx.fillStyle = '#ffcf7a';
+                        this.ctx.fillRect(-5, -5, 3, 3); this.ctx.fillRect(2, -5, 3, 3);
+                        this.ctx.restore();
+                    }
                 }
                 else if (ent.type === 'SCAVENGER') {
                     this.ctx.save();

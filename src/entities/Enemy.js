@@ -47,6 +47,9 @@ export class Enemy {
         if (this.elite) this.radius = undefined;
         this.elite = false;
         this.eliteName = null;
+        // Patch 135: a Fire Warden's ward (Warden.js) — steps left; refreshed each
+        // step by a Warden in range.
+        this.shieldTimer = 0;
         this.damageAccumulator = 0;
         this.damageTick = 0;
         this.painCooldown = 0; // NEW: Audio throttle for individual enemy hits
@@ -74,6 +77,9 @@ export class Enemy {
     // centered (cone, aura, dash, orbiting blade), so there's no need to thread
     // a separate origin point through every call site.
     takeDamage(amount, game, knockbackForce = 0) {
+        // Patch 135: under a Fire Warden's ward, half damage (WARDEN_SHIELD_FACTOR in
+        // Warden.js — CHANGE BOTH).
+        if (this.shieldTimer > 0) amount *= 0.5;
         this.hp -= amount;
         this.flashTime = 5;
         this.lastHitByMelee = false;
@@ -318,6 +324,7 @@ export class Enemy {
         }
 
         if (this.flashTime > 0) this.flashTime--;
+        if (this.shieldTimer > 0) this.shieldTimer--;   // Patch 135
     }
 
     update(state, game) {

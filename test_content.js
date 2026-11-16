@@ -668,6 +668,99 @@ console.log('\nEvolutions (Patch 134)');
     check('recordEvolution is new once', sm.recordEvolution('ceiling_fan') === true && sm.recordEvolution('ceiling_fan') === false);
 }
 
+// ---------------------------------------------------------------------------
+// Patch 135 (V2 plan D4): the Photocopy, the Fire Warden, the Crawlspace.
+console.log('\nPhase D enemies (Patch 135)');
+{
+    const { Combat } = await import('./src/systems/Combat.js');
+    const { ENEMY_BESTIARY, LIGHT_RECOIL_RESIST } = await import('./src/data/Manifestations.js');
+    const { BURROW_STEPS } = await import('./src/entities/Burrower.js');
+    const E = await import('./src/systems/Elites.js');
+    const fresh = () => { const g = new Game(); g.init(mockSave); g.state.stress = 1; g.state.isTutorial = false; return g; };
+
+    for (const t of ['SPLITTER', 'WARDEN', 'BURROWER']) {
+        const g = fresh();
+        const e = g.director.spawnEntity(t, null, null, 300, 0);
+        check(`${t} spawns from its pool with finite stats`, e && e.type === t && Number.isFinite(e.hp) && e.hp > 0 && Number.isFinite(e.speed));
+        check(`${t} has a bestiary entry, a light resistance and elite names`,
+              ENEMY_BESTIARY.some(b => b.id === t) && LIGHT_RECOIL_RESIST[t] !== undefined && E.ELITE_NAMES[t].length > 0);
+    }
+
+    // Photocopy: splits once.
+    let g = fresh();
+    g.state.player.weapons.flashlight.radius = 0;
+    const sp = g.director.spawnEntity('SPLITTER', null, null, 400, 0);
+    sp.hp = 0; Combat.resolveWeapons(g);
+    const copies = g.state.entities.filter(e => e.type === 'SPLITTER');
+    check('a Photocopy tears into two generation-2 copies', copies.length === 2 && copies.every(c => c.generation === 2 && c.hp < sp.maxHp));
+    copies.forEach(c => { c.hp = 0; });
+    Combat.resolveWeapons(g);
+    check('the copies do not copy again', !g.state.entities.some(e => e.type === 'SPLITTER'));
+    {
+        const { SaveManager } = await import('./src/core/SaveManager.js');
+        const sm = new SaveManager(); const k0 = sm.metaState.killCounts.SPLITTER || 0;
+        sm.recordKill('SPLITTER'); sm.recordKill('ELITE');
+        check('kills of a new type are counted (recordKill no longer drops them)', sm.metaState.killCounts.SPLITTER === k0 + 1 && sm.metaState.killCounts.ELITE >= 1);
+    }
+
+    // Fire Warden: half damage to what is near it, never itself, never a boss.
+    g = fresh();
+    const w = g.director.spawnEntity('WARDEN', null, null, 500, 0);
+    const near = g.director.spawnEntity('SCAVENGER', null, null, 560, 0);
+    const far = g.director.spawnEntity('SCAVENGER', null, null, 900, 0);
+    w.update(g.state, g);
+    const h0 = near.hp, f0 = far.hp;
+    near.takeDamage(10, g); far.takeDamage(10, g);
+    check('a warded enemy takes half damage', h0 - near.hp === 5 && f0 - far.hp === 10, `${h0 - near.hp} / ${f0 - far.hp}`);
+    const wh = w.hp; w.takeDamage(10, g);
+    check('the Warden does not ward itself', wh - w.hp === 10);
+    for (let i = 0; i < 8; i++) near.applyMovement(g.state, g);
+    const h1 = near.hp; near.takeDamage(10, g);
+    check('the ward fades once the Warden stops refreshing it', h1 - near.hp === 10);
+
+    // Crawlspace: untouchable underground, warns, erupts where you stood, then exposed.
+    g = fresh();
+    const b = g.director.spawnEntity('BURROWER', null, null, 300, 0);
+    const bh = b.hp; b.takeDamage(50, g);
+    check('a burrowed Crawlspace takes no damage', b.burrowed && b.hp === bh);
+    g.state.player.x = 0; g.state.player.y = 0;
+    let steps = 0;
+    while (b.burrowState === 'burrowed' && steps++ < 400) { g.state.frame++; b.update(g.state, g); }
+    check('it surfaces under the player with a warning', b.burrowState === 'warning' && Math.hypot(b.x, b.y) < 1);
+    const s0 = g.state.sanity; g.state.player.iframes = 0;
+    for (let i = 0; i < BURROW_STEPS.warn + 1; i++) { g.state.frame++; b.update(g.state, g); }
+    check('standing on the ring when it erupts hurts', g.state.sanity < s0 && b.burrowState === 'exposed' && !b.burrowed);
+    const eh = b.hp; b.takeDamage(10, g);
+    check('an exposed Crawlspace can be hit', b.hp === eh - 10);
+    // Dodging works: surface, step out, no damage.
+    g = fresh();
+    const b2 = g.director.spawnEntity('BURROWER', null, null, 0, 0);
+    b2.burrowState = 'warning'; b2.burrowTimer = 2; b2.burrowed = true;
+    g.state.player.x = 200; g.state.player.y = 0;
+    const s1 = g.state.sanity;
+    for (let i = 0; i < 4; i++) { g.state.frame++; b2.update(g.state, g); g.state.player.x = 200; }
+    check('stepping out of the ring dodges the eruption', g.state.sanity === s1);
+
+    // Floor tables: nothing new on floor 1; the Photocopy on 2; all three by 4.
+    const seen = (floor) => {
+        const gg = fresh(); gg.state.floor = floor; gg.director.spawnRoom(floor, 2);
+        gg.director.hasRoomForEnemy = () => true;
+        const types = new Set();
+        for (let i = 0; i < 1500; i++) {
+            gg.state.enemyBudget = 50; gg.state.budgetTimer = -1;
+            gg.director.spawnWave(1280, 720);
+            const last = gg.state.entities[gg.state.entities.length - 1];
+            if (last) types.add(last.type);
+            gg.director.releaseRoomState(gg.state);
+        }
+        return types;
+    };
+    const f1 = seen(1), f2 = seen(2), f4 = seen(4);
+    check('floor 1 has none of the new three', !['SPLITTER', 'WARDEN', 'BURROWER'].some(t => f1.has(t)), [...f1].join(','));
+    check('floor 2 introduces the Photocopy only', f2.has('SPLITTER') && !f2.has('WARDEN') && !f2.has('BURROWER'), [...f2].join(','));
+    check('floor 4 has all three', f4.has('SPLITTER') && f4.has('WARDEN') && f4.has('BURROWER'), [...f4].join(','));
+}
+
 console.log('\nSynergy discovery (Patch 126)');
 {
     const { SaveManager } = await import('./src/core/SaveManager.js');

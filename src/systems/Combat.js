@@ -764,6 +764,15 @@ export class Combat {
                     errorLog.capture(e, 'enemy-death');
                 }
                 
+                // Patch 135: a full-size Photocopy tears into two smaller copies. It
+                // still pays out below like any other kill; the copies are ordinary
+                // pooled spawns (they do not split again).
+                if (ent.type === 'SPLITTER' && ent.generation < 2 && game.director) {
+                    game.director.spawnEntity('SPLITTER', null, null, ent.x - 16, ent.y, 2);
+                    game.director.spawnEntity('SPLITTER', null, null, ent.x + 16, ent.y, 2);
+                    game.spawnParticles(ent.x, ent.y, '#d8cfb8', 16);
+                }
+
                 if (ent.type === 'RORSCHACH' && ent.generation < 3) {
                     game.director.spawnEntity('RORSCHACH', null, null, ent.x - 20, ent.y, ent.generation + 1);
                     game.director.spawnEntity('RORSCHACH', null, null, ent.x + 20, ent.y, ent.generation + 1);
@@ -828,6 +837,10 @@ export class Combat {
                         if (game.eventBus) game.eventBus.emit('elite_killed', ent.type);
                     }
                     let dropAmount = ent.type === 'SCAVENGER' ? 2 : (ent.type === 'PREDATOR' ? 5 : 1);
+                    // Patch 135: the Phase D enemies.
+                    if (ent.type === 'SPLITTER') dropAmount = ent.generation === 1 ? 2 : 1;
+                    else if (ent.type === 'WARDEN') dropAmount = 6;
+                    else if (ent.type === 'BURROWER') dropAmount = 4;
                     if (ent.maxHp > 30) dropAmount += 5; 
                     if (ent.type === 'SCAVENGER' && state.player.curses && state.player.curses.includes('compulsive_cleaner')) {
                         dropAmount += 3; 

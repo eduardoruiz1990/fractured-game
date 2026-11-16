@@ -49,7 +49,7 @@ export function nearestEnemy(entities, x, y, maxDist = Infinity, exclude = null)
     let best = null, bestD = maxDist;
     for (let i = 0; i < entities.length; i++) {
         const e = entities[i];
-        if (!e || e.hp <= 0) continue;
+        if (!e || e.hp <= 0 || e.burrowed) continue;   // Patch 135: nothing homes on a Crawlspace underground
         if (exclude && exclude.has(e.id)) continue;
         const d = Math.hypot(e.x - x, e.y - y);
         if (d < bestD) { bestD = d; best = e; }

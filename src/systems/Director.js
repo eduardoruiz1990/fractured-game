@@ -8,6 +8,10 @@ import { Rorschach } from '../entities/Rorschach.js';
 import { Panopticon } from '../entities/Panopticon.js'; 
 import { Amalgamation } from '../entities/Amalgamation.js';
 import { Architect } from '../entities/Architect.js';
+// Patch 135 (V2 plan D4): the three Phase D enemies.
+import { Splitter } from '../entities/Splitter.js';
+import { Warden } from '../entities/Warden.js';
+import { Burrower } from '../entities/Burrower.js';
 // Patch 51c: reports the swallowed boss-roadmap failure below into the crash log.
 import { errorLog } from '../core/ErrorLog.js';
 import { eliteChanceForRoom, promoteToElite } from './Elites.js';   // Patch 133
@@ -106,6 +110,9 @@ export class Director {
             panopticon: new ObjectPool(() => new Panopticon(), 2), 
             amalgamation: new ObjectPool(() => new Amalgamation(), 2),
             architect: new ObjectPool(() => new Architect(), 2), 
+            splitter: new ObjectPool(() => new Splitter(), 40),   // Patch 135
+            warden: new ObjectPool(() => new Warden(), 12),
+            burrower: new ObjectPool(() => new Burrower(), 20),
             // Patch 39: `pooled` is a provenance marker — see the release guard in
             // updateParticles(). size/decay/rot/spin give each particle its own
             // character so a burst doesn't read as one rigid object.
@@ -382,16 +389,26 @@ export class Director {
                 if (state.floor === 1) {
                     if (roll < 0.1 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR'; 
                 } 
+                // Patch 135 (V2 plan D4): one new enemy per floor from 2 to 4 — the
+                // Photocopy (splits), the Fire Warden (wards its crowd), the Crawlspace
+                // (burrows) — each carved out of the floor's Scavenger share or, on 4+,
+                // out of the Parasite share, so the older enemies keep their slots.
                 else if (state.floor === 2) {
                     if (roll < 0.4 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR'; 
+                    else if (roll < 0.55 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'SPLITTER';
                 }
                 else if (state.floor === 3) {
                     if (roll < 0.3 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR'; 
                     else if (roll < 0.6 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'PARASITE'; 
+                    else if (roll < 0.7 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'SPLITTER';
+                    else if (roll < 0.8 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'WARDEN';
                 }
                 else if (state.floor >= 4) {
                     if (roll < 0.3 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'PREDATOR';
-                    else if (roll < 0.8 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'PARASITE';
+                    else if (roll < 0.6 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'PARASITE';
+                    else if (roll < 0.68 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'SPLITTER';
+                    else if (roll < 0.76 && (state.enemyBudget >= 3 || bossAlive)) spawnType = 'WARDEN';
+                    else if (roll < 0.88 && (state.enemyBudget >= 2 || bossAlive)) spawnType = 'BURROWER';
                 }
 
                 // Room-modifier overrides layered on top of the floor's base table
@@ -433,6 +450,9 @@ export class Director {
                     if (spawnType === 'SCAVENGER') state.enemyBudget -= 1;
                     else if (spawnType === 'PREDATOR') state.enemyBudget -= 2;
                     else if (spawnType === 'PARASITE') state.enemyBudget -= 3;
+                    else if (spawnType === 'SPLITTER') state.enemyBudget -= 2;   // Patch 135
+                    else if (spawnType === 'WARDEN') state.enemyBudget -= 3;
+                    else if (spawnType === 'BURROWER') state.enemyBudget -= 2;
 
                     // Patch 133: the spawn that brings the budget to half becomes the
                     // room's named elite. Promoted after spawnEntity, so it compounds
@@ -772,6 +792,9 @@ export class Director {
         else if (type === 'PANOPTICON') ent = this.pools.panopticon.get().init(Math.random(), x, y); 
         else if (type === 'AMALGAMATION') ent = this.pools.amalgamation.get().init(Math.random(), x, y);
         else if (type === 'ARCHITECT') ent = this.pools.architect.get().init(Math.random(), x, y);
+        else if (type === 'SPLITTER') ent = this.pools.splitter.get().init(Math.random(), x, y, state.stress, generation);   // Patch 135
+        else if (type === 'WARDEN') ent = this.pools.warden.get().init(Math.random(), x, y, state.stress);
+        else if (type === 'BURROWER') ent = this.pools.burrower.get().init(Math.random(), x, y, state.stress);
 
         if (ent) {
             // Patch 94: before the ELITE/variant branch, so those compound onto it.
@@ -789,11 +812,15 @@ export class Director {
                 // deepening forever would mint a new permanent cache entry every cycle.
                 // Capped, the reachable set is 5 palettes x 2 roles x 4 tiers = 40
                 // strings, forever — asserted in test_endless.js.
-                const tints = ENEMY_TINTS[paletteIndexForFloor(state.floor)];
-                ent.originalColor = recursionTint(
-                    ent.type === 'SCAVENGER' ? tints[0] : tints[1],
-                    state.floor
-                );
+                // Patch 135: only the original three take the biome tint. The Phase D
+                // enemies keep their own colours (and the 40-string bound above holds).
+                if (ent.type === 'SCAVENGER' || ent.type === 'PREDATOR' || ent.type === 'PARASITE') {
+                    const tints = ENEMY_TINTS[paletteIndexForFloor(state.floor)];
+                    ent.originalColor = recursionTint(
+                        ent.type === 'SCAVENGER' ? tints[0] : tints[1],
+                        state.floor
+                    );
+                }
                 ent.color = ent.originalColor;
 
                 // ELITE room modifier: fewer total spawns (enemyBudget cut in

@@ -91,13 +91,21 @@ export const LIGHT_RECOIL_RESIST = {
     RORSCHACH: 0.25,
     PANOPTICON: 0.15,
     AMALGAMATION: 0.15,
-    ARCHITECT: 0.10      // effectively immovable
+    ARCHITECT: 0.10,     // effectively immovable
+    // Patch 135
+    SPLITTER: 0.9,
+    WARDEN: 0.35,
+    BURROWER: 0.6
 };
 
 export const ENEMY_BESTIARY = [
     { id: 'SCAVENGER', name: 'JANITORS',      icon: '♙', color: '#555555', desc: 'The baseline manifestation. Slow, numerous, and happy to swarm. They vacuum up Lucidity you leave lying around.' },
     { id: 'PREDATOR',  name: 'HALL MONITORS', icon: '♘', color: '#8b0000', desc: 'Telegraphs, then lunges in a straight line. The tell is the pause — move sideways, not backwards.' },
     { id: 'PARASITE',  name: 'SUBSTITUTES',   icon: '♗', color: '#a0522d', desc: 'Hangs back and lashes at range, and will buff other manifestations if left alone. Priority target.' },
+    // Patch 135 (V2 plan D4): one new manifestation per floor, 2 to 4.
+    { id: 'SPLITTER',  name: 'PHOTOCOPIES',   icon: '📄', color: '#d8cfb8', desc: 'Floor 2 on. Tear one apart and two smaller, faster copies shuffle out of it. The copies do not copy again.' },
+    { id: 'WARDEN',    name: 'FIRE WARDENS',  icon: '🦺', color: '#e0a030', desc: 'Floor 3 on. Slow, sturdy, and it keeps to the middle of the crowd: everything inside its orange ward takes half damage. Kill it first.' },
+    { id: 'BURROWER',  name: 'CRAWLSPACES',   icon: '🕳️', color: '#8a6a46', desc: 'Floor 4 on. Travels under the floor where nothing can touch it, then erupts where you stood. Move when the ring appears, and hit it while it is exposed.' },
     { id: 'BOSS',        name: 'SPHERE HEAD',     icon: '🌑',  color: '#b87333', desc: 'Floor 1. Charges, then releases an expanding pulse. The safe place is behind it.', boss: true },
     { id: 'RORSCHACH',   name: 'THE RORSCHACH',   icon: '🦋',  color: '#800080', desc: 'Floor 2. Splits into smaller copies of itself when killed, three generations deep.', boss: true },
     { id: 'PANOPTICON',  name: 'THE PANOPTICON',  icon: '👁️', color: '#ff0055', desc: 'Floor 3. Its red wedge shows exactly where the gaze will burn. Outrun the sweep, or step beyond its reach.', boss: true },
