@@ -1401,6 +1401,15 @@ export class Renderer {
                     this.lightCtx.beginPath();
                     this.lightCtx.arc(obj.x, obj.y, 110, 0, Math.PI * 2);
                     this.lightCtx.fill();
+                } else if (obj.type === 'CASE_PAGE') {
+                    // Patch 144: a Case File page carries its own small light.
+                    const pageHole = this.lightCtx.createRadialGradient(obj.x, obj.y, 0, obj.x, obj.y, 70);
+                    pageHole.addColorStop(0, 'rgba(200, 225, 240, 0.65)');
+                    pageHole.addColorStop(1, 'rgba(200, 225, 240, 0)');
+                    this.lightCtx.fillStyle = pageHole;
+                    this.lightCtx.beginPath();
+                    this.lightCtx.arc(obj.x, obj.y, 70, 0, Math.PI * 2);
+                    this.lightCtx.fill();
                 } else if (obj.type === 'EXIT_ELEVATOR') {
                     const exitHole = this.lightCtx.createRadialGradient(obj.x, obj.y, 10, obj.x, obj.y, 150);
                     exitHole.addColorStop(0, 'rgba(255, 255, 255, 1)');
@@ -2531,6 +2540,31 @@ export class Renderer {
                         this.ctx.font = "bold 12px 'Courier New', Courier, monospace";
                         this.ctx.fillText('CHEST', 0, -32);
                     }
+                } else if (obj.type === 'CASE_PAGE') {
+                    // Patch 144: a loose sheet from the Case File — paper, a red margin
+                    // line, a few typed rows — turning slowly as it floats.
+                    const spin = Number.isFinite(obj.spin) ? obj.spin : 0;
+                    const bob = Math.sin(this.renderFrame * 0.07 + spin) * 3;
+                    this.drawGlow(0, 0, 40, '#bcd6e6', 0.35);
+                    this.ctx.translate(0, bob);
+                    this.ctx.rotate(Math.sin(spin) * 0.25);
+                    this.ctx.fillStyle = '#e5e0d8';
+                    this.ctx.fillRect(-11, -14, 22, 28);
+                    this.ctx.fillStyle = '#c9c0b0';
+                    this.ctx.beginPath();   // folded corner
+                    this.ctx.moveTo(5, -14); this.ctx.lineTo(11, -8); this.ctx.lineTo(5, -8); this.ctx.closePath();
+                    this.ctx.fill();
+                    this.ctx.strokeStyle = '#8b0000';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.beginPath(); this.ctx.moveTo(-6, -14); this.ctx.lineTo(-6, 14); this.ctx.stroke();
+                    this.ctx.fillStyle = '#555';
+                    for (let r = 0; r < 4; r++) this.ctx.fillRect(-4, -7 + r * 5, r === 3 ? 7 : 12, 1.5);
+                    this.ctx.rotate(-Math.sin(spin) * 0.25);
+                    this.ctx.fillStyle = '#bcd6e6';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.font = "bold 11px 'Courier New', Courier, monospace";
+                    this.ctx.fillText('PAGE', 0, -26);
                 } else if (obj.type === 'EXIT_ELEVATOR') {
                     let pulse = Math.sin(this.renderFrame * 0.1) * 20;
                     

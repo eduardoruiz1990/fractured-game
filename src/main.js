@@ -2847,6 +2847,26 @@ function initEngine() {
         announceProgress(claimProgress());   // Patch 139
     };
 
+    // Patch 144 (V2 plan E3): a Case File page filed. The compact strip names it; a tap
+    // opens the page itself. Filing can also free a Patient (pages are an alternative
+    // unlock), which claimProgress announces.
+    game.onCasePage = (id, isNew) => {
+        const page = Story.PAGE_BY_ID[id];
+        if (!page || !isNew) return;
+        const ch = Story.CHAPTERS[page.chapter - 1];
+        synergyBanner.pushNotice({
+            stamp: STRINGS.pageFiled(Story.pageCount(saveManager.metaState), Story.TOTAL_PAGES),
+            name: page.title,
+            desc: page.text,
+            foot: ch ? `CHAPTER ${ch.n} · ${ch.title}` : '',
+            tone: 'story',
+            calm: !!gameSettings.photosensitive
+        });
+        try { if (navigator.vibrate) navigator.vibrate([15, 30, 15]); } catch (e) {}
+        if (audioEngine) audioEngine.playSFX('ui_click', 0.8);
+        announceProgress(claimProgress());
+    };
+
     // Patch 138 (V2 plan D5): a room event starting (or ending) gets the stamped card.
     game.onRoomEvent = (ev) => {
         if (!ev) return;

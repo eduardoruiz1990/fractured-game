@@ -2400,6 +2400,30 @@ small box... that if the player presses it, then it gets the large screen."
   for endings seen. The pane and its button are created in `UIManager`'s constructor
   before the tab buttons are captured, so it is an ordinary tab to every handler.
 
+**Patch 144 — Case File pages in the world (plan E3).**
+
+- New `src/systems/CasePages.js`. A page is an interactable (`type: 'CASE_PAGE'`,
+  `pageId`):
+  - **Drops** (`dropPage`): the floor's boss always drops one, opposite its token; a
+    named elite half the time, beside its chest. The page is `Story.nextPageFor` (the
+    next page of the floor's chapter, never one already lying in the room). Never in
+    the tutorial, never without a save. Moved out of walls like a chest.
+  - **Pickup** (`updatePage`): walk into it. Within 260 px it drifts to the player
+    (7 px a step), so a page beside the boss's exit is not walked past.
+  - **Never lost to a door** (`collectLoosePages`): the room door and the floor's
+    exit file anything still lying first. A page is only lost by dying before reaching
+    it, and then it simply drops again later.
+  - Filing goes through `SaveManager.collectPage` (which saves), then `game.onCasePage`.
+- `main.js` `onCasePage`: a `story`-tone notice — the compact strip reads
+  `PAGE FILED · n / 25` and the page's title; a tap opens the page text and its chapter.
+  Then `claimProgress()`, since pages also free Patients and earn achievements.
+- `Renderer`: the page is a small sheet of file paper (red margin, typed rows, folded
+  corner) turning as it floats, labelled PAGE, with a pale-blue glow and its own small
+  hole in the darkness mask.
+- `test_story.js` +14: drops (bosses always, elites by the roll, no duplicate while one
+  is lying, none in the tutorial or without a save), drift and pickup, `onCasePage`,
+  `collectLoosePages` filing the rest once, backfill, and floor 6 telling chapter 1.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

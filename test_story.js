@@ -157,5 +157,46 @@ ok(ENDINGS.true.some(c => /not your fault/i.test(c.text)), 'the true ending says
     ok(isPatientUnlocked('vandal', { ...base, killCounts: { BOSS: 1 } }), 'the old rule still unlocks (an alternative, not a replacement)');
 }
 
+// --- Patch 144: pages in the world (systems/CasePages.js) ---------------------------------------
+{
+    const { dropPage, updatePage, collectLoosePages, pendingPageIds, filePage } = await import('./src/systems/CasePages.js');
+    storage = {};
+    const sm = new SaveManager();
+    const filed = [];
+    const mkGame = (floor = 1, extra = {}) => ({
+        saveManager: sm,
+        state: { floor, interactables: [], obstacles: [], isTutorial: false, player: { x: 0, y: 0, radius: 12 }, ...extra },
+        onCasePage: (id, isNew) => filed.push([id, isNew])
+    });
+    const g = mkGame(1);
+    ok(dropPage(g, 500, 0, 'elite', () => 0.9) === null, 'an elite roll above 50%: no page');
+    const a = dropPage(g, 500, 0, 'boss', () => 0.5);
+    ok(a && a.type === 'CASE_PAGE' && a.pageId === 'p01', 'a boss drops the chapter\'s first page');
+    const b = dropPage(g, 600, 0, 'elite', () => 0.1);
+    ok(b && b.pageId === 'p02', 'a second drop while the first is lying is the NEXT page, not a duplicate');
+    ok(pendingPageIds(g.state).join() === 'p01,p02', 'pendingPageIds');
+    ok(dropPage(mkGame(1, { isTutorial: true }), 0, 0, 'boss', () => 0) === null, 'never in the tutorial');
+    ok(dropPage({ state: g.state }, 0, 0, 'boss', () => 0) === null, 'never without a save');
+
+    // Drift: a page within the magnet radius moves towards the player; one far away does not.
+    a.x = 200; a.y = 0; b.x = 2000; b.y = 0;
+    updatePage(g, a); updatePage(g, b);
+    ok(a.x < 200 && b.x === 2000, `a near page drifts in, a far one stays (${a.x}, ${b.x})`);
+    for (let i = 0; i < 60 && !a.dead; i++) updatePage(g, a);
+    ok(a.dead && sm.metaState.story.pages.p01, 'walking into it files it');
+    ok(filed.length === 1 && filed[0][0] === 'p01' && filed[0][1] === true, 'onCasePage(id, isNew=true)');
+    // A door or the exit files whatever is still lying.
+    const got = collectLoosePages(g);
+    ok(got.length === 1 && got[0].id === 'p02' && b.dead && sm.metaState.story.pages.p02, 'collectLoosePages files the rest');
+    ok(collectLoosePages(g).length === 0, 'and nothing twice');
+    ok(filePage(g, { type: 'CASE_PAGE', pageId: 'p01', dead: false }).isNew === false, 'an already-filed page is not new');
+    // A floor with its chapter complete backfills; a floor with nothing left drops nothing.
+    const g3 = mkGame(3);
+    ['p11', 'p12', 'p13', 'p14', 'p15'].forEach(id => sm.collectPage(id));
+    ok(dropPage(g3, 0, 0, 'boss', () => 0).pageId === 'p03', 'floor 3 complete: backfills chapter 1');
+    // The Recursion: floor 6 tells chapter 1 again.
+    ok(dropPage(mkGame(6), 0, 0, 'boss', () => 0).pageId === 'p03', 'floor 6 drops chapter 1 pages');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
