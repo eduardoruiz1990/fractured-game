@@ -1,4 +1,5 @@
 // src/systems/Director.js
+import { floorPressure } from '../data/Difficulty.js';   // Patch 156
 import { ObjectPool } from './ObjectPool.js';
 import { Scavenger } from '../entities/Scavenger.js';
 import { Predator } from '../entities/Predator.js';
@@ -160,8 +161,10 @@ export class Director {
         
         state.isTutorial = false;
         // Patch 123: the room term runs at ROOM_PACE (see Config.ROOMS_PER_FLOOR).
-        state.enemyBudget = Math.floor(10 + (floor * 5) + (roomNumber * 2 * ROOM_PACE));
+        // Patch 156: times the floor's pressure (data/Difficulty.js); 1 on floor 1.
+        state.enemyBudget = Math.floor((10 + (floor * 5) + (roomNumber * 2 * ROOM_PACE)) * floorPressure(floor).budget);
         state.budgetTimer = 0;
+        state.packLeft = 0;
 
         // Room modifiers: rolled once per room, never for the boss room. Pure
         // spawn-table/budget/rate tuning inside Director.js — no entity file or
@@ -397,6 +400,9 @@ export class Director {
                 // Patch 136: the Insomniac sees in a blackout — no faster arrivals.
                 if (state.roomModifier === 'BLACKOUT' && !state.player.blackoutImmune) spawnRate = Math.max(8, Math.floor(spawnRate * 0.6));
                 else if (state.roomModifier === 'SWARM') spawnRate = Math.max(8, Math.floor(spawnRate * 0.5));
+                // Patch 156: the floor's arrival rate (data/Difficulty.js). 1 on floor 1.
+                const density = floorPressure(state.floor).density;
+                if (density !== 1) spawnRate = Math.max(8, Math.round(spawnRate / density));
             }
 
             // Patch 94 — endless-only live-entity ceiling.
@@ -498,6 +504,16 @@ export class Director {
                             state.eliteSpawned = true;
                             if (this.game.audioEngine) this.game.audioEngine.playSFX('boss_intro', 0.45);
                         }
+                    }
+
+                    // Patch 156: arrivals come in packs (data/Difficulty.js; 1 on floor
+                    // 1). The rest of a pack follows 6 frames apart, then the usual gap.
+                    // Without it a room is spawn-rate bound: one enemy at a time, each
+                    // dead before the next arrives, however tough it is.
+                    const pack = floorPressure(state.floor).pack;
+                    if (pack > 1 && !state.isTutorial && state.enemyBudget > 0) {
+                        state.packLeft = (state.packLeft > 0 ? state.packLeft : pack) - 1;
+                        if (state.packLeft > 0) state.budgetTimer -= Math.min(6, spawnRate - 1);
                     }
                 }
             }
@@ -838,6 +854,22 @@ export class Director {
             this.applyEndlessScaling(ent, state);
 
             if (!isBossType(ent.type)) {
+                // Patch 156: regular-room toughness (data/Difficulty.js). Not during a
+                // boss fight, so the escort and the Amalgamation's minions keep the
+                // tuning the boss fights were balanced with.
+                const fp = floorPressure(state.floor);
+                if (!state.activeBoss) {
+                    if (fp.hp !== 1 && Number.isFinite(ent.hp)) {
+                        ent.hp *= fp.hp;
+                        ent.maxHp = ent.hp;
+                        if (Number.isFinite(ent.spawnMaxHp)) ent.spawnMaxHp = ent.maxHp;
+                    }
+                    if (fp.speed !== 1 && Number.isFinite(ent.speed)) {
+                        ent.speed *= fp.speed;
+                        if (Number.isFinite(ent.baseSpeed)) ent.baseSpeed = ent.speed;
+                    }
+                }
+
                 // Patch 96: the same five biome tints, indexed by the cycled palette
                 // rather than by an if/else whose tail was `floor >= 5`, and then
                 // darkened per cycle so a Cycle III scavenger reads as a corrupted

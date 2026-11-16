@@ -2110,7 +2110,11 @@ html.text-larger { font-size: 125%; }
 }
 
 /* Patch 151: while the level-up cards are up, a notice waits instead of covering a card. */
-body.levelup-open #synergy-banner { visibility: hidden; }
+body.levelup-open #synergy-banner,
+/* Patch 153: and the touch controls stay hidden while the cards are up even if a thumb
+   touches the canvas below them (which re-reveals DASH through Input.js). */
+body.levelup-open #btn-dash,
+body.levelup-open .joystick-base { visibility: hidden; }
 
 /* Patch 151 (V2 plan F5): on a short screen (a phone either way up, an 800x600 iframe)
    AUTHORIZE DESCENT sat below the fold of DESCEND, reachable only by scrolling a pane

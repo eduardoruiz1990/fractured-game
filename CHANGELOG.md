@@ -2597,6 +2597,179 @@ Measured at 960×540, 800×600, 1280×720, 1024×768 and on phones both ways up 
   cards and DASH comes back after the pick; on a phone no storm is drawn behind the
   folder; no `backdrop-filter` remains on the folder, its header or the pause menu.
 
+**Patch 152 — the Mind Hub frame rate (follow-up to 151).**
+
+The A56 playtest report after Patch 151, taken in the walkable Mind Hub (not the
+RECORDS → MIND PALACE pane that 151 fixed): 36 fps, frame interval 27.9 ms mean, but
+only 0.8 ms of JS per draw — GPU/compositor bound. Gameplay on the same phone was smooth.
+
+- The cause was not the canvas: forcing each hub frame to finish (draw + a 1-pixel
+  readback) measured 4.6 ms against gameplay's 5.8 ms on LOW, headless. It was the page.
+  The hub branch of the game loop rewrote `#prompt-text`'s `innerText` (and the prompt's
+  colours) on EVERY frame a zone was active — which is most frames, because aiming the
+  flashlight at a zone counts — so the browser re-laid-out and re-rasterised the prompt,
+  10 px blurred text-shadow and 20 px box-shadow included, 60 times a second. At a DPR of
+  2.8 that blur is ~28 device pixels. A MutationObserver counted 60 changes a second in
+  the hub and nothing else.
+- Now the prompt is written only when the active zone changes (`hubPromptZoneId`).
+  `hideHubPrompt()` hides it and forgets the zone, and runs when the folder opens from a
+  desk, on entering the hub, and in `startNewRun` (a run started from the hub never
+  keeps the prompt), so the prompt reappears correctly after closing the folder.
+- `qa/hub_check.cjs`: standing at a desk for a second, the prompt is shown and the page
+  records zero mutations, at 384×717, 915×412 and 1280×720.
+- `qa/sizes_check.cjs`: the touch-control reveal tapped `#game-canvas` (the canvas is
+  `#gameCanvas`), so it waited out Playwright's 30 s timeout, during which the run could
+  end — which made the landscape level-up assertions flaky. Fixed, with a 3 s timeout.
+
+**Patch 153 — smoke test of the shipped bundles (plan G2), and DASH during a level-up.**
+
+- New `qa/smoke_check.cjs`. Every other qa check drives the dev server; this one builds
+  what is uploaded (`--mode crazygames`, and `--mode playtest` for the soak), serves each
+  with `vite preview`, and plays it with no dev hook, at 1280×720 and on a 384×717 touch
+  phone, first launch:
+  - the SDK tag is requested (answered by `qa/sdkmock.js`), no other host is contacted;
+  - the download inside the SDK's loading window is under 2.5 MB (1.80 MB measured; the
+    1.84 MB in-run music starts the moment `loadingStop` fires, as designed in
+    `AudioEngine.loadDeferredAssets`, and is reported apart);
+  - no `window.__fractured` and no perf overlay at runtime;
+  - SDK init → gameplayStart on BEGIN DESCENT; the cold open plays and the first input
+    dismisses it;
+  - the tutorial ADVANCES under real input — held WASD and mouse aim on desktop (six
+    banner steps in 40 s), the left stick and the double-tap dash on the phone (four);
+    level-ups are taken with `1` or a tap;
+  - pause shows the menu and the SDK hears gameplayStop; no page error, no console.error,
+    nothing in ErrorLog's store;
+  - then `qa/soak_check.cjs` against the built playtest bundle: phone, 4× throttle, LOW.
+  The plan's "p95 frame < 20 ms" is not asserted: headless draws canvas in software, so
+  frame times are only comparable run to run (see the soak's header).
+- `qa/soak_check.cjs`: heap growth over the soak above 30 MB is now an invariant failure.
+- **Fix found by the smoke test:** during a level-up on a phone, a thumb on the canvas
+  below the cards re-revealed DASH (Input.js shows it on a canvas touch), undoing Patch
+  151. `body.levelup-open` now hides `#btn-dash` and the joysticks in CSS as well, so no
+  touch can bring them back until the pick. `qa/sizes_check.cjs` asserts it at all four
+  touch sizes.
+- G3: the Node suites already cover the Phase D/E/F data (new weapons, evolutions,
+  Patients, Strings, 5-room floors, aim assist, haptics); no gaps found.
+
+**Patch 154 — release checklist and documentation (plan G3, G4, G5).**
+
+- New `QA_CHECKLIST.md` (G4): the manual pass against the CrazyGames developer-portal
+  preview of the exact zip — the automated gates first, then SDK events, ads (the
+  5-minute midgame floor, both rewarded offers, muting, ad errors), saves (guest, cloud
+  across devices, back-up/restore, suspended runs), devices and browsers (Android
+  Chrome with aim assist, the dash gesture and haptics; iOS Safari; desktop; the iframe
+  sizes; tab switching), performance on the playtest bundle, accessibility, content and
+  policy (PEGI-12, recovery framing, generic credits), and the submission form.
+- G3: no new Node assertions were needed — see Patch 153.
+- G5: Keep clauses 44–50 (per-frame DOM writes, no `backdrop-filter` over the canvas,
+  the level-up overlay rule, haptics, aim assist's `aimHeld`, the loading-window budget,
+  the smoke test before every upload). Known issues: the touch dash and the fog cost
+  struck through as fixed; difficulty and the headless GPU blind spot added. The test
+  inventory lists all thirteen suites and the fuzz with current counts. `CLAUDE.md`
+  points at the v2 clauses, the smoke test and the checklist.
+
+**Patch 155 — the Mind Hub frame rate, round two.**
+
+After Patch 152 the A56 reported the Mind Hub at ~45 fps (up from 36), still well below
+gameplay's 60 with nothing in the page changing. Counting canvas calls per hub frame
+found the rest: **89 draws a frame under `globalCompositeOperation = 'screen'`** —
+the flashlight tint, four zone pools, four ceiling beams, and all 80 dust motes, which
+were drawn inside the same `'screen'` block. `screen` is an advanced blend that many
+mobile GPUs can only do by copying the destination first, per draw. Plus 136 `fill`s,
+38 `fillRect`s and 18 new gradients a frame, mostly furniture that never moves.
+
+- `HubWorld`: the furniture (shadows, bed, desk, locker, trophy shelf, statues and boss
+  monuments) is baked into the floor image once per visit (`bake`, re-run when
+  `Game.init` builds a new state, i.e. every hub entry, so new statues appear), and
+  handed to the GPU as an `ImageBitmap` when available. Each frame is one `drawImage`
+  plus the active zone's outline (`drawHighlight`: a 3 px stroke on a rect grown 1.5 px,
+  the same visible band the old 6 px stroke under the furniture left).
+- `Renderer` hub branch: the light-mask zone discs, the zone colour pools and the beams
+  are cached sprites (`hubSprite`, the `drawGlow` pattern) instead of per-frame
+  gradients; the main-canvas tints use `'lighter'` (a plain additive blend) instead of
+  `'screen'`, alphas trimmed (0.4→0.32, 0.15→0.12, tint 0.4→0.32) so the room reads the
+  same; the dust is drawn as four batched fills, one per brightness band.
+- Per hub frame (LOW, 384×717): `screen` draws 89 → 0, `fill` 136 → 16, `fillRect`
+  38 → 9, gradients 18 → 5. Screenshots before/after at 1280×720 match closely.
+
+**Patch 156 — the difficulty pass (regular rooms, floors 2–5).**
+
+The first full playtest after Phase D called the game "fair, and maybe too easy". Before
+any tuning I built a way to measure it.
+
+- **New `sim_difficulty.js`.** It plays whole runs headless with a scripted player. It
+  uses the real `Game`, `Director`, `Combat` and `LevelUpUI.selectCard`, on a
+  fake DOM.
+  - Profiles: `fresh` (no Synapse nodes), `returning` (the 12 cheapest) and `veteran` (20).
+  - Skills: `novice` (sluggish, random picks), `competent` (standoff, kites, dashes,
+    dodges boss wind-ups) and `statue` (never moves; a check that enemies can hurt at all).
+  - It reports, per floor:
+    - the median and minimum lowest Sanity in rooms 1–4 and over the whole floor;
+    - the damage taken;
+    - where and to what each death happened.
+  - `--detail` adds, for rooms 1–4: damage, healing, time, level-ups and the mean
+    number of enemies alive.
+  - `--sources` tallies the damage by attacker. `--ttk` gives each enemy type's
+    lifetime and HP.
+  - `--pressure '{"3":{"hp":1.6}}'` overrides rows of the new table without editing it.
+- **What it found** (16 runs per profile and skill, before this patch):
+  - Regular rooms were *spawn-rate bound*. Enemies arrived one at a time and died on
+    the way in: 0.5–1.0 alive on average on floors 2–5.
+  - Scavengers spend most of their time chasing XP orbs, not the player. By floor 2,
+    the player's damage outgrows every regular enemy: a ×4 HP scavenger still lived
+    only 3 s.
+  - So nearly all Sanity lost in a regular room was the passive drain, and the +3 per
+    XP orb refilled it. The lowest Sanity in rooms 1–4 was a median of 81–97% on
+    floors 2–5.
+  - Almost every bot death was a boss (the Panopticon, the Architect).
+  - The scripted bot fights bosses worse than a person does, so its boss death rate is
+    not a target. Boss fights are left alone.
+- **New `src/data/Difficulty.js`:** `FLOOR_PRESSURE`, one row per floor, read through
+  `floorPressure(floor)`.
+  - Floor 1 is exactly the old game. Floors past 5 read the floor-5 row, and
+    `Endless.js` scales on top of it as before.
+  - Every knob is off while a boss is alive, so bosses, their projectiles, their
+    escort and the Amalgamation's minions keep their numbers.
+
+  | floor | orbHeal | damage | budget | pack | hp | speed |
+  |---|---|---|---|---|---|---|
+  | 1 | 3 | 1 | 1 | 1 | 1 | 1 |
+  | 2 | 2.25 | 1.15 | 1.25 | 2 | 1.3 | 1.1 |
+  | 3 | 2 | 1.2 | 1.35 | 3 | 1.45 | 1.12 |
+  | 4 | 1.75 | 1.25 | 1.4 | 3 | 1.6 | 1.15 |
+  | 5 | 1.5 | 1.3 | 1.5 | 3 | 1.75 | 1.18 |
+
+  There is also a `density` knob (it shortens the gap between arrivals), held at 1 on
+  every floor.
+- **Wiring:**
+  - `Combat.collectXP`: orb heal.
+  - `Game.takeDamage`: `damage`, skipped while `state.activeBoss` is set or the source
+    is a boss type.
+  - `Director.spawnRoom`: `budget`. It also resets `state.packLeft`.
+  - `Director.spawnWave`:
+    - `density`;
+    - **packs**: the rest of a pack follows 6 frames after the first by stepping
+      `budgetTimer` back, then the usual gap. Never in the tutorial room or while a
+      boss is alive.
+  - `Director.spawnEntity`: `hp` and `speed` on regular enemies, before the ELITE and
+    variant multipliers, re-stamping `maxHp`, `spawnMaxHp` and `baseSpeed` (Keep
+    clause 6).
+- **Measured with the table:**
+  - Enemies alive in a regular room went from 0.5–1.0 to 1.5–2.9.
+  - Damage from regular enemies on floors 2–3 went up about 2–3×, and some runs now
+    hit real low points in rooms (13%, 5%).
+  - No profile gained regular-room deaths beyond one drain death.
+  - The rooms 1–4 median low is still high (82–95% for a competent bot). The bot kites
+    perfectly with full knowledge, and a person does not; the real check is a human
+    playtest.
+  - Push further with `pack`/`hp` first: the bot says `damage` and `orbHeal` matter
+    little while enemies cannot reach the player.
+- **Tests:**
+  - `test_content.js` +17: floor 1 is identity, every knob is finite and positive,
+    `pack` is whole, no floor is easier than the one before, and out-of-range floors
+    clamp.
+  - Every other suite, the 200-run fuzz and the soak are unchanged.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -2823,6 +2996,33 @@ Measured at 960×540, 800×600, 1280×720, 1024×768 and on phones both ways up 
     `game.refreshSynergies()` (Patch 126).** Assigning `state.player.synergies =
     getActiveSynergies(...)` directly works in play but skips the banner, the slow
     motion and the codex record, so that synergy is never "discovered".
+44. **No DOM write per frame unless the value changed (Patches 107, 152).** Use
+    `hudStyle`/`hudText`-style compare-then-write, or a cached key like
+    `hubPromptZoneId`. Re-writing `innerText` with the SAME string still re-lays-out and
+    re-rasterises the element; under a blurred text-shadow that alone held the Mind Hub
+    to 36 fps on a phone with 0.8 ms of JS a frame. `qa/hub_check` asserts zero page
+    mutations while standing at a desk.
+45. **No `backdrop-filter` over the live canvas (Patch 151).** The canvas repaints every
+    frame, so a blur over it is recomputed every frame — full-screen on a phone. Use more
+    opacity instead. `qa/sizes_check` asserts none on the folder, its header or the
+    pause menu.
+46. **While the level-up cards are up, `body.levelup-open` is set and owns what may show
+    over them (Patches 151, 153).** DASH, the joysticks and the notice strip are hidden
+    in CSS, because Input.js re-reveals DASH on any canvas touch. Anything new that
+    floats over the play area during LEVEL_UP joins that rule.
+47. **Vibration goes through `haptic(kind)` only (Patch 149).** It owns the setting, the
+    per-kind throttle and the try/catch. The sim never touches `navigator`: Game calls
+    `game.onHaptic(kind)` and main.js forwards it.
+48. **A new way of aiming must set `inputState.aimHeld` while it is in use (Patch 148).**
+    Aim assist writes the aim angle whenever `aimHeld` is false, so an aiming input that
+    does not set it is silently overridden by the assist.
+49. **The SDK loading window (`loadingStart` → `loadingStop`) stays under 2.5 MB
+    (Patches 118, 153).** Anything large and not needed for the title goes in
+    `AudioEngine.deferredAssetUrls`, which starts the moment the window closes.
+    `qa/smoke_check` measures the window on the built bundle.
+50. **Run `node qa/smoke_check.cjs` before every upload (Patch 153).** It is the only
+    check that exercises the shipped bundle — the SDK tag, the absence of the dev hook,
+    the real asset paths — rather than the dev server.
 
 ---
 
@@ -2842,17 +3042,21 @@ Measured at 960×540, 800×600, 1280×720, 1024×768 and on phones both ways up 
   aggregate. A remote sink (the queue names ByteBrew) is a separate decision.
 - **`GAME_STATE.md` does not exist** despite `BASIC_LAUNCH_FIX_QUEUE.md` citing it as
   authoritative. Closest equivalent is `PROJECT_STATE_SUMMARY.md`.
-- **On touch you cannot dash while aiming.** One thumb cannot hold the aim stick and
-  reach the dash button. Patch 68 fixed *accidental* dashing (the button no longer
-  sits in the thumb's landing zone) but not this. The real fix is a gesture —
-  double-tap the movement side to dash in the direction already being pushed, putting
-  dash on the hand that is not doing precision work. Not built; it adds an input mode
-  and needs a design call.
-- **Fog is 30 live `createRadialGradient` + `arc` + `fill` per frame**
-  (`generateFogClouds` / `drawFog`), with no scaling by device class — the largest
-  single per-frame cost, on top of ~40 other gradient sites. `drawGlow` already proves
-  the cached-sprite pattern works here. Identified in the Patch 66b review; not
-  green-lit.
+- ~~**On touch you cannot dash while aiming.**~~ **Fixed in Patch 149**: double-tap the
+  movement side to dash along the last heading; aim assist (Patch 148) frees the right
+  thumb in the first place.
+- ~~**Fog is 30 live `createRadialGradient` per frame.**~~ **Fixed in Patch 115**: fog
+  clouds draw from a cached sprite (`getFogSprite`), and the quality tiers scale it.
+- **The game may be too easy.** The first full playtest after Phase D called it "fair,
+  and maybe too easy". **Patch 156** raises regular-room pressure on floors 2–5
+  (packs, tougher and faster enemies, less orb healing; floor 1 and bosses unchanged).
+  Awaiting a human playtest; tune `src/data/Difficulty.js`, measured with
+  `sim_difficulty.js`.
+- **GPU cost is invisible to the headless checks.** Headless Chromium rasterises the
+  canvas in software and composites without a GPU, so a compositor-bound slowdown (the
+  Mind Hub, Patch 152; the folder blur, Patch 151) shows up only on a device. The
+  playtest bundle's perf overlay report is the measurement; the Mind Hub fix awaits a
+  device report.
 - **The canvas renders at CSS-pixel resolution, ignoring DPR.** Deliberate — it is a
   large performance saving on phones — but it means the image is upscaled by the
   compositor. Patch 67 made that upscale smooth; it did not make it sharp. If this is
@@ -2868,22 +3072,30 @@ Measured at 960×540, 800×600, 1280×720, 1024×768 and on phones both ways up 
 
 | File | Count | Covers |
 |---|---|---|
-| `test_bosses.js` | 67 | boss dispatch, `activeBoss` on spawn frame, entity `.phase` pooling, predator feeding cap, **spawn ring clears the view on 5 viewports + desktop ring unchanged** |
-| `test_content.js` | 180 | synergy/token/set/curse data, XP curve, audio asset paths, boon pool, `PLAYER_WEAPON_IDS` vs real loadout, cone falloff curves + light-recoil coverage |
+| `test_bosses.js` | 73 | boss dispatch, `activeBoss` on spawn frame, entity `.phase` pooling, predator feeding cap, **spawn ring clears the view on 5 viewports + desktop ring unchanged** |
+| `test_content.js` | 375 | synergy/token/set/curse data, XP curve, audio asset paths, boon pool, `PLAYER_WEAPON_IDS` vs real loadout, cone falloff curves + light-recoil coverage |
 | `test_synapse.js` | 255 | Synapse Tree costs, gates, resolver |
 | `test_leash.js` | 15 | off-screen dead zone, recall lands on screen, boss exclusion, tutorial cases, **desktop viewport derivation unchanged by the live-zoom refactor** |
 | `test_tutorial.js` | 86 | **new** — step gates and overrides, every step's timeout, the instruction hold and its cap, device-appropriate copy, copy length ceiling, degenerate state |
 | `test_viewport.js` | 42 | **new** — the desktop/portrait split in both directions, desktop `updateZoom` bit-identical to pre-Patch-71, band and camera geometry, zero-sized canvas |
-| `test_endless.js` | 158 | **new (Patch 93)** — floors 1-5 bit-identical (boss dispatch, palette index, variant table, every multiplier `=== 1`), the boss rotation, `cadence` identity + min floors, the run-completion latch across a floor boundary, the direct-launch unlock gate and draft maths, and **the bounded colour set walked over 120 floors against the real Director** |
+| `test_endless.js` | 162 | **new (Patch 93)** — floors 1-5 bit-identical (boss dispatch, palette index, variant table, every multiplier `=== 1`), the boss rotation, `cadence` identity + min floors, the run-completion latch across a floor boundary, the direct-launch unlock gate and draft maths, and **the bounded colour set walked over 120 floors against the real Director** |
+| `test_rewards.js` | 16 | rewarded-ad revive and double-Lucidity maths, once per run |
+| `test_pacing.js` | 23 | the fixed timestep, room pace on 5-room floors |
+| `test_arena.js` | 107 | room shapes, spawn sectors, wall collision, room events, the room-clear path |
+| `test_progress.js` | 72 | achievements, unlocks, the stats save fields, the Daily Session |
+| `test_story.js` | 83 | Story/Strings data, `metaState.story`, Case File drops, session notes, boss lines, endings, Patient page unlocks |
+| `test_input.js` | 44 | aim assist targeting and override, the double-tap dash, haptics routing and throttle |
+| `test_fuzz_runs.js` | 200 runs | random full runs through every system; asserts no throw and the run invariants |
 
 **Browser checks (`qa/`, V2):** Playwright scripts against the Vite dev server. They
 need `npx vite --port 5199 --strictPort` running, and `qa/README.md` lists them. They
 cover what the Node suites cannot: the ads flow against an SDK mock, dialogs, focus and
 keys, settings migration, the sprite cache, render recovery, high refresh, the perf
-soak, sim cost and the portal context.
+soak, sim cost and the portal context. `qa/smoke_check.cjs` (Patch 153) is the
+exception: it builds and serves the SHIPPED bundles itself and needs no dev server.
 
 `test_director.js` and `test_save.js` remain exploratory (they print, they don't
-assert). All six assertion suites exit non-zero on failure and should be run after
+assert). All thirteen assertion suites exit non-zero on failure and should be run after
 touching entities, save schema, content data, the tutorial, or anything that reads
 viewport dimensions.
 

@@ -143,6 +143,8 @@ const URL = process.env.FRACTURED_URL || 'http://localhost:5199/';
   // to the cap means a key is varying continuously again and the cache is thrashing.
   const lastCache = cacheSamples[cacheSamples.length - 1] || 0;
   if (lastCache > 600) failures.push(`sprite cache at ${lastCache} entries (thrashing toward the 768 cap)`);
+  // V2 plan G2: heap growth over the soak stays under 30 MB (a leak shows up here first).
+  if (Number.isFinite(heap0) && Number.isFinite(heap1) && heap1 - heap0 > 30) failures.push(`heap grew ${(heap1 - heap0).toFixed(1)} MB (> 30)`);
   if (failures.length) { console.log('  FAIL: ' + failures.join('; ')); process.exit(1); }
   console.log('  invariants OK');
 })();

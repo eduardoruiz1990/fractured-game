@@ -15,6 +15,7 @@ import { autoAimStep } from '../systems/AutoAim.js';   // Patch 148 (V2 plan F1)
 import { bossTelegraphing } from './Haptics.js';   // Patch 149 (V2 plan F6)
 import { updateArena } from '../systems/Arena.js';   // Patch 137
 import { lockedWeapons } from '../data/Unlocks.js';   // Patch 139
+import { floorPressure } from '../data/Difficulty.js';   // Patch 156
 
 /**
  * Patch 132: adds any weapon in `fresh` that `carried` lacks (at level 0), so a run
@@ -468,6 +469,11 @@ export class Game {
             if (this.state.player.hasDenialRecharge) this.state.player.denialRechargeTimer = 2700; // 45s @ 60fps
             return;
         }
+
+        // Patch 156: the floor's pressure (data/Difficulty.js). 1 on floor 1. Regular
+        // rooms only: boss fights keep the numbers they were balanced with (a boss,
+        // its projectiles and anything hitting while a boss is alive).
+        if (!this.state.activeBoss && !isBossType(source)) amount *= floorPressure(this.state.floor).damage;
 
         if (this.state.player.curses && this.state.player.curses.includes('hemophilia')) {
             amount *= 1.5;
