@@ -2621,6 +2621,36 @@ only 0.8 ms of JS per draw — GPU/compositor bound. Gameplay on the same phone 
   `#gameCanvas`), so it waited out Playwright's 30 s timeout, during which the run could
   end — which made the landscape level-up assertions flaky. Fixed, with a 3 s timeout.
 
+**Patch 153 — smoke test of the shipped bundles (plan G2), and DASH during a level-up.**
+
+- New `qa/smoke_check.cjs`. Every other qa check drives the dev server; this one builds
+  what is uploaded (`--mode crazygames`, and `--mode playtest` for the soak), serves each
+  with `vite preview`, and plays it with no dev hook, at 1280×720 and on a 384×717 touch
+  phone, first launch:
+  - the SDK tag is requested (answered by `qa/sdkmock.js`), no other host is contacted;
+  - the download inside the SDK's loading window is under 2.5 MB (1.80 MB measured; the
+    1.84 MB in-run music starts the moment `loadingStop` fires, as designed in
+    `AudioEngine.loadDeferredAssets`, and is reported apart);
+  - no `window.__fractured` and no perf overlay at runtime;
+  - SDK init → gameplayStart on BEGIN DESCENT; the cold open plays and the first input
+    dismisses it;
+  - the tutorial ADVANCES under real input — held WASD and mouse aim on desktop (six
+    banner steps in 40 s), the left stick and the double-tap dash on the phone (four);
+    level-ups are taken with `1` or a tap;
+  - pause shows the menu and the SDK hears gameplayStop; no page error, no console.error,
+    nothing in ErrorLog's store;
+  - then `qa/soak_check.cjs` against the built playtest bundle: phone, 4× throttle, LOW.
+  The plan's "p95 frame < 20 ms" is not asserted: headless draws canvas in software, so
+  frame times are only comparable run to run (see the soak's header).
+- `qa/soak_check.cjs`: heap growth over the soak above 30 MB is now an invariant failure.
+- **Fix found by the smoke test:** during a level-up on a phone, a thumb on the canvas
+  below the cards re-revealed DASH (Input.js shows it on a canvas touch), undoing Patch
+  151. `body.levelup-open` now hides `#btn-dash` and the joysticks in CSS as well, so no
+  touch can bring them back until the pick. `qa/sizes_check.cjs` asserts it at all four
+  touch sizes.
+- G3: the Node suites already cover the Phase D/E/F data (new weapons, evolutions,
+  Patients, Strings, 5-room floors, aim assist, haptics); no gaps found.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

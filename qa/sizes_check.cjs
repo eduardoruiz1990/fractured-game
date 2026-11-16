@@ -91,6 +91,14 @@ const shown = (page, id) => page.evaluate((id) => { const e = document.getElemen
       return { vis: b && getComputedStyle(b).visibility, cls: document.body.className, gs: window.__fractured.gameState }; });
     ok(!(await shown(page, 'synergy-banner')), `${tag} level-up: the notice strip waits ${JSON.stringify(strip)}`);
     if (touch) ok(!(await shown(page, 'btn-dash')), `${tag} level-up: DASH is not over the cards`);
+    if (touch) {
+      // Patch 153: a thumb on the canvas while the cards are up (it re-reveals DASH in Input.js).
+      await page.evaluate(() => { const c = document.getElementById('gameCanvas'); const t = new Touch({ identifier: 9, target: c, clientX: 20, clientY: innerHeight - 10 });
+        c.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t] }));
+        c.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t] })); });
+      await page.waitForTimeout(100);
+      ok(!(await shown(page, 'btn-dash')), `${tag} level-up: DASH stays hidden when a thumb touches the canvas`);
+    }
     await page.screenshot({ path: `${S}/sizes_levelup_${tag}.png` });
     await page.evaluate(() => { const ui = window.__fractured.levelUpUI; ui.armedAt = 0; ui.tryPick(0); });
     await page.waitForTimeout(300);

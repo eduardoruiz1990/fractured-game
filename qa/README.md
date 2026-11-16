@@ -1,5 +1,11 @@
 # Headless browser checks (V2 plan G1/G2 seed)
 
+**Shipped bundles (G2):** `node qa/smoke_check.cjs [--seconds 40] [--no-soak] [--keep]` needs
+no dev server. It builds the CrazyGames and playtest bundles, serves them with `vite preview`
+(ports 5197/5196), plays the CrazyGames one like a player with no dev hook (SDK tag, no
+foreign hosts, loading-window size < 2.5 MB, cold open, the tutorial advancing under real
+input, pause, no errors) and soaks the built playtest bundle. Run it before every upload.
+
 Playwright scripts that drive the real game in Chromium. They need the Vite **dev**
 server, because they use the dev-only `window.__fractured` hook (absent from builds):
 
