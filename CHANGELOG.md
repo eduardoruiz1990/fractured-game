@@ -2341,6 +2341,40 @@ small box... that if the player presses it, then it gets the large screen."
 - `qa/synergy_check.cjs` now checks the compact strip comes first, that a tap opens it
   and a second closes it.
 
+**Patch 142 — the story's data and its save record (plan E, E6).**
+
+- New `src/data/Story.js`: every piece of narrative, plus the small pure rules that pick
+  which piece a player sees. The premise, in its header: Subject 0, at twelve, was
+  called out of class during a storm and a lockdown drill and told their father had
+  died (a heart condition no one knew about); that morning they had argued with him and
+  slammed the door. Each floor is one defense built around that day (Denial,
+  Projection, Hypervigilance, Repression, Control), each boss that defense given a
+  body. It is told as recovery: the clinician (Dr. L. Marlow) is on the Subject's side,
+  the death is never shown, and there is no self-harm or gore.
+  - `CONTENT_NOTE` and `COLD_OPEN` (E1, E6); `CHAPTERS` and 25 `CASE_PAGES` (E3);
+    `BOSS_LINES` (intro, relapse and death lines, E4); `SESSION_NOTES` and `REACTIONS`
+    (E2); `ENDINGS` (E5).
+  - Rules: `chapterForFloor` (the Recursion cycles chapters like palettes),
+    `nextPageFor` (the next page of the floor's chapter, in order; never one already
+    lying on the floor; backfills earlier chapters once a chapter is complete, never
+    pulls a later one forward), `rollPageDrop` (bosses always, named elites 50%),
+    `sessionReaction` (low Sanity < 25%, a floor inside 2.5 min, 5+ lifetime deaths,
+    else steady), `sessionNoteForFloor`, `awakenNote`, `endingForClear` (the true
+    ending once every page is filed, else the first ending once), `endingCards`.
+- New `src/data/Strings.js`: the interface words around the story, and **generic
+  credits** ("The FRACTURED team") meant to be edited.
+- `metaState.story` = `{ coldOpenSeen, pages: {id: ms}, endingSeen, trueEndingSeen }`,
+  with all four seams (constructor, `loadGame` back-fill, `importSave` from the file,
+  `wipeSave`), normalised through `normalizeStory` (unknown page ids dropped).
+  `SaveManager.collectPage(id)` (true the first time) and `markStory(flag)`.
+- The Patients now ALSO unlock by pages filed — Vandal 3, Artist 8, Photographer 14 —
+  as an alternative to their Patch 136 milestone, so nobody loses one.
+- Four achievements (37 now): Paper Trail, The Whole File, A Door in the Drawing, The
+  Whole Morning.
+- New `test_story.js` (67 assertions): text shape and limits (banner lines ≤ 38
+  characters for a 384 px phone), a banned-word scan for the tone guardrails, page
+  order and drop bookkeeping, notes, endings, the save seams, the page unlocks.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

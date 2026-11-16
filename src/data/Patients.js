@@ -18,6 +18,13 @@
 //   inkMaster       Combat (ink slow, ink damage)
 //   critConfused    Enemy.takeDamage     (multiplier on a confused target)
 
+// Patch 142 (plan E3): the story milestones now exist. Each later Patient ALSO unlocks
+// by Case File pages filed — an alternative, never a replacement, so nobody who had a
+// Patient loses them.
+import { pageCount } from './Story.js';
+export const PATIENT_PAGE_UNLOCKS = { vandal: 3, artist: 8, photographer: 14 };
+const pagesAtLeast = (m, n) => pageCount(m) >= n;
+
 export const DEFAULT_PATIENT = 'insomniac';
 
 export const PATIENTS = {
@@ -33,24 +40,24 @@ export const PATIENTS = {
         passive: 'Starts with the Lead Pipe. Melee hits restore Sanity.',
         lean: 'Max Sanity +20, move speed −5%.',
         sanity: 20, speed: -5, flags: { meleeLifesteal: true },
-        unlock: (m) => ((m.killCounts && m.killCounts.BOSS) || 0) >= 1,
-        unlockText: 'Defeat the Sphere Head (Floor 1).'
+        unlock: (m) => ((m.killCounts && m.killCounts.BOSS) || 0) >= 1 || pagesAtLeast(m, PATIENT_PAGE_UNLOCKS.vandal),
+        unlockText: 'Defeat the Sphere Head (Floor 1), or file 3 Case File pages.'
     },
     artist: {
         id: 'artist', name: 'THE ARTIST', icon: '🖋️', weapon: 'spilled_ink',
         passive: 'Starts with Spilled Ink. Pools slow far more, and hit 25% harder.',
         lean: 'Move speed +6%, max Sanity −10.',
         sanity: -10, speed: 6, flags: { inkMaster: true },
-        unlock: (m) => (m.maxFloorReached || 1) >= 3,
-        unlockText: 'Reach Floor 3.'
+        unlock: (m) => (m.maxFloorReached || 1) >= 3 || pagesAtLeast(m, PATIENT_PAGE_UNLOCKS.artist),
+        unlockText: 'Reach Floor 3, or file 8 Case File pages.'
     },
     photographer: {
         id: 'photographer', name: 'THE PHOTOGRAPHER', icon: '📷', weapon: 'polaroid_camera',
         passive: 'Starts with the Polaroid Camera. Every hit on a stunned (confused) manifestation is critical: ×1.5.',
         lean: 'Max Sanity −10.',
         sanity: -10, flags: { critConfused: 1.5 },
-        unlock: (m) => ((m.killCounts && m.killCounts.PANOPTICON) || 0) >= 1,
-        unlockText: 'Defeat the Panopticon (Floor 3).'
+        unlock: (m) => ((m.killCounts && m.killCounts.PANOPTICON) || 0) >= 1 || pagesAtLeast(m, PATIENT_PAGE_UNLOCKS.photographer),
+        unlockText: 'Defeat the Panopticon (Floor 3), or file 14 Case File pages.'
     }
 };
 
