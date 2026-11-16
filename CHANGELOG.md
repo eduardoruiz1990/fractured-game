@@ -2151,6 +2151,53 @@ real choice.
   `resolvePatient` fallbacks, `newlyAdmitted`, the stat leans in `Game.init`, descent
   keeps the Patient). `qa/patients_check.cjs` at 384×717 and 1280×720.
 
+**Patch 137 — room shapes and data-driven spawn sectors (D5, first half).**
+
+Every room used to be the same open disc. Each floor now has its own arrangement of the
+memory's furniture (`src/systems/Arena.js`, pure, no DOM/canvas), raised around the
+player when a combat room starts and lowered when it is cleared:
+
+| Floor | Layout | Shape | Spawns |
+|---|---|---|---|
+| 1 | LOCKER CORRIDOR | two broken rows of lockers | down both corridor ends |
+| 2 | INKBLOT GALLERY | twelve mirrored ink posts | all round |
+| 3 | THE YARD | a ring wall (r 430) with four gates | through the four gates |
+| 4 | THE WARD WINGS | four wards on the diagonals: a cross of corridors | down the four corridors |
+| 5 | THE BLUEPRINT | a 5×5 grid of blocks, inner ring sunk | all round |
+
+- **The Blueprint rearranges** every 300 steps: three blocks sink, three sunk blocks
+  rise after a 75-step telegraph (dashed outline filling in, pulsing). A block never
+  rises on the player: the last telegraph step waits until they step off.
+- **When:** never in the tutorial, never in a boss room, never on floor 1 room 1, and in
+  70% of the other rooms (`SHAPED_ROOM_CHANCE`), so open rooms stay common. The
+  Recursion cycles the five with the biomes (`paletteIndexForFloor`). The layout's name
+  floats over the player as it rises.
+- **Collision:** circles against boxes, posts and ring arcs (with round caps at the
+  gates), resolved once per sim step after everything has moved (`updateArena` in
+  `Game.processGameLogic`), for the player and regular enemies only. Bosses never meet
+  a wall (boss rooms are open). A Crawlspace travels under them except while warning or
+  exposed. Weapons, projectiles and XP pass through: they are memories, not physics, and
+  this leaves every weapon's behaviour unchanged.
+- **Never blocking the way out:** the clear (`lowerArena`) turns collision off at once
+  and fades the walls for 40 steps before they are removed, so reward doors, the exit
+  elevator and the walk after a room are never blocked. A chest dropped mid-fight is
+  moved out of any wall (`dropChest`). Every layout leaves a 150 px clear radius round
+  its origin, so nobody starts inside a wall.
+- **Spawn sectors** (data-driven, per layout): `Director.spawnEntity`'s ring sampling
+  draws its first 8 bearings from the layout's sectors (`spawnAngle`); with no sectors
+  that is exactly one `Math.random` call, as before, so open rooms keep their old spawn
+  sequence. A ring spawn that lands in a wall is moved out of it.
+- **Drawing:** `Renderer.drawObstacles` (per floor style: locker doors and vents, ink
+  posts with a slowly folding blot, brick courses on the ring, ward tiles, blueprint
+  hatching; drop shadows; plain fills and strokes, no blur) under everything that
+  moves, plus `drawObstacleOutlines` after the darkness mask, so a wall is never
+  invisible in the dark.
+- Tests: new `test_arena.js` (69 assertions: layout choice per floor and the
+  Recursion, the clear radius, a 3000-body fuzz per layout, each shape kind's push,
+  the Yard's gates walkable and its wall holding, spawn sectors, raise/lower/fade, the
+  Blueprint's shift and its never-on-the-player rise, and the Director/Game seams).
+  `qa/arena_check.cjs` draws all five in game.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

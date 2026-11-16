@@ -22,6 +22,7 @@
 import { applyWeaponLevelUp } from '../ui/LevelUpUI.js';
 import { MANIFESTATIONS } from '../data/Manifestations.js';
 import { weaponLevelCap } from '../core/Endless.js';
+import { resolveObstacles } from './Arena.js';   // Patch 137
 
 export const ELITE_HP_MULT = 6;
 export const ELITE_DAMAGE_MULT = 1.35;
@@ -79,6 +80,8 @@ export function promoteToElite(ent, rng = Math.random) {
 export function dropChest(state, x, y) {
     if (!Array.isArray(state.interactables)) state.interactables = [];
     const chest = { type: 'CHEST', x, y, radius: 26, active: true, dead: false, opening: 0, life: 99999 };
+    // Patch 137: never inside one of the room's walls.
+    if (state.obstacles && state.obstacles.length) resolveObstacles(state.obstacles, chest, chest.radius + 8);
     state.interactables.push(chest);
     return chest;
 }

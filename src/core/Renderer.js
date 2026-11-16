@@ -8,6 +8,7 @@ import { errorLog } from './ErrorLog.js';
 // The arena wall drawn below is the same boundary Game.js drains Sanity past and
 // Director.js clamps spawns inside — see the note on ARENA_VOID_RADIUS in Config.js.
 import { ARENA_VOID_RADIUS, isBossType } from '../data/Config.js';
+import { ARENA_LAYOUTS, ARENA_RISE_STEPS, ARENA_FADE_STEPS, GRID_TELEGRAPH_STEPS } from '../systems/Arena.js';   // Patch 137
 // Patch 96 — THE RECURSION's look: the five biomes cycle past floor 5, with a capped
 // depth escalation layered over them. The cap is a memory bound, not a taste one —
 // see CYCLE_VISUAL_CAP in src/core/Endless.js.
@@ -1079,6 +1080,7 @@ export class Renderer {
                 this.drawWorldItems(state, audioEngine);
                 if (this.diag.fog) this.drawFog(state);
                 if (this.diag.lights) this.drawLightingMasks(state, curShakeX, curShakeY);
+                this.drawObstacleOutlines(state);   // Patch 137: walls stay readable in the dark
                 this.drawEffectsAndAuras(state);
                 this.drawPlayer(state, audioEngine);
                 this.drawDamageText(state);
@@ -1893,6 +1895,137 @@ export class Renderer {
         }
     }
 
+    /** Patch 137: how visible the room's walls are right now (rise-in, fade-out). */
+    arenaAlpha(state) {
+        if (state.arenaFade > 0) return Math.max(0, state.arenaFade / ARENA_FADE_STEPS);
+        if (state.arenaRise > 0) return Math.max(0, 1 - state.arenaRise / ARENA_RISE_STEPS);
+        return 1;
+    }
+
+    /** Patch 137 (V2 plan D5): the room's walls, per floor style. Plain fills, no blur. */
+    drawObstacles(state) {
+        const obs = state.obstacles;
+        if (!obs || !obs.length) return;
+        const L = ARENA_LAYOUTS[state.arenaLayout];
+        const style = L ? L.style : 'ink';
+        const P = {
+            locker:    { fill: '#2c3226', edge: '#6b7558', line: '#171a13' },
+            ink:       { fill: '#0c0c10', edge: '#73737f', line: '#26262e' },
+            brick:     { fill: '#2b100e', edge: '#86443a', line: '#170706' },
+            ward:      { fill: '#15201a', edge: '#5b7c62', line: '#0c140f' },
+            blueprint: { fill: '#19160b', edge: '#c9a54a', line: '#5e4d22' }
+        }[style] || { fill: '#111', edge: '#666', line: '#222' };
+        const ctx = this.ctx;
+        const a = this.arenaAlpha(state);
+        ctx.save();
+        for (const o of obs) {
+            if (o.cap) continue;   // drawn as part of its arc
+            if (!o.solid) {
+                // A sunk Blueprint block: its outline on the floor, and a rising one
+                // fills in and pulses through its telegraph.
+                const t = o.telegraph > 0 ? 1 - o.telegraph / GRID_TELEGRAPH_STEPS : 0;
+                ctx.globalAlpha = a * (o.telegraph > 0 ? 0.35 + 0.45 * t : 0.35);
+                ctx.setLineDash([8, 8]);
+                ctx.strokeStyle = P.edge;
+                ctx.lineWidth = o.telegraph > 0 ? 3 : 1.5;
+                ctx.strokeRect(o.x - o.hw, o.y - o.hh, o.hw * 2, o.hh * 2);
+                ctx.setLineDash([]);
+                if (o.telegraph > 0) {
+                    ctx.globalAlpha = a * (0.15 + 0.35 * t) * (0.75 + 0.25 * Math.sin(this.renderFrame * 0.4));
+                    ctx.fillStyle = P.edge;
+                    const s = 0.4 + 0.6 * t;
+                    ctx.fillRect(o.x - o.hw * s, o.y - o.hh * s, o.hw * 2 * s, o.hh * 2 * s);
+                }
+                continue;
+            }
+            ctx.globalAlpha = a * 0.45;
+            ctx.fillStyle = '#000';
+            if (o.kind === 'block') ctx.fillRect(o.x - o.hw + 6, o.y - o.hh + 9, o.hw * 2, o.hh * 2);
+            else if (o.kind === 'post') { ctx.beginPath(); ctx.arc(o.x + 5, o.y + 8, o.r, 0, Math.PI * 2); ctx.fill(); }
+            ctx.globalAlpha = a;
+            ctx.fillStyle = P.fill;
+            ctx.strokeStyle = P.edge;
+            ctx.lineWidth = 2;
+            if (o.kind === 'block') {
+                ctx.fillRect(o.x - o.hw, o.y - o.hh, o.hw * 2, o.hh * 2);
+                ctx.strokeRect(o.x - o.hw, o.y - o.hh, o.hw * 2, o.hh * 2);
+                ctx.beginPath();
+                ctx.strokeStyle = P.line;
+                if (style === 'locker') {
+                    // Locker doors, with a vent slit near the top of each.
+                    for (let x = o.x - o.hw + 26; x < o.x + o.hw; x += 26) { ctx.moveTo(x, o.y - o.hh); ctx.lineTo(x, o.y + o.hh); }
+                    for (let x = o.x - o.hw + 7; x < o.x + o.hw - 10; x += 26) { ctx.moveTo(x, o.y - o.hh + 6); ctx.lineTo(x + 12, o.y - o.hh + 6); }
+                } else if (style === 'ward') {
+                    for (let x = o.x - o.hw + 40; x < o.x + o.hw; x += 40) { ctx.moveTo(x, o.y - o.hh); ctx.lineTo(x, o.y + o.hh); }
+                    for (let y = o.y - o.hh + 40; y < o.y + o.hh; y += 40) { ctx.moveTo(o.x - o.hw, y); ctx.lineTo(o.x + o.hw, y); }
+                } else if (style === 'blueprint') {
+                    ctx.moveTo(o.x - o.hw, o.y - o.hh); ctx.lineTo(o.x + o.hw, o.y + o.hh);
+                    ctx.moveTo(o.x + o.hw, o.y - o.hh); ctx.lineTo(o.x - o.hw, o.y + o.hh);
+                }
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                // Lit top edge.
+                ctx.strokeStyle = P.edge;
+                ctx.globalAlpha = a * 0.8;
+                ctx.beginPath(); ctx.moveTo(o.x - o.hw, o.y - o.hh + 1); ctx.lineTo(o.x + o.hw, o.y - o.hh + 1); ctx.stroke();
+            } else if (o.kind === 'post') {
+                ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                // An ink post is mirrored: a lighter blot folded about its own axis.
+                ctx.fillStyle = P.line;
+                const w = Math.sin(o.phase + this.renderFrame * 0.01) * 0.25 + 0.55;
+                ctx.beginPath(); ctx.ellipse(o.x, o.y, o.r * w, o.r * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+            } else if (o.kind === 'arc') {
+                ctx.lineCap = 'round';
+                ctx.lineWidth = o.w;
+                ctx.beginPath(); ctx.arc(o.x, o.y, o.r, o.a0, o.a1); ctx.strokeStyle = P.fill; ctx.stroke();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = P.edge;
+                ctx.beginPath(); ctx.arc(o.x, o.y, o.r - o.w / 2, o.a0, o.a1); ctx.stroke();
+                ctx.beginPath(); ctx.arc(o.x, o.y, o.r + o.w / 2, o.a0, o.a1); ctx.stroke();
+                // Brick courses.
+                ctx.strokeStyle = P.line;
+                ctx.beginPath();
+                for (let t = o.a0 + 0.06; t < o.a1; t += 0.06) {
+                    ctx.moveTo(o.x + Math.cos(t) * (o.r - o.w / 2), o.y + Math.sin(t) * (o.r - o.w / 2));
+                    ctx.lineTo(o.x + Math.cos(t) * (o.r + o.w / 2), o.y + Math.sin(t) * (o.r + o.w / 2));
+                }
+                ctx.stroke();
+                ctx.lineCap = 'butt';
+            }
+        }
+        ctx.globalAlpha = 1;
+        ctx.setLineDash([]);
+        ctx.restore();
+    }
+
+    /**
+     * Patch 137: drawn AFTER the darkness mask, so a wall is never invisible: a faint
+     * outline of every solid wall (and every rising telegraph) shows in the dark.
+     */
+    drawObstacleOutlines(state) {
+        const obs = state.obstacles;
+        if (!obs || !obs.length) return;
+        const L = ARENA_LAYOUTS[state.arenaLayout];
+        const edge = { locker: '#9aa684', ink: '#9a9aa8', brick: '#b0665a', ward: '#86a88d', blueprint: '#e0c070' }[L ? L.style : 'ink'] || '#999';
+        const ctx = this.ctx;
+        const a = this.arenaAlpha(state);
+        ctx.save();
+        ctx.strokeStyle = edge;
+        ctx.lineWidth = 2;
+        for (const o of obs) {
+            if (o.cap) continue;
+            if (!o.solid && !(o.telegraph > 0)) continue;
+            ctx.globalAlpha = a * (o.solid ? 0.32 : 0.4 + 0.3 * Math.sin(this.renderFrame * 0.4));
+            ctx.beginPath();
+            if (o.kind === 'block') ctx.rect(o.x - o.hw, o.y - o.hh, o.hw * 2, o.hh * 2);
+            else if (o.kind === 'post') ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+            else if (o.kind === 'arc') { ctx.arc(o.x, o.y, o.r - o.w / 2, o.a0, o.a1); ctx.arc(o.x, o.y, o.r + o.w / 2, o.a1, o.a0, true); ctx.closePath(); }
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        ctx.restore();
+    }
+
     drawObjectivePointers(state) {
         if (state.interactables) {
             state.interactables.forEach(obj => {
@@ -2244,7 +2377,9 @@ export class Renderer {
             
             this.ctx.restore();
         }
-        
+
+        this.drawObstacles(state);   // Patch 137: the room's walls, under everything that moves
+
         if (state.safeZones) {
             state.safeZones.forEach(sz => {
                 this.ctx.save();

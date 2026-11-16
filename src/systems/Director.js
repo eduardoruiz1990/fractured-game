@@ -15,6 +15,7 @@ import { Burrower } from '../entities/Burrower.js';
 // Patch 51c: reports the swallowed boss-roadmap failure below into the crash log.
 import { errorLog } from '../core/ErrorLog.js';
 import { eliteChanceForRoom, promoteToElite } from './Elites.js';   // Patch 133
+import { layoutForRoom, raiseArena, lowerArena, arenaSolid, resolveObstacles, spawnAngle, ARENA_LAYOUTS } from './Arena.js';   // Patch 137
 // The spawn clamp is derived from the arena's void radius rather than repeated as a
 // literal — see the note on ARENA_VOID_RADIUS in Config.js for why the two must agree.
 import { SPAWN_CLAMP_RADIUS, BOSS_MIN_SPAWN_DISTANCE, isBossType, ROOM_PACE } from '../data/Config.js';
@@ -134,6 +135,7 @@ export class Director {
         
         if (floor === 1 && roomNumber === 1 && this.game.saveManager && !this.game.saveManager.metaState.tutorialCompleted) {
             state.isTutorial = true;
+            raiseArena(state, null);   // Patch 137: the tutorial room is always open
             state.enemyBudget = 1;
             state.stress = 0;
             state.budgetTimer = 0;
@@ -149,6 +151,14 @@ export class Director {
         // spawn-table/budget/rate tuning inside Director.js — no entity file or
         // Renderer touched, so nothing outside this file needs to know these exist.
         const isBossRoom = roomNumber >= state.maxRoomsPerFloor && !state.bossSpawned;
+
+        // Patch 137 (V2 plan D5): the floor's room shape, raised around the player.
+        const layout = layoutForRoom(floor, roomNumber, { isBossRoom, isTutorial: false });
+        raiseArena(state, layout, state.player.x, state.player.y);
+        if (layout && typeof this.game.spawnDamageText === 'function') {
+            this.game.spawnDamageText(state.player.x, state.player.y - 70, ARENA_LAYOUTS[layout].name, '#cfc6b0', 1.1, 2.4);
+        }
+
         if (isBossRoom) {
             state.roomModifier = null;
         } else {
@@ -472,6 +482,7 @@ export class Director {
         } else if (state.entities.length === 0 && !state.roomCleared && !state.bossSpawned) {
             state.combatActive = false;
             state.roomCleared = true;
+            lowerArena(state);   // Patch 137: the walls sink before the doors appear
             this.spawnRewardDoors();
         }
     }
@@ -747,7 +758,9 @@ export class Director {
 
             if (ringReachable) {
                 for (let i = 0; i < 12; i++) {
-                    const a = Math.random() * Math.PI * 2;
+                    // Patch 137: a shaped room's spawn sectors (corridor ends, gates)
+                    // for the first tries; one Math.random call when there are none.
+                    const a = i < 8 ? spawnAngle(state) : Math.random() * Math.PI * 2;
                     const cx = state.player.x + Math.cos(a) * spawnRadius;
                     const cy = state.player.y + Math.sin(a) * spawnRadius;
                     if (inArena(cx, cy) && offScreen(cx, cy)) { x = cx; y = cy; break; }
@@ -843,6 +856,8 @@ export class Director {
                 }
             }
 
+            // Patch 137: a ring spawn that lands in a wall is moved out of it.
+            if (arenaSolid(state) && !isBossType(ent.type)) resolveObstacles(state.obstacles, ent, ent.radius || 12);
             state.entities.push(ent);
             if (this.game.audioEngine && Math.random() < 0.3) {                this.game.audioEngine.playSFX('enemy_spawn', 0.3);
             }

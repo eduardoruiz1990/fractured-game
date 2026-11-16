@@ -11,6 +11,7 @@ import { paletteIndexForFloor } from './Endless.js';
 // Patch 136 (V2 plan D1): playable Patients.
 import { PATIENTS, resolvePatient, DEFAULT_PATIENT } from '../data/Patients.js';
 import { applyWeaponLevelUp } from '../ui/LevelUpUI.js';
+import { updateArena } from '../systems/Arena.js';   // Patch 137
 
 /**
  * Patch 132: adds any weapon in `fresh` that `carried` lacks (at level 0), so a run
@@ -214,6 +215,9 @@ export class Game {
             cameraFlash: 0,
             hitStop: 0,
             slowMo: 0,   // Patch 126: sim steps of half-speed after a synergy forms
+            // Patch 137 (V2 plan D5): the room's shape (see systems/Arena.js).
+            obstacles: [], arenaLayout: null, arenaOrigin: null, spawnSectors: null,
+            arenaRise: 0, arenaFade: 0, arenaShiftTimer: 0,
             bossSpawned: false,
             activeBoss: null,
             // Patch 93: read back from the carry (see getCarriedState) so a run that
@@ -937,6 +941,10 @@ export class Game {
                 }
             }
         }
+
+        // Patch 137: after everything has moved, the room's walls push the player and
+        // the regular enemies back out (and the Blueprint rearranges itself).
+        if (!devFrozen) updateArena(this.state);
 
         Combat.resolveWeapons(this);
         Combat.collectXP(this);
