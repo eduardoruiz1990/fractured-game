@@ -2,6 +2,15 @@ import { Enemy } from './Enemy.js';
 // Patch 94 — boss aggression. See src/core/Endless.js.
 import { cadence } from '../core/Endless.js';
 
+// Patch 131: the beam's reach, used by the hit test below AND drawn by Renderer
+// (which reads ent.gazeRange), so the tell, the beam and the hitbox are one shape.
+export const GAZE_RANGE = 650;
+
+/** Pure hit test for the gaze — exported for test_bosses.js. */
+export function gazeHits(angleDiff, dist, gazeWidth, gazeRange = GAZE_RANGE) {
+    return Math.abs(angleDiff) < gazeWidth && dist < gazeRange;
+}
+
 export class Panopticon extends Enemy {
     constructor() {
         super('PANOPTICON', 40, '#ff0055', 'boss_hurt');
@@ -9,6 +18,10 @@ export class Panopticon extends Enemy {
         this.gazeTimer = 0;
         this.gazeAngle = 0;
         this.gazeWidth = 0.5; // Narrower, highly lethal beam
+        // Patch 131 (V2 plan D6): the beam reaches GAZE_RANGE px and no further. It
+        // used to hit at any distance, so the only escapes were dashing or outpacing
+        // the sweep; stepping out of the beam's reach is now a third, readable one.
+        this.gazeRange = GAZE_RANGE;
     }
 
     init(id, x, y) {
@@ -68,7 +81,7 @@ export class Panopticon extends Enemy {
             // Reduced from 0.015 to 0.010 so it's noticeably slower than your sprint speed!
             this.gazeAngle += Math.sign(angleDiff) * 0.010; 
             
-            if (Math.abs(angleDiff) < this.gazeWidth) {
+            if (gazeHits(angleDiff, distToPlayer, this.gazeWidth, this.gazeRange)) {
                 if (!state.player.dash || !state.player.dash.active) {
                     if (state.frame % 15 === 0) {
                         game.takeDamage(15, this.type); 

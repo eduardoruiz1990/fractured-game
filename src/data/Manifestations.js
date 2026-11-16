@@ -93,7 +93,7 @@ export const ENEMY_BESTIARY = [
     { id: 'PARASITE',  name: 'SUBSTITUTES',   icon: '♗', color: '#a0522d', desc: 'Hangs back and lashes at range, and will buff other manifestations if left alone. Priority target.' },
     { id: 'BOSS',        name: 'SPHERE HEAD',     icon: '🌑',  color: '#b87333', desc: 'Floor 1. Charges, then releases an expanding pulse. The safe place is behind it.', boss: true },
     { id: 'RORSCHACH',   name: 'THE RORSCHACH',   icon: '🦋',  color: '#800080', desc: 'Floor 2. Splits into smaller copies of itself when killed, three generations deep.', boss: true },
-    { id: 'PANOPTICON',  name: 'THE PANOPTICON',  icon: '👁️', color: '#ff0055', desc: 'Floor 3. Sweeps a gaze beam across the arena. Break line of sight or outrun the sweep.', boss: true },
+    { id: 'PANOPTICON',  name: 'THE PANOPTICON',  icon: '👁️', color: '#ff0055', desc: 'Floor 3. Its red wedge shows exactly where the gaze will burn. Outrun the sweep, or step beyond its reach.', boss: true },
     { id: 'AMALGAMATION',name: 'THE AMALGAMATION',icon: '🦠',  color: '#55ff55', desc: 'Floor 4. Pulls you toward it and spawns lesser manifestations continuously.', boss: true },
     { id: 'ARCHITECT',   name: 'THE ARCHITECT',   icon: '🕋',  color: '#c5a059', desc: 'Floor 5, and the close of every cycle beyond it. The source of the construct. Collapses the arena in phases.', boss: true }
 ];

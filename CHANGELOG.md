@@ -1886,6 +1886,28 @@ New `qa/juice_check.cjs` checks:
 
 `qa/soak_check` (20 s) is clean: invariants OK, entities ≤ cap.
 
+### Phase D — content (Patches 131+)
+
+**Patch 131 — the Panopticon's tell matches its beam (D6).**
+
+Before, the charge-up warning was a 10 px red sliver, but the sweep that followed was a
+±0.5 rad (57°) cone that hit at any distance. The player was shown roughly a hundredth
+of what would hit them. Patch 40 kept the sliver on purpose and flagged it as a design
+call; the call (the plan's recommendation) is now made:
+
+- **The tell is the hitbox.** During the 45-step charge the whole ±`gazeWidth` wedge is
+  outlined and fills in as the charge completes. Every dimension reads `ent.gazeWidth` /
+  `ent.gazeRange`, the values `Panopticon.js` tests with.
+- **The beam has a reach.** `GAZE_RANGE = 650` px (`src/entities/Panopticon.js`). The
+  hit test is the exported pure `gazeHits(angleDiff, dist, width, range)`. The sweep's
+  drawing is clipped to the same radius (it used to paint to 2000 px). Stepping out of
+  reach is now a third answer besides dashing and outrunning the sweep. The boss still
+  tethers at 200–350 px while stalking, so it is only an answer during the sweep.
+- Bestiary text updated to match.
+
+`test_bosses.js` +6: the entity carries the range; in/out of cone and range; a sweep
+from 800 px does no damage; one from 300 px still does.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

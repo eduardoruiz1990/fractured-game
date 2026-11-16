@@ -1514,26 +1514,37 @@ export class Renderer {
                         this.ctx.translate(ent.x, ent.y);
                         this.ctx.rotate(ent.gazeAngle);
 
+                        // Patch 131 (V2 plan D6): the tell IS the hitbox. Every
+                        // dimension below reads ent.gazeWidth / ent.gazeRange — the
+                        // values Panopticon.js tests with — so they cannot disagree.
+                        const gR = ent.gazeRange || 2000;
                         if (ent.gazeState === 'charging') {
-                            // KEEP (Patch 40): this sliver's geometry is byte-identical
-                            // to before — moveTo(0,0) then lineTo(2000, ±5). It is
-                            // NOT widened to the true sweep cone even though the two
-                            // disagree sharply; that would hand the player information
-                            // they don't currently get, i.e. a balance change. Flagged
-                            // in the report as a design question, not fixed here.
-                            this.ctx.globalAlpha = 0.5 + Math.sin(this.renderFrame * 0.5) * 0.5;
-                            this.ctx.fillStyle = '#ff0000';
+                            // Before Patch 131 this was a 10px red sliver while the beam
+                            // that followed was a ±0.5 rad (57°) cone with no range limit
+                            // — the player was shown about 1/100th of what would hit them.
+                            // Now the whole wedge is outlined and filling in as the charge
+                            // completes (0 -> full over the 45-step charge).
+                            const fill = Math.max(0, Math.min(1, 1 - (ent.gazeTimer || 0) / 45));
+                            const blink = 0.5 + Math.sin(this.renderFrame * 0.5) * 0.5;
+                            this.ctx.globalAlpha = 0.10 + 0.22 * fill;
+                            this.ctx.fillStyle = '#ff0033';
                             this.ctx.beginPath();
                             this.ctx.moveTo(0, 0);
-                            this.ctx.lineTo(2000, -5);
-                            this.ctx.lineTo(2000, 5);
+                            this.ctx.arc(0, 0, gR * fill, -ent.gazeWidth, ent.gazeWidth);
+                            this.ctx.closePath();
                             this.ctx.fill();
+                            this.ctx.globalAlpha = 0.45 + 0.45 * blink;
+                            this.ctx.strokeStyle = '#ff5555';
+                            this.ctx.lineWidth = 2;
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(Math.cos(-ent.gazeWidth) * gR, Math.sin(-ent.gazeWidth) * gR);
+                            this.ctx.lineTo(0, 0);
+                            this.ctx.lineTo(Math.cos(ent.gazeWidth) * gR, Math.sin(ent.gazeWidth) * gR);
+                            this.ctx.arc(0, 0, gR, ent.gazeWidth, -ent.gazeWidth, true);
+                            this.ctx.stroke();
+                            this.ctx.globalAlpha = 1;
 
-                            // Patch 40 (look only): an aperture closing at the lens, so
-                            // the charge reads as energy gathering rather than a static
-                            // red line. Rides the SAME alpha envelope as the sliver
-                            // above, so it appears and vanishes on identical frames —
-                            // no change to when the tell is visible.
+                            // Patch 40 (look only): an aperture closing at the lens.
                             const conv = (this.renderFrame % 40) / 40;
                             this.ctx.strokeStyle = '#ff5555';
                             this.ctx.lineWidth = 2;
@@ -1542,7 +1553,7 @@ export class Renderer {
                             this.ctx.stroke();
                         } else if (ent.gazeState === 'sweeping') {
                             let pulse = Math.sin(this.renderFrame * 0.5) * 0.2;
-                            let grad = this.ctx.createRadialGradient(0, 0, 0, 0, 0, 2000);
+                            let grad = this.ctx.createRadialGradient(0, 0, 0, 0, 0, gR);
                             grad.addColorStop(0, `rgba(255, 0, 0, ${0.8 + pulse})`);
                             grad.addColorStop(0.1, `rgba(255, 50, 0, ${0.5 + pulse})`);
                             grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
@@ -1550,7 +1561,7 @@ export class Renderer {
                             this.ctx.fillStyle = grad;
                             this.ctx.beginPath();
                             this.ctx.moveTo(0, 0);
-                            this.ctx.arc(0, 0, 2000, -ent.gazeWidth, ent.gazeWidth);
+                            this.ctx.arc(0, 0, gR, -ent.gazeWidth, ent.gazeWidth);
                             this.ctx.fill();
 
                             // Patch 40 (look only): crisp lethal-edge rules drawn at
@@ -1565,7 +1576,7 @@ export class Renderer {
                             for (const s of [-1, 1]) {
                                 this.ctx.beginPath();
                                 this.ctx.moveTo(0, 0);
-                                this.ctx.lineTo(Math.cos(ent.gazeWidth * s) * 2000, Math.sin(ent.gazeWidth * s) * 2000);
+                                this.ctx.lineTo(Math.cos(ent.gazeWidth * s) * gR, Math.sin(ent.gazeWidth * s) * gR);
                                 this.ctx.stroke();
                             }
 
@@ -1575,8 +1586,8 @@ export class Renderer {
                             this.ctx.strokeStyle = `rgba(255, 120, 120, ${0.18 + pulse * 0.5})`;
                             this.ctx.lineWidth = 1.5;
                             for (let k = 0; k < 4; k++) {
-                                const rr = (this.renderFrame * 9 + k * 500) % 2000;
-                                if (rr < 40) continue;
+                                const rr = (this.renderFrame * 9 + k * 500) % gR;
+                                if (rr < 40 || rr > gR) continue;
                                 this.ctx.beginPath();
                                 this.ctx.arc(0, 0, rr, -ent.gazeWidth, ent.gazeWidth);
                                 this.ctx.stroke();
@@ -1585,7 +1596,7 @@ export class Renderer {
                             this.ctx.fillStyle = `rgba(255, 255, 255, ${0.8 + pulse})`;
                             this.ctx.beginPath();
                             this.ctx.moveTo(0, 0);
-                            this.ctx.arc(0, 0, 2000, -ent.gazeWidth*0.05, ent.gazeWidth*0.05);
+                            this.ctx.arc(0, 0, gR, -ent.gazeWidth*0.05, ent.gazeWidth*0.05);
                             this.ctx.fill();
                         }
                         this.ctx.restore();
