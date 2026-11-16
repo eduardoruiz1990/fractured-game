@@ -2651,6 +2651,23 @@ only 0.8 ms of JS per draw — GPU/compositor bound. Gameplay on the same phone 
 - G3: the Node suites already cover the Phase D/E/F data (new weapons, evolutions,
   Patients, Strings, 5-room floors, aim assist, haptics); no gaps found.
 
+**Patch 154 — release checklist and documentation (plan G3, G4, G5).**
+
+- New `QA_CHECKLIST.md` (G4): the manual pass against the CrazyGames developer-portal
+  preview of the exact zip — the automated gates first, then SDK events, ads (the
+  5-minute midgame floor, both rewarded offers, muting, ad errors), saves (guest, cloud
+  across devices, back-up/restore, suspended runs), devices and browsers (Android
+  Chrome with aim assist, the dash gesture and haptics; iOS Safari; desktop; the iframe
+  sizes; tab switching), performance on the playtest bundle, accessibility, content and
+  policy (PEGI-12, recovery framing, generic credits), and the submission form.
+- G3: no new Node assertions were needed — see Patch 153.
+- G5: Keep clauses 44–50 (per-frame DOM writes, no `backdrop-filter` over the canvas,
+  the level-up overlay rule, haptics, aim assist's `aimHeld`, the loading-window budget,
+  the smoke test before every upload). Known issues: the touch dash and the fog cost
+  struck through as fixed; difficulty and the headless GPU blind spot added. The test
+  inventory lists all thirteen suites and the fuzz with current counts. `CLAUDE.md`
+  points at the v2 clauses, the smoke test and the checklist.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -2877,6 +2894,33 @@ only 0.8 ms of JS per draw — GPU/compositor bound. Gameplay on the same phone 
     `game.refreshSynergies()` (Patch 126).** Assigning `state.player.synergies =
     getActiveSynergies(...)` directly works in play but skips the banner, the slow
     motion and the codex record, so that synergy is never "discovered".
+44. **No DOM write per frame unless the value changed (Patches 107, 152).** Use
+    `hudStyle`/`hudText`-style compare-then-write, or a cached key like
+    `hubPromptZoneId`. Re-writing `innerText` with the SAME string still re-lays-out and
+    re-rasterises the element; under a blurred text-shadow that alone held the Mind Hub
+    to 36 fps on a phone with 0.8 ms of JS a frame. `qa/hub_check` asserts zero page
+    mutations while standing at a desk.
+45. **No `backdrop-filter` over the live canvas (Patch 151).** The canvas repaints every
+    frame, so a blur over it is recomputed every frame — full-screen on a phone. Use more
+    opacity instead. `qa/sizes_check` asserts none on the folder, its header or the
+    pause menu.
+46. **While the level-up cards are up, `body.levelup-open` is set and owns what may show
+    over them (Patches 151, 153).** DASH, the joysticks and the notice strip are hidden
+    in CSS, because Input.js re-reveals DASH on any canvas touch. Anything new that
+    floats over the play area during LEVEL_UP joins that rule.
+47. **Vibration goes through `haptic(kind)` only (Patch 149).** It owns the setting, the
+    per-kind throttle and the try/catch. The sim never touches `navigator`: Game calls
+    `game.onHaptic(kind)` and main.js forwards it.
+48. **A new way of aiming must set `inputState.aimHeld` while it is in use (Patch 148).**
+    Aim assist writes the aim angle whenever `aimHeld` is false, so an aiming input that
+    does not set it is silently overridden by the assist.
+49. **The SDK loading window (`loadingStart` → `loadingStop`) stays under 2.5 MB
+    (Patches 118, 153).** Anything large and not needed for the title goes in
+    `AudioEngine.deferredAssetUrls`, which starts the moment the window closes.
+    `qa/smoke_check` measures the window on the built bundle.
+50. **Run `node qa/smoke_check.cjs` before every upload (Patch 153).** It is the only
+    check that exercises the shipped bundle — the SDK tag, the absence of the dev hook,
+    the real asset paths — rather than the dev server.
 
 ---
 
@@ -2896,17 +2940,19 @@ only 0.8 ms of JS per draw — GPU/compositor bound. Gameplay on the same phone 
   aggregate. A remote sink (the queue names ByteBrew) is a separate decision.
 - **`GAME_STATE.md` does not exist** despite `BASIC_LAUNCH_FIX_QUEUE.md` citing it as
   authoritative. Closest equivalent is `PROJECT_STATE_SUMMARY.md`.
-- **On touch you cannot dash while aiming.** One thumb cannot hold the aim stick and
-  reach the dash button. Patch 68 fixed *accidental* dashing (the button no longer
-  sits in the thumb's landing zone) but not this. The real fix is a gesture —
-  double-tap the movement side to dash in the direction already being pushed, putting
-  dash on the hand that is not doing precision work. Not built; it adds an input mode
-  and needs a design call.
-- **Fog is 30 live `createRadialGradient` + `arc` + `fill` per frame**
-  (`generateFogClouds` / `drawFog`), with no scaling by device class — the largest
-  single per-frame cost, on top of ~40 other gradient sites. `drawGlow` already proves
-  the cached-sprite pattern works here. Identified in the Patch 66b review; not
-  green-lit.
+- ~~**On touch you cannot dash while aiming.**~~ **Fixed in Patch 149**: double-tap the
+  movement side to dash along the last heading; aim assist (Patch 148) frees the right
+  thumb in the first place.
+- ~~**Fog is 30 live `createRadialGradient` per frame.**~~ **Fixed in Patch 115**: fog
+  clouds draw from a cached sprite (`getFogSprite`), and the quality tiers scale it.
+- **The game may be too easy.** The first full playtest after Phase D called it "fair,
+  and maybe too easy". A difficulty pass is deferred to a later section by decision
+  (2026-11-16); nothing in Phases E–G changed balance.
+- **GPU cost is invisible to the headless checks.** Headless Chromium rasterises the
+  canvas in software and composites without a GPU, so a compositor-bound slowdown (the
+  Mind Hub, Patch 152; the folder blur, Patch 151) shows up only on a device. The
+  playtest bundle's perf overlay report is the measurement; the Mind Hub fix awaits a
+  device report.
 - **The canvas renders at CSS-pixel resolution, ignoring DPR.** Deliberate — it is a
   large performance saving on phones — but it means the image is upscaled by the
   compositor. Patch 67 made that upscale smooth; it did not make it sharp. If this is
@@ -2922,22 +2968,30 @@ only 0.8 ms of JS per draw — GPU/compositor bound. Gameplay on the same phone 
 
 | File | Count | Covers |
 |---|---|---|
-| `test_bosses.js` | 67 | boss dispatch, `activeBoss` on spawn frame, entity `.phase` pooling, predator feeding cap, **spawn ring clears the view on 5 viewports + desktop ring unchanged** |
-| `test_content.js` | 180 | synergy/token/set/curse data, XP curve, audio asset paths, boon pool, `PLAYER_WEAPON_IDS` vs real loadout, cone falloff curves + light-recoil coverage |
+| `test_bosses.js` | 73 | boss dispatch, `activeBoss` on spawn frame, entity `.phase` pooling, predator feeding cap, **spawn ring clears the view on 5 viewports + desktop ring unchanged** |
+| `test_content.js` | 375 | synergy/token/set/curse data, XP curve, audio asset paths, boon pool, `PLAYER_WEAPON_IDS` vs real loadout, cone falloff curves + light-recoil coverage |
 | `test_synapse.js` | 255 | Synapse Tree costs, gates, resolver |
 | `test_leash.js` | 15 | off-screen dead zone, recall lands on screen, boss exclusion, tutorial cases, **desktop viewport derivation unchanged by the live-zoom refactor** |
 | `test_tutorial.js` | 86 | **new** — step gates and overrides, every step's timeout, the instruction hold and its cap, device-appropriate copy, copy length ceiling, degenerate state |
 | `test_viewport.js` | 42 | **new** — the desktop/portrait split in both directions, desktop `updateZoom` bit-identical to pre-Patch-71, band and camera geometry, zero-sized canvas |
-| `test_endless.js` | 158 | **new (Patch 93)** — floors 1-5 bit-identical (boss dispatch, palette index, variant table, every multiplier `=== 1`), the boss rotation, `cadence` identity + min floors, the run-completion latch across a floor boundary, the direct-launch unlock gate and draft maths, and **the bounded colour set walked over 120 floors against the real Director** |
+| `test_endless.js` | 162 | **new (Patch 93)** — floors 1-5 bit-identical (boss dispatch, palette index, variant table, every multiplier `=== 1`), the boss rotation, `cadence` identity + min floors, the run-completion latch across a floor boundary, the direct-launch unlock gate and draft maths, and **the bounded colour set walked over 120 floors against the real Director** |
+| `test_rewards.js` | 16 | rewarded-ad revive and double-Lucidity maths, once per run |
+| `test_pacing.js` | 23 | the fixed timestep, room pace on 5-room floors |
+| `test_arena.js` | 107 | room shapes, spawn sectors, wall collision, room events, the room-clear path |
+| `test_progress.js` | 72 | achievements, unlocks, the stats save fields, the Daily Session |
+| `test_story.js` | 83 | Story/Strings data, `metaState.story`, Case File drops, session notes, boss lines, endings, Patient page unlocks |
+| `test_input.js` | 44 | aim assist targeting and override, the double-tap dash, haptics routing and throttle |
+| `test_fuzz_runs.js` | 200 runs | random full runs through every system; asserts no throw and the run invariants |
 
 **Browser checks (`qa/`, V2):** Playwright scripts against the Vite dev server. They
 need `npx vite --port 5199 --strictPort` running, and `qa/README.md` lists them. They
 cover what the Node suites cannot: the ads flow against an SDK mock, dialogs, focus and
 keys, settings migration, the sprite cache, render recovery, high refresh, the perf
-soak, sim cost and the portal context.
+soak, sim cost and the portal context. `qa/smoke_check.cjs` (Patch 153) is the
+exception: it builds and serves the SHIPPED bundles itself and needs no dev server.
 
 `test_director.js` and `test_save.js` remain exploratory (they print, they don't
-assert). All six assertion suites exit non-zero on failure and should be run after
+assert). All thirteen assertion suites exit non-zero on failure and should be run after
 touching entities, save schema, content data, the tutorial, or anything that reads
 viewport dimensions.
 

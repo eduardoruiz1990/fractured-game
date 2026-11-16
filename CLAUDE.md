@@ -41,21 +41,27 @@ There is no test runner configured (no `test` script, no framework installed). T
 
 `test_director.js` and `test_save.js` are exploratory only (they print, they don't assert).
 
-**Browser checks (`qa/`, V2):** Playwright scripts that drive the real game against the dev server (`npx vite --port 5199 --strictPort`). They cover ads against an SDK mock, dialogs, focus and keys, the sprite cache, render recovery, high refresh, the portal context, and a perf soak (`qa/soak_check.cjs`) that fails on invariant breaks. See `qa/README.md`. Run the relevant ones after touching `main.js` flows, `PortalSDK`, `Renderer` caching or Director caps. Keep clauses 36–40 in `CHANGELOG.md` cover the V2 performance guards.
+**Browser checks (`qa/`, V2):** Playwright scripts that drive the real game against the dev server (`npx vite --port 5199 --strictPort`). They cover ads against an SDK mock, dialogs, focus and keys, the sprite cache, render recovery, high refresh, the portal context, and a perf soak (`qa/soak_check.cjs`) that fails on invariant breaks. See `qa/README.md`. Run the relevant ones after touching `main.js` flows, `PortalSDK`, `Renderer` caching or Director caps. Keep clauses 36–50 in `CHANGELOG.md` cover the V2 guards. `qa/smoke_check.cjs` is the one browser check that needs no dev server: it builds the CrazyGames and playtest bundles, serves them with `vite preview` and plays them with no dev hook — run it before every upload.
 
 Anything *visual* cannot be covered by these — `Renderer` needs a real canvas. Use the in-game **VISUAL TEST BENCH** instead: press `0` at the title/hub to reveal the dev panel (now also visible during `PLAYING`), then use SPAWN ONE OF EACH ENEMY / SPAWN ALL 5 BOSSES, FREEZE ENEMY AI (sets `state.devFreezeEntities`, which halts `entity.update()` and further spawning in `Game.processGameLogic()` while rendering keeps animating), and the scenario dropdown (IDLE / TELEGRAPH / ATTACK / HIT FLASH) to pin every entity into a state that would otherwise tick past in well under a second. `patch_game.cjs` is a one-off migration script (regex-based source patcher), not part of any workflow — don't run it against current source without reading it first, it assumes an older shape of `Game.js`.
 
 ## Change history
 
-`EXECUTION_HANDOFF.md` covers patches 13–41. **`CHANGELOG.md` covers patches 49–71**
-(the CrazyGames Basic Launch remediation shipped as v1.2, then the tutorial rebuild
-and the mobile work) and is the more important of the two for
+`EXECUTION_HANDOFF.md` covers patches 13–41. **`CHANGELOG.md` covers patches 49 onward**
+(the CrazyGames Basic Launch remediation shipped as v1.2, the tutorial rebuild and
+the mobile work, then the v2 resubmission from Patch 102, grouped by `V2_PLAN.md`
+phase A–G) and is the more important of the two for
 current work — several of those changes are guards against failures that are
 invisible on a dev machine and only appear on a real player's device, so the diff
 alone does not explain them. Its **Keep clauses** and **Known issues** sections are
 the parts most likely to be broken by accident; read them before touching storage,
 the save schema, the run-launch path, enemy movement, the tutorial, or anything that
-reads canvas dimensions.
+reads canvas dimensions. Clauses 36–50 are the v2 ones: performance guards, per-frame
+DOM writes, no `backdrop-filter` over the canvas, the level-up overlay rule, haptics,
+aim assist and the SDK loading-window budget.
+
+**Before an upload** run `node qa/smoke_check.cjs` (it builds and plays the shipped
+bundles) and work through `QA_CHECKLIST.md` in the CrazyGames developer-portal preview.
 
 Note the numbering caveat at the top of `CHANGELOG.md`: `BASIC_LAUNCH_FIX_QUEUE_v2.md`
 numbers its two new items 59 and 60, which collide with different patches already
