@@ -2994,6 +2994,25 @@ function initEngine() {
         document.getElementById('btn-unpause').style.display = 'none'; 
         pauseMenu.style.display = 'flex';
         inputManager.hideJoysticks();
+
+        // Patch 147 (V2 plan E5): an Architect clear can end the story. The FIRST time the
+        // Architect falls, the first ending; once every Case File page is filed, the true
+        // one (at the next Architect clear, floor 10 included). Each plays once — replays
+        // live in RECORDS → CASE FILE. It sits over this screen and ends in the same
+        // choice the screen offers: AWAKEN or RECURSE (= DESCEND DEEPER into the
+        // Recursion, now framed as relapse). Marked seen before it plays, so closing
+        // the tab mid-sequence cannot replay it on every clear.
+        const endingKind = Story.endingForClear(saveManager.metaState, game.state.floor);
+        if (endingKind) {
+            saveManager.markStory('endingSeen');
+            if (endingKind === 'true') saveManager.markStory('trueEndingSeen');
+            playEnding(endingKind, saveManager.metaState, {
+                choice: true,
+                onAwaken: () => { if (gameState === 'EXIT_REACHED') document.getElementById('btn-awaken').click(); },
+                onRecurse: () => { if (gameState === 'EXIT_REACHED') document.getElementById('btn-descend').click(); }
+            });
+            announceProgress(claimProgress());
+        }
     };
 
     requestAnimationFrame(gameLoop);

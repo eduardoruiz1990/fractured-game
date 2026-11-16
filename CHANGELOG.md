@@ -2392,7 +2392,7 @@ small box... that if the player presses it, then it gets the large screen."
   self-harm, no gore, and a pointer to help (findahelpline.com, as text, not a link) — is
   the first cold-open card and also heads the Clinical Guide (`installContentNote`).
 - `playEnding(kind, meta, {choice})` — the E5 sequence (cards; SKIP to the credits;
-  then AWAKEN/RECURSE, or CLOSE FILE on a replay). A modal at z-index 400 whose keys
+  then AWAKEN/RECURSE, or CLOSE FILE on a replay). A modal at z-index 1040 (over the death screen, under the confirm dialog) whose keys
   stay inside it (Enter/Space continue, Escape skips).
 - `renderCaseFile` — the RECORDS → **CASE FILE** pane (sub-tab between MIND PALACE
   and MANIFESTATION LOG): chapters with filed pages as tap-to-read `<details>`, missing
@@ -2455,6 +2455,29 @@ small box... that if the player presses it, then it gets the large screen."
   the final boss death, counted down in `Game.processGameLogic`, drawn in screen space
   by the new `Renderer.drawSubtitle` (word-wrapped, a dark band behind it, raised on a
   phone to clear DASH).
+
+**Patch 147 — the endings (plan E5).**
+
+- On an Architect clear (`onFloorComplete`, floors 5, 10, ...), `Story.endingForClear`
+  picks an ending: the **first** ending the first time the Architect falls (the
+  Architect is the Subject at twelve; "in the drawing, for the first time, there is a
+  door"; a session report giving pages found), or the **true** ending once all 25
+  pages are filed (the whole morning: "See you tonight, kiddo"; it was never their
+  fault; a discharge summary). Each plays once; both can be replayed from RECORDS →
+  CASE FILE (ending in CLOSE FILE, which changes nothing).
+- The sequence (`StoryUI.playEnding`) sits over THE DESCENT CALLS screen: cards (tap,
+  Enter or Space to continue; SKIP or Escape to jump), the **credits** (generic, in
+  `Strings.js`), then the same choice the screen offers — **AWAKEN** (clicks
+  `btn-awaken`: extraction, everything banked) or **RECURSE** (clicks `btn-descend`:
+  into the Recursion, now framed as relapse by its session notes and the bosses'
+  relapse lines). Its keys stay inside it, so Escape never reaches the pause handler.
+- Seen-flags are written BEFORE it plays, so a tab closed mid-sequence cannot replay it
+  on every later clear. Achievements A Door in the Drawing / The Whole Morning follow.
+- New `qa/story_check.cjs` (Phase E end to end, at 384×717 and 1280×720): cold open
+  (no added click, first key dismisses AND moves, once per profile), a page drifting
+  in and its notice opening, the CASE FILE pane, the boss lines' arm and skip, the death
+  subtitle, the session and end-of-session notes, the first ending → credits → AWAKEN,
+  every page → the true ending → RECURSE into floor 6, a replay, the Guide's content note.
 
 ---
 
