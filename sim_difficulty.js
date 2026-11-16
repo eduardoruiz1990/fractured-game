@@ -2,7 +2,7 @@
  * Difficulty measurement (V2 difficulty pass). Not a pass/fail suite: it PRINTS how a
  * scripted player fares, so a balance change can be judged by numbers, run to run.
  *
- *   node sim_difficulty.js [--runs 12] [--skill novice|competent|statue|both]
+ *   node sim_difficulty.js [--runs 12] [--skill novice|competent|statue|anchored|both]
  *                          [--profile fresh,returning,veteran] [--floors 5] [--seed 7] [--json]
  *                          [--detail] [--sources] [--ttk] [--stuck] [--pressure '{"3":{"hp":1.6}}']
  *
@@ -101,7 +101,8 @@ function mulberry32(seed) {
 const SKILL = {
     novice:    { standoff: 0.45, steer: 0.3, dash: false, kite: 0.4, dodge: false, pick: 'random' },
     competent: { standoff: 0.8,  steer: 0.9, dash: true,  kite: 0.9, dodge: true,  pick: 'weapons' },
-    statue:    { standoff: 0,    steer: 0,   dash: false, kite: 0,   dodge: false, pick: 'weapons' }   // sanity check: never moves
+    statue:    { standoff: 0,    steer: 0,   dash: false, kite: 0,   dodge: false, pick: 'weapons' },  // sanity check: never moves, never touches
+    anchored:  { standoff: 0,    steer: 0,   dash: false, kite: 0,   dodge: false, pick: 'weapons', hold: true }   // Patch 164: never moves, thumb resting on the stick
 };
 
 function botInput(state, skill, mem) {
@@ -159,7 +160,8 @@ function botInput(state, skill, mem) {
     return {
         moveX: moving ? mem.mx / mm : 0, moveY: moving ? mem.my / mm : 0, isMoving: moving,
         aimAngle: Math.atan2(-mem.my, -mem.mx), aimHeld: false,
-        isDashing: dash, dashPulse: false
+        isDashing: dash, dashPulse: false,
+        touchHeld: !!skill.hold || moving   // Patch 164: a moving bot has a thumb on the stick
     };
 }
 

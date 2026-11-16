@@ -20,7 +20,7 @@ const ok = (c, m) => { if (c) passed++; else { failed++; console.log('FAIL ' + m
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
 
 const AA = await import('./src/systems/AutoAim.js');
-const { autoAimEnabled, pickTarget, turnTowards, autoAimStep, AUTO_AIM_RANGE, AUTO_AIM_TURN, AUTO_AIM_STICKY } = AA;
+const { autoAimEnabled, pickTarget, turnTowards, autoAimStep, AUTO_AIM_RANGE, AUTO_AIM_TURN, AUTO_AIM_STICKY, AUTO_AIM_TURN_STILL, AUTO_AIM_IDLE_STEPS, AUTO_AIM_REACT } = AA;
 
 // --- the mode -----------------------------------------------------------------------------
 ok(autoAimEnabled('auto', 'touch') && !autoAimEnabled('auto', 'keyboard'), 'auto: on for touch, off with a mouse');
@@ -46,14 +46,51 @@ ok(turnTowards(NaN, 1) === 1 && turnTowards(1, NaN) === 1, 'non-finite angles ar
 // --- a step -----------------------------------------------------------------------------------------
 {
     const st = { player: { x: 0, y: 0, angle: 0 }, entities: [E(7, 0, 200)] };
+    const held = { touchHeld: true };   // a thumb on the glass, standing still
     let a = 0;
-    for (let i = 0; i < 20; i++) { a = autoAimStep(st, {}); st.player.angle = a; }
+    for (let i = 0; i < 60; i++) { a = autoAimStep(st, held); st.player.angle = a; }
     ok(near(a, Math.PI / 2) && st.autoAim.targetId === 7, `turns onto the enemy and records it (${a.toFixed(3)})`);
     st.entities = [];
     a = autoAimStep(st, { isMoving: true, moveX: -1, moveY: 0 });
     ok(st.autoAim.targetId === null && near(a, Math.PI / 2 + AUTO_AIM_TURN), 'nothing in range: follows the direction of travel');
     st.player.angle = 1.234;
-    ok(near(autoAimStep(st, { isMoving: false }), 1.234), 'standing still with nothing in range: holds the angle');
+    ok(near(autoAimStep(st, held), 1.234), 'standing still with nothing in range: holds the angle');
+}
+
+// --- Patch 164: assist, not autopilot ---------------------------------------------------------------
+{
+    ok(AUTO_AIM_TURN <= 0.15 && AUTO_AIM_TURN_STILL < AUTO_AIM_TURN / 3, 'a human turn speed, and much slower standing still');
+    const fresh = (angle = 0) => ({ player: { x: 0, y: 0, angle }, entities: [E(1, 0, 200)] });
+    const steps = (st, input, n) => { let a = st.player.angle; for (let i = 0; i < n; i++) { a = autoAimStep(st, input); st.player.angle = a; } return a; };
+    // moving vs standing: after the reaction delay, how far it turns in 10 steps
+    const mv = fresh(), sd = fresh();
+    steps(mv, { isMoving: true, moveX: 1, moveY: 0 }, AUTO_AIM_REACT);
+    steps(sd, { touchHeld: true }, AUTO_AIM_REACT);
+    const a0m = mv.player.angle, a0s = sd.player.angle;
+    const dm = steps(mv, { isMoving: true, moveX: 1, moveY: 0 }, 10) - a0m, ds = steps(sd, { touchHeld: true }, 10) - a0s;
+    ok(near(dm, 10 * AUTO_AIM_TURN, 1e-6) && near(ds, 10 * AUTO_AIM_TURN_STILL, 1e-6), `moving turns at full assist, standing at the slow drift (${dm.toFixed(2)} vs ${ds.toFixed(2)})`);
+    // a new target waits AUTO_AIM_REACT steps: moving with the target behind, the light keeps to the heading at first
+    const r = fresh(0); r.entities = [E(1, -200, 0)];
+    steps(r, { isMoving: true, moveX: 1, moveY: 0 }, AUTO_AIM_REACT - 1);
+    ok(near(r.player.angle, 0) && r.autoAim.targetId === 1, 'a new target is held off for the reaction time');
+    steps(r, { isMoving: true, moveX: 1, moveY: 0 }, 3);
+    ok(Math.abs(r.player.angle) > 0.1, 'then the light turns to it');
+    // no input at all: after the idle window assist lets go and the light holds
+    const idle = fresh(0);
+    const aIdle = steps(idle, {}, AUTO_AIM_IDLE_STEPS + 30);
+    ok(near(aIdle, idle.player.angle) && idle.autoAim.idle > AUTO_AIM_IDLE_STEPS && idle.autoAim.targetId === null, 'no input for 1.5 s: assist lets go');
+    const before = idle.player.angle;
+    steps(idle, {}, 60);
+    ok(near(idle.player.angle, before), 'and the light stays where it points while nothing is touched');
+    idle.entities = [E(9, -200, 0)];   // a new enemy, behind
+    const aNew = steps(idle, {}, 120);
+    ok(near(aNew, before), `an untouched phone does not turn to a new enemy (${aNew.toFixed(2)} rad, enemy at 3.14)`);
+    steps(idle, { touchHeld: true }, 1);
+    ok(idle.autoAim.idle === 0, 'a touch wakes it at once');
+    const mouse = fresh(0);
+    steps(mouse, {}, AUTO_AIM_IDLE_STEPS + 5);
+    steps(mouse, { pointerMoved: true }, 1);
+    ok(mouse.autoAim.idle === 0, 'a moving mouse counts as playing (desktop with assist ON)');
 }
 
 // --- Game.update hook ------------------------------------------------------------------------------
@@ -82,8 +119,12 @@ ok(turnTowards(NaN, 1) === 1 && turnTowards(1, NaN) === 1, 'non-finite angles ar
     const has = gOn.state.entities.length === 1;
     ok(has, 'a test enemy exists');
     if (has) {
-        const a = run(gOn, { moveX: 0, moveY: 0, aimAngle: 0, isMoving: false });
+        const a = run(gOn, { moveX: 0, moveY: 0, aimAngle: 0, isMoving: false, touchHeld: true }, 70);
         ok(Math.abs(a - Math.PI / 2) < 0.15, `assist on: the player turns to the enemy (${a.toFixed(3)})`);
+        // Patch 164: with assist ON on desktop, once it lets go the mouse aims again
+        const gIdle = mk(); gIdle.autoAimOn = true;
+        const ai = run(gIdle, { moveX: 0, moveY: 0, aimAngle: -1, isMoving: false, mouseAim: true }, AUTO_AIM_IDLE_STEPS + 10);
+        ok(near(ai, -1), `assist idle with a mouse: the mouse aims (${ai.toFixed(2)})`);
         const gOff = mk(); gOff.autoAimOn = false;
         ok(near(run(gOff, { moveX: 0, moveY: 0, aimAngle: 0.5, isMoving: false }), 0.5), 'assist off: the input angle is used as before');
         const gHeld = mk(); gHeld.autoAimOn = true;
