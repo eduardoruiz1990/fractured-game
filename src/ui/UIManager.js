@@ -1,7 +1,14 @@
 // src/ui/UIManager.js
-import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS, MANIFESTATIONS, PLAYER_WEAPON_IDS, ENEMY_BESTIARY } from '../data/Manifestations.js';
+import { TOKENS, TOKEN_RARITIES, TOKEN_SETS, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHTS, MANIFESTATIONS, PLAYER_WEAPON_IDS, ENEMY_BESTIARY, SYNERGIES } from '../data/Manifestations.js';
+import { synergyRecipe } from './SynergyBanner.js';
+
+// Patch 126: synergy names/descs are static data today, but escaped anyway — the
+// codex builds markup from them.
+const escapeText = (v) => String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 import { SynapseTree } from './SynapseTree.js';
 import { GuideUI } from './GuideUI.js';
+import { FolderTabs } from './FolderTabs.js';
 import { showConfirm } from './Dialog.js';
 import { BOONS } from './LevelUpUI.js';
 // Patch 98 — the roadmap reports depth past floor 5. See src/core/Endless.js.
@@ -227,6 +234,9 @@ export class UIManager {
 
         this.tabBtns = document.querySelectorAll('.tab-btn');
         this.tabPanes = document.querySelectorAll('.tab-pane');
+        // Patch 129: the eight tabs grouped into four (see FolderTabs.js). Built after
+        // tabBtns is captured: the same buttons, regrouped, keep their handlers.
+        this.folderTabs = new FolderTabs();
 
         // Patch 34b: one shared floating tooltip appended directly to <body>,
         // outside .inventory-panel's DOM subtree so its overflow-y:auto (which
@@ -900,6 +910,38 @@ export class UIManager {
             const count = kills[entry.id] || 0;
             if (count <= 0) { html += sealedCard(); return; }
             html += trophyCard(entry, count, { color: entry.color, shadow: `0 0 15px ${entry.color}` }, '');
+        });
+
+        // Patch 126 (V2 plan C3): the Synergy Codex. A synergy this profile has
+        // formed shows its name and effect; one it has not is a silhouette that
+        // still names its RECIPE — the point of a locked entry is to be a goal, and
+        // "Rusted Flashlight + Static Receiver, both level 5" is a goal a player can
+        // act on next run. The name and effect stay withheld, like a sealed trophy.
+        const formed = this.saveManager.metaState.discoveredSynergies || {};
+        const synIds = Object.keys(SYNERGIES);
+        const formedCount = synIds.filter(id => (Number(formed[id]) || 0) > 0).length;
+        html += heading(`SYNERGY CODEX (${formedCount} / ${synIds.length} formed · both instruments at level 5)`);
+        synIds.forEach(id => {
+            const syn = SYNERGIES[id];
+            const times = Number(formed[id]) || 0;
+            const recipe = escapeText(synergyRecipe(syn));
+            if (times <= 0) {
+                html += `
+            <div class="trophy-card codex-card codex-locked" data-synergy="${id}" style="background:#f4f1ea; border:2px dashed #c2b59b; box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
+                <div style="font-size:2.6rem; color:#111; opacity:0.08; line-height:1;">🔗</div>
+                <div class="redacted-text" style="font-weight:bold; margin-top:10px; font-size:0.8rem;">(UNFORMED)</div>
+                <div style="font-size:0.72rem; color:#6f6656; margin-top:6px; line-height:1.35;">${recipe}</div>
+            </div>`;
+                return;
+            }
+            html += `
+            <div class="trophy-card codex-card" data-synergy="${id}" style="background:#fdfaf3; border:2px solid var(--ui-gold); box-shadow:4px 4px 0 rgba(0,0,0,0.1); padding:15px; text-align:center;">
+                <div style="font-size:2.6rem; line-height:1;">🔗</div>
+                <div style="font-weight:bold; color:var(--ink-black); margin-top:10px; font-size:0.9rem;">${escapeText(syn.name)}</div>
+                <div style="font-size:0.72rem; color:#6f6656; margin-top:4px; line-height:1.35;">${recipe}</div>
+                <div style="font-size:0.74rem; color:#333; margin-top:6px; line-height:1.35;">${escapeText(syn.desc)}</div>
+                <div style="font-size:0.7rem; color:#8a8172; margin-top:6px; letter-spacing:1px;">FORMED ×${times}</div>
+            </div>`;
         });
 
         grid.innerHTML = html;

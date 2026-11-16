@@ -20,6 +20,7 @@ import {
     ENEMY_VARIANTS, ENEMY_BESTIARY
 } from '../data/Manifestations.js';
 import { BOONS } from './LevelUpUI.js';
+import { synergyRecipe } from './SynergyBanner.js';
 
 const esc = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -142,12 +143,15 @@ export class GuideUI {
                     h += this.card('#4466aa', '🛠️', w.name, w.desc, `MAX LEVEL ${w.maxLvl}`);
                 });
 
+                // Patch 126: "at sufficient level" was vague and the recipe printed
+                // raw ids ("lead_pipe + spilled_ink"). The rule is getActiveSynergies'
+                // — BOTH instruments at their max level, 5 — and the names are the
+                // ones the level-up cards use.
                 h += this.section('SYNERGIES',
-                    'Reached automatically when the required instruments are carried together at sufficient level.');
+                    'Formed the moment BOTH instruments reach level 5 in the same run. Each one you form is filed in the Synergy Codex in the Mind Palace.');
                 Object.values(SYNERGIES).forEach(s => {
-                    // `reqs`, not `req` — SYNERGIES uses the plural key.
-                    const reqs = Array.isArray(s.reqs) ? s.reqs.join(' + ') : '';
-                    h += this.card('#1a1a1a', '💀', s.name, s.desc || '', reqs ? `REQUIRES: ${reqs}` : null);
+                    const recipe = synergyRecipe(s);
+                    h += this.card('#1a1a1a', '🔗', s.name, s.desc || '', recipe ? `REQUIRES: ${recipe.toUpperCase()} · BOTH LEVEL 5` : null);
                 });
                 return h;
             }),

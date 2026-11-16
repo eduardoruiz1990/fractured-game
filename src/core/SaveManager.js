@@ -46,6 +46,11 @@ export class SaveManager {
             // record — nothing reads it back into gameplay — so it is safe for a save
             // to arrive without it (see the back-fill in loadGame AND importSave).
             boonHistory: {},
+            // Patch 126: the Synergy Codex. synergy id -> times formed. A record that
+            // drives the Mind Palace codex and the "NEW CODEX ENTRY" banner line —
+            // nothing reads it back into gameplay. Back-filled in loadGame, derived
+            // from the imported file in importSave, cleared by wipeSave.
+            discoveredSynergies: {},
             // Patch 59: lifetime case statistics. runsStarted counts descents begun,
             // deaths counts minds broken, runsCompleted counts Floor 5 clears (the
             // Architect falling). All three are records only — nothing reads them
@@ -128,6 +133,10 @@ export class SaveManager {
                 // Patch 57. Every save written before this patch lacks the key, and
                 // recordBoonPick() indexes into it directly.
                 if (!this.metaState.boonHistory) this.metaState.boonHistory = {};
+                // Patch 126.
+                if (!this.metaState.discoveredSynergies || typeof this.metaState.discoveredSynergies !== 'object') {
+                    this.metaState.discoveredSynergies = {};
+                }
 
                 // Patch 59. `|| 0` rather than an undefined check, so a corrupted
                 // non-numeric value is also repaired rather than propagated into the
@@ -245,6 +254,9 @@ export class SaveManager {
                 // this derives from the IMPORTED data specifically.
                 this.metaState.boonHistory =
                     (parsed.boonHistory && typeof parsed.boonHistory === 'object') ? parsed.boonHistory : {};
+                // Patch 126: same rule — from the imported file, never inherited.
+                this.metaState.discoveredSynergies =
+                    (parsed.discoveredSynergies && typeof parsed.discoveredSynergies === 'object') ? parsed.discoveredSynergies : {};
 
                 // Patch 59: same reasoning as boonHistory directly above — these must
                 // come from the IMPORTED file, not survive from whatever profile this
@@ -303,6 +315,21 @@ export class SaveManager {
         }
         this.metaState.boonHistory[id] = entry;
         this.saveGame();
+    }
+
+    /**
+     * Records a synergy forming in a run (Patch 126). Returns true the first time
+     * this profile has ever formed it — the "NEW CODEX ENTRY" moment.
+     */
+    recordSynergy(id) {
+        if (!id) return false;
+        if (!this.metaState.discoveredSynergies || typeof this.metaState.discoveredSynergies !== 'object') {
+            this.metaState.discoveredSynergies = {};
+        }
+        const prev = Number(this.metaState.discoveredSynergies[id]) || 0;
+        this.metaState.discoveredSynergies[id] = prev + 1;
+        this.saveGame();
+        return prev === 0;
     }
 
     /**
@@ -717,6 +744,7 @@ export class SaveManager {
             selectedCurses: [],
             killCounts: { SCAVENGER: 0, PREDATOR: 0, PARASITE: 0, BOSS: 0, RORSCHACH: 0, PANOPTICON: 0, AMALGAMATION: 0, ARCHITECT: 0 },
             boonHistory: {},   // Patch 57: a wipe clears the record too.
+            discoveredSynergies: {},   // Patch 126
             runsStarted: 0, deaths: 0, runsCompleted: 0,   // Patch 59
             // Patch 92: a wipe is a new patient file, so the retention notice and the
             // backup prompt are both re-armed. wipeSave() reloads the page, so the

@@ -224,6 +224,27 @@ export function synergyHintsFor(weapons, id) {
 }
 
 /** Patch 125: clicks and 1/2/3 are ignored for this long after the cards appear. */
+/**
+ * Patch 127 (V2 plan C1): while the player carries a single weapon, one of the three
+ * cards is always a NEW weapon. A second weapon is what turns the opening into a
+ * build (and it is what makes the first "🔗 pairs with" tag appear), but the
+ * weighted draw favours the one weapon already owned, so a player could see three
+ * flashlight-and-boon offers in a row. Replaces the LAST card, so the draw's own
+ * top picks stay; the replacement is the highest-ranked new weapon in `ranked`.
+ * Pure: returns a new array, never mutates its inputs.
+ */
+export function ensureNewWeaponOffer(selected, ranked, weapons) {
+    if (!Array.isArray(selected) || !weapons) return selected;
+    const owned = Object.values(weapons).filter(w => w && w.level > 0).length;
+    if (owned !== 1) return selected;
+    if (selected.some(c => c && c.type === 'weapon' && c.isNew)) return selected;
+    const fresh = (ranked || []).find(c => c && c.type === 'weapon' && c.isNew && !selected.includes(c));
+    if (!fresh) return selected;
+    const out = selected.slice();
+    if (out.length < 3) out.push(fresh); else out[out.length - 1] = fresh;
+    return out;
+}
+
 export const LEVEL_UP_ARM_MS = 300;
 
 export class LevelUpUI {
@@ -438,7 +459,7 @@ export class LevelUpUI {
             shuffled.push(weightedPool.splice(idx, 1)[0]);
         }
 
-        let selected = shuffled.slice(0, 3);
+        let selected = ensureNewWeaponOffer(shuffled.slice(0, 3), shuffled, game.state.player.weapons);
         this.currentChoices = selected;
 
         selected.forEach((choice, idx) => {
@@ -597,7 +618,9 @@ export class LevelUpUI {
             }
         }
 
-        game.state.player.synergies = getActiveSynergies(game.state.player.weapons);
+        // Patch 126: through Game so a synergy this pick completes is announced.
+        if (typeof game.refreshSynergies === 'function') game.refreshSynergies();
+        else game.state.player.synergies = getActiveSynergies(game.state.player.weapons);
 
         if (this.audioEngine) this.audioEngine.playSFX('levelup', 5);
         

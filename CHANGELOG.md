@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–125)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–130)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1715,6 +1715,177 @@ New `qa/levelup_check.cjs` (384×717, 915×412, 1280×720) checks:
 
 `test_content` is up to 225 passing. The dev hook gains `levelUpUI`.
 
+**Patch 126 — the synergy-formed moment and the Synergy Codex (C3).**
+
+Before this, a synergy switched on in silence: the flashlight started strobing and
+nothing said why. Synergies are the build-defining reward of a run.
+
+- **One recompute path.** `Game.refreshSynergies()` replaces the two direct
+  `getActiveSynergies()` assignments (the level-up pick in `LevelUpUI.selectCard`, and
+  the WEAPON_UPGRADE door in `Combat`). It diffs against the previous list and calls
+  `game.onSynergyFormed(ids)` once per newly active synergy. `Game.init`'s own
+  assignment does not go through it, so a synergy carried down a floor is not announced
+  again.
+- **The moment** (`main.js` `onSynergyFormed`):
+  - a stamped **SYNERGY FORMED** notice (`src/ui/SynergyBanner.js`, a DOM element created
+    lazily in `#game-container`, `pointer-events: none`, z 160 so it sits above the
+    scanlines). It shows the name, the recipe in display names, the effect, and — the
+    first time this profile forms it — **NEW CODEX ENTRY · n / 10**. Notices queue, so
+    two synergies from one door play one after the other. Death and a new run clear it.
+    Photosensitivity mode drops the stamp's slam;
+  - **half-speed slow motion** for 48 sim steps (`state.slowMo`; `Game.update` skips
+    every other step like a hitStop step, so it is the same length at 60 Hz and 144 Hz);
+  - the `ui_upgrade` sting and a short vibration;
+  - **`happytime()`** the first time a profile ever forms a synergy, at most once per
+    session.
+  - In short landscape the notice anchors to the bottom edge: the top is all HUD and
+    the player sits at mid-height.
+- **Synergy Codex** in the Mind Palace (`UIManager.renderTrophies`). Formed entries show
+  the name, recipe, effect and "FORMED ×n". Unformed ones are silhouettes that withhold
+  the name and effect but still show the **recipe**, so a locked entry is a goal the
+  player can act on next run.
+- **Save schema:** new `metaState.discoveredSynergies` (id → times formed), recorded by
+  `SaveManager.recordSynergy(id)`, which returns true on the first time. Back-filled in
+  `loadGame`, derived from the imported file in `importSave` (never inherited), cleared
+  by `wipeSave` — Keep clauses 1–2.
+- **Guide:** the SYNERGIES section said "at sufficient level" and printed raw ids
+  ("lead_pipe + spilled_ink"). It now says both instruments at level 5, uses display
+  names, and points to the codex.
+
+`test_content` (241 passing) covers: no announcement from `init` or a carried floor, one
+announcement per synergy, slow motion running exactly half the steps, `recordSynergy`'s
+first-time flag, the back-fill, imports not inheriting a codex, and recipes without raw
+ids. New `qa/synergy_check.cjs` (three viewports) forms a synergy through a real card and
+checks the banner text, z-order, on-screen, ≥ 11 px, slow motion, codex record,
+happytime once per session, the second notice, the codex (2 formed, 8 locked with
+recipes and no names) and that death clears the banner. The dev hook gains `uiManager`.
+
+**Patch 127 — the first minute (C1).**
+
+Measured with a headless bot (fixed seeds, a fresh `Game` driven through
+`game.update`):
+- **Fresh profile (tutorial):** the guaranteed tutorial kill already produced the first
+  card at ~7 s of sim time; a real player reading the prompts is nearer 15–25 s.
+- **Returning player, room 1:** median first card at **32 s**, second at **46 s**. Room
+  1 is kill-speed bound (first XP lands ~14 s in, then roughly a kill every 2 s).
+
+Changes:
+- **Onboarding XP ramp** (`Config.ONBOARDING_XP = [24, 40]`): levels 1 and 2 cost 24
+  and 40 XP instead of 50 and 56. Level 3 onward is the unchanged curve, so the curve
+  stays strictly increasing and nothing past the first minute moves. The bot's median
+  first card for a returning player is now ~20–25 s (it collects orbs badly; a player
+  does better). The tutorial kill's 75 XP now pays for **both** of the first two cards.
+- **A second weapon is always offered** (`LevelUpUI.ensureNewWeaponOffer`): while the
+  player carries a single weapon, the last of the three cards is replaced by the
+  best-ranked NEW weapon if none was drawn. The affinity weighting favours the one
+  weapon already owned, so before this a player could see three flashlight-or-boon
+  offers in a row. With a second weapon comes the first "🔗 pairs with" tag (Patch 125).
+
+`test_content` (249) covers the ramp, the unchanged tail, the tutorial covering both
+cards, and `ensureNewWeaponOffer` (replaces only the last card, never mutates, leaves
+two-weapon and no-new-weapon cases alone). `qa/levelup_check.cjs` adds: 64 XP from a
+fresh run gives two cards in a row, and both offer a NEW weapon.
+
+**Patch 128 — HUD readability (C7).**
+
+- **Scanlines no longer stripe the HUD.** `#ui-layer` goes from z 20 to **z 101**,
+  above `#crt-scanlines` (100, opacity 0.8, 2 px dark bands) and still below every menu
+  (200+), the tutorial note (150) and the synergy notice (160).
+- **11 px floor on phones.** The small-screen and landscape blocks had shrunk
+  `.hud-label` to 0.58rem / 0.55rem (9.3 / 8.8 px), the pause button to 0.68rem and the
+  enemy counter to 0.62rem. All are now 0.7rem (11.2 px).
+- **Sanity state that is not colour alone.** The label reads `SANITY 82%`, then
+  `SANITY 24% · FRAYING` below 30%, then `SANITY 0% · BREAKDOWN`, using the bar's own
+  colour thresholds. Low Sanity also hatches the bar. Breakdown blinks the panel
+  outline about once a second; it is steady under `prefers-reduced-motion` and the
+  photosensitivity setting. Class toggles happen only when the state changes.
+- **Layout bugs this exposed:**
+  - **Portrait:** the progress panel's base `min-width: 200px` beat the small-screen
+    `max-width: 28%`, leaving the Sanity panel 70 px wide. Portrait now splits 34% /
+    flexible / 30%.
+  - **800×600 and 960×540 iframes:** the HUD row wrapped. The Lucidity/pause panel
+    dropped under Sanity, into the play area. Mid widths now keep one row, with a
+    150 px progress floor and 1rem large labels.
+  - **Tutorial note:** its fixed `top: 76px` sat on the progress panel's
+    "NIGHTMARES LEFT" line on desktop. It is now 132 px (desktop), 118 px (portrait),
+    and stays 76 px on landscape phones.
+
+New `qa/hud_check.cjs` checks 384×717, 915×412, 800×600, 960×600 and 1280×720:
+- HUD text is at least 11 px, and the z-order is scanlines < HUD < menus;
+- the HUD clusters stay on screen and in one row;
+- the tutorial note does not overlap the HUD;
+- the healthy, FRAYING and recovered labels read correctly, the low bar is hatched, and
+  the longest label fits its panel.
+
+**Patch 129 — hub friction: four tabs and DESCEND from the hub (C6).**
+
+- **Eight folder tabs become four groups** (`src/ui/FolderTabs.js`):
+  - **DESCEND**: Evaluation, Descent Roadmap.
+  - **SYNAPSES**: the tree.
+  - **LOADOUT**: Therapy Regimen, Intrusive Thoughts.
+  - **RECORDS**: Mind Palace, Manifestation Log, Clinical Guide.
+
+  On a phone the old strip was about 1000 px of tabs, scrolling sideways with a hidden
+  scrollbar. The four groups fit any width at 44 px+. A group with more than one pane
+  shows a small row of paper sub-tabs; SYNAPSES has none.
+- **Implementation:** the eight `.tab-btn` buttons are untouched apart from their order.
+  They keep their data-targets and UIManager's click handler, which renders each pane
+  on open, and become the sub-tab row. A group button activates a pane by clicking that
+  pane's own `.tab-btn`, so there is one code path. Groups follow the active pane
+  through a MutationObserver, so the hub zones (`triggerInteraction`, which sets
+  classes directly) and the QA scripts stay in step without knowing about groups. A
+  group reopens on the pane last used in it.
+- **DESCEND in the walkable hub:** a top-centre button and the **Enter** key. They are
+  the same `#btn-start` click as AUTHORIZE DESCENT, so a run starts from the hub with
+  no walk to the machine. With a suspended run on file they open the machine's folder
+  (EVALUATION, with RESUME) instead of replacing it silently. The button is hidden
+  outside the hub and while the folder is open (checked at the top of `gameLoop`,
+  because the MENU branch returns early). Enter on a focused button is left to that
+  button.
+
+New `qa/hub_check.cjs` (384×717, 915×412, 1280×720) checks:
+- the hub button is shown, on screen and at least 44 px;
+- the Mind Palace desk opens RECORDS on the Mind Palace pane, with three sub-tabs;
+- the four groups fit at 44 px+;
+- SYNAPSES has no sub-row, and a group reopens on its last pane;
+- DESCEND by Enter (desktop) or tap (touch) starts a run, and Enter is inert mid-run;
+- with a suspended run, DESCEND opens EVALUATION with RESUME.
+
+**Patch 130 — juice (C8).**
+
+- **Level-up:**
+  - **Flash:** a gold radial flash behind the cards (`src/ui/Juice.js`, `#juice-flash`
+    at z 190, under the modal and every menu). It is skipped entirely in
+    photosensitivity mode.
+  - **Deal-in:** the cards rise into place one after another (0 / 60 / 120 ms). This
+    finishes inside the 300 ms arming window from Patch 125, so they land as they
+    become pickable. It uses the individual `translate`/`scale` properties, so it
+    composes with each card's inline `rotate()`. It is off under reduced motion.
+  - **Ease back in:** after the pick, 20 steps of half speed (`state.slowMo`), so
+    combat does not resume at full speed the instant a card is chosen.
+    `Math.max` keeps a synergy's longer slow motion.
+- **Boss death** (the last boss alive in the room): a 12-step impact freeze (`hitStop`),
+  then 72 steps of half speed (`BOSS_DEATH_SLOWMO_STEPS`, ~1.2 s), a soft white
+  `cameraFlash` (which main.js already zeroes in photosensitivity mode), and 80 more
+  fragments in white and the boss's colour. All of it is counted in sim steps, so it
+  lasts the same at any refresh rate.
+- **The "chest" moment.** The game has no chests yet (Phase D adds them through the
+  dormant interactables), so this goes on the boss token pickup, the run's one
+  physical reward. A short freeze (anticipation), then a burst in the rarity's colour
+  and a kick of shake, both growing with rarity (`tokenBurstTier`, read from
+  `TOKEN_RARITIES`' own order). When chests arrive they should reuse this beat.
+
+New `qa/juice_check.cjs` checks:
+- the flash shows and sits under the cards;
+- all three cards deal in and keep their tilt;
+- the post-pick ease;
+- a real boss kill gives the freeze, slow motion, flash, 100+ particles and the exit,
+  and the slow motion ends;
+- a legendary token pickup gives the freeze and shake;
+- photosensitivity mode shows no flash.
+
+`qa/soak_check` (20 s) is clean: invariants OK, entities ≤ cap.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
@@ -1937,6 +2108,10 @@ New `qa/levelup_check.cjs` (384×717, 915×412, 1280×720) checks:
 42. **Anything that scales with the room number uses `roomNumber * ROOM_PACE`, and the
     room count comes from `ROOMS_PER_FLOOR` (Patch 123).** Never hardcode 10 or 5. A raw
     `roomNumber` in a ramp silently halves that ramp on 5-room floors.
+43. **After `Game.init`, a run's synergy list changes only through
+    `game.refreshSynergies()` (Patch 126).** Assigning `state.player.synergies =
+    getActiveSynergies(...)` directly works in play but skips the banner, the slow
+    motion and the codex record, so that synergy is never "discovered".
 
 ---
 

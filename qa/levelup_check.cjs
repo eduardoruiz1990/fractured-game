@@ -17,6 +17,28 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
     await page.click('#btn-title-begin');
     await page.waitForTimeout(1200);
 
+    // Patch 127: a fresh run owns only the flashlight. 64 XP (24 + 40) gives two
+    // cards in a row, and each offers a NEW weapon.
+    const fresh = await page.evaluate(() => {
+      const g = window.__fractured.game; g.state.xp = 64; return g.state.level;
+    });
+    const newOffers = [];
+    for (let k = 0; k < 2; k++) {
+      await page.waitForFunction(() => window.__fractured.gameState === 'LEVEL_UP', null, { timeout: 3000 }).catch(() => {});
+      newOffers.push(await page.evaluate(() => {
+        const ui = window.__fractured.levelUpUI;
+        const hasNew = [...document.querySelectorAll('#cards-container .card')].some(c => /NEW WEAPON/.test(c.innerText));
+        const ch = ui.currentChoices || [];
+        const idx = Math.max(0, ch.findIndex(c => c.type !== 'weapon' || !c.isNew));   // keep one weapon for card 2
+        ui.armedAt = 0; ui.tryPick(idx);
+        return hasNew;
+      }));
+      await page.waitForTimeout(100);
+    }
+    const lvlAfter = await page.evaluate(() => window.__fractured.game.state.level);
+    ok(lvlAfter === fresh + 2, `${tag} 64 XP from level ${fresh} gives two cards (now ${lvlAfter})`);
+    ok(newOffers.length === 2 && newOffers.every(Boolean), `${tag} both early offers include a NEW weapon ${JSON.stringify(newOffers)}`);
+
     // A deterministic offer: flashlight 5, static 4 (so static can complete a
     // synergy), pipe 2, everything else maxed or owned so the pool is mostly weapons.
     const open = () => page.evaluate(() => {
@@ -60,7 +82,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
 
     // SYNERGY READY appears on the static card when it would complete Blinding Signal.
     let sawReady = false;
-    for (let i = 0; i < 12 && !sawReady; i++) {
+    for (let i = 0; i < 60 && !sawReady; i++) {   // a random draw: up to 60 offers
       await open(); await page.waitForTimeout(20);
       sawReady = await page.evaluate(() => [...document.querySelectorAll('#cards-container .card')].some(c => /Static Receiver/.test(c.innerText) && /SYNERGY READY/.test(c.innerText)));
       await page.evaluate(() => { const ui = window.__fractured.levelUpUI; if (ui) { ui.armedAt = 0; ui.tryPick(0); } });

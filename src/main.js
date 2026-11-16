@@ -6,6 +6,8 @@ import { Renderer } from './core/Renderer.js';
 import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
 import { LevelUpUI } from './ui/LevelUpUI.js';
+import { SynergyBanner } from './ui/SynergyBanner.js';
+import { screenFlash } from './ui/Juice.js';
 import { TOKENS, TOKEN_RARITIES, SYNERGIES, getActiveSynergies, ENEMY_BESTIARY } from './data/Manifestations.js';
 import { portalSDK } from './systems/PortalSDK.js';
 import { showConfirm } from './ui/Dialog.js';
@@ -325,6 +327,8 @@ function hudText(el, value) {
     if (el.textContent !== v) el.textContent = v;
 }
 let lastScoreHtml = null;
+let lastSanityState = null;   // Patch 128: class toggles only on a change
+let hubDescendNow = () => {};   // Patch 129: set where the hub listeners are wired
 function hudHtml(el, html) {
     if (!el || html === lastScoreHtml) return;   // #score is written only from here
     lastScoreHtml = html;
@@ -518,6 +522,14 @@ function setDeathLayout(isDeath) {
 // on the player's deepest floor so far, once per floor per session, so farming floor
 // 1 does not spam it.
 const happyFloorsThisSession = new Set();
+// Patch 126: a synergy formed for the first time on this profile is the other
+// "achievement" moment. Once per session at most, so it stays sparing.
+let happySynergyThisSession = false;
+const synergyBanner = new SynergyBanner();
+// Sim steps of half speed after a synergy forms (Game.update skips every other
+// step while state.slowMo > 0), so ~0.8 s at 60 Hz of real time at half speed.
+const SYNERGY_SLOWMO_STEPS = 48;
+const LEVELUP_EASE_STEPS = 20;   // Patch 130
 function maybeHappytimeForBossKill(floor) {
     if (!saveManager || !Number.isFinite(floor)) return;
     if (floor < (saveManager.metaState.maxFloorReached || 1)) return;
@@ -925,6 +937,7 @@ function enterPlayingState() {
  * fresh run must be built from the meta state as it is at launch.
  */
 function startNewRun() {
+    synergyBanner.clear();   // Patch 126: a notice from the last run must not linger
     game.init(saveManager);
     applyDevOverrides();
     // Patch 59: counted here rather than in enterPlayingState(), which RESUMING also
@@ -1972,6 +1985,39 @@ function initEngine() {
             };
 
             window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'e') triggerInteraction(); });
+
+            // Patch 129 (V2 plan C6): start a run from the hub without walking to the
+            // Descent Machine. The button and Enter do exactly what AUTHORIZE DESCENT
+            // does (the same #btn-start click, so the same launch path) — unless a
+            // suspended run is on file, when they open the machine's folder instead, so
+            // RESUME and the new descent are chosen between rather than one silently
+            // replacing the other.
+            const hubDescend = document.createElement('button');
+            hubDescend.id = 'hub-descend';
+            hubDescend.type = 'button';
+            hubDescend.className = 'file-btn primary';
+            hubDescend.innerHTML = 'DESCEND <span class="hub-descend-key">[ENTER]</span>';
+            hubDescend.style.display = 'none';
+            const gameContainer = document.getElementById('game-container');
+            if (gameContainer) gameContainer.appendChild(hubDescend);
+            hubDescendNow = () => {
+                if (gameState !== 'HUB') return;
+                const folder = document.getElementById('clinical-folder-menu');
+                if (folder && folder.style.display === 'flex') return;
+                if (readSuspendedRun() && game.hubWorld && Array.isArray(game.hubWorld.zones)) {
+                    const bed = game.hubWorld.zones.find(z => z.action === 'tab-main');
+                    if (bed) { game.hubWorld.activeZone = bed; triggerInteraction(); return; }
+                }
+                const start = document.getElementById('btn-start');
+                if (start) start.click();
+            };
+            hubDescend.addEventListener('click', (e) => { e.currentTarget.blur(); hubDescendNow(); });
+            window.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' || e.repeat) return;
+                // A focused button gets its own Enter click; do not fire twice.
+                if (e.target && e.target.tagName === 'BUTTON') return;
+                hubDescendNow();
+            });
             interactionPrompt.addEventListener('click', triggerInteraction);
             interactionPrompt.addEventListener('touchstart', (e) => { e.preventDefault(); triggerInteraction(); });
         }
@@ -2017,7 +2063,8 @@ function initEngine() {
             setQuality(q) { gameSettings.quality = q; applyQualityTier(); },   // Patch 115
             get qualityTier() { return currentQualityTier(); },
             get qualitySetting() { return gameSettings.quality; },  // Patch 120
-            get levelUpUI() { return levelUpUI; }                  // Patch 125
+            get levelUpUI() { return levelUpUI; },                 // Patch 125
+            get uiManager() { return uiManager; }                  // Patch 126
         };
         // Patch 120: the on-screen perf panel, playtest builds only. MODE is a string
         // literal after Vite's replacement, so every other build drops this branch and
@@ -2436,6 +2483,7 @@ function initEngine() {
 
     game.onDeath = () => {
         gameState = 'DEAD';
+        synergyBanner.clear();   // Patch 126
         // Patch 54: the run is over, so its autosave must go with it. Before this
         // patch nothing wrote a suspended run mid-floor, so death had nothing to
         // clean up; now that autoSaveRun() persists one continuously, leaving it
@@ -2544,12 +2592,41 @@ function initEngine() {
         inputManager.keys = { w: false, a: false, s: false, d: false, space: false }; 
         inputManager.updateKeyboardInput();
         audioEngine.playSFX('levelup');
+        // Patch 130 (C8): a gold radial flash behind the cards (none in
+        // photosensitivity mode); the cards themselves deal in via CSS.
+        screenFlash('levelup', { calm: !!gameSettings.photosensitive });
         levelUpUI.show(game, () => {
             if (game.state && game.state.telemetry && game.state.telemetry.firstBoonAt === null) {
                 game.state.telemetry.firstBoonAt = performance.now() - game.state.telemetry.runStartWallClock;
             }
+            // Patch 130: ease back in — a third of a second at half speed rather than
+            // full-speed combat the instant the card is picked. A synergy formed by
+            // this pick sets a longer slowMo first, and Math.max keeps that one.
+            if (game.state) game.state.slowMo = Math.max(game.state.slowMo || 0, LEVELUP_EASE_STEPS);
             gameState = 'PLAYING';
         });
+    };
+
+    // Patch 126 (V2 plan C3): Game.refreshSynergies() calls this with the ids that
+    // just became active, from a level-up card or a WEAPON_UPGRADE door.
+    game.onSynergyFormed = (ids) => {
+        if (!Array.isArray(ids) || !ids.length) return;
+        let anyNew = false;
+        ids.forEach(id => {
+            const isNew = saveManager.recordSynergy(id);
+            if (isNew) anyNew = true;
+            const discovered = Object.keys(saveManager.metaState.discoveredSynergies || {})
+                .filter(k => SYNERGIES[k]).length;
+            synergyBanner.push(id, { isNew, discovered, calm: !!gameSettings.photosensitive });
+        });
+        if (game.state) game.state.slowMo = Math.max(game.state.slowMo || 0, SYNERGY_SLOWMO_STEPS);
+        audioEngine.playSFX('ui_upgrade', 3, false);
+        try { if (navigator.vibrate) navigator.vibrate([30, 40, 80]); } catch (e) {}
+        if (anyNew && !happySynergyThisSession) {
+            happySynergyThisSession = true;
+            portalSDK.happytime();
+        }
+        // The codex itself re-renders with the Mind Palace in updateMenuUI().
     };
 
     game.onFloorComplete = () => {
@@ -2642,6 +2719,17 @@ function gameLoop(time) {
 
         syncPortalGameplayState();
         syncPortalContext();   // Patch 119
+
+        // Patch 129: the hub's DESCEND button shows only while walking the hub. Here,
+        // at the top, because the branches below return early for MENU and TITLE.
+        {
+            const hd = document.getElementById('hub-descend');
+            if (hd) {
+                const folder = document.getElementById('clinical-folder-menu');
+                const show = gameState === 'HUB' && !(folder && folder.style.display === 'flex');
+                hudStyle(hd, 'display', show ? 'block' : 'none');
+            }
+        }
 
         if (import.meta.env.DEV) {
         // Patch 50: one-shot in-loop throw for the FORCE TEST ERROR button. Cleared
@@ -2780,6 +2868,22 @@ function gameLoop(time) {
                 if (isBreakdown) { hudStyle(sanityBar, 'backgroundColor', 'var(--ui-red)'); hudStyle(sanityBar, 'boxShadow', '0 0 15px var(--ui-red)'); }
                 else if (ratio < 0.3) { hudStyle(sanityBar, 'backgroundColor', '#ffaa00'); hudStyle(sanityBar, 'boxShadow', '0 0 10px #ffaa00'); }
                 else { hudStyle(sanityBar, 'backgroundColor', 'var(--hud-green)'); hudStyle(sanityBar, 'boxShadow', '0 0 10px var(--hud-green)'); }
+
+                // Patch 128 (V2 plan C7): the state in WORDS and a hatch pattern, not
+                // only the bar's colour. Thresholds are the colour thresholds above.
+                const sanityState = isBreakdown ? 'breakdown' : (ratio < 0.3 ? 'low' : 'ok');
+                hudText(document.getElementById('sanity-label'),
+                    `SANITY ${Math.max(0, Math.round(ratio * 100))}%` +
+                    (sanityState === 'breakdown' ? ' · BREAKDOWN' : sanityState === 'low' ? ' · FRAYING' : ''));
+                if (sanityState !== lastSanityState) {
+                    lastSanityState = sanityState;
+                    const sec = sanityBar && sanityBar.closest('.sanity-section');
+                    if (sec) {
+                        sec.classList.toggle('sanity-low', sanityState === 'low');
+                        sec.classList.toggle('sanity-breakdown', sanityState === 'breakdown');
+                        sec.classList.toggle('sanity-calm', !!gameSettings.photosensitive);
+                    }
+                }
                 
                 const dashBar = document.getElementById('dash-bar');
                 if (dashBar && game.state.player.dash) {
