@@ -23,6 +23,9 @@ import { errorLog } from './core/ErrorLog.js';
 import { Tutorial } from './systems/Tutorial.js';
 import { isPortraitLayout } from './core/Layout.js';
 import { Pacing } from './core/Pacing.js';
+import { showColdOpen, dismissColdOpen, playEnding, endingShowing } from './ui/StoryUI.js';   // Patches 143–147 (V2 plan E)
+import * as Story from './data/Story.js';
+import { STRINGS } from './data/Strings.js';
 // Patch 93/97 — THE RECURSION: the endless floors past the Architect, and the mode
 // that launches straight into them. See src/core/Endless.js.
 import {
@@ -983,6 +986,33 @@ function enterPlayingState() {
  * bought during that hub visit were not applied to the run launched from it. A
  * fresh run must be built from the meta state as it is at launch.
  */
+/** Patch 145: a session-note block (label + text), built as text. */
+function sessionNoteEl(note) {
+    const box = document.createElement('div');
+    box.className = 'session-note';
+    const label = document.createElement('span');
+    label.className = 'session-note-label';
+    label.textContent = note.label;
+    box.appendChild(label);
+    box.appendChild(document.createTextNode(note.text));
+    return box;
+}
+
+/** Patch 145: the note under the pause menu's text on a floor clear; null hides it. */
+function showSessionNote(note) {
+    const desc = document.getElementById('pause-desc');
+    if (!desc) return;
+    let host = document.getElementById('session-note');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'session-note';
+        desc.insertAdjacentElement('afterend', host);
+    }
+    host.textContent = '';
+    if (note) host.appendChild(sessionNoteEl(note));
+    host.style.display = note ? 'block' : 'none';
+}
+
 function startNewRun(opts = {}) {
     synergyBanner.clear();   // Patch 126: a notice from the last run must not linger
     game.init(saveManager, null, opts);   // Patch 140: opts.daily for a Daily Session
@@ -995,6 +1025,16 @@ function startNewRun(opts = {}) {
     }
     enterPlayingState();
     announceProgress(claimProgress());   // Patch 139 (e.g. "Admitted", "Regular Appointments")
+    // Patch 143 (V2 plan E1/E6): the cold open — the content note and three cards —
+    // over the first tutorial room. Once per profile; it adds no click: the first key,
+    // click or touch dismisses it AND is the player's first move.
+    const story = saveManager.metaState.story || {};
+    // (state.isTutorial is set by Director.spawnRoom on the first step, so this reads
+    // the same condition it uses.)
+    if (!saveManager.metaState.tutorialCompleted && (game.state.floor || 1) === 1 && !story.coldOpenSeen) {
+        saveManager.markStory('coldOpenSeen');
+        showColdOpen();
+    }
 }
 
 /**
@@ -2469,6 +2509,7 @@ function initEngine() {
             pauseTitle.innerText = "PROTOCOL SUSPENDED";
             pauseTitle.style.color = "var(--ink-black)";
             document.getElementById('pause-desc').innerText = "The nightmare pauses, but it does not end.";
+            showSessionNote(null);   // Patch 145: the note belongs to a cleared floor only
             btnDescend.style.display = 'none';
             pauseMenu.style.display = 'flex';
             inputManager.hideJoysticks();
@@ -2612,6 +2653,12 @@ function initEngine() {
             `;
         }
 
+        // Patch 145 (V2 plan E2): the end-of-session note.
+        {
+            const an = Story.awakenNote(game.state.floor || 1);
+            document.getElementById('final-stats').insertAdjacentElement('beforeend', sessionNoteEl(an));
+        }
+
         // Patch 140: a Daily Session's score (an extraction or a suspend: the best so far counts).
         const dailyLine = settleDaily(game.state);
         if (dailyLine) document.getElementById('final-stats').insertAdjacentHTML('afterbegin', dailyLine + '<br>');
@@ -2651,6 +2698,7 @@ function initEngine() {
     game.onDeath = () => {
         gameState = 'DEAD';
         synergyBanner.clear();   // Patch 126
+        dismissColdOpen(true);   // Patch 143
         // Patch 54: the run is over, so its autosave must go with it. Before this
         // patch nothing wrote a suspended run mid-floor, so death had nothing to
         // clean up; now that autoSaveRun() persists one continuously, leaving it
@@ -2833,6 +2881,26 @@ function initEngine() {
         announceProgress(claimProgress());   // Patch 139
     };
 
+    // Patch 144 (V2 plan E3): a Case File page filed. The compact strip names it; a tap
+    // opens the page itself. Filing can also free a Patient (pages are an alternative
+    // unlock), which claimProgress announces.
+    game.onCasePage = (id, isNew) => {
+        const page = Story.PAGE_BY_ID[id];
+        if (!page || !isNew) return;
+        const ch = Story.CHAPTERS[page.chapter - 1];
+        synergyBanner.pushNotice({
+            stamp: STRINGS.pageFiled(Story.pageCount(saveManager.metaState), Story.TOTAL_PAGES),
+            name: page.title,
+            desc: page.text,
+            foot: ch ? `CHAPTER ${ch.n} · ${ch.title}` : '',
+            tone: 'story',
+            calm: !!gameSettings.photosensitive
+        });
+        try { if (navigator.vibrate) navigator.vibrate([15, 30, 15]); } catch (e) {}
+        if (audioEngine) audioEngine.playSFX('ui_click', 0.8);
+        announceProgress(claimProgress());
+    };
+
     // Patch 138 (V2 plan D5): a room event starting (or ending) gets the stamped card.
     game.onRoomEvent = (ev) => {
         if (!ev) return;
@@ -2849,6 +2917,21 @@ function initEngine() {
         else if (ev.outcome === 'survived') saveManager.recordStat('lockdownsSurvived');
         if (ev.end) announceProgress(claimProgress());
     };
+
+    // Patch 146 (V2 plan E4): the boss banner (and its two lines) can be skipped. Any
+    // NEW key, click or touch once it has been up ~0.75 s drops it to its fade-out,
+    // along with the freeze it announces. Held keys (repeats) do not count, and the
+    // input is not consumed.
+    const skipBossIntro = (e) => {
+        if (e && e.type === 'keydown' && e.repeat) return;
+        if (gameState !== 'PLAYING' || !renderer || !game.state) return;
+        const t = renderer.bossAnnouncementTimer;
+        if (!(t > 30 && t <= 195)) return;
+        renderer.bossAnnouncementTimer = 30;
+        game.state.hitStop = Math.min(game.state.hitStop || 0, 30);
+    };
+    window.addEventListener('keydown', skipBossIntro, true);
+    window.addEventListener('pointerdown', skipBossIntro, true);
 
     game.onFloorComplete = () => {
         gameState = 'EXIT_REACHED';
@@ -2891,6 +2974,18 @@ function initEngine() {
             document.getElementById('pause-desc').innerText = `You survived Floor ${game.state.floor}. Awaken with your Lucidity, or risk descending deeper into the nightmare?`;
         }
 
+        // Patch 145 (V2 plan E2): the clinician's note on this floor, and a line on how
+        // it went (Sanity at the clear, the floor's time, lifetime returns).
+        {
+            const st = game.state;
+            const maxHp = st.player && st.player.maxHp;
+            showSessionNote(Story.sessionNoteForFloor(st.floor || 1, {
+                sanityRatio: maxHp > 0 ? st.sanity / maxHp : 1,
+                floorSteps: (st.runFrames || 0) - (st.floorStartFrames || 0),
+                deaths: saveManager.metaState.deaths || 0
+            }));
+        }
+
         // Patch 93: THE seam this feature opens. This used to be
         // `btnDescend.style.display = 'none'; // No floor 6 yet!` on the floor-5
         // branch. There is a floor 6 now, and every floor after it.
@@ -2899,6 +2994,25 @@ function initEngine() {
         document.getElementById('btn-unpause').style.display = 'none'; 
         pauseMenu.style.display = 'flex';
         inputManager.hideJoysticks();
+
+        // Patch 147 (V2 plan E5): an Architect clear can end the story. The FIRST time the
+        // Architect falls, the first ending; once every Case File page is filed, the true
+        // one (at the next Architect clear, floor 10 included). Each plays once — replays
+        // live in RECORDS → CASE FILE. It sits over this screen and ends in the same
+        // choice the screen offers: AWAKEN or RECURSE (= DESCEND DEEPER into the
+        // Recursion, now framed as relapse). Marked seen before it plays, so closing
+        // the tab mid-sequence cannot replay it on every clear.
+        const endingKind = Story.endingForClear(saveManager.metaState, game.state.floor);
+        if (endingKind) {
+            saveManager.markStory('endingSeen');
+            if (endingKind === 'true') saveManager.markStory('trueEndingSeen');
+            playEnding(endingKind, saveManager.metaState, {
+                choice: true,
+                onAwaken: () => { if (gameState === 'EXIT_REACHED') document.getElementById('btn-awaken').click(); },
+                onRecurse: () => { if (gameState === 'EXIT_REACHED') document.getElementById('btn-descend').click(); }
+            });
+            announceProgress(claimProgress());
+        }
     };
 
     requestAnimationFrame(gameLoop);

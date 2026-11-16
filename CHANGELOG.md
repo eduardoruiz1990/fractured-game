@@ -2318,6 +2318,167 @@ local date gets the same session:
   dialog, the day's run, the score on the death screen, DONE after a reload and no
   second attempt, at 384×717 and 1280×720.
 
+### Phase E — the story layer (Patches 141+)
+
+**Patch 141 — compact notices that open on a tap (playtest feedback).**
+
+After Phase D the A56 playtest found the notice cards (synergy, chest, evolution, room
+event, achievement) fine but too big mid-fight: "something a bit more subtle like a
+small box... that if the player presses it, then it gets the large screen."
+
+- `SynergyBanner` now renders every notice as a **compact strip** (its stamp and name,
+  one line, about 46 px tall) with a ▾ when there is more to read. **A tap opens the
+  full card** (exactly what Patches 126–140 showed), which stays for 8 s
+  (`NOTICE_EXPANDED_MS`) or until a second tap closes it and moves the queue on. The
+  game keeps running either way.
+- The element now takes pointer input (it used to be `pointer-events: none`); its
+  pointer and touch events stop at it, so a tap on a notice never reaches the joysticks.
+- Both forms are in the DOM and CSS shows one, so the text checks that read
+  `textContent` still pass. The compact stamp text is 0.7rem (≥ 11 px, the C7 floor).
+  New `story` tone, for Phase E.
+- `pushNotice` accepts `body` (trusted HTML, for story pages) and `expanded` (open from
+  the start, for something the player asked to read).
+- `qa/synergy_check.cjs` now checks the compact strip comes first, that a tap opens it
+  and a second closes it.
+
+**Patch 142 — the story's data and its save record (plan E, E6).**
+
+- New `src/data/Story.js`: every piece of narrative, plus the small pure rules that pick
+  which piece a player sees. The premise, in its header: Subject 0, at twelve, was
+  called out of class during a storm and a lockdown drill and told their father had
+  died (a heart condition no one knew about); that morning they had argued with him and
+  slammed the door. Each floor is one defense built around that day (Denial,
+  Projection, Hypervigilance, Repression, Control), each boss that defense given a
+  body. It is told as recovery: the clinician (Dr. L. Marlow) is on the Subject's side,
+  the death is never shown, and there is no self-harm or gore.
+  - `CONTENT_NOTE` and `COLD_OPEN` (E1, E6); `CHAPTERS` and 25 `CASE_PAGES` (E3);
+    `BOSS_LINES` (intro, relapse and death lines, E4); `SESSION_NOTES` and `REACTIONS`
+    (E2); `ENDINGS` (E5).
+  - Rules: `chapterForFloor` (the Recursion cycles chapters like palettes),
+    `nextPageFor` (the next page of the floor's chapter, in order; never one already
+    lying on the floor; backfills earlier chapters once a chapter is complete, never
+    pulls a later one forward), `rollPageDrop` (bosses always, named elites 50%),
+    `sessionReaction` (low Sanity < 25%, a floor inside 2.5 min, 5+ lifetime deaths,
+    else steady), `sessionNoteForFloor`, `awakenNote`, `endingForClear` (the true
+    ending once every page is filed, else the first ending once), `endingCards`.
+- New `src/data/Strings.js`: the interface words around the story, and **generic
+  credits** ("The FRACTURED team") meant to be edited.
+- `metaState.story` = `{ coldOpenSeen, pages: {id: ms}, endingSeen, trueEndingSeen }`,
+  with all four seams (constructor, `loadGame` back-fill, `importSave` from the file,
+  `wipeSave`), normalised through `normalizeStory` (unknown page ids dropped).
+  `SaveManager.collectPage(id)` (true the first time) and `markStory(flag)`.
+- The Patients now ALSO unlock by pages filed — Vandal 3, Artist 8, Photographer 14 —
+  as an alternative to their Patch 136 milestone, so nobody loses one.
+- Four achievements (37 now): Paper Trail, The Whole File, A Door in the Drawing, The
+  Whole Morning.
+- New `test_story.js` (67 assertions): text shape and limits (banner lines ≤ 38
+  characters for a 384 px phone), a banned-word scan for the tone guardrails, page
+  order and drop bookkeeping, notes, endings, the save seams, the page unlocks.
+
+**Patch 143 — the cold open, the content note, and the story's screens (plan E1, E6).**
+
+- New `src/ui/StoryUI.js`, all built at runtime (index.html untouched) and styled by a
+  `.story-*` / `.casefile-*` / `.session-note` block appended to `style.css`. Text is
+  always inserted with `textContent`.
+- **Cold open (E1).** On a profile's first tutorial run, `startNewRun` shows four cards
+  over the tutorial room: the content note, then INTAKE FORM, TREATMENT PLAN, FIRST
+  SESSION. **It adds no click**: the overlay is `pointer-events: none` and the game runs
+  under it; the first key, click or touch (after a 400 ms arm, repeats ignored)
+  dismisses it AND reaches the game as the player's first move. Otherwise each card
+  holds 3.6 s and the overlay fades out. `story.coldOpenSeen` is set when it is shown,
+  so it plays once. Its gate reads `tutorialCompleted` (not `state.isTutorial`, which
+  the Director only sets on the first step). Death dismisses it.
+- **Content note (E6)** — grief and anxiety, a parent's death from illness off screen, no
+  self-harm, no gore, and a pointer to help (findahelpline.com, as text, not a link) — is
+  the first cold-open card and also heads the Clinical Guide (`installContentNote`).
+- `playEnding(kind, meta, {choice})` — the E5 sequence (cards; SKIP to the credits;
+  then AWAKEN/RECURSE, or CLOSE FILE on a replay). A modal at z-index 1040 (over the death screen, under the confirm dialog) whose keys
+  stay inside it (Enter/Space continue, Escape skips).
+- `renderCaseFile` — the RECORDS → **CASE FILE** pane (sub-tab between MIND PALACE
+  and MANIFESTATION LOG): chapters with filed pages as tap-to-read `<details>`, missing
+  pages as blank slips, a chapter's defense named once it is faced, and REPLAY buttons
+  for endings seen. The pane and its button are created in `UIManager`'s constructor
+  before the tab buttons are captured, so it is an ordinary tab to every handler.
+
+**Patch 144 — Case File pages in the world (plan E3).**
+
+- New `src/systems/CasePages.js`. A page is an interactable (`type: 'CASE_PAGE'`,
+  `pageId`):
+  - **Drops** (`dropPage`): the floor's boss always drops one, opposite its token; a
+    named elite half the time, beside its chest. The page is `Story.nextPageFor` (the
+    next page of the floor's chapter, never one already lying in the room). Never in
+    the tutorial, never without a save. Moved out of walls like a chest.
+  - **Pickup** (`updatePage`): walk into it. Within 260 px it drifts to the player
+    (7 px a step), so a page beside the boss's exit is not walked past.
+  - **Never lost to a door** (`collectLoosePages`): the room door and the floor's
+    exit file anything still lying first. A page is only lost by dying before reaching
+    it, and then it simply drops again later.
+  - Filing goes through `SaveManager.collectPage` (which saves), then `game.onCasePage`.
+- `main.js` `onCasePage`: a `story`-tone notice — the compact strip reads
+  `PAGE FILED · n / 25` and the page's title; a tap opens the page text and its chapter.
+  Then `claimProgress()`, since pages also free Patients and earn achievements.
+- `Renderer`: the page is a small sheet of file paper (red margin, typed rows, folded
+  corner) turning as it floats, labelled PAGE, with a pale-blue glow and its own small
+  hole in the darkness mask.
+- `test_story.js` +14: drops (bosses always, elites by the roll, no duplicate while one
+  is lying, none in the tutorial or without a save), drift and pickup, `onCasePage`,
+  `collectLoosePages` filing the rest once, backfill, and floor 6 telling chapter 1.
+
+**Patch 145 — session notes (plan E2).**
+
+- On a floor clear (the THE DESCENT CALLS screen) a **SESSION NOTE · FLOOR n** from Dr.
+  Marlow now sits under the pause text: the floor's own note (a different one for each
+  of the five floors; RELAPSE NOTE ones in the Recursion), then one line reacting to
+  how it went — finished on under 25% Sanity, cleared inside 2.5 minutes, 5+ lifetime
+  deaths ("coming back is the treatment working"), or steady (`Story.sessionReaction`).
+- AWAKEN (an extraction or a suspend) ends its summary with an **END OF SESSION** note
+  for the floor's chapter.
+- `Game.state.floorStartFrames` (runFrames when the floor began; not carried) times the
+  floor. The note is built with `textContent` into a `#session-note` host created after
+  `#pause-desc`; the ordinary pause hides it. Ink on paper, like the rest of the folder.
+
+**Patch 146 — the bosses speak (plan E4).**
+
+- `Renderer.drawBossAnnouncement` draws the boss's **two lines** (`Story.bossIntroLines`;
+  a "relapse" pair on floor 6+) in quotes: on a wide screen in the band just inside the
+  bottom rule, on a phone tucked under the subtitle so they stay above the touch
+  controls. The first fades in ~0.7 s into the banner, the second ~1.5 s. Every line
+  is ≤ 38 characters (asserted), so none needs wrapping at 384 px.
+- The banner subtitle now names the defense: The Face of Denial, The Shape of
+  Projection, The Eye of Hypervigilance, The Weight of Repression, The Will to Control
+  (`Story.bossEpithet`), in place of "Apex Predator of the Wastes" and the like.
+- **Skippable**: any NEW key, click or touch once the banner has been up ~0.75 s drops
+  it to its fade-out and the 240-step freeze with it (both to 30 steps). Key repeats
+  do not count and the input is not consumed.
+- **At the death**, the boss's last line ("Something did happen. I'm so sorry.") plays
+  as a subtitle for 5.5 s: `state.subtitle = {text, steps, total}`, set in Combat at
+  the final boss death, counted down in `Game.processGameLogic`, drawn in screen space
+  by the new `Renderer.drawSubtitle` (word-wrapped, a dark band behind it, raised on a
+  phone to clear DASH).
+
+**Patch 147 — the endings (plan E5).**
+
+- On an Architect clear (`onFloorComplete`, floors 5, 10, ...), `Story.endingForClear`
+  picks an ending: the **first** ending the first time the Architect falls (the
+  Architect is the Subject at twelve; "in the drawing, for the first time, there is a
+  door"; a session report giving pages found), or the **true** ending once all 25
+  pages are filed (the whole morning: "See you tonight, kiddo"; it was never their
+  fault; a discharge summary). Each plays once; both can be replayed from RECORDS →
+  CASE FILE (ending in CLOSE FILE, which changes nothing).
+- The sequence (`StoryUI.playEnding`) sits over THE DESCENT CALLS screen: cards (tap,
+  Enter or Space to continue; SKIP or Escape to jump), the **credits** (generic, in
+  `Strings.js`), then the same choice the screen offers — **AWAKEN** (clicks
+  `btn-awaken`: extraction, everything banked) or **RECURSE** (clicks `btn-descend`:
+  into the Recursion, now framed as relapse by its session notes and the bosses'
+  relapse lines). Its keys stay inside it, so Escape never reaches the pause handler.
+- Seen-flags are written BEFORE it plays, so a tab closed mid-sequence cannot replay it
+  on every later clear. Achievements A Door in the Drawing / The Whole Morning follow.
+- New `qa/story_check.cjs` (Phase E end to end, at 384×717 and 1280×720): cold open
+  (no added click, first key dismisses AND moves, once per profile), a page drifting
+  in and its notice opening, the CASE FILE pane, the boss lines' arm and skip, the death
+  subtitle, the session and end-of-session notes, the first ending → credits → AWAKEN,
+  every page → the true ending → RECURSE into floor 6, a replay, the Guide's content note.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

@@ -16,6 +16,8 @@
 import { SYNERGIES, MANIFESTATIONS } from '../data/Manifestations.js';
 
 export const SYNERGY_BANNER_MS = 3600;
+/** Patch 141: how long a notice the player opened stays open (a tap closes it sooner). */
+export const NOTICE_EXPANDED_MS = 8000;
 
 const esc = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -44,6 +46,11 @@ export class SynergyBanner {
         el.id = 'synergy-banner';
         el.setAttribute('role', 'status');
         el.setAttribute('aria-live', 'polite');
+        // Patch 141: a notice arrives as a compact strip; tapping it opens the full
+        // card, tapping the card closes it (and moves the queue on).
+        el.addEventListener('click', (e) => { e.stopPropagation(); this.toggle(); });
+        el.addEventListener('pointerdown', (e) => e.stopPropagation());
+        el.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
         host.appendChild(el);
         this.el = el;
         return el;
@@ -104,13 +111,25 @@ export class SynergyBanner {
         const n = item;
         const lines = Array.isArray(n.lines) && n.lines.length
             ? `<ul class="syn-lines">${n.lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : '';
+        // Patch 141: the compact strip (stamp + name + "open" hint) and the full card.
+        // Both are in the DOM; CSS shows one. Something with nothing more to say than
+        // its name has no "open" hint.
+        const more = !!(n.recipe || n.desc || lines || n.foot || n.body);
         el.innerHTML = `
+            <div class="syn-compact"><span class="syn-chip-stamp">${esc(n.stamp || '')}</span><span class="syn-chip-name">${esc(n.name)}</span>${more ? '<span class="syn-chip-more" aria-hidden="true">▾</span>' : ''}</div>
+            <div class="syn-full">
             <div class="syn-stamp">${esc(n.stamp || '')}</div>
             <div class="syn-name">${esc(n.name)}</div>
             ${n.recipe ? `<div class="syn-recipe">${esc(n.recipe)}</div>` : ''}
             ${n.desc ? `<div class="syn-desc">${esc(n.desc)}</div>` : ''}
+            ${n.body ? `<div class="syn-body">${n.body}</div>` : ''}
             ${lines}
-            ${n.foot ? `<div class="syn-new">${esc(n.foot)}</div>` : ''}`;
+            ${n.foot ? `<div class="syn-new">${esc(n.foot)}</div>` : ''}
+            <div class="syn-close">TAP TO CLOSE</div>
+            </div>`;
+        el.classList.toggle('has-more', more);
+        el.classList.toggle('expanded', !!n.expanded);
+        el.title = more ? 'Open' : '';
         el.classList.toggle('calm', !!n.calm);
         el.dataset.tone = n.tone || 'synergy';
         // Restart the CSS animation for back-to-back notices.
@@ -119,11 +138,31 @@ export class SynergyBanner {
         el.classList.add('syn-in');
         el.style.display = 'block';
         clearTimeout(this.timer);
-        this.timer = setTimeout(() => this.next(), SYNERGY_BANNER_MS);
+        this.timer = setTimeout(() => this.next(), n.expanded ? NOTICE_EXPANDED_MS : SYNERGY_BANNER_MS);
+    }
+
+    /** Patch 141: opens the showing notice's full card, or closes an open one. */
+    toggle() {
+        if (!this.showing || !this.el) return;
+        if (this.el.classList.contains('expanded')) {
+            clearTimeout(this.timer);
+            this.next();
+            return;
+        }
+        if (!this.el.classList.contains('has-more')) return;
+        this.el.classList.add('expanded');
+        if (this.current) this.current.expanded = true;
+        clearTimeout(this.timer);
+        this.timer = setTimeout(() => this.next(), NOTICE_EXPANDED_MS);
+    }
+
+    /** Whether the full card is open (the game keeps running either way). */
+    isExpanded() {
+        return !!(this.el && this.showing && this.el.classList.contains('expanded'));
     }
 
     hide() {
-        if (this.el) { this.el.style.display = 'none'; this.el.classList.remove('syn-in'); }
+        if (this.el) { this.el.style.display = 'none'; this.el.classList.remove('syn-in', 'expanded'); }
     }
 
     /** Drop anything pending — a run ended, or a new one started. */

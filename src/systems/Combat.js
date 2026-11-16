@@ -54,6 +54,8 @@ import { isBossType, MAX_WEAPON_SLOTS, ownedWeaponCount } from '../data/Config.j
 import { resolveArsenal, applyArsenalStatus } from './Arsenal.js';
 // Patch 133 (V2 plan D4): named elites drop chests. See src/systems/Elites.js.
 import { dropChest, resolveChest, CHEST_OPEN_STEPS } from './Elites.js';
+import { dropPage, updatePage, collectLoosePages } from './CasePages.js';   // Patch 144
+import { bossDeathLine, BOSS_DEATH_SUBTITLE_STEPS } from '../data/Story.js';   // Patch 146
 // Patch 134 (V2 plan D2): a chest evolves a qualifying weapon first.
 import { evolveForChest } from './Evolutions.js';
 
@@ -224,9 +226,12 @@ export class Combat {
                             }
                         }
                     }
+                } else if (obj.type === 'CASE_PAGE') {
+                    updatePage(game, obj);   // Patch 144: drifts to a near player, files on touch
                 } else if (obj.type === 'EXIT_ELEVATOR') {
                     const distToPlayer = Math.hypot(obj.x - state.player.x, obj.y - state.player.y);
                     if (distToPlayer < obj.radius + state.player.radius) {
+                        collectLoosePages(game);   // Patch 144: a page left lying is filed, not lost
                         if (game.onFloorComplete) game.onFloorComplete();
                         obj.dead = true; 
                     }
@@ -347,6 +352,7 @@ export class Combat {
                             state.entities = []; state.projectiles = []; state.xpDrops = [];
                             state.tokenDrops = []; state.inkPuddles = []; state.safeZones = [];
                         }
+                        collectLoosePages(game);   // Patch 144: before the room's interactables go
                         state.interactables = [];
                         
                         if (game.director) {
@@ -807,6 +813,12 @@ export class Combat {
                     const otherBosses = state.entities.filter(e => isBossType(e.type) && e.id !== ent.id);
                     
                     if (otherBosses.length === 0) {
+                        // Patch 144: the floor's boss files the next page of its chapter,
+                        // opposite the token so the two never land on one spot.
+                        dropPage(game, ent.x - Math.cos(dropAngle) * dropDist, ent.y - Math.sin(dropAngle) * dropDist, 'boss');
+                        // Patch 146 (V2 plan E4): the defense's last line, as a subtitle.
+                        const lastLine = bossDeathLine(ent.type);
+                        if (lastLine) state.subtitle = { text: lastLine, steps: BOSS_DEATH_SUBTITLE_STEPS, total: BOSS_DEATH_SUBTITLE_STEPS };
                         state.cameraShake = 50;
                         if (game.audioEngine) game.audioEngine.playSFX('death', 1.5);
                         // Patch 130 (V2 plan C8): the kill lands. A short impact freeze,
@@ -835,6 +847,7 @@ export class Combat {
                     // lands with a beat of its own.
                     if (ent.elite) {
                         dropChest(state, ent.x, ent.y);
+                        dropPage(game, ent.x - 44, ent.y + 10, 'elite');   // Patch 144: half the time
                         game.spawnXP(ent.x + 30, ent.y, 2, true);
                         game.spawnParticles(ent.x, ent.y, '#ffd27f', 40);
                         game.spawnDamageText(ent.x, ent.y - 40, `${ent.eliteName || 'ELITE'} DISPERSED`, '#ffd27f', 1.4, 2.4);

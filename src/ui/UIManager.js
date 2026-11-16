@@ -10,6 +10,7 @@ const escapeText = (v) => String(v == null ? '' : v)
 import { SynapseTree } from './SynapseTree.js';
 import { GuideUI } from './GuideUI.js';
 import { FolderTabs } from './FolderTabs.js';
+import { renderCaseFile, playEnding, installContentNote } from './StoryUI.js';   // Patches 143–147
 import { PatientStrips } from './PatientStrip.js';   // Patch 136
 import { ACHIEVEMENTS, achievementProgress, totalKills } from '../data/Achievements.js';   // Patch 139
 import { WEAPON_UNLOCKS, isWeaponUnlocked } from '../data/Unlocks.js';
@@ -237,6 +238,26 @@ export class UIManager {
         this.toastText = document.getElementById('toast-xp-text');
         this.toastTimer = null;
 
+        // Patch 144 (V2 plan E3): the CASE FILE pane and its sub-tab button, built here
+        // (index.html untouched) BEFORE the buttons and panes are captured below, so it
+        // is an ordinary tab to every handler that follows.
+        if (!document.getElementById('tab-casefile')) {
+            const hist = document.getElementById('tab-history');
+            const histBtn = document.querySelector('.tab-btn[data-target="tab-history"]');
+            if (hist && histBtn) {
+                const pane = document.createElement('div');
+                pane.id = 'tab-casefile';
+                pane.className = 'tab-pane';
+                hist.parentNode.insertBefore(pane, hist);
+                const b = document.createElement('button');
+                b.className = 'tab-btn';
+                b.dataset.target = 'tab-casefile';
+                b.textContent = 'CASE FILE';
+                histBtn.parentNode.insertBefore(b, histBtn);
+            }
+        }
+        installContentNote();   // Patch 143 (E6): the content note heads the Clinical Guide
+
         this.tabBtns = document.querySelectorAll('.tab-btn');
         this.tabPanes = document.querySelectorAll('.tab-pane');
         // Patch 129: the eight tabs grouped into four (see FolderTabs.js). Built after
@@ -344,6 +365,8 @@ export class UIManager {
                     this.selectedInventoryItem = null;
                     this.selectedSlotType = null;
                     this.renderLoadoutUI();
+                } else if (targetId === 'tab-casefile') {
+                    this.renderCaseFilePane();   // Patch 144
                 } else if (targetId === 'tab-tree' || targetId === 'tab-main' || targetId === 'tab-trophies' || targetId === 'tab-curses' || targetId === 'tab-history') {
                     // tab-history added (Patch 57): the log changes mid-session as the
                     // player picks things, so it has to re-read on open rather than
@@ -561,8 +584,18 @@ export class UIManager {
 
         this.renderRoadmap();
         this.renderTrophies();
+        this.renderCaseFilePane();   // Patch 144
         this.renderCurseSelection();
         this.renderBoonHistory();
+    }
+
+    /** Patch 144 (V2 plan E3): RECORDS → CASE FILE. Endings seen can be replayed (E5). */
+    renderCaseFilePane() {
+        const pane = document.getElementById('tab-casefile');
+        if (!pane) return;
+        renderCaseFile(pane, this.saveManager.metaState, {
+            onReplay: (kind) => playEnding(kind, this.saveManager.metaState, { choice: false })
+        });
     }
 
     /**

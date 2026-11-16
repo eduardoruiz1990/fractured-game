@@ -44,7 +44,9 @@ const maxed = {
     discoveredSynergies: Object.fromEntries(Object.keys(SYNERGIES).map(k => [k, 1])),
     discoveredEvolutions: Object.fromEntries(Object.keys(EVOLUTIONS).slice(0, 6).map(k => [k, 1])),
     stats: { chestsOpened: 10, outagesRestored: 1, lockdownsSurvived: 1, cursedFloorClears: 1, dailiesPlayed: 1 },
-    daily: { streak: 3 }
+    daily: { streak: 3 },
+    // Patch 142: every Case File page filed, both endings seen.
+    story: { pages: Object.fromEntries(Array.from({ length: 25 }, (_, i) => ['p' + String(i + 1).padStart(2, '0'), 1])), endingSeen: true, trueEndingSeen: true }
 };
 ok(totalKills(maxed) === 10015, `totalKills sums every type (${totalKills(maxed)})`);
 ok(patientLevel({ spentLucidity: 500 * 81 }) === 10 && patientLevel({}) === 1, 'patientLevel matches SaveManager.getPatientLevelInfo');

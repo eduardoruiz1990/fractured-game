@@ -7,6 +7,7 @@ import { TOKENS, TOKEN_SETS, TOKEN_RARITIES, TOKEN_SLOT_TYPES, INTRUSIVE_THOUGHT
 import { portalSDK } from '../systems/PortalSDK.js';
 import { ACHIEVEMENTS, ACHIEVEMENT_BY_ID, STAT_KEYS, emptyStats } from '../data/Achievements.js';   // Patch 139
 import { emptyDaily, startDailyAttempt, finishDailyAttempt, canStartDaily } from '../systems/Daily.js';   // Patch 140
+import { emptyStory, normalizeStory, PAGE_BY_ID } from '../data/Story.js';   // Patch 142
 
 // Patch 31: built from TOKEN_SLOT_TYPES so the equippedTokens shape has ONE source
 // of truth. §2 of the handoff listed five hardcoded copies of the old 4-slot shape;
@@ -61,6 +62,9 @@ export class SaveManager {
             achievements: {},
             stats: emptyStats(),
             daily: emptyDaily(),   // Patch 140: the Daily Session record (systems/Daily.js)
+            // Patch 142: the story layer — cold open seen, Case File pages (id -> ms
+            // filed), endings seen (data/Story.js). Normalised on every load path.
+            story: emptyStory(),
             // Patch 59: lifetime case statistics. runsStarted counts descents begun,
             // deaths counts minds broken, runsCompleted counts Floor 5 clears (the
             // Architect falling). All three are records only — nothing reads them
@@ -151,6 +155,7 @@ export class SaveManager {
                 if (!this.metaState.achievements || typeof this.metaState.achievements !== 'object') this.metaState.achievements = {};
                 this.metaState.stats = { ...emptyStats(), ...((this.metaState.stats && typeof this.metaState.stats === 'object') ? this.metaState.stats : {}) };
                 this.metaState.daily = { ...emptyDaily(), ...((this.metaState.daily && typeof this.metaState.daily === 'object') ? this.metaState.daily : {}) };   // Patch 140
+                this.metaState.story = normalizeStory(this.metaState.story);   // Patch 142
                 // Patch 134: evolution codex, same shape as the synergy one.
                 if (!this.metaState.discoveredEvolutions || typeof this.metaState.discoveredEvolutions !== 'object') {
                     this.metaState.discoveredEvolutions = {};
@@ -286,6 +291,7 @@ export class SaveManager {
                 this.metaState.achievements = (parsed.achievements && typeof parsed.achievements === 'object') ? parsed.achievements : {};
                 this.metaState.stats = { ...emptyStats(), ...((parsed.stats && typeof parsed.stats === 'object') ? parsed.stats : {}) };
                 this.metaState.daily = { ...emptyDaily(), ...((parsed.daily && typeof parsed.daily === 'object') ? parsed.daily : {}) };   // Patch 140
+                this.metaState.story = normalizeStory(parsed.story);   // Patch 142
 
                 // Patch 59: same reasoning as boonHistory directly above — these must
                 // come from the IMPORTED file, not survive from whatever profile this
@@ -414,6 +420,25 @@ export class SaveManager {
         this.metaState.daily = record;
         this.saveGame();
         return { score: record.lastScore, best: record.best, isBest, streak: record.streak };
+    }
+
+    /** Patch 142: files a Case File page. Returns true the first time, false if already filed. */
+    collectPage(id, now = Date.now()) {
+        if (!PAGE_BY_ID[id]) return false;
+        this.metaState.story = normalizeStory(this.metaState.story);
+        if (this.metaState.story.pages[id]) return false;
+        this.metaState.story.pages[id] = now || 1;
+        this.saveGame();
+        return true;
+    }
+
+    /** Patch 142: sets one of the story's seen-flags (coldOpenSeen, endingSeen, trueEndingSeen). */
+    markStory(flag) {
+        if (!['coldOpenSeen', 'endingSeen', 'trueEndingSeen'].includes(flag)) return;
+        this.metaState.story = normalizeStory(this.metaState.story);
+        if (this.metaState.story[flag]) return;
+        this.metaState.story[flag] = true;
+        this.saveGame();
     }
 
     /** Patch 139: how many achievements this profile has. */
@@ -855,6 +880,7 @@ export class SaveManager {
             announcedPatients: ['insomniac'],
             achievements: {}, stats: emptyStats(),   // Patch 139
             daily: emptyDaily(),   // Patch 140
+            story: emptyStory(),   // Patch 142
             runsStarted: 0, deaths: 0, runsCompleted: 0,   // Patch 59
             // Patch 92: a wipe is a new patient file, so the retention notice and the
             // backup prompt are both re-armed. wipeSave() reloads the page, so the

@@ -17,6 +17,7 @@
 
 import { SYNERGIES } from './Manifestations.js';
 import { PATIENT_ORDER, isPatientUnlocked } from './Patients.js';
+import { pageCount, TOTAL_PAGES } from './Story.js';   // Patch 142
 
 const kc = (m, k) => Number((m && m.killCounts && m.killCounts[k]) || 0);
 const st = (m, k) => Number((m && m.stats && m.stats[k]) || 0);
@@ -88,7 +89,12 @@ export const ACHIEVEMENTS = [
     // Patch 140: the Daily Session.
     { id: 'same_time_tomorrow', icon: '📅', name: 'Same Time Tomorrow', desc: 'Play a Daily Session.', ...counter(m => st(m, 'dailiesPlayed'), 1) },
     { id: 'routine', icon: '⏰', name: 'Routine', desc: 'Play the Daily Session three days in a row.', ...counter(m => Number((m && m.daily && m.daily.streak) || 0), 3) },
-    { id: 'living_with_it', icon: '💭', name: 'Living With It', desc: 'Clear a floor with an Intrusive Thought adopted.', ...counter(m => st(m, 'cursedFloorClears'), 1) }
+    { id: 'living_with_it', icon: '💭', name: 'Living With It', desc: 'Clear a floor with an Intrusive Thought adopted.', ...counter(m => st(m, 'cursedFloorClears'), 1) },
+    // Patch 142: the story layer.
+    { id: 'first_page', icon: '📄', name: 'Paper Trail', desc: 'File a Case File page.', ...counter(pageCount, 1) },
+    { id: 'whole_file', icon: '📁', name: 'The Whole File', desc: `File all ${TOTAL_PAGES} Case File pages.`, ...counter(pageCount, TOTAL_PAGES) },
+    { id: 'a_door', icon: '🚪', name: 'A Door in the Drawing', desc: 'See what the Architect was.', test: (m) => !!(m && m.story && m.story.endingSeen) },
+    { id: 'the_whole_morning', icon: '🌅', name: 'The Whole Morning', desc: 'Remember all of it.', test: (m) => !!(m && m.story && m.story.trueEndingSeen) }
 ];
 
 export const ACHIEVEMENT_BY_ID = Object.fromEntries(ACHIEVEMENTS.map(a => [a.id, a]));

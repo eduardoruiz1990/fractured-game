@@ -54,7 +54,7 @@ const gs = (p) => p.evaluate(() => window.__fractured.gameState);
     });
     ok(JSON.stringify(f.groups) === '["DESCEND","SYNAPSES","LOADOUT","RECORDS"]', `${tag} four groups ${JSON.stringify(f.groups)}`);
     ok(f.active[0] === 'RECORDS' && f.activePane === 'tab-trophies', `${tag} the Mind Palace desk opens RECORDS / Mind Palace`);
-    ok(f.subs.length === 3 && f.subs.includes('CLINICAL GUIDE'), `${tag} RECORDS shows its 3 sub-tabs ${JSON.stringify(f.subs)}`);
+    ok(f.subs.length === 4 && f.subs.includes('CLINICAL GUIDE') && f.subs.includes('CASE FILE'), `${tag} RECORDS shows its 4 sub-tabs (Patch 144: CASE FILE) ${JSON.stringify(f.subs)}`);
     ok(f.fits, `${tag} all four groups fit without scrolling`);
     ok(f.minH >= 44, `${tag} group tabs >= 44px (${f.minH})`);
     ok(f.hubBtn === 'none', `${tag} hub DESCEND hidden while the folder is open`);
