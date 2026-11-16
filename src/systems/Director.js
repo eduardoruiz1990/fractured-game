@@ -587,6 +587,11 @@ export class Director {
     /** Patch 116: what a room transition clears (particles and texts play out). */
     releaseRoomState(state) {
         this.releaseArrays(state, ['entities', 'projectiles', 'xpDrops', 'tokenDrops', 'inkPuddles', 'safeZones']);
+        // Patch 132: the new weapons' transient objects (plain, not pooled). A bottle
+        // in flight would otherwise carry a reference to an entity just released.
+        for (const k of ['playerShots', 'pulseRings', 'lullabyNotes']) {
+            if (Array.isArray(state[k])) state[k].length = 0;
+        }
     }
 
     /** Patch 116: everything pooled — used when Game.init discards a whole run state. */

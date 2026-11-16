@@ -49,7 +49,9 @@ export function coneFalloff(angleDiff, hitAngle) {
 // on the hottest gameplay path there is, so anything failing there is exactly what
 // the crash telemetry needs to see. Only touched when something already threw.
 import { errorLog } from '../core/ErrorLog.js';
-import { isBossType } from '../data/Config.js';   // Patch 117
+import { isBossType, MAX_WEAPON_SLOTS, ownedWeaponCount } from '../data/Config.js';   // Patch 117, 132
+// Patch 132 (V2 plan D3): the four Phase D weapons. See src/systems/Arsenal.js.
+import { resolveArsenal, applyArsenalStatus } from './Arsenal.js';
 
 // Patch 16: generic tag-scaled knockback, consumed by Enemy.takeDamage's
 // optional knockbackForce param. Only wired at call sites with no existing
@@ -228,10 +230,20 @@ export class Combat {
                             // about whether a weapon is maxed. Returns exactly 5 for
                             // floors 1-5.
                             const doorLevelCap = weaponLevelCap(state.floor);
-                            const upgradeable = Object.entries(state.player.weapons).filter(([, w]) => w.level < doorLevelCap);
+                            // Patch 132: levels a weapon the player OWNS. With twelve
+                            // weapons, a draw over all of them mostly handed out level 1 of
+                            // something new; a new one is drawn only if nothing owned can
+                            // level and a slot is free.
+                            let upgradeable = Object.entries(state.player.weapons).filter(([, w]) => w.level > 0 && w.level < doorLevelCap);
+                            if (upgradeable.length === 0 && ownedWeaponCount(state.player.weapons) < MAX_WEAPON_SLOTS) {
+                                upgradeable = Object.entries(state.player.weapons).filter(([, w]) => w.level === 0);
+                            }
                             if (upgradeable.length > 0) {
                                 const [wepId, wep] = upgradeable[Math.floor(Math.random() * upgradeable.length)];
                                 wep.level++;
+                                // Patch 132: a door-granted first level of the Static
+                                // Receiver left it switched off (only the card set it).
+                                if ('active' in wep) wep.active = true;
                                 // A door-granted level counts exactly like a card-granted
                                 // one — same reward, so the same record.
                                 if (game.saveManager && typeof game.saveManager.recordBoonPick === 'function') {
@@ -518,6 +530,10 @@ export class Combat {
             }
         }
 
+        // Patch 132: before the entity loop below, so a kill made by one of the new
+        // weapons is collected by that loop in this same step.
+        resolveArsenal(game, cooldownTick, { tagDamageMultiplier, tagKnockback, tagShake });
+
         for (let i = state.entities.length - 1; i >= 0; i--) {
             let ent = state.entities[i];
             
@@ -545,6 +561,7 @@ export class Combat {
                     break;
                 }
             }
+            applyArsenalStatus(ent);   // Patch 132: drowsy (Lullaby) / held (restraint)
 
             const dx = ent.x - state.player.x; 
             const dy = ent.y - state.player.y;

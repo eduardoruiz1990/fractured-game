@@ -199,7 +199,12 @@ function buildTemplateWeapons() {
         lead_pipe: { level: 0, damage: 45, radius: 70, cooldown: 90, timer: 0, tags: ['melee', 'kinetic'] },
         spilled_ink: { level: 0, damage: 10, radius: 45, dropRate: 45, timer: 0, tags: ['hazard', 'dark'] },
         broken_chalk: { level: 0, radius: 60, duration: 300, cooldown: 600, timer: 0, tags: ['utility', 'focus'] },
-        corrosive_battery: { level: 0, damage: 2, duration: 180, tags: ['passive', 'tech'] }
+        corrosive_battery: { level: 0, damage: 2, duration: 180, tags: ['passive', 'tech'] },
+        // Patch 132: the Phase D weapons (Game.init's values).
+        pill_bottle: { level: 0, damage: 18, bounces: 2, cooldown: 75, timer: 0, tags: ['kinetic', 'burst'] },
+        metronome: { level: 0, damage: 14, radius: 200, cooldown: 100, timer: 0, tags: ['aura', 'tech'] },
+        straitjacket: { level: 0, damage: 12, radius: 85, straps: 2, speed: 0.05, phase: 0, tags: ['orbit', 'melee'] },
+        lullaby: { level: 0, damage: 26, radius: 70, notes: 1, sleep: 90, cooldown: 150, timer: 0, tags: ['dark', 'burst'] }
     };
 }
 
@@ -211,7 +216,11 @@ const WEAPON_LEVEL_DELTA = {
     corrosive_battery: w => { w.damage += 5; w.duration += 30; },
     broken_chalk: w => { w.radius += 15; w.duration += 30; w.cooldown = Math.max(60, w.cooldown - 15); },
     polaroid_camera: w => { w.damage += 20; w.radius += 40; w.cooldown = Math.max(90, w.cooldown - 30); },
-    fidget_spinner: w => { w.damage += 5; w.baseRadius += 10; w.speed += 0.02; }
+    fidget_spinner: w => { w.damage += 5; w.baseRadius += 10; w.speed += 0.02; },
+    pill_bottle: w => { w.damage += 6; w.bounces = Math.min(6, w.bounces + 1); w.cooldown = Math.max(40, w.cooldown - 6); },
+    metronome: w => { w.damage += 6; w.radius += 30; w.cooldown = Math.max(50, w.cooldown - 10); },
+    straitjacket: w => { w.damage += 5; w.straps = Math.min(6, w.straps + 1); w.radius += 8; },
+    lullaby: w => { w.damage += 10; w.notes = Math.min(4, w.notes + 1); w.cooldown = Math.max(60, w.cooldown - 15); }
 };
 
 function setWeaponToLevel(wep, id, targetLevel) {
@@ -229,7 +238,7 @@ const BOON_INSTANT_EFFECTS = {
     iron_will: (w, game) => { game.state.player.maxHp += 50; game.state.sanity += 50; },
     lead_shoes: (w, game) => { game.state.player.maxHp += 200; game.state.sanity += 200; },
     steady_hands: (w) => {
-        ['lead_pipe', 'broken_chalk', 'polaroid_camera'].forEach(id => {
+        ['lead_pipe', 'broken_chalk', 'polaroid_camera', 'pill_bottle', 'metronome', 'lullaby'].forEach(id => {
             if (w[id] && w[id].cooldown) w[id].cooldown = Math.max(20, Math.floor(w[id].cooldown * 0.8));
         });
     },

@@ -1796,6 +1796,77 @@ export class Renderer {
                 this.ctx.restore();
             });
         }
+
+        this.drawArsenal(state);   // Patch 132
+    }
+
+    /**
+     * Patch 132 (V2 plan D3): the four Phase D weapons (logic in src/systems/Arsenal.js).
+     * Plain fills and strokes only — no shadowBlur, no composite changes — and every
+     * array here is hard-capped in Arsenal.js (ARSENAL_CAPS), so this is a few dozen
+     * small shapes at most. Strap positions are recomputed from the weapon's own
+     * `phase`, the value the hit test used this step.
+     */
+    drawArsenal(state) {
+        const ctx = this.ctx;
+        const W = state.player.weapons || {};
+
+        const rings = state.pulseRings;
+        if (rings && rings.length) {
+            ctx.lineWidth = 3;
+            for (const r of rings) {
+                const t = Math.max(0, Math.min(1, r.r / (r.maxR || 1)));
+                ctx.strokeStyle = `rgba(127, 212, 255, ${0.75 * (1 - t)})`;
+                ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke();
+                ctx.strokeStyle = `rgba(127, 212, 255, ${0.25 * (1 - t)})`;
+                ctx.beginPath(); ctx.arc(r.x, r.y, Math.max(1, r.r - 10), 0, Math.PI * 2); ctx.stroke();
+            }
+        }
+
+        const shots = state.playerShots;
+        if (shots && shots.length) {
+            for (const sh of shots) {
+                ctx.save();
+                ctx.translate(sh.x, sh.y);
+                ctx.rotate(sh.spin);
+                ctx.fillStyle = '#f2f2f2';
+                ctx.beginPath(); ctx.arc(-4, 0, 4, Math.PI / 2, Math.PI * 1.5); ctx.lineTo(0, -4); ctx.lineTo(0, 4); ctx.closePath(); ctx.fill();
+                ctx.fillStyle = '#d64545';
+                ctx.beginPath(); ctx.arc(4, 0, 4, -Math.PI / 2, Math.PI / 2); ctx.lineTo(0, 4); ctx.lineTo(0, -4); ctx.closePath(); ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        const straps = W.straitjacket;
+        if (straps && straps.level > 0) {
+            const n = Math.max(1, Math.floor(straps.straps));
+            ctx.lineCap = 'round';
+            for (let k = 0; k < n; k++) {
+                const a = (straps.phase || 0) + (k * Math.PI * 2) / n;
+                ctx.strokeStyle = 'rgba(232, 220, 192, 0.9)';
+                ctx.lineWidth = 7;
+                ctx.beginPath(); ctx.arc(state.player.x, state.player.y, straps.radius, a - 0.22, a + 0.22); ctx.stroke();
+                const bx = state.player.x + Math.cos(a) * straps.radius;
+                const by = state.player.y + Math.sin(a) * straps.radius;
+                ctx.fillStyle = '#8a8170';
+                ctx.fillRect(bx - 3, by - 3, 6, 6);
+            }
+            ctx.lineCap = 'butt';
+        }
+
+        const notes = state.lullabyNotes;
+        if (notes && notes.length) {
+            for (const nt of notes) {
+                const y = nt.y + Math.sin(nt.bob) * 3;
+                ctx.fillStyle = 'rgba(155, 140, 255, 0.18)';
+                ctx.beginPath(); ctx.arc(nt.x, y, 14, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#b9adff';
+                ctx.beginPath(); ctx.ellipse(nt.x - 3, y + 4, 4.5, 3.2, -0.4, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#b9adff';
+                ctx.lineWidth = 1.6;
+                ctx.beginPath(); ctx.moveTo(nt.x + 1, y + 3); ctx.lineTo(nt.x + 1, y - 9); ctx.lineTo(nt.x + 6, y - 5); ctx.stroke();
+            }
+        }
     }
 
     drawObjectivePointers(state) {

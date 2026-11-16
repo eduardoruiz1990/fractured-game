@@ -38,6 +38,9 @@ export class Enemy {
         this.speedModifier = 1.0; 
         this.acidTime = 0;
         this.acidDmg = 0;
+        // Patch 132: statuses from the Phase D weapons (Arsenal.js). Pooled, so reset.
+        this.drowsy = 0;
+        this.held = 0;
         this.damageAccumulator = 0;
         this.damageTick = 0;
         this.painCooldown = 0; // NEW: Audio throttle for individual enemy hits

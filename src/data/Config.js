@@ -92,3 +92,21 @@ export const SPAWN_CLAMP_RADIUS = ARENA_VOID_RADIUS - ARENA_SPAWN_MARGIN;
  * This is the number to tune if boss approach time feels wrong.
  */
 export const BOSS_MIN_SPAWN_DISTANCE = SPAWN_CLAMP_RADIUS;
+/**
+ * Patch 132 (V2 plan D3): how many weapons a run may carry at once.
+ *
+ * With twelve weapons and no ceiling, a run spread its level-ups across everything it
+ * was offered and rarely took two weapons to level 5 — which is what every synergy
+ * (and, from Phase D, every evolution) asks for. Six is the genre's usual number and
+ * still leaves half the arsenal unchosen each run. Once six are owned, no NEW weapon
+ * is offered (level-up cards and the WEAPON UPGRADE door); owned ones keep levelling.
+ */
+export const MAX_WEAPON_SLOTS = 6;
+
+/** Number of weapons a run currently owns (level > 0). */
+export function ownedWeaponCount(weapons) {
+    if (!weapons) return 0;
+    let n = 0;
+    for (const id in weapons) if (weapons[id] && weapons[id].level > 0) n++;
+    return n;
+}

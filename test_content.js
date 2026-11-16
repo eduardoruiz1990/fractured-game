@@ -407,6 +407,11 @@ console.log('\nWeapon level-ups (LevelUpUI.WEAPON_LEVEL_UPS)');
         else if (id === 'broken_chalk') { wep.radius += 15; wep.duration += 30; wep.cooldown = Math.max(60, wep.cooldown - 15); }
         else if (id === 'polaroid_camera') { wep.damage += 20; wep.radius += 40; wep.cooldown = Math.max(90, wep.cooldown - 30); }
         else if (id === 'fidget_spinner') { wep.damage += 5; wep.baseRadius += 10; wep.speed += 0.02; }
+        // Patch 132: the Phase D weapons, as designed (no older chain exists for them).
+        else if (id === 'pill_bottle') { wep.damage += 6; wep.bounces = Math.min(6, wep.bounces + 1); wep.cooldown = Math.max(40, wep.cooldown - 6); }
+        else if (id === 'metronome') { wep.damage += 6; wep.radius += 30; wep.cooldown = Math.max(50, wep.cooldown - 10); }
+        else if (id === 'straitjacket') { wep.damage += 5; wep.straps = Math.min(6, wep.straps + 1); wep.radius += 8; }
+        else if (id === 'lullaby') { wep.damage += 10; wep.notes = Math.min(4, wep.notes + 1); wep.cooldown = Math.max(60, wep.cooldown - 15); }
     };
     // Game.init's starting values, plus a "modified" variant (boons/Synapse already
     // moved the numbers, cooldowns pushed BELOW their floors as steady_hands can).
@@ -418,10 +423,15 @@ console.log('\nWeapon level-ups (LevelUpUI.WEAPON_LEVEL_UPS)');
         lead_pipe: { damage: 45, radius: 70, cooldown: 90 },
         spilled_ink: { damage: 10, radius: 45, dropRate: 45 },
         broken_chalk: { radius: 60, duration: 300, cooldown: 600 },
-        corrosive_battery: { damage: 2, duration: 180 }
+        corrosive_battery: { damage: 2, duration: 180 },
+        pill_bottle: { damage: 18, bounces: 2, cooldown: 75 },
+        metronome: { damage: 14, radius: 200, cooldown: 100 },
+        straitjacket: { damage: 12, radius: 85, straps: 2 },
+        lullaby: { damage: 26, radius: 70, notes: 1, cooldown: 150 }
     };
     const modified = JSON.parse(JSON.stringify(base));
     modified.lead_pipe.cooldown = 25; modified.broken_chalk.cooldown = 50; modified.polaroid_camera.cooldown = 70;
+    modified.pill_bottle.cooldown = 30; modified.straitjacket.straps = 6;
     modified.spilled_ink.dropRate = 8; modified.flashlight.damage = 30.6; modified.fidget_spinner.damage = 12;
 
     for (const id of PLAYER_WEAPON_IDS) {
@@ -457,6 +467,75 @@ console.log('\nWeapon level-ups (LevelUpUI.WEAPON_LEVEL_UPS)');
         const cp = c.codePointAt(0); return cp >= 0x1F700 && cp <= 0x1F77F;
     }));
     check('no boon icon uses an alchemical symbol', alchemical.length === 0, alchemical.map(b => b.id).join(', '));
+}
+
+// ---------------------------------------------------------------------------
+// Patch 132 (V2 plan D3): the four Phase D weapons, the six-slot cap, the back-fill.
+console.log('\nPhase D weapons (Patch 132)');
+{
+    const { backfillWeapons } = await import('./src/core/Game.js');
+    const { MAX_WEAPON_SLOTS, ownedWeaponCount } = await import('./src/data/Config.js');
+    const { ARSENAL_CAPS, DROWSY_SLOW } = await import('./src/systems/Arsenal.js');
+    const { Combat } = await import('./src/systems/Combat.js');
+    const { SYNERGIES } = await import('./src/data/Manifestations.js');
+
+    const fresh = () => { const g = new Game(); g.init(mockSave); return g; };
+    let g = fresh();
+    for (const id of ['pill_bottle', 'metronome', 'straitjacket', 'lullaby']) {
+        check(`${id} exists at level 0 on a fresh run`, g.state.player.weapons[id] && g.state.player.weapons[id].level === 0);
+        check(`${id} is in a synergy`, Object.values(SYNERGIES).some(sy => sy.reqs.includes(id)));
+    }
+    // A run suspended before Patch 132 carries only the old eight.
+    const old = { flashlight: { level: 3, damage: 25 } };
+    const filled = backfillWeapons(old, fresh().state.player.weapons);
+    check('back-fill keeps the carried weapon untouched', filled.flashlight.level === 3 && filled.flashlight.damage === 25);
+    check('back-fill adds the missing weapons at level 0', filled.lullaby && filled.lullaby.level === 0);
+    const g2 = new Game(); g2.init(mockSave, { floor: 2, sanity: 50, xp: 0, level: 3, lucidity: 0, runInventory: [], weapons: { flashlight: { level: 2, damage: 20, radius: 250, angle: 0.6, tags: ['light'] } } });
+    check('an old carried run resumes with all twelve weapons', Object.keys(g2.state.player.weapons).length >= 12);
+
+    // Six slots.
+    const ws = fresh().state.player.weapons;
+    check('six slots', MAX_WEAPON_SLOTS === 6 && ownedWeaponCount(ws) === 1);
+
+    // Arsenal behaviour, one weapon at a time, enemies parked in front of the player.
+    const park = (g, n, dist = 120) => {
+        for (let i = 0; i < n; i++) g.director.spawnEntity('SCAVENGER', null, null, g.state.player.x + dist + i * 40, g.state.player.y);
+        g.state.entities.forEach(e => { e.update = () => {}; });
+    };
+    const tick = (g, steps) => { for (let i = 0; i < steps; i++) { g.state.frame++; Combat.resolveWeapons(g); } };
+    const solo = (g, id) => { g.state.player.weapons.flashlight.level = 0; g.state.player.weapons.flashlight.radius = 0; g.state.player.weapons[id].level = 1; };
+
+    g = fresh(); solo(g, 'pill_bottle'); park(g, 3);
+    const hp0 = g.state.entities.map(e => e.hp);
+    tick(g, 40);
+    check('pill bottle is thrown and ricochets through all three', g.state.entities.every((e, i) => e.hp < hp0[i]) || g.state.runKills > 0,
+          JSON.stringify(g.state.entities.map(e => e.hp)));
+
+    g = fresh(); solo(g, 'metronome'); park(g, 2, 100);
+    const m0 = g.state.entities.map(e => e.hp), x0 = g.state.entities[0].x;
+    tick(g, 30);
+    check('metronome pulse strikes each enemy once and shoves it outward',
+          g.state.entities[0].hp === m0[0] - 14 && g.state.entities[0].x > x0, `${m0[0]} -> ${g.state.entities[0].hp}`);
+
+    g = fresh(); solo(g, 'straitjacket');
+    const st = g.state.player.weapons.straitjacket;
+    g.director.spawnProjectile(g.state.player.x + st.radius, g.state.player.y, 0, 0, 8, 10, '#fff', 120);
+    st.phase = -st.speed;   // lands on angle 0 after this step's advance
+    tick(g, 1);
+    check('a strap tears an enemy projectile out of the air', g.state.projectiles.length === 0);
+
+    g = fresh(); solo(g, 'lullaby'); park(g, 1, 90);
+    g.state.entities[0].hp = g.state.entities[0].maxHp = 1000;   // survive the burst
+    const e = g.state.entities[0];
+    for (let i = 0; i < 140 && !(e.drowsy > 0); i++) tick(g, 1);
+    check('a lullaby note reaches its target and leaves it drowsy', e && e.drowsy > 0, e && `drowsy ${e.drowsy}`);
+    tick(g, 1);
+    check('drowsy enemies move slower', e.speedModifier <= DROWSY_SLOW);
+
+    g = fresh(); g.state.player.weapons.pill_bottle.level = 1;
+    g.director.releaseRoomState(g.state);
+    check('room change empties the transient weapon arrays', g.state.playerShots.length === 0 && g.state.pulseRings.length === 0);
+    check('transient caps are set', ARSENAL_CAPS.playerShots > 0 && ARSENAL_CAPS.lullabyNotes > 0);
 }
 
 console.log('\nSynergy discovery (Patch 126)');

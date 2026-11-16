@@ -18,6 +18,7 @@ node qa/synergy_check.cjs          # synergy formed: banner, slow motion, happyt
 node qa/hud_check.cjs              # HUD: >=11px on phones, above scanlines, one row at 800/960, Sanity state in words + hatch (Patch 128)
 node qa/hub_check.cjs              # folder: 4 groups + sub-tabs; hub DESCEND button/Enter, suspended run opens the machine (Patch 129)
 node qa/juice_check.cjs            # level-up flash/deal-in/ease, boss-death freeze+slow-mo+burst, token pickup beat, photosensitive opt-out (Patch 130)
+node qa/arsenal_check.cjs          # the four Phase D weapons fire and kill, their level-up card, the six-slot cap (Patch 132)
 node qa/sprite_cache_check.cjs     # sprite cache plateaus while the tutorial cue fades (Patch 109)
 node qa/soak_check.cjs [--seconds 45] [--throttle 4] [--phone] [--floor 9]   # perf soak: all bosses + capped crowd; exits 1 on invariant breaks
 node qa/render_recovery_check.cjs   # injected render faults do not leak canvas state (Patch 113)

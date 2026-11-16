@@ -12,7 +12,13 @@ export const MANIFESTATIONS = {
     
     // --- EPIC 4: NEW WEAPONS ---
     polaroid_camera: { id: 'polaroid_camera', name: 'Polaroid Camera', desc: 'Fires a blinding, stunning flash in a wide cone every few seconds.', maxLvl: 5 },
-    fidget_spinner: { id: 'fidget_spinner', name: 'Weighted Spinner', desc: 'Blades orbit you. Deals shredding damage to enemies that get too close.', maxLvl: 5 }
+    fidget_spinner: { id: 'fidget_spinner', name: 'Weighted Spinner', desc: 'Blades orbit you. Deals shredding damage to enemies that get too close.', maxLvl: 5 },
+
+    // --- PATCH 132 (V2 plan D3): the Phase D weapons. Behaviour in src/systems/Arsenal.js.
+    pill_bottle: { id: 'pill_bottle', name: 'Pill Bottle', desc: 'Thrown at the nearest manifestation. Ricochets to the next one, and the next.', maxLvl: 5 },
+    metronome: { id: 'metronome', name: 'Metronome', desc: 'Every beat, a ring of sound pulses out from you, striking and shoving everything it crosses.', maxLvl: 5 },
+    straitjacket: { id: 'straitjacket', name: 'Straitjacket Straps', desc: 'Straps circle you, lashing what they touch and tearing projectiles out of the air.', maxLvl: 5 },
+    lullaby: { id: 'lullaby', name: 'Lullaby', desc: 'Slow notes drift after the nearest manifestation and burst, leaving it drowsy and slow.', maxLvl: 5 }
 };
 
 /**
@@ -27,7 +33,8 @@ export const MANIFESTATIONS = {
  */
 export const PLAYER_WEAPON_IDS = [
     'flashlight', 'static', 'polaroid_camera', 'fidget_spinner',
-    'lead_pipe', 'spilled_ink', 'broken_chalk', 'corrosive_battery'
+    'lead_pipe', 'spilled_ink', 'broken_chalk', 'corrosive_battery',
+    'pill_bottle', 'metronome', 'straitjacket', 'lullaby'   // Patch 132
 ];
 
 /**
@@ -42,7 +49,7 @@ export const PLAYER_WEAPON_IDS = [
 export const DOOR_REWARDS = [
     { id: 'LUCIDITY',       name: 'LUCIDITY',        effect: '+50 Lucidity and +50 XP, banked into this run.', color: '#ffddaa' },
     { id: 'HEAL',           name: 'RECOVERY',        effect: 'Restores 50 Sanity you have already lost. Does NOT raise your maximum, and cannot take you above it.', color: '#aaffaa' },
-    { id: 'WEAPON_UPGRADE', name: 'WEAPON UPGRADE',  effect: 'Levels one random weapon that is not yet at 5. If everything is maxed, pays +50 Lucidity instead.', color: '#c5a059' },
+    { id: 'WEAPON_UPGRADE', name: 'WEAPON UPGRADE',  effect: 'Levels one of your weapons that is not yet at 5. If everything you carry is maxed, it adds a new weapon while you have a free slot (6), otherwise pays +50 Lucidity.', color: '#c5a059' },
     { id: 'TOKEN_DOOR',     name: 'CONFISCATED ITEM', effect: 'Drops a Token on the spot. It is decrypted into your inventory when the run ends, whether you extract or break.', color: '#ff8c00' },
     { id: 'RISK_REWARD',    name: 'RISK PROTOCOL',   effect: '+150 Lucidity, +150 XP and a Token — at a flat cost of 30 current Sanity. The cost cannot kill you (it floors at 1) and ignores shields and curses.', color: '#ff3333' }
 ];
@@ -152,6 +159,28 @@ export const SYNERGIES = {
         id: 'consecrated_ground', name: 'Consecrated Ground',
         desc: 'Pipe swings landed inside a ward restore Sanity.',
         reqs: ['lead_pipe', 'broken_chalk']
+    },
+
+    // Patch 132: one synergy per Phase D weapon, each pairing it with an old one.
+    bitter_pill: {
+        id: 'bitter_pill', name: 'Bitter Pill',
+        desc: 'Every bottle that lands coats its target in battery acid.',
+        reqs: ['pill_bottle', 'corrosive_battery']
+    },
+    cradle_song: {
+        id: 'cradle_song', name: 'Cradle Song',
+        desc: 'The beat lulls. Everything a pulse crosses goes drowsy.',
+        reqs: ['metronome', 'lullaby']
+    },
+    restraint: {
+        id: 'restraint', name: 'Restraint',
+        desc: 'A strap that lands holds its victim in place for half a second.',
+        reqs: ['straitjacket', 'lead_pipe']
+    },
+    nightlight: {
+        id: 'nightlight', name: 'Nightlight',
+        desc: 'Lullaby notes burst twice as wide.',
+        reqs: ['lullaby', 'flashlight']
     }
 };
 

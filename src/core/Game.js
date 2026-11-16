@@ -9,6 +9,19 @@ import { getXPRequiredForLevel, ARENA_VOID_RADIUS, isBossType, ROOMS_PER_FLOOR }
 // Patch 96 — the biome palettes cycle past floor 5. See src/core/Endless.js.
 import { paletteIndexForFloor } from './Endless.js';
 
+/**
+ * Patch 132: adds any weapon in `fresh` that `carried` lacks (at level 0), so a run
+ * suspended before a weapon existed resumes with the whole current arsenal. Never
+ * touches a weapon the carry already has. Mutates and returns `carried`.
+ */
+export function backfillWeapons(carried, fresh) {
+    if (!carried || typeof carried !== 'object') return fresh;
+    for (const [id, w] of Object.entries(fresh)) {
+        if (!carried[id]) carried[id] = w;
+    }
+    return carried;
+}
+
 export class Game {
     constructor() {
         this.state = null;
@@ -130,6 +143,33 @@ export class Game {
         if (pCurses.includes('fragile_mind')) effectiveMaxSanity = Math.floor(maxSanity * 0.5);
 
         let startSanity = carriedState ? carriedState.sanity : effectiveMaxSanity;
+
+        const freshWeapons = {
+            flashlight: {
+                level: 1, damage: 15, radius: 250 * lightBuff,
+                // F3/F7's flashlightAngle has no legacy equivalent — applied here
+                // directly as a percentage widening of the base cone.
+                angle: 0.6 * (1 + (stats.flashlightAngle || 0) / 100), type: 'cone',
+                tags: ['light', 'focus']
+            },
+            static: { level: 0, damage: 5, radius: 100, active: false, pulsePhase: 0, tags: ['aura', 'tech'] },
+            polaroid_camera: { level: 0, damage: 30, radius: 300, angle: Math.PI/3, cooldown: 180, timer: 0, tags: ['burst', 'light'] },
+            fidget_spinner: { level: 0, damage: 8, baseRadius: 60, speed: 0.1, tags: ['orbit', 'kinetic'] },
+            // C2's 'start_weapon:<choice>' grant: no selection UI exists yet (the
+            // '<choice>' in the grant string is a placeholder for future work), so
+            // this always grants the same fixed weapon — lead_pipe at level 1 —
+            // rather than fabricating a choice mechanism that isn't built.
+            lead_pipe: { level: grants.has('start_weapon:<choice>') ? 1 : 0, damage: 45, radius: 70, cooldown: 90, timer: 0, tags: ['melee', 'kinetic'] },
+            spilled_ink: { level: 0, damage: 10, radius: 45, dropRate: 45, timer: 0, tags: ['hazard', 'dark'] },
+            broken_chalk: { level: 0, radius: 60, duration: 300, cooldown: 600, timer: 0, tags: ['utility', 'focus'] },
+            corrosive_battery: { level: 0, damage: 2, duration: 180, tags: ['passive', 'tech'] },
+            // Patch 132 (V2 plan D3): the Phase D weapons. Behaviour in
+            // src/systems/Arsenal.js; level-up steps in LevelUpUI's table.
+            pill_bottle: { level: 0, damage: 18, bounces: 2, cooldown: 75, timer: 0, tags: ['kinetic', 'burst'] },
+            metronome: { level: 0, damage: 14, radius: 200, cooldown: 100, timer: 0, tags: ['aura', 'tech'] },
+            straitjacket: { level: 0, damage: 12, radius: 85, straps: 2, speed: 0.05, phase: 0, tags: ['orbit', 'melee'] },
+            lullaby: { level: 0, damage: 26, radius: 70, notes: 1, sleep: 90, cooldown: 150, timer: 0, tags: ['dark', 'burst'] }
+        };
 
         this.state = {
             killCounts: meta.killCounts || {}, 
@@ -262,26 +302,9 @@ export class Game {
                     charges: 1 + (grants.has('dash_charge_2') ? 1 : 0),
                     dx: 0, dy: 0
                 },
-                weapons: carriedState ? carriedState.weapons : {
-                    flashlight: {
-                        level: 1, damage: 15, radius: 250 * lightBuff,
-                        // F3/F7's flashlightAngle has no legacy equivalent — applied here
-                        // directly as a percentage widening of the base cone.
-                        angle: 0.6 * (1 + (stats.flashlightAngle || 0) / 100), type: 'cone',
-                        tags: ['light', 'focus']
-                    },
-                    static: { level: 0, damage: 5, radius: 100, active: false, pulsePhase: 0, tags: ['aura', 'tech'] },
-                    polaroid_camera: { level: 0, damage: 30, radius: 300, angle: Math.PI/3, cooldown: 180, timer: 0, tags: ['burst', 'light'] },
-                    fidget_spinner: { level: 0, damage: 8, baseRadius: 60, speed: 0.1, tags: ['orbit', 'kinetic'] },
-                    // C2's 'start_weapon:<choice>' grant: no selection UI exists yet (the
-                    // '<choice>' in the grant string is a placeholder for future work), so
-                    // this always grants the same fixed weapon — lead_pipe at level 1 —
-                    // rather than fabricating a choice mechanism that isn't built.
-                    lead_pipe: { level: grants.has('start_weapon:<choice>') ? 1 : 0, damage: 45, radius: 70, cooldown: 90, timer: 0, tags: ['melee', 'kinetic'] },
-                    spilled_ink: { level: 0, damage: 10, radius: 45, dropRate: 45, timer: 0, tags: ['hazard', 'dark'] },
-                    broken_chalk: { level: 0, radius: 60, duration: 300, cooldown: 600, timer: 0, tags: ['utility', 'focus'] },
-                    corrosive_battery: { level: 0, damage: 2, duration: 180, tags: ['passive', 'tech'] }
-                },
+                // Patch 132: a run carried from an older build lacks the weapons added
+                // since, so the carry is back-filled from the fresh set (level 0).
+                weapons: carriedState ? backfillWeapons(carriedState.weapons, freshWeapons) : freshWeapons,
                 upgrades: meta.upgrades 
             },
             input: { moveX: 0, moveY: 0, aimAngle: 0, isMoving: false },
@@ -295,7 +318,8 @@ export class Game {
             inkPuddles: [],
             meleeSwings: [],
             interactables: [],
-            playerAfterimages: []
+            playerAfterimages: [],
+            playerShots: [], pulseRings: [], lullabyNotes: []   // Patch 132 (Arsenal.js)
         };
         
         // Patch 31b: the insomniac 2pc flashlight bonus USED to be applied here as a

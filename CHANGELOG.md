@@ -1908,6 +1908,59 @@ call; the call (the plan's recommendation) is now made:
 `test_bosses.js` +6: the entity carries the range; in/out of cone and range; a sweep
 from 800 px does no damage; one from 300 px still does.
 
+**Patch 132 — four new weapons (D3).**
+
+| Weapon | Tags | What it does | Per level |
+|---|---|---|---|
+| **Pill Bottle** | kinetic, burst | Every 1.25 s, a bottle is thrown at the nearest enemy within 520 px and ricochets to the next one within 300 px, `bounces` times (2). It homes lightly, so it does not miss a moving target. | damage +6, ricochets +1 (max 6), throw every −6 steps (min 40) |
+| **Metronome** | aura, tech | Every beat (1.67 s), a ring expands from where you stood to `radius` (200). Everything the wavefront crosses is struck once and shoved 18 px outward. | damage +6, reach +30, beat −10 steps (min 50) |
+| **Straitjacket Straps** | orbit, melee | `straps` (2) bands circle you at 85 px. Each one tears enemy projectiles out of the air and lashes what it touches on its own 12-step beat. Strap kills count as melee (Vampirism). | damage +5, straps +1 (max 6), orbit +8 |
+| **Lullaby** | dark, burst | Every 2.5 s, `notes` (1) slow notes drift after the nearest enemy and burst on contact (70 px), leaving everything caught **drowsy**: 40% speed for 1.5 s. | damage +10, notes +1 (max 4), sung every −15 steps (min 60) |
+
+- **Where it lives.** `src/systems/Arsenal.js`. Combat calls `resolveArsenal()` once per
+  step BEFORE its entity loop, so a kill made there is collected by that loop in the same
+  step (XP, kill count, pool release). Arsenal never splices `state.entities`.
+  `applyArsenalStatus(ent)` sits in the entity loop right after the ink slow, so drowsy
+  composes with it (`Math.min`). The ward 2x, tag damage, and the boss-flicker immunity
+  all apply exactly as they do to the other weapons.
+- **Transient objects.** `state.playerShots`, `state.pulseRings` and `state.lullabyNotes`
+  are plain arrays with hard caps (`ARSENAL_CAPS`: 24 / 6 / 16), not pooled.
+  `Director.releaseRoomState` empties them on every room change; a bottle in flight
+  would otherwise hold a reference to a released entity. `Game.init` creates them.
+  `Enemy.initBase` resets the new `drowsy`/`held` statuses (pooled).
+- **Drawing.** `Renderer.drawArsenal()`, called at the end of the weapon-effects block:
+  plain fills and strokes, no `shadowBlur`, no composite changes.
+- **Four synergies**, one per new weapon, each pairing it with an old one:
+  Bitter Pill (bottle + battery: every bottle applies acid), Cradle Song (metronome +
+  lullaby: pulses make everything drowsy), Restraint (straps + pipe: a strap holds its
+  victim for 0.5 s), Nightlight (lullaby + flashlight: bursts twice as wide). They show
+  up in the Codex, the banner and the card hints with no extra code.
+- **The level-up table** (`WEAPON_LEVEL_UPS`) gained a `max` cap beside `min` and a
+  `count` line kind ("Ricochets 2 → 3"). Steady Hands now also shortens the three new
+  cooldowns.
+- **Six weapon slots** (`MAX_WEAPON_SLOTS`, `ownedWeaponCount` in `Config.js`). With
+  twelve weapons and no ceiling, a run spread its level-ups over everything it was
+  offered and rarely got two weapons to 5, which every synergy (and every evolution)
+  needs. Once six are owned, no NEW weapon is offered. **This is a balance change.**
+- **The WEAPON UPGRADE door now levels a weapon you own.** It drew from all weapons
+  below the cap, including unowned ones; with twelve that mostly handed out level 1 of
+  something new. It now draws a new weapon only if nothing owned can level and a slot
+  is free. It also now switches the Static Receiver on when it grants its first level
+  (only the card did before). Guide text updated.
+- **Old suspended runs.** A carry from before this patch has only the old eight
+  weapons; `backfillWeapons()` adds the missing ones at level 0 and never touches a
+  carried one.
+
+Tests:
+- `test_content.js` +51: the four are in the table and the golden oracle (both start
+  states); back-fill; six slots; in-sim behaviour (ricochet through three, one ring hit
+  plus the shove, a strap deletes a projectile, a note leaves its target drowsy and
+  slowed); the room change empties the arrays.
+- `test_fuzz_runs.js`: its template and level table include the four (200/200 clean).
+- New `qa/arsenal_check.cjs`: all four fire and kill among real enemies; the Metronome
+  card reads "Damage 14 → 20 / Pulse reach 200 → 230 / LVL 2 → 3"; no NEW card in 40
+  draws with six owned, and NEW cards return at five.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
