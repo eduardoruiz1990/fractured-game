@@ -23,6 +23,7 @@ node qa/levelup_check.cjs          # cards: real names + stat lines, >=11px, on 
 node qa/synergy_check.cjs          # synergy formed: banner, slow motion, happytime once, codex silhouettes, cleared on death (Patch 126)
 node qa/hud_check.cjs              # HUD: >=11px on phones, above scanlines, one row at 800/960, Sanity state in words + hatch (Patch 128)
 node qa/hub_check.cjs              # folder: 4 groups + sub-tabs; hub DESCEND button/Enter, suspended run opens the machine (Patch 129)
+node qa/text_check.cjs             # every reachable screen's text: no TODO/lorem, undefined/NaN/null, raw snake_case ids or emails; generic credits; Settings shows the build id (Patch 159)
 node qa/juice_check.cjs            # level-up flash/deal-in/ease, boss-death freeze+slow-mo+burst, token pickup beat, photosensitive opt-out (Patch 130)
 node qa/arsenal_check.cjs          # the four Phase D weapons fire and kill, their level-up card, the six-slot cap (Patch 132)
 node qa/elite_check.cjs            # a named elite spawns, drops a chest, the chest opens with its notice, phone + desktop (Patch 133)

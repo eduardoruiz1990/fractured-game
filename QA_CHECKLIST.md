@@ -10,8 +10,7 @@ submitted, after the automated gates pass. Tick every box; anything that fails g
 - [ ] `node test_fuzz_runs.js` completes 200/200.
 - [ ] Dev server up (`npx vite --port 5199 --strictPort`) and every `qa/*_check.cjs` passes (list in `qa/README.md`).
 - [ ] `node qa/smoke_check.cjs` passes — it builds and plays the shipped bundles.
-- [ ] `npm run build` → `dist/`. `grep -l '__fractured\|perf-overlay' dist/assets/*.js` prints nothing.
-- [ ] Zip the **contents** of `dist/` (index.html at the zip root).
+- [ ] Everything committed, then `npm run package` → `release/fractured-<build id>.zip`. It builds the CrazyGames bundle and refuses it if the SDK tag is missing, the dev hook or perf overlay leaked in, or there are source maps; the zip holds the **contents** of `dist/` (index.html at the root). Note the build id it prints: Settings shows it in the preview, and it must match.
 
 ## 1. SDK events (portal preview, QA tool / console)
 
@@ -73,12 +72,12 @@ Use `npm run build:playtest`; open the perf overlay and RUN BENCHMARK, or copy a
 - [ ] PEGI-12: no blood, gore or decals anywhere (title, play, death, endings).
 - [ ] First launch: the cold open plays over the tutorial room and the first input dismisses it; the content note is in the Clinical Guide.
 - [ ] Mental-health framing reads as recovery: boss lines, session notes and both endings.
-- [ ] Credits read "The FRACTURED team" — no personal names.
-- [ ] No placeholder text ("TODO", "lorem", raw ids like `lead_pipe`) on any screen.
+- [ ] Credits read "The FRACTURED team" — no personal names. *(automated: `qa/text_check.cjs`)*
+- [ ] No placeholder text ("TODO", "lorem", raw ids like `lead_pipe`) on any screen. *(automated for every screen `qa/text_check.cjs` reaches: title, Settings, hub, all 9 folder panes, HUD, level-up, pause, death, ending and credits; look at the rest by eye)*
 - [ ] Both endings play (first Architect kill; the true ending with every Case File page) and AWAKEN / RECURSE do what they say.
 
 ## 8. Submission form
 
-- [ ] Title, description, controls text (keyboard + touch), and tags match the build.
+- [ ] Title, description, controls text (keyboard + touch), and tags match the build — paste from `SUBMISSION.md`, re-checking its counts.
 - [ ] Thumbnail/cover art is current and gore-free.
 - [ ] "Mobile friendly" ticked only if section 4's phone runs all passed.

@@ -18,6 +18,20 @@
 // want when testing ads (dev:crazygames), and noise when working on anything else.
 const CRAZYGAMES_SDK_URL = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
 
+// Patch 159: the build id (src/data/Build.js) — version, target and commit.
+import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+function buildId(mode) {
+  let version = '0.0.0', sha = 'nogit';
+  try { version = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version; } catch (e) {}
+  try {
+    sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || sha;
+    // A build of uncommitted changes is not that commit: say so.
+    if (execSync('git status --porcelain', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()) sha += '+dirty';
+  } catch (e) {}
+  return `${version}-${mode}-${sha}`;
+}
+
 function portalSdkTag(mode) {
   return {
     name: 'fractured-portal-sdk-tag',
@@ -35,5 +49,6 @@ function portalSdkTag(mode) {
 
 export default ({ mode }) => ({
   base: './',
+  define: { __FRACTURED_BUILD__: JSON.stringify(buildId(mode)) },
   plugins: [portalSdkTag(mode)]
 });

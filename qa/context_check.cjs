@@ -14,6 +14,7 @@ const { chromium } = require('playwright');
   const title = await ctx();
   console.log('title:', JSON.stringify(title));
   if (!title || title.screen !== 'TITLE') fails.push('no TITLE context');
+  if (!title || !/^\d+\.\d+\.\d+-/.test(title.build || '')) fails.push('no build id (Patch 159)');
   await p.evaluate(() => { window.__fractured.saveManager.metaState.tutorialCompleted = true; });
   await p.click('#btn-title-begin'); await p.waitForTimeout(800);
   const run = await ctx();

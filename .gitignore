@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 qa/*.png
+
+# Patch 159: upload zips (npm run package)
+release/

@@ -2851,6 +2851,56 @@ Changes:
   - The 155 variants are gone, so the benchmark can no longer poison its own rows.
 - **Keep clause 51** and **QA_CHECKLIST** §5 are updated.
 
+**Patch 159 — release candidate 2.0.0: build id, screen-text check, packaging, submission sheet.**
+
+V2_PLAN phases A–G and the difficulty pass are done. This is the release set: the
+automatable parts of `QA_CHECKLIST.md` §0, §7 and §8.
+
+- **Version and build id.**
+  - `package.json` is now `2.0.0`.
+  - `vite.config.js` defines `__FRACTURED_BUILD__` = version-mode-commit, with `+dirty`
+    when the tree has uncommitted changes. `src/data/Build.js` exports it as `BUILD_ID`,
+    which reads `'dev'` outside Vite, so the Node suites are unaffected.
+  - It is sent as `build` in the portal feedback context (`syncPortalContext`), so a
+    player report names the exact upload. This is the "build id" the B11 decision
+    called for. `qa/context_check.cjs` asserts it.
+  - It is shown in small type at the bottom of Settings (`#settings-build`).
+- **New `qa/text_check.cjs`** (QA §7). It walks every screen a player reaches:
+  - title, Settings and the hub;
+  - every folder group and sub-pane (9);
+  - a run's HUD, the level-up cards, pause and the death screen;
+  - every card of the ending, the credits and the choice.
+
+  It fails on:
+  - placeholder words;
+  - `undefined`, `NaN`, `null`, `[object …]` or `Infinity`;
+  - lowercase snake_case raw ids;
+  - an email address anywhere;
+  - credits other than the generic team line.
+
+  It scanned 22 screens clean. The detectors were checked against planted bad
+  strings.
+- **New `npm run package`** (`scripts/package_release.cjs`):
+  1. Refuses a dirty tree unless given `--allow-dirty`.
+  2. Builds the CrazyGames bundle.
+  3. Fails if the SDK tag is missing, if the dev hook or perf overlay leaked in
+     (Keep clause 41), on source maps, or on unsafe file names.
+  4. Zips the contents of `dist/` to `release/fractured-<build id>.zip` (git-ignored)
+     and prints the sizes: 23 files, 533 KB of code, 4.1 MB in all, mostly audio
+     streamed after the loading window.
+- **New `SUBMISSION.md`**: the developer-portal form text, written from the build:
+  - title, short and long description, keyboard and touch controls;
+  - suggested category and tags, and content and age-rating notes;
+  - a resubmission note to the CrazyGames team on what v2 changed against v1's
+    metrics.
+
+  Its counts were read from the data files: 12 weapons, 14 synergies, 12 evolutions,
+  6 enemies and 5 bosses, 31 Synapse nodes, 16 tokens, 4 Patients, 7 Intrusive
+  Thoughts, 37 achievements and 25 Case File pages. The controls were checked against
+  `Input.js` and `main.js`.
+- `QA_CHECKLIST.md` §0, §7 and §8, `qa/README.md` and `CLAUDE.md` (commands,
+  releasing) are updated.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
