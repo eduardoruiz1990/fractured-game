@@ -880,72 +880,140 @@ export class Renderer {
         return c;
     }
 
+    /**
+     * Patch 163: the creatures, as sprites built once (64 px, facing +x). Same
+     * silhouettes as the game's own: the Janitor's hunch and sack with one yellow eye,
+     * the Hall Monitor's long low body on thin legs with red eyes, and a Photocopy (a
+     * sheet with a folded corner and two holes for eyes).
+     */
+    titleCreatureSprites() {
+        if (this._titleMobs) return this._titleMobs;
+        const mk = (draw) => { const c = document.createElement('canvas'); c.width = 64; c.height = 64; const x = c.getContext('2d'); x.translate(32, 32); draw(x); return c; };
+        this._titleMobs = [
+            mk(c => {   // Janitor
+                c.fillStyle = '#1a1c1a';
+                c.beginPath(); c.ellipse(-9, 6, 11, 9, 0.3, 0, Math.PI * 2); c.fill();
+                c.beginPath(); c.ellipse(-14, 2, 7, 5.5, 0.2, 0, Math.PI * 2); c.fill();
+                c.fillStyle = '#2f332f';
+                c.beginPath(); c.moveTo(13, 4); c.quadraticCurveTo(10, -11, 2, -9); c.quadraticCurveTo(-6, -6, -9, 0);
+                c.quadraticCurveTo(-8, 6, -2, 8); c.quadraticCurveTo(6, 9, 13, 4); c.closePath(); c.fill();
+                c.strokeStyle = '#4a4f4a'; c.lineWidth = 1.2; c.stroke();
+            }),
+            mk(c => {   // Hall Monitor
+                c.strokeStyle = '#3a2228'; c.lineWidth = 2;
+                for (const s of [-1, 1]) for (const k of [-6, 5]) { c.beginPath(); c.moveTo(k, 0); c.lineTo(k + 4, s * 13); c.lineTo(k + 9, s * 15); c.stroke(); }
+                c.fillStyle = '#2b1a1f';
+                c.beginPath(); c.ellipse(0, 0, 17, 6, 0, 0, Math.PI * 2); c.fill();
+                c.beginPath(); c.ellipse(16, 0, 6, 5, 0, 0, Math.PI * 2); c.fill();
+                c.strokeStyle = '#5a3540'; c.lineWidth = 1.2; c.beginPath(); c.ellipse(0, 0, 17, 6, 0, 0, Math.PI * 2); c.stroke();
+            }),
+            mk(c => {   // Photocopy
+                c.rotate(Math.PI / 2);
+                c.fillStyle = '#b9b2a4';
+                c.beginPath(); c.moveTo(-10, -14); c.lineTo(5, -14); c.lineTo(10, -9); c.lineTo(10, 14); c.lineTo(-10, 14); c.closePath(); c.fill();
+                c.fillStyle = '#8c8577'; c.beginPath(); c.moveTo(5, -14); c.lineTo(5, -9); c.lineTo(10, -9); c.closePath(); c.fill();
+                c.fillStyle = 'rgba(60, 56, 50, 0.6)'; for (let i = 0; i < 4; i++) c.fillRect(-7, 2 + i * 3, 12 - (i % 2) * 4, 1);
+                c.fillStyle = '#1a1714'; c.fillRect(-6, -7, 4, 4); c.fillRect(2, -7, 4, 4);
+            })
+        ];
+        return this._titleMobs;
+    }
+
     drawTitleScene(time) {
         const ctx = this.ctx, W = this.canvas.width, H = this.canvas.height;
         if (!(W > 0 && H > 0)) return;
         const S = this.titleSceneSprites();
+        const MOBS = this.titleCreatureSprites();
         const m = Math.min(W, H);
         const A = this.titleAnchor;
         const calm = !!this.calmMotion;
         const t = Number.isFinite(time) ? time : 0;
+        // Patch 163: a little world with its own clock. dt is clamped so a tab coming
+        // back from the background does not fast-forward the creatures.
+        const ts = this._ts || (this._ts = { last: t, mobs: [], parts: [], beam: null, nextSpawn: t + 400, hurt: 0 });
+        const dt = Math.max(0, Math.min(50, t - ts.last));
+        ts.last = t;
+        const sc = Math.max(1.15, Math.min(2.4, m / 300));   // creature scale
 
-        // ground: near-black, the floor-3 rings barely there
+        // the camera breathes: a slow drift of a few px over everything but the vignette
+        const camX = calm ? 0 : Math.sin(t * 0.00013) * 6, camY = calm ? 0 : Math.cos(t * 0.00011) * 4;
+
         ctx.fillStyle = '#050304';
         ctx.fillRect(0, 0, W, H);
+        ctx.save();
+        ctx.translate(camX, camY);
         const floor = this.cachedFloorPatterns && this.cachedFloorPatterns[2];
-        if (floor && this.quality !== 'low') { ctx.globalAlpha = 0.18; ctx.fillStyle = floor; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+        if (floor && this.quality !== 'low') {
+            const off = (t * 0.006) % 400;
+            ctx.save(); ctx.translate(0, off - 400);
+            ctx.globalAlpha = 0.18; ctx.fillStyle = floor; ctx.fillRect(-20, -20, W + 40, H + 440);
+            ctx.restore(); ctx.globalAlpha = 1;
+        }
 
-        // the eye: behind the title, a little above it
+        // --- layout: the eye above the title, the Subject pacing the bottom edge ---------
         const tx = A && Number.isFinite(A.x) ? A.x : W / 2;
         const ty = A && Number.isFinite(A.y) ? A.y : H * 0.3;
         const eyeR = Math.max(60, Math.min(W * 0.36, H * 0.24, (A && A.w > 0 ? A.w * 0.42 : W * 0.3)));
-        // The iris sits just above the letters; when the title is near the top edge (a
-        // returning player's taller menu), the eye is kept at least partly on screen.
         const ex = tx, ey = Math.max(ty - eyeR * 0.42, eyeR * 0.3);
-
-        // the Subject and the sweep (slow; slower still for calm motion)
-        const hx = W / 2, hy = H - Math.max(14, m * 0.035);
+        const hy = H - Math.max(16, m * 0.04);
+        const hx = W / 2 + Math.sin(t * 0.00021) * Math.min(W * 0.2, 170);
         const toEye = Math.atan2(ey - hy, ex - hx);
-        const sweep = calm ? 0.18 : 0.38;
-        const ang = toEye + sweep * Math.sin(t * 0.00028) + 0.06 * Math.sin(t * 0.00071);
         const beamLen = Math.hypot(ex - hx, ey - hy) * 1.08;
 
-        ctx.globalAlpha = 0.55;
-        ctx.drawImage(S.redGlow, ex - eyeR * 2.6, ey - eyeR * 2.6, eyeR * 5.2, eyeR * 5.2);
-        ctx.globalAlpha = 1;
+        // --- the beam hunts: it turns toward the nearest creature in front of it, else sweeps
+        let target = null, best = Infinity;
+        for (const c of ts.mobs) {
+            if (c.dead) continue;
+            const d = Math.hypot(c.x - hx, c.y - hy);
+            if (c.y < hy - 10 && d < beamLen * 1.1 && d < best && c.x > -20 && c.x < W + 20 && c.y > -20) { best = d; target = c; }
+        }
+        const idle = toEye + (calm ? 0.18 : 0.38) * Math.sin(t * 0.00028);
+        const want = target ? Math.atan2(target.y - hy, target.x - hx) : idle;
+        if (ts.beam === null) ts.beam = idle;
+        let da = Math.atan2(Math.sin(want - ts.beam), Math.cos(want - ts.beam));
+        const turn = (calm ? 0.9 : 2.0) * dt / 1000;
+        ts.beam += Math.max(-turn, Math.min(turn, da));
+        ts.beam = Math.max(-Math.PI + 0.2, Math.min(-0.2, ts.beam));
+        const ang = ts.beam;
+        const inBeam = (x, y) => {
+            const d = Math.hypot(x - hx, y - hy);
+            if (d > beamLen) return false;
+            let a = Math.atan2(y - hy, x - hx) - ang;
+            a = Math.atan2(Math.sin(a), Math.cos(a));
+            return Math.abs(a) < S.beamHalf * 0.9;
+        };
 
-        // blink: every ~7 s the lid closes for ~180 ms (never with calm motion)
+        // --- the eye, with a heartbeat ------------------------------------------------------
+        const beat = (p => Math.exp(-p * 9) + 0.6 * Math.exp(-Math.max(0, p - 0.22) * 9) * (p > 0.22 ? 1 : 0))((t % 1600) / 1600);
+        const pulse = calm ? 0.3 : beat;
+        ctx.globalAlpha = 0.45 + 0.25 * pulse;
+        const gr = eyeR * (2.6 + 0.15 * pulse);
+        ctx.drawImage(S.redGlow, ex - gr, ey - gr, gr * 2, gr * 2);
+        ctx.globalAlpha = 1;
         const cyc = (t % 7000) / 180;
         const lid = (!calm && cyc < 1) ? Math.sin(cyc * Math.PI) : 0;
-        const k = eyeR / S.eyeR, size = 512 * k;
+        const k = eyeR / S.eyeR * (1 + 0.02 * pulse), size = 512 * k;
         ctx.save();
-        ctx.translate(ex, ey);
+        ctx.translate(ex - camX * 0.5, ey - camY * 0.5);   // the eye drifts half as much: depth
         ctx.scale(1, 1 - 0.92 * lid);
         ctx.globalAlpha = 0.4;
         ctx.drawImage(S.eye, -size / 2, -size / 2, size, size);
-        // the iris looks toward where the beam is pointing at the eye's height
         const lookX = hx + Math.cos(ang) * beamLen - ex, lookY = hy + Math.sin(ang) * beamLen - ey;
         const ld = Math.hypot(lookX, lookY) || 1, reach = eyeR * 0.3 * Math.min(1, ld / (eyeR * 2));
         const ix = lookX / ld * reach, iy = lookY / ld * reach;
-        ctx.globalAlpha = 0.62;
+        ctx.globalAlpha = 0.6 + 0.15 * pulse;
         ctx.fillStyle = '#b3123c';
         ctx.beginPath(); ctx.arc(ix, iy, eyeR * 0.5, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#2a030b';
-        ctx.beginPath(); ctx.ellipse(ix * 1.08, iy * 1.08, eyeR * 0.3, eyeR * 0.17, 0, 0, Math.PI * 2); ctx.fill();
+        const pupil = 0.3 - 0.06 * pulse;   // the pupil tightens on each beat
+        ctx.beginPath(); ctx.ellipse(ix * 1.08, iy * 1.08, eyeR * pupil, eyeR * 0.17, 0, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = 'rgba(255, 220, 230, 0.55)';
         ctx.beginPath(); ctx.ellipse(ix + eyeR * 0.22, iy + eyeR * 0.2, eyeR * 0.1, eyeR * 0.06, -0.3, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
         ctx.globalAlpha = 1;
 
-        // the lurkers: pairs of eyes in the dark, away from the central column
-        if (!this._lurkers) this._lurkers = Array.from({ length: 9 }, (_, i) => ({ born: -i * 900, life: 0, x: 0, y: 0, s: 1, shut: 0 }));
-        const inBeam = (x, y) => {
-            const d = Math.hypot(x - hx, y - hy);
-            if (d > beamLen) return false;
-            let da = Math.atan2(y - hy, x - hx) - ang;
-            da = Math.atan2(Math.sin(da), Math.cos(da));
-            return Math.abs(da) < S.beamHalf * 0.9;
-        };
+        // --- lurkers: eyes that only watch, at the edges ------------------------------------------
+        if (!this._lurkers) this._lurkers = Array.from({ length: 6 }, (_, i) => ({ born: -i * 900, life: 0, x: 0, y: 0, s: 1, shut: 0 }));
         for (const L of this._lurkers) {
             const age = t - L.born;
             if (age < 0) continue;
@@ -953,7 +1021,7 @@ export class Renderer {
                 const side = Math.random() < 0.5 ? -1 : 1;
                 const span = W * 0.5 - Math.min(W * 0.3, 260);
                 L.x = W / 2 + side * (W * 0.5 - Math.random() * Math.max(30, span) - 14);
-                L.y = H * (0.1 + Math.random() * 0.82);
+                L.y = H * (0.1 + Math.random() * 0.7);
                 L.s = 0.8 + Math.random() * 0.7; L.born = t + Math.random() * 1500; L.life = 2600 + Math.random() * 3200; L.shut = 0;
                 continue;
             }
@@ -973,12 +1041,80 @@ export class Renderer {
         }
         ctx.globalAlpha = 1;
 
-        // the beam (additive), dust that shows only inside it, then the Subject
+        // --- the creatures: they come out of the dark for the Subject; the light burns them
+        const maxMobs = Math.max(7, Math.min(12, Math.round(W * H / 60000)));
+        if (t >= ts.nextSpawn && ts.mobs.filter(c => !c.dead).length < maxMobs) {
+            ts.nextSpawn = t + 300 + Math.random() * 700;
+            const edge = Math.random();
+            let x, y;
+            if (edge < 0.4) { x = -30; y = H * (0.3 + Math.random() * 0.6); }
+            else if (edge < 0.8) { x = W + 30; y = H * (0.3 + Math.random() * 0.6); }
+            else { x = W * (0.05 + Math.random() * 0.9); y = -30; }
+            const kind = Math.random() < 0.5 ? 0 : (Math.random() < 0.6 ? 1 : 2);
+            const reuse = ts.mobs.find(c => c.dead);
+            const c = reuse || {};
+            Object.assign(c, { x, y, kind, dead: false, burn: 0, seed: Math.random() * 100,
+                v: (kind === 1 ? 46 : kind === 2 ? 30 : 36) * sc * (0.8 + Math.random() * 0.4), face: 0 });
+            if (!reuse) ts.mobs.push(c);
+        }
+        const burst = (x, y, col, n) => {
+            for (let i = 0; i < n; i++) {
+                const a = Math.random() * Math.PI * 2, sp = (40 + Math.random() * 140) * sc;
+                const p = ts.parts.find(q => q.life <= 0) || (ts.parts.length < 120 ? (ts.parts[ts.parts.length] = {}) : null);
+                if (!p) return;
+                Object.assign(p, { x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30, life: 500 + Math.random() * 500, max: 1000, c: col });
+            }
+        };
+        const EYE = ['#d8d84a', '#ff4a5a', '#2a2420'];
+        for (const c of ts.mobs) {
+            if (c.dead) continue;
+            const dx = hx - c.x, dy = hy - c.y, d = Math.hypot(dx, dy) || 1;
+            const lit = inBeam(c.x, c.y);
+            // toward the Subject, weaving; pushed back while the light is on them
+            const wob = Math.sin(t * 0.003 + c.seed) * 0.55;
+            const ux = dx / d, uy = dy / d;
+            const dirX = ux - uy * wob, dirY = uy + ux * wob;
+            const sp = c.v * (lit ? -0.45 : 1) * dt / 1000;
+            c.x += dirX * sp; c.y += dirY * sp;
+            c.face = Math.atan2(dirY, dirX);
+            if (lit) c.burn += dt; else c.burn = Math.max(0, c.burn - dt * 0.5);
+            const caught = d < 26 * sc;
+            if (c.burn > 750 || caught) {
+                c.dead = true;
+                burst(c.x, c.y, c.kind === 2 ? '#d8d2c4' : '#ffe2b0', calm ? 8 : 16);
+                burst(c.x, c.y, '#2a2226', 6);
+                if (caught) ts.hurt = 1;
+                continue;
+            }
+            const jitter = lit && !calm ? (Math.random() - 0.5) * 2 * Math.min(1, c.burn / 300) : 0;
+            const s = 64 * sc * 0.75;
+            ctx.save();
+            ctx.translate(c.x + jitter, c.y + jitter);
+            ctx.rotate(c.face);
+            ctx.globalAlpha = lit ? 1 : 0.5;
+            ctx.drawImage(MOBS[c.kind], -s / 2, -s / 2, s, s);
+            if (lit) {   // scorched: the light whitens them as it burns
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.globalAlpha = Math.min(0.8, c.burn / 900);
+                ctx.drawImage(MOBS[c.kind], -s / 2, -s / 2, s, s);
+                ctx.globalCompositeOperation = 'source-over';
+            }
+            // their eyes always show: that is how you see them coming
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = EYE[c.kind];
+            const e = 1.6 * sc;
+            if (c.kind === 0) { ctx.fillRect(8 * sc * 0.75 - e / 2, -e / 2, e, e); }
+            else if (c.kind === 1) { ctx.fillRect(13 * sc * 0.75, -3 * sc * 0.75 - e / 2, e, e); ctx.fillRect(13 * sc * 0.75, 2 * sc * 0.75 - e / 2, e, e); }
+            ctx.restore();
+        }
+        ctx.globalAlpha = 1;
+
+        // --- the beam (additive), dust in it, sparks, the Subject ---------------------------------
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         ctx.translate(hx, hy);
         ctx.rotate(ang + Math.PI / 2);
-        ctx.globalAlpha = 0.42;
+        ctx.globalAlpha = 0.42 + (target ? 0.08 : 0);
         const bw = beamLen * Math.tan(S.beamHalf) * 2;
         ctx.drawImage(S.beam, -bw / 2, -beamLen, bw, beamLen);
         ctx.restore();
@@ -994,18 +1130,37 @@ export class Renderer {
             const s = 1 + (d.p % 2);
             ctx.fillRect(x, y, s, s);
         }
+        for (const p of ts.parts) {
+            if (!(p.life > 0)) continue;
+            p.life -= dt; p.x += p.vx * dt / 1000; p.y += p.vy * dt / 1000; p.vx *= 0.96; p.vy = p.vy * 0.96 + 40 * dt / 1000;
+            if (p.c === '#2a2226') continue;   // the dark half of a burst is drawn below, normally
+            ctx.globalAlpha = Math.max(0, p.life / p.max);
+            ctx.fillStyle = p.c;
+            ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+        }
         ctx.globalAlpha = 0.9;
         const lens = Math.max(16, m * 0.05);
         ctx.drawImage(S.warmGlow, hx + Math.cos(ang) * lens * 0.4 - lens, hy + Math.sin(ang) * lens * 0.4 - lens, lens * 2, lens * 2);
         ctx.restore();
         ctx.globalCompositeOperation = 'source-over';
+        for (const p of ts.parts) {
+            if (!(p.life > 0) || p.c !== '#2a2226') continue;
+            ctx.globalAlpha = Math.max(0, p.life / p.max) * 0.8;
+            ctx.fillStyle = p.c;
+            ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+        }
         ctx.globalAlpha = 1;
+        // the Subject: a flinch ring when something reaches it
+        ts.hurt = Math.max(0, ts.hurt - dt / 600);
         const pr = Math.max(9, m * 0.024);
         ctx.fillStyle = '#151724';
         ctx.beginPath(); ctx.arc(hx, hy, pr, 0, Math.PI * 2); ctx.fill();
-        ctx.lineWidth = Math.max(1.5, pr * 0.14); ctx.strokeStyle = '#3c4260'; ctx.stroke();
+        ctx.lineWidth = Math.max(1.5, pr * 0.14);
+        ctx.strokeStyle = ts.hurt > 0 ? `rgba(220, 60, 80, ${0.4 + 0.6 * ts.hurt})` : '#3c4260';
+        ctx.stroke();
         ctx.fillStyle = '#d8d2c4';
         ctx.fillRect(hx + Math.cos(ang) * pr * 0.8 - 2, hy + Math.sin(ang) * pr * 0.8 - 2, 4, 4);
+        ctx.restore();   // camera drift
 
         // vignette last (cached; rebuilt only on resize)
         ctx.drawImage(this.titleVignette(W, H), 0, 0);

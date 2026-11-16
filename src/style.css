@@ -1246,7 +1246,7 @@ body.quality-low #crt-scanlines { display: none; }
     color: transparent;
     text-shadow: 0 0.06em 0.25em rgba(0, 0, 0, 0.95), 0 0 0.5em rgba(0, 0, 0, 0.8);
     animation: none;
-    margin-bottom: 2vh !important;
+    margin-bottom: calc(2vh + 0.4em) !important;   /* room for the stamp (Patch 163) */
     line-height: 1.05;
     max-width: 100%;
     white-space: nowrap;
@@ -1254,7 +1254,7 @@ body.quality-low #crt-scanlines { display: none; }
 #title-screen .title-glitch::before,
 #title-screen .title-glitch::after {
     content: attr(data-text);
-    position: absolute; left: 0; top: 0; width: 100%;
+    position: absolute; left: 0; top: 0; width: 100%; z-index: 1;
     color: #f4ead6;
     text-shadow: 0.055em 0 #b0001c, -0.055em 0 var(--ui-gold);
 }
@@ -1266,9 +1266,31 @@ body.quality-low #crt-scanlines { display: none; }
     transform: translate(0.035em, 0.05em) rotate(0.6deg);
     animation: title-crack 7s ease-in-out infinite;
 }
+/* Patch 163: the drift, then every 7 s the crack jolts open and settles. */
 @keyframes title-crack {
     0%, 100% { transform: translate(0.035em, 0.05em) rotate(0.6deg); }
-    50% { transform: translate(0.05em, 0.07em) rotate(0.9deg); }
+    45% { transform: translate(0.05em, 0.07em) rotate(0.9deg); }
+    88% { transform: translate(0.035em, 0.05em) rotate(0.6deg); }
+    90% { transform: translate(0.1em, 0.12em) rotate(1.8deg); }
+    92.5% { transform: translate(0.015em, 0.035em) rotate(0.2deg); }
+    95% { transform: translate(0.035em, 0.05em) rotate(0.6deg); }
+}
+/* Patch 163: the name is FRACTURED: Second Opinion. The subtitle is a red clinic
+   stamp slammed across the title's corner, sized in em with the title (min 11 px). */
+#title-screen .title-stamp {
+    position: absolute; right: 0.15em; bottom: -0.55em; z-index: 2;   /* over the letters' halves */
+    font-family: var(--ui-font); font-weight: bold;
+    font-size: max(12px, 0.21em); letter-spacing: 0.16em; line-height: 1;
+    color: #e0283f; border: 0.14em solid #e0283f; border-radius: 0.15em;
+    padding: 0.32em 0.55em 0.26em;
+    background: rgba(12, 4, 6, 0.6);
+    text-shadow: none; white-space: nowrap; pointer-events: none;
+    transform: rotate(-7deg);
+    animation: stamp-in 0.45s 0.6s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+@keyframes stamp-in {
+    from { opacity: 0; transform: rotate(-7deg) scale(2.4); }
+    to { opacity: 1; transform: rotate(-7deg) scale(1); }
 }
 
 /* Same failure, smaller: 31 characters at a fixed 1.2rem with 8px of tracking is
@@ -2106,12 +2128,13 @@ body.quality-low #crt-scanlines { display: none; }
 /* F3: the title stops glitching for OS reduced motion and for the photosensitivity
    setting (body.calm-motion, set by main.js applyAccessibility). */
 @media (prefers-reduced-motion: reduce) {
-    .title-glitch, #title-screen .title-glitch, #title-screen .title-glitch::after { animation: none !important; }
+    .title-glitch, #title-screen .title-glitch, #title-screen .title-glitch::after, #title-screen .title-stamp { animation: none !important; }
     .story-hint, .story-card.story-in, .story-ending-text.story-in { animation: none !important; }
 }
 body.calm-motion .title-glitch,
 body.calm-motion #title-screen .title-glitch,
 body.calm-motion #title-screen .title-glitch::after,
+body.calm-motion #title-screen .title-stamp,
 body.calm-motion .story-hint { animation: none !important; }
 
 /* F4: Text Size. Everything sized in rem (menus, HUD, notices, story) scales. */

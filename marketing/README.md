@@ -1,4 +1,4 @@
-# FRACTURED: store assets (Patch 160)
+# FRACTURED: Second Opinion: store assets (Patches 160, 163)
 
 These are the covers, logo and preview videos for the CrazyGames developer portal, and the tools that made them. Every image comes from the real game:
 - The engine draws each layer in a headless browser.
@@ -12,7 +12,7 @@ These are the covers, logo and preview videos for the CrazyGames developer porta
 | `covers/cover_square_800x800.png` | 800×800 (1:1) | Square cover |
 | `videos/preview_landscape_1920x1080.mp4` | 1080p 16:9, about 16 s | Landscape preview video |
 | `videos/preview_portrait_1080x1620.mp4` | 1080×1620 (2:3), about 16 s | Portrait preview video |
-| `logo/fractured_logo_1600x400.png` | 1600×400, transparent | Logo (title only) |
+| `logo/fractured_logo_1600x520.png` | 1600×520, transparent | Logo (title and stamp) |
 
 ## The CrazyGames rules these follow
 
@@ -24,7 +24,7 @@ From November 23rd 2026, cover click-through rate is a Basic Launch metric. Trea
 
 **Covers**
 - **Sizes:** all three sizes are given, and they look like one set: the same eye, the same beam, the same title.
-- **Allowed text:** the title is the only text. There is no "New" or "Play", no logos, store badges or icons, and no border.
+- **Allowed text:** the title is the only text: FRACTURED, with SECOND OPINION as a red clinic stamp, the same as on the title screen (Patch 163). There is no "New" or "Play", no logos, store badges or icons, and no border.
 - **Focal point:** one focal point, the Panopticon's eye, with the flashlight beam leading to it. The title is large and stylised.
 - **Not a raw screenshot:** the layers are separate engine renders at 5–6× zoom, composited. Nothing is upscaled, so nothing is blurry.
 
@@ -66,7 +66,7 @@ The covers and logo need no server:
 NODE_PATH=/opt/node-tools/node_modules node marketing/tools/cover.cjs landscape 1920 1080 marketing/covers/cover_landscape_1920x1080.png
 ```
 
-The other layouts are `portrait 800 1200`, `square 800 800` and `logo 1600 400`. For the video's opening frame, render `portrait 1080 1620`.
+The other layouts are `portrait 800 1200`, `square 800 800` and `logo 1600 520`. For the video's opening frame, render `portrait 1080 1620`.
 
 The layers (`layers/L_*.png`) and the video frames need the dev server running:
 

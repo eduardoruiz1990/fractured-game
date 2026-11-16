@@ -16,7 +16,7 @@ const L = {
   portrait:  { eye: [50, 31, 108], hero: [50, 99, 62], beamTo: [50, 36], title: [50, 66, 22.5], titleW: 92, ring: [50, 31, 250] },
   square:    { eye: [50, 37, 92], hero: [50, 101, 54], beamTo: [50, 41], title: [50, 80, 19.5], titleW: 84, ring: [50, 37, 210] },
   // the title alone on a transparent background (logo.png)
-  logo:      { eye: [50, 50, 1], hero: [50, 50, 1], beamTo: [50, 40], title: [50, 50, 60], titleW: 90, ring: [50, 50, 1] }
+  logo:      { eye: [50, 50, 1], hero: [50, 50, 1], beamTo: [50, 40], title: [50, 42, 60], titleW: 90, ring: [50, 50, 1] }
 }[layout];
 const S = Math.min(W, H) / 100;   // 1 unit = 1% of the shorter side
 const px = (x, y) => [x * W / 100, y * H / 100];
@@ -59,9 +59,16 @@ html, body { margin: 0; width: ${W}px; height: ${H}px; overflow: hidden; backgro
    off at their box edge, which showed as a faint rectangle behind the title. */
 .ghost { color: transparent; text-shadow: 0 ${tfs * 0.06}px ${tfs * 0.25}px rgba(0, 0, 0, 0.95), 0 0 ${tfs * 0.5}px rgba(0, 0, 0, 0.8); }
 .half { position: absolute; left: 0; top: 0; width: 100%; }
+.stampwrap { position: absolute; left: 0; top: 0; width: 100%; height: 1em; color: transparent; text-shadow: none; }
 .a { clip-path: polygon(-10% -30%, 110% -30%, 110% 38%, 100% 38%, 64% 46%, 52% 58%, 30% 52%, 0 64%, -10% 64%); }
 .b { clip-path: polygon(-10% 64%, 0 64%, 30% 52%, 52% 58%, 64% 46%, 100% 38%, 110% 38%, 110% 130%, -10% 130%); transform: translate(${tfs * 0.035}px, ${tfs * 0.05}px) rotate(0.6deg); }
 #crack { left: 0; top: 0; width: 100%; height: 100%; }
+/* Patch 163: the name is FRACTURED: Second Opinion; the subtitle is the game's red
+   clinic stamp, as on the title screen (src/style.css .title-stamp). */
+.stamp { position: absolute; right: 0.2em; bottom: -0.62em; z-index: 2; font-family: 'Courier New', Courier, monospace; font-weight: bold;
+  font-size: 0.25em; letter-spacing: 0.16em; line-height: 1; color: #e0283f; border: 0.14em solid #e0283f; border-radius: 0.15em;
+  padding: 0.32em 0.55em 0.26em; background: rgba(12, 4, 6, 0.6); white-space: nowrap; transform: rotate(-7deg); }
+#title { padding-bottom: 0.4em; }
 #vig { inset: 0; background: radial-gradient(ellipse at 50% 50%, transparent 52%, rgba(0, 0, 0, 0.78) 100%); }
 #grain { inset: -50%; opacity: 0.10; mix-blend-mode: overlay; }
 ${layout === 'logo' ? 'html, body { background: transparent !important; } .l:not(#title) { display: none !important; }' : ''}
@@ -70,7 +77,7 @@ ${layout === 'logo' ? 'html, body { background: transparent !important; } .l:not
 <div class="l" id="eyeglow"></div><div class="l" id="beamwrap"><div class="l" id="beam"></div></div><div class="l" id="eye"></div><div class="l" id="hero"></div>
 <div class="l" id="vig"></div>
 <svg class="l" id="grain" width="${W * 2}" height="${H * 2}"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
-<div class="l" id="title"><div class="t ghost">FRACTURED</div><div class="t half a">FRACTURED</div><div class="t half b">FRACTURED</div></div>
+<div class="l" id="title"><div class="t ghost">FRACTURED</div><div class="t half a">FRACTURED</div><div class="t half b">FRACTURED</div><div class="t stampwrap"><span class="stamp">SECOND OPINION</span></div></div>
 </body></html>`;
 
 (async () => {

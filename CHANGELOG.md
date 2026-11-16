@@ -2988,6 +2988,31 @@ The user didn't like the title screen's background. It was red fog ellipses, spi
   - Run and passing: `sizes`, `text`, `story`, `settings`, `focus_keys`, `render_recovery`, `access`, `smoke`, and all Node suites.
   - Screenshots for new and returning players at 384×717, 1280×720, 915×412 and 960×540 were checked by eye.
 
+**Patch 163: FRACTURED: Second Opinion. The title screen fights back.**
+
+The user asked for a title screen that is "dynamic and moving", and a new name for v2. From the options offered, they chose the name **FRACTURED: Second Opinion** and the motion "creatures vs. the light".
+
+- **Name.**
+  - On the title screen, the subtitle is a red clinic stamp, SECOND OPINION, across the corner of the cracked title (`.title-stamp`, a child of `.title-glitch`). It is sized in em with a 12 px minimum and stamps in after 0.6 s; the stamp-in doesn't run under reduced motion or Photosensitivity. The title's bottom margin makes room for it, and `z-index` puts it above the letters' halves.
+  - Also renamed: the `<title>`, `og:title`, and the meta and og descriptions (new pitch); the credits heading; the `SUBMISSION.md` title and resubmission note (v1 was "FRACTURED"); and `marketing/README.md`.
+  - The covers and logo carry the stamp too (`marketing/tools/cover.cjs`). The logo is now `fractured_logo_1600x520.png`, and both preview videos were re-encoded to open on the new covers.
+- **Motion (`Renderer.drawTitleScene`, with its own clock and dt clamped to 50 ms):**
+  - **Creatures.** The game's Janitors, Hall Monitors and Photocopies (sprites built once by `titleCreatureSprites`) come in from the sides and the top edge and weave toward the Subject.
+    - In the dark only their eyes show clearly; in the beam they show in full, are pushed back, whiten and shake.
+    - After 0.75 s in the light they burst into sparks: a pooled particle list capped at 120.
+    - One that reaches the Subject bursts too, and the Subject's ring flinches red.
+    - Up to 7–12 on screen, depending on screen area.
+  - **The beam hunts.** It turns toward the nearest creature in front of it (2 rad/s, 0.9 under calm motion), clamped to the upper half-plane, and sweeps when there are none.
+  - **The Subject** paces the bottom edge.
+  - **The eye** has a heartbeat: its red bloom swells, its pupil tightens and it grows 2% on each beat. Its iris follows the beam, and it drifts half as much as the scene, for depth.
+  - **The camera** drifts a few pixels, and the floor rings scroll slowly.
+  - **The title crack** jolts open every 7 s and settles (`@keyframes title-crack`).
+  - Calm motion keeps the creatures, but drops the drift, the blink, the jitter and the jolt, and slows the beam.
+- **Checks:**
+  - Passing: `sizes`, `text`, `access`, `focus_keys`, `render_recovery`, and the Node suites.
+  - A virtual-clock 10 s capture at 384×717 was reviewed frame by frame.
+  - The headless draw cost is noisy (0.05–5 ms a frame with the same settings); a phone check is still needed.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
