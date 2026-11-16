@@ -389,5 +389,76 @@ console.log('\nBoon pool (LevelUpUI.BOONS)');
 }
 
 // ---------------------------------------------------------------------------
+// Patch 125 (V2 plan C2): weapon levels are data (WEAPON_LEVEL_UPS) so the card can
+// say what a level does. The table must reproduce the old selectCard() if/else chain
+// exactly — the chain is kept below as the oracle, and both are run side by side.
+console.log('\nWeapon level-ups (LevelUpUI.WEAPON_LEVEL_UPS)');
+{
+    const { WEAPON_LEVEL_UPS, WEAPON_ICONS, applyWeaponLevelUp, describeWeaponLevelUp,
+            synergyHintsFor, BOONS, DEEP_BOONS } = await import('./src/ui/LevelUpUI.js');
+    const { PLAYER_WEAPON_IDS, MANIFESTATIONS } = await import('./src/data/Manifestations.js');
+
+    const legacy = (id, wep) => {   // verbatim from selectCard() before Patch 125
+        if (id === 'flashlight') { wep.damage += 5; wep.radius += 20; wep.angle += 0.05; }
+        else if (id === 'static') { wep.damage += 3; wep.radius += 15; wep.active = true; }
+        else if (id === 'lead_pipe') { wep.damage += 20; wep.radius += 15; wep.cooldown = Math.max(30, wep.cooldown - 10); }
+        else if (id === 'spilled_ink') { wep.damage += 3; wep.radius += 10; wep.dropRate = Math.max(10, wep.dropRate - 5); }
+        else if (id === 'corrosive_battery') { wep.damage += 5; wep.duration += 30; }
+        else if (id === 'broken_chalk') { wep.radius += 15; wep.duration += 30; wep.cooldown = Math.max(60, wep.cooldown - 15); }
+        else if (id === 'polaroid_camera') { wep.damage += 20; wep.radius += 40; wep.cooldown = Math.max(90, wep.cooldown - 30); }
+        else if (id === 'fidget_spinner') { wep.damage += 5; wep.baseRadius += 10; wep.speed += 0.02; }
+    };
+    // Game.init's starting values, plus a "modified" variant (boons/Synapse already
+    // moved the numbers, cooldowns pushed BELOW their floors as steady_hands can).
+    const base = {
+        flashlight: { damage: 15, radius: 250, angle: 0.6 },
+        static: { damage: 5, radius: 100, active: false },
+        polaroid_camera: { damage: 30, radius: 300, angle: Math.PI / 3, cooldown: 180 },
+        fidget_spinner: { damage: 8, baseRadius: 60, speed: 0.1 },
+        lead_pipe: { damage: 45, radius: 70, cooldown: 90 },
+        spilled_ink: { damage: 10, radius: 45, dropRate: 45 },
+        broken_chalk: { radius: 60, duration: 300, cooldown: 600 },
+        corrosive_battery: { damage: 2, duration: 180 }
+    };
+    const modified = JSON.parse(JSON.stringify(base));
+    modified.lead_pipe.cooldown = 25; modified.broken_chalk.cooldown = 50; modified.polaroid_camera.cooldown = 70;
+    modified.spilled_ink.dropRate = 8; modified.flashlight.damage = 30.6; modified.fidget_spinner.damage = 12;
+
+    for (const id of PLAYER_WEAPON_IDS) {
+        check(`${id} has a WEAPON_LEVEL_UPS entry`, Array.isArray(WEAPON_LEVEL_UPS[id]) && WEAPON_LEVEL_UPS[id].length > 0);
+        check(`${id} has a display name and an icon`, !!(MANIFESTATIONS[id] && MANIFESTATIONS[id].name) && !!WEAPON_ICONS[id]);
+        for (const [tag, start] of [['init', base], ['modified', modified]]) {
+            if (!start[id]) { check(`${id} has a ${tag} fixture`, false); continue; }
+            const a = { ...start[id] }, b = { ...start[id] };
+            for (let i = 0; i < 8; i++) { legacy(id, a); applyWeaponLevelUp(b, id); }
+            check(`${id}: table == legacy chain over 8 levels (${tag})`, JSON.stringify(a) === JSON.stringify(b),
+                  `${JSON.stringify(a)} vs ${JSON.stringify(b)}`);
+        }
+        const lines = describeWeaponLevelUp({ ...base[id] }, id);
+        check(`${id}: card lines exist and carry no NaN/undefined`,
+              lines.length > 0 && lines.every(l => !/NaN|undefined|Infinity/.test(l)), lines.join(' | '));
+    }
+    check('flashlight card line reads "Damage 15 → 20"',
+          describeWeaponLevelUp({ ...base.flashlight }, 'flashlight')[0] === 'Damage 15 → 20');
+    check('a cooldown already at its floor is not described as changing',
+          !describeWeaponLevelUp({ damage: 45, radius: 70, cooldown: 30 }, 'lead_pipe').some(l => l.startsWith('Swing every')));
+
+    // Synergy hints use the real getActiveSynergies rule (both weapons at level 5).
+    const w = {}; PLAYER_WEAPON_IDS.forEach(id => { w[id] = { level: 0 }; });
+    w.flashlight.level = 1;
+    const h0 = synergyHintsFor(w, 'static');
+    check('static card says it pairs with the flashlight', h0.pairs.some(p => /Flashlight/.test(p)) && h0.ready.length === 0, JSON.stringify(h0));
+    w.flashlight.level = 5; w.static.level = 4;
+    const h1 = synergyHintsFor(w, 'static');
+    check('static 4 -> 5 with flashlight 5 is SYNERGY READY', h1.ready.length === 1, JSON.stringify(h1));
+
+    // No alchemical symbols (U+1F700–1F77F): no Android or Windows font has them.
+    const alchemical = [...BOONS, ...DEEP_BOONS].filter(b => [...String(b.icon)].some(c => {
+        const cp = c.codePointAt(0); return cp >= 0x1F700 && cp <= 0x1F77F;
+    }));
+    check('no boon icon uses an alchemical symbol', alchemical.length === 0, alchemical.map(b => b.id).join(', '));
+}
+
+// ---------------------------------------------------------------------------
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

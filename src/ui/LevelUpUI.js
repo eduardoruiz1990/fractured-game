@@ -1,8 +1,7 @@
-// Only getActiveSynergies is used here. MANIFESTATIONS, SYNERGIES and
-// INTRUSIVE_THOUGHTS were imported but never referenced — note in particular that
-// MANIFESTATIONS is NOT the level-up boon pool despite appearing to be. The real
-// pool is BOONS, below.
-import { getActiveSynergies } from '../data/Manifestations.js';
+// MANIFESTATIONS is NOT the level-up boon pool despite appearing to be — the real
+// pool is BOONS, below. Patch 125 imports it (and SYNERGIES) for what it is: the
+// weapons' display names and descriptions, and the synergy pairs a card can preview.
+import { getActiveSynergies, MANIFESTATIONS, SYNERGIES } from '../data/Manifestations.js';
 // Patch 95 — the weapon ceiling comes off in THE RECURSION. See src/core/Endless.js.
 import { weaponLevelCap, isEndless } from '../core/Endless.js';
 
@@ -71,13 +70,161 @@ export const BOONS = [
  * Exported for the same reason BOONS is (Patches 55/56): the Clinical Guide renders
  * from live data and must never carry a hand-transcribed copy of a catalogue.
  */
+// Patch 125: these five used the alchemical symbols U+1F700–1F77F (🜂🜃🜁🜄🝊), which
+// no Android or Windows system font carries — every RECURSION card showed an empty box.
+// Inline SVG in currentColor instead (the polaroid slot sets the size via font-size).
+const ICON_ACUITY = '<svg class="card-svg" viewBox="0 0 48 48" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="24" r="13"/><path d="M24 4v10M24 34v10M4 24h10M34 24h10"/><circle cx="24" cy="24" r="2.5" fill="currentColor"/></svg>';
+const ICON_BULWARK = '<svg class="card-svg" viewBox="0 0 48 48" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M24 5l16 6v12c0 10-7 17-16 20C15 40 8 33 8 23V11z"/><path d="M24 16v14M17 23h14"/></svg>';
+const ICON_IMPULSE = '<svg class="card-svg" viewBox="0 0 48 48" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 12l12 12-12 12M24 12l12 12-12 12"/></svg>';
+const ICON_REFLEX = '<svg class="card-svg" viewBox="0 0 48 48" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M28 4L12 27h11l-4 17 17-24H25z"/></svg>';
+const ICON_AVARICE = '<svg class="card-svg" viewBox="0 0 48 48" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8v16a12 12 0 0 0 24 0V8"/><path d="M12 8h7M29 8h7M12 16h7M29 16h7"/></svg>';
+
 export const DEEP_BOONS = [
-    { id: 'deep_acuity',    name: 'Acuity',    desc: 'All weapon damage +10%.',      color: '#ffd27f', icon: '🜂', tags: ['focus', 'passive'] },
-    { id: 'deep_bulwark',   name: 'Bulwark',   desc: 'Max Sanity +25.',              color: '#9fd3c7', icon: '🜃', tags: ['passive', 'utility'] },
-    { id: 'deep_impulse',   name: 'Impulse',   desc: 'Move speed +4%.',              color: '#8ec5ff', icon: '🜁', tags: ['kinetic', 'passive'] },
-    { id: 'deep_reflex',    name: 'Reflex',    desc: 'Dash recharges 4 frames faster.', color: '#c9a0ff', icon: '🜄', tags: ['utility', 'kinetic'] },
-    { id: 'deep_avarice',   name: 'Avarice',   desc: 'Pull Lucidity from 8% further.', color: '#ffcc66', icon: '🝊', tags: ['utility', 'passive'] }
+    { id: 'deep_acuity',    name: 'Acuity',    desc: 'All weapon damage +10%.',      color: '#ffd27f', icon: ICON_ACUITY, tags: ['focus', 'passive'] },
+    { id: 'deep_bulwark',   name: 'Bulwark',   desc: 'Max Sanity +25.',              color: '#9fd3c7', icon: ICON_BULWARK, tags: ['passive', 'utility'] },
+    { id: 'deep_impulse',   name: 'Impulse',   desc: 'Move speed +4%.',              color: '#8ec5ff', icon: ICON_IMPULSE, tags: ['kinetic', 'passive'] },
+    { id: 'deep_reflex',    name: 'Reflex',    desc: 'Dash recharges 4 frames faster.', color: '#c9a0ff', icon: ICON_REFLEX, tags: ['utility', 'kinetic'] },
+    { id: 'deep_avarice',   name: 'Avarice',   desc: 'Pull Lucidity from 8% further.', color: '#ffcc66', icon: ICON_AVARICE, tags: ['utility', 'passive'] }
 ];
+
+/**
+ * Patch 125 (V2 plan C2) — what one weapon level does, as data.
+ *
+ * This was an if/else chain inside selectCard(), which meant the card could only say
+ * "Upgrade this weapon." — the numbers lived where the card could not read them. Now
+ * applyWeaponLevelUp() applies exactly these steps (same order, same Math.max floors,
+ * so the result is identical to the old chain — test_content.js holds a golden table)
+ * and describeWeaponLevelUp() turns the SAME steps into "Damage 15 → 20" lines.
+ *
+ * Step shape: { key, add, min?, set?, kind, label }
+ *   add/min  wep[key] = min === undefined ? wep[key] + add : Math.max(min, wep[key] + add)
+ *   set      wep[key] = set (no card line)
+ *   kind     how the line is written: num | px | cone | sec | pct
+ */
+export const WEAPON_LEVEL_UPS = {
+    flashlight: [
+        { key: 'damage', add: 5, kind: 'num', label: 'Damage' },
+        { key: 'radius', add: 20, kind: 'px', label: 'Range' },
+        { key: 'angle', add: 0.05, kind: 'cone', label: 'Beam' }
+    ],
+    static: [
+        { key: 'damage', add: 3, kind: 'num', label: 'Damage' },
+        { key: 'radius', add: 15, kind: 'px', label: 'Aura' },
+        { key: 'active', set: true }
+    ],
+    lead_pipe: [
+        { key: 'damage', add: 20, kind: 'num', label: 'Damage' },
+        { key: 'radius', add: 15, kind: 'px', label: 'Reach' },
+        { key: 'cooldown', add: -10, min: 30, kind: 'sec', label: 'Swing every' }
+    ],
+    spilled_ink: [
+        { key: 'damage', add: 3, kind: 'num', label: 'Damage' },
+        { key: 'radius', add: 10, kind: 'px', label: 'Pool size' },
+        { key: 'dropRate', add: -5, min: 10, kind: 'sec', label: 'Pool every' }
+    ],
+    corrosive_battery: [
+        { key: 'damage', add: 5, kind: 'num', label: 'Acid damage' },
+        { key: 'duration', add: 30, kind: 'sec', label: 'Acid lasts' }
+    ],
+    broken_chalk: [
+        { key: 'radius', add: 15, kind: 'px', label: 'Circle size' },
+        { key: 'duration', add: 30, kind: 'sec', label: 'Lasts' },
+        { key: 'cooldown', add: -15, min: 60, kind: 'sec', label: 'Drawn every' }
+    ],
+    polaroid_camera: [
+        { key: 'damage', add: 20, kind: 'num', label: 'Damage' },
+        { key: 'radius', add: 40, kind: 'px', label: 'Flash range' },
+        { key: 'cooldown', add: -30, min: 90, kind: 'sec', label: 'Flash every' }
+    ],
+    fidget_spinner: [
+        { key: 'damage', add: 5, kind: 'num', label: 'Damage' },
+        { key: 'baseRadius', add: 10, kind: 'px', label: 'Orbit' },
+        { key: 'speed', add: 0.02, kind: 'pct', label: 'Spin speed' }
+    ]
+};
+
+/** Widely supported emoji per weapon (Patch 125; was one shared 🔧 for all eight). */
+export const WEAPON_ICONS = {
+    flashlight: '🔦', static: '📻', lead_pipe: '🔧', spilled_ink: '🖋️',
+    corrosive_battery: '🔋', broken_chalk: '🖍️', polaroid_camera: '📷', fidget_spinner: '🌀'
+};
+
+const stepResult = (step, cur) => (step.min === undefined ? cur + step.add : Math.max(step.min, cur + step.add));
+
+/** Applies one level's stat steps to `wep` in place. Does NOT touch wep.level. */
+export function applyWeaponLevelUp(wep, id) {
+    const steps = WEAPON_LEVEL_UPS[id];
+    if (!wep || !steps) return;
+    for (const step of steps) {
+        if (step.set !== undefined) wep[step.key] = step.set;
+        else if (Number.isFinite(wep[step.key])) wep[step.key] = stepResult(step, wep[step.key]);
+    }
+}
+
+const trimNum = (v, dp) => String(Number(v.toFixed(dp)));   // 1.50 -> "1.5", 20.0 -> "20"
+const fmtSec = (frames) => {
+    const s = frames / 60;
+    return (s >= 10 ? trimNum(s, 0) : trimNum(s, 2)) + 's';
+};
+
+/**
+ * One level's steps as card lines, from the weapon's CURRENT values (so Synapse
+ * nodes, tokens and boons that already changed them are reflected). Steps that would
+ * not change anything (a cooldown already at its floor) are left off.
+ */
+export function describeWeaponLevelUp(wep, id) {
+    const steps = WEAPON_LEVEL_UPS[id];
+    if (!wep || !steps) return [];
+    const lines = [];
+    for (const step of steps) {
+        if (step.set !== undefined || !step.kind) continue;
+        const cur = wep[step.key];
+        if (!Number.isFinite(cur)) continue;
+        const next = stepResult(step, cur);
+        if (next === cur) continue;
+        let text;
+        if (step.kind === 'num') text = `${step.label} ${trimNum(cur, 1)} → ${trimNum(next, 1)}`;
+        else if (step.kind === 'px') text = `${step.label} ${Math.round(cur)} → ${Math.round(next)}`;
+        else if (step.kind === 'cone') text = `${step.label} ${Math.round(cur * 2 * 180 / Math.PI)}° → ${Math.round(next * 2 * 180 / Math.PI)}°`;
+        else if (step.kind === 'sec') text = `${step.label} ${fmtSec(cur)} → ${fmtSec(next)}`;
+        else if (step.kind === 'pct') text = `${step.label} +${Math.round((next / cur - 1) * 100)}%`;
+        if (text) lines.push(text);
+    }
+    return lines;
+}
+
+const weaponName = (id) => (MANIFESTATIONS[id] && MANIFESTATIONS[id].name) || id.replace(/_/g, ' ');
+
+/**
+ * Synergy hints for a weapon card (Patch 125; V2 plan C1's "pairs with" tag).
+ *   pairs — synergies this weapon is in whose OTHER weapons the player already owns
+ *   ready — the synergy names this exact pick would complete, computed by running the
+ *           real getActiveSynergies() rule on a copy of the levels with this one +1.
+ */
+export function synergyHintsFor(weapons, id) {
+    const pairs = [];
+    const ready = [];
+    if (!weapons || !weapons[id]) return { pairs, ready };
+    const levels = {};
+    for (const [k, w] of Object.entries(weapons)) levels[k] = { level: (w && w.level) || 0 };
+    const before = new Set(getActiveSynergies(levels));
+    levels[id] = { level: levels[id].level + 1 };
+    const after = getActiveSynergies(levels);
+    for (const sid of after) {
+        if (!before.has(sid) && SYNERGIES[sid]) ready.push(SYNERGIES[sid].name);
+    }
+    for (const syn of Object.values(SYNERGIES)) {
+        if (!syn.reqs.includes(id)) continue;
+        const others = syn.reqs.filter(r => r !== id);
+        if (others.length && others.every(r => weapons[r] && weapons[r].level > 0)) {
+            pairs.push(others.map(weaponName).join(' + '));
+        }
+    }
+    return { pairs: [...new Set(pairs)], ready };
+}
+
+/** Patch 125: clicks and 1/2/3 are ignored for this long after the cards appear. */
+export const LEVEL_UP_ARM_MS = 300;
 
 export class LevelUpUI {
     constructor(audioEngine, saveManager) {
@@ -90,6 +237,39 @@ export class LevelUpUI {
         if (import.meta.env.DEV) window.FRACTURED_DEV_MODE = false;
         this.setupDevShortcuts();
         this.attachRerollEvent();
+        this.attachKeyPicks();
+    }
+
+    /**
+     * Patch 125: 1/2/3 pick a card while the modal is open. A UI listener (like
+     * main.js's Escape and E), not gameplay input — it is inert unless `isOpen`.
+     */
+    attachKeyPicks() {
+        this.isOpen = false;
+        this.armedAt = 0;
+        this.currentChoices = [];
+        window.addEventListener('keydown', (e) => {
+            if (!this.isOpen || e.repeat) return;
+            const idx = ['1', '2', '3'].indexOf(e.key);
+            if (idx < 0 || idx >= this.currentChoices.length) return;
+            e.preventDefault();
+            this.tryPick(idx);
+        });
+    }
+
+    tryPick(idx) {
+        // The display check is belt-and-braces: nothing else hides this modal today,
+        // but if something ever does without close(), 1/2/3 must not pick mid-run.
+        if (!this.isOpen || this.modal.style.display === 'none' || performance.now() < this.armedAt) return;
+        const choice = this.currentChoices[idx];
+        if (choice) this.selectCard(choice, this.currentGame, this.currentCallback);
+    }
+
+    close() {
+        this.isOpen = false;
+        this.currentChoices = [];
+        if (this.armTimer) { clearTimeout(this.armTimer); this.armTimer = null; }
+        this.modal.style.display = 'none';
     }
 
     setupDevShortcuts() {
@@ -138,6 +318,17 @@ export class LevelUpUI {
         
         this.modal.style.display = 'flex';
         this.container.innerHTML = '';
+        // Patch 125: arm after a beat. The modal opens mid-fight; on touch the right
+        // thumb is usually still on the aim stick, under the cards.
+        this.isOpen = true;
+        this.currentChoices = [];
+        this.armedAt = performance.now() + LEVEL_UP_ARM_MS;
+        this.container.classList.add('cards-arming');
+        if (this.armTimer) clearTimeout(this.armTimer);
+        this.armTimer = setTimeout(() => {
+            this.armTimer = null;
+            this.container.classList.remove('cards-arming');
+        }, LEVEL_UP_ARM_MS);
         
         if (!game.state.player.synergies) game.state.player.synergies = [];
         if (!game.state.player.curses) game.state.player.curses = [];
@@ -174,13 +365,20 @@ export class LevelUpUI {
             // Patch 95: was a hardcoded `wep.level < 5`. weaponLevelCap returns exactly
             // 5 for floors 1-5, so Cycle I keeps its ceiling to the letter.
             if (wep.level < levelCap) {
+                // Patch 125: the real name, and what the level actually does. A new
+                // weapon also says what it IS (its MANIFESTATIONS description).
+                const isNew = wep.level === 0;
                 availableWeapons.push({
                     type: 'weapon',
                     id: weaponKey,
-                    name: weaponKey.replace('_', ' ').toUpperCase(),
-                    desc: 'Upgrade this weapon.',
+                    name: weaponName(weaponKey),
+                    desc: isNew && MANIFESTATIONS[weaponKey] ? MANIFESTATIONS[weaponKey].desc : '',
+                    stats: describeWeaponLevelUp(wep, weaponKey),
+                    hints: synergyHintsFor(game.state.player.weapons, weaponKey),
+                    isNew,
+                    isMax: wep.level + 1 >= levelCap && Number.isFinite(levelCap),
                     color: '#c5a059',
-                    icon: '🔧',
+                    icon: WEAPON_ICONS[weaponKey] || '🔧',
                     currentLevel: wep.level,
                     tags: wep.tags || []
                 });
@@ -193,7 +391,7 @@ export class LevelUpUI {
             game.state.player.maxHp += 50;
             game.state.sanity = Math.min(game.state.player.maxHp, game.state.sanity + 50);
             if (this.audioEngine) this.audioEngine.playSFX('pickup', 5);
-            this.modal.style.display = 'none';
+            this.close();
             if (onCompleteCallback) onCompleteCallback();
             return;
         }
@@ -241,8 +439,9 @@ export class LevelUpUI {
         }
 
         let selected = shuffled.slice(0, 3);
-        
-        selected.forEach((choice) => {
+        this.currentChoices = selected;
+
+        selected.forEach((choice, idx) => {
             const card = document.createElement('div'); 
             card.className = 'card';
             const rot = (Math.random() - 0.5) * 6;
@@ -254,20 +453,40 @@ export class LevelUpUI {
             // weapon branch and renders "WEAPON LVL NaN" — those cards carry no
             // currentLevel because they have no level to carry.
             let label;
-            if (choice.type === 'boon') label = 'CLINICAL BREAKTHROUGH';
+            const badges = [];
+            if (choice.type === 'boon') { label = 'CLINICAL BREAKTHROUGH'; badges.push(['BOON', 'boon']); }
             else if (choice.type === 'deep') label = 'RECURSIVE ADAPTATION';
-            else label = `WEAPON LVL ${choice.currentLevel + 1}`;
+            else {
+                // Patch 125: "LVL 2 → 3", and the badges that make a pick legible.
+                label = choice.isNew ? 'NEW WEAPON' : `LVL ${choice.currentLevel} → ${choice.currentLevel + 1}`;
+                if (choice.isNew) badges.push(['NEW', 'new']);
+                if (choice.isMax && !choice.isNew) badges.push(['MAX', 'max']);
+                (choice.hints ? choice.hints.ready : []).forEach(n => badges.push([`SYNERGY READY: ${n}`, 'synergy']));
+            }
+            const badgeHtml = badges.length
+                ? `<div class="card-badges">${badges.map(([t, c]) => `<span class="card-badge card-badge-${c}">${t}</span>`).join('')}</div>`
+                : '';
+            const statsHtml = (choice.stats && choice.stats.length)
+                ? `<ul class="card-stats">${choice.stats.map(l => `<li>${l}</li>`).join('')}</ul>` : '';
+            const pairs = choice.hints && !choice.hints.ready.length ? choice.hints.pairs.slice(0, 2) : [];
+            const pairHtml = pairs.map(n => `<div class="card-pair">🔗 pairs with ${n}</div>`).join('');
 
             card.innerHTML = `
-                <div class="polaroid-photo" style="background: #111">
+                <div class="card-key">${idx + 1}</div>
+                <div class="polaroid-photo" style="background: #111; color: ${choice.color};">
                     <div style="text-shadow: 0 0 15px rgba(255,255,255,0.5);">${choice.icon}</div>
                 </div>
-                <h3 style="color: ${choice.color}">${choice.name}</h3>
-                <p style="color: #e2e8f0;">${choice.desc}</p>
-                <div class="lvl" style="color: ${choice.color}">${label}</div>
+                <div class="card-body">
+                    ${badgeHtml}
+                    <h3 style="color: ${choice.color}">${choice.name}</h3>
+                    ${choice.desc ? `<p class="card-desc" style="color: #e2e8f0;">${choice.desc}</p>` : ''}
+                    ${statsHtml}
+                    ${pairHtml}
+                    <div class="lvl" style="color: ${choice.color}">${label}</div>
+                </div>
             `;
-            
-            card.onclick = () => this.selectCard(choice, game, onCompleteCallback);
+
+            card.onclick = () => this.tryPick(idx);
             this.container.appendChild(card);
         });
     }
@@ -283,7 +502,7 @@ export class LevelUpUI {
         `;
         card.onclick = () => {
             game.state.sanity = Math.min(game.state.player.maxHp, game.state.sanity + (game.state.player.maxHp * 0.5));
-            this.modal.style.display = 'none';
+            this.close();
             if (this.audioEngine) this.audioEngine.playSFX('pickup', 5);
             onCompleteCallback();
         };
@@ -303,23 +522,7 @@ export class LevelUpUI {
             const wep = game.state.player.weapons[choice.id];
             if (wep) {
                 wep.level++;
-                if (choice.id === 'flashlight') { 
-                    wep.damage += 5; wep.radius += 20; wep.angle += 0.05; 
-                } else if (choice.id === 'static') { 
-                    wep.damage += 3; wep.radius += 15; wep.active = true; 
-                } else if (choice.id === 'lead_pipe') {
-                    wep.damage += 20; wep.radius += 15; wep.cooldown = Math.max(30, wep.cooldown - 10);
-                } else if (choice.id === 'spilled_ink') {
-                    wep.damage += 3; wep.radius += 10; wep.dropRate = Math.max(10, wep.dropRate - 5);
-                } else if (choice.id === 'corrosive_battery') {
-                    wep.damage += 5; wep.duration += 30;
-                } else if (choice.id === 'broken_chalk') {
-                    wep.radius += 15; wep.duration += 30; wep.cooldown = Math.max(60, wep.cooldown - 15);
-                } else if (choice.id === 'polaroid_camera') {
-                    wep.damage += 20; wep.radius += 40; wep.cooldown = Math.max(90, wep.cooldown - 30);
-                } else if (choice.id === 'fidget_spinner') {
-                    wep.damage += 5; wep.baseRadius += 10; wep.speed += 0.02;
-                }
+                applyWeaponLevelUp(wep, choice.id);   // Patch 125: was an if/else chain
             }
         } else if (choice.type === 'deep') {
             // Patch 95 — repeatable. Deliberately NOT pushed into player.boons: that
@@ -399,7 +602,7 @@ export class LevelUpUI {
         if (this.audioEngine) this.audioEngine.playSFX('levelup', 5);
         
         game.state.sanity = Math.min(game.state.player.maxHp, game.state.sanity + 20);
-        this.modal.style.display = 'none';
+        this.close();
         try { if (navigator.vibrate) navigator.vibrate([50, 50, 50]); } catch(e){}
         onCompleteCallback();
     }

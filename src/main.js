@@ -2016,7 +2016,8 @@ function initEngine() {
             get gameState() { return gameState; },
             setQuality(q) { gameSettings.quality = q; applyQualityTier(); },   // Patch 115
             get qualityTier() { return currentQualityTier(); },
-            get qualitySetting() { return gameSettings.quality; }   // Patch 120
+            get qualitySetting() { return gameSettings.quality; },  // Patch 120
+            get levelUpUI() { return levelUpUI; }                  // Patch 125
         };
         // Patch 120: the on-screen perf panel, playtest builds only. MODE is a string
         // literal after Vite's replacement, so every other build drops this branch and
