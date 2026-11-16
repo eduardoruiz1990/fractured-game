@@ -15,20 +15,44 @@ Check every line against the uploaded build before pasting, and tick
 - Before uploading: `node qa/smoke_check.cjs` passes.
 - After uploading: work through `QA_CHECKLIST.md` in the portal preview.
 
+## Store assets (Patch 160)
+
+All of these are in `marketing/`; see `marketing/README.md` for the rules they follow and how to rebuild them.
+
+| Portal field | File |
+| --- | --- |
+| Cover, landscape 16:9 | `marketing/covers/cover_landscape_1920x1080.png` |
+| Cover, portrait 2:3 | `marketing/covers/cover_portrait_800x1200.png` |
+| Cover, square 1:1 | `marketing/covers/cover_square_800x800.png` |
+| Preview video, landscape | `marketing/videos/preview_landscape_1920x1080.mp4` (16 s, no audio) |
+| Preview video, portrait | `marketing/videos/preview_portrait_1080x1620.mp4` (16 s, no audio) |
+| Logo, if asked | `marketing/logo/fractured_logo_1600x400.png` (transparent) |
+
+**Cover click-through rate** becomes a Basic Launch metric for games that start Basic Launch on or after 23 November 2026, so the covers count as much as the build.
+- Upload all three covers.
+- Check how they look as small tiles in the portal preview.
+
 ## Title
 
 FRACTURED
 
 ## Short description (one line)
 
-A psychological survivors-like: hold back the dark with a flashlight, five floors of a
-mind's defences, and a story about getting better.
+Hold the light. Survive the swarm. Break five nightmares, and find your way back.
+
+(Longer alternative: "A psychological survivors-like: a flashlight against the dark, five
+nightmare bosses, hundreds of builds, and a story about getting better.")
 
 ## Description
 
-You are Subject 0, waking inside an evaluation built from a memory you won't face.
-Each floor of the institution is a defence mechanism, and each one has a guardian.
-Hold your light up, keep your Sanity, and descend.
+**The dark is full of them. You have a flashlight.**
+
+You are Subject 0, waking inside an evaluation built from a memory you won't face. Each
+floor of the institution is a defence mechanism, and each one has a guardian. Hold the
+light up, keep your Sanity, and go deeper.
+
+Easy to pick up: move, and your weapons fire on their own. A run lasts a few minutes, and
+every run makes the next one stronger.
 
 - **Survive the swarm.** Janitors, Hall Monitors, Substitutes, Photocopies, Fire
   Wardens and Crawlspaces come in waves from the dark.

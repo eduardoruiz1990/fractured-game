@@ -2901,6 +2901,29 @@ automatable parts of `QA_CHECKLIST.md` §0, §7 and §8.
 - `QA_CHECKLIST.md` §0, §7 and §8, `qa/README.md` and `CLAUDE.md` (commands,
   releasing) are updated.
 
+**Patch 160: store assets (covers, preview videos, logo) and store copy.**
+
+Until now the submission was a zip and some text. CrazyGames asks for three covers and two preview videos. From 23 November 2026, cover click-through rate is also a Basic Launch metric. Everything is in the new `marketing/` folder.
+
+- **Covers:**
+  - `covers/`: landscape 1920×1080, portrait 800×1200 and square 800×800.
+  - They are one consistent set. The focal point is the Panopticon's eye, with a flashlight beam leading to it from the Subject. The title is the only text, in Special Elite (Apache-2.0), cream on red and gold offsets, cracked in two.
+  - Each layer is a real engine render at 5–6× zoom (`layers/L_*.png`, made by `tools/still.cjs` against the dev server). `tools/cover.cjs` composites them in headless Chromium. The output is deterministic: a re-render matched the committed covers pixel for pixel.
+- **Logo:** `logo/fractured_logo_1600x400.png`, the title alone on a transparent background.
+- **Preview videos:**
+  - `videos/`: 1920×1080 and 1080×1620 (2:3), 16 s each, H.264, no audio, 12.7 MB and 10.6 MB.
+  - Each opens on its static cover and crossfades into gameplay, as the portal asks.
+  - The four shots are: the Panopticon fight, the swarm (floor 2), a full-build chaos (floor 4), and the boss death.
+  - `tools/video.cjs` runs the real game on a virtual clock (an exact 1000/30 ms per frame, with no fast-forward), and `tools/encode.sh` makes the MP4.
+  - Capture-only changes, none of them in any build:
+    - the darkness fill at 62%, so the room reads on a thumbnail;
+    - no damage numbers, grain or level-up cards;
+    - Sanity held full;
+    - the floor-exit doors removed after the kill, because their labels would read as promotional text.
+- **Copy:** `SUBMISSION.md` gains a store-assets table, a shorter one-line pitch, and a hook line for the description.
+- **Check:** `marketing/README.md` lists each portal rule the assets follow, the layer recipes and the rebuild commands.
+- **Not covered:** none of this is checked by a script. Look at the covers and videos before uploading (`QA_CHECKLIST.md` §8).
+
 ---
 
 ## Keep clauses (things future patches break by accident)
