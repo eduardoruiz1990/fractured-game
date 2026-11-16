@@ -880,7 +880,8 @@ body.quality-low #crt-scanlines { display: none; }
     padding: 12px 18px 14px;
     display: none;
     z-index: 160;
-    pointer-events: none;
+    pointer-events: auto;   /* Patch 141: tap the strip to open the card */
+    cursor: pointer;
     text-align: center;
     font-family: var(--ui-font);
     color: #e4dbc8;
@@ -961,6 +962,38 @@ body.quality-low #crt-scanlines { display: none; }
 .ach-progress { height: 5px; background: #e2dccd; margin-top: 8px; }
 .ach-progress span { display: block; height: 100%; background: #8b6d2f; }
 .ach-count, .ach-date { font-size: 0.7rem; color: #8a8172; margin-top: 4px; letter-spacing: 1px; }
+/* Patch 141: notices arrive as a compact strip (stamp + name); a tap opens the full
+   card. The full card is what Patches 126-140 showed directly. */
+#synergy-banner:not(.expanded) {
+    width: auto;
+    max-width: min(460px, calc(100vw - 24px));
+    padding: 6px 12px;
+    white-space: nowrap;
+}
+#synergy-banner:not(.expanded) .syn-full { display: none; }
+#synergy-banner.expanded .syn-compact { display: none; }
+#synergy-banner .syn-compact { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+#synergy-banner .syn-chip-stamp {
+    flex: none; padding: 1px 6px; border: 1px solid #c0392b; color: #e0574a;
+    font-size: 0.7rem; font-weight: bold; letter-spacing: 0.14em;
+}
+#synergy-banner .syn-chip-name {
+    color: var(--ui-gold); font-weight: bold; font-size: 0.86rem; letter-spacing: 0.04em;
+    overflow: hidden; text-overflow: ellipsis;
+}
+#synergy-banner .syn-chip-more { flex: none; color: #b8ad96; font-size: 0.8rem; }
+#synergy-banner[data-tone="chest"] .syn-chip-stamp { border-color: #d9a441; color: #f0c060; }
+#synergy-banner[data-tone="evolution"] .syn-chip-stamp { border-color: #b388ff; color: #cfb4ff; }
+#synergy-banner[data-tone="event"] .syn-chip-stamp { border-color: #c0392b; color: #ff8a7a; }
+#synergy-banner[data-tone="achievement"] .syn-chip-stamp { border-color: #c5a059; color: #f0d08a; }
+#synergy-banner[data-tone="story"] { border-color: #8fb3c9; }
+#synergy-banner[data-tone="story"] .syn-chip-stamp,
+#synergy-banner[data-tone="story"] .syn-stamp { border-color: #8fb3c9; color: #bcd6e6; }
+#synergy-banner .syn-body { margin-top: 8px; font-size: 0.84rem; line-height: 1.5; text-align: left; max-height: 45vh; overflow-y: auto; }
+#synergy-banner .syn-close { margin-top: 10px; font-size: 0.7rem; letter-spacing: 0.2em; color: #8a8172; }
+#synergy-banner.expanded.syn-in { animation: synergyOpen 160ms ease-out both; }
+@keyframes synergyOpen { from { opacity: 0.6; } to { opacity: 1; } }
+#synergy-banner.syn-in:not(.expanded) { animation: synergyBanner 3600ms ease-out forwards; }
 #synergy-banner.syn-in { animation: synergyBanner 3600ms ease-out forwards; }
 #synergy-banner.syn-in .syn-stamp { animation: synergyStamp 420ms cubic-bezier(.2,1.6,.4,1) both; }
 #synergy-banner.calm.syn-in .syn-stamp { animation: none; }

@@ -2318,6 +2318,29 @@ local date gets the same session:
   dialog, the day's run, the score on the death screen, DONE after a reload and no
   second attempt, at 384×717 and 1280×720.
 
+### Phase E — the story layer (Patches 141+)
+
+**Patch 141 — compact notices that open on a tap (playtest feedback).**
+
+After Phase D the A56 playtest found the notice cards (synergy, chest, evolution, room
+event, achievement) fine but too big mid-fight: "something a bit more subtle like a
+small box... that if the player presses it, then it gets the large screen."
+
+- `SynergyBanner` now renders every notice as a **compact strip** (its stamp and name,
+  one line, about 46 px tall) with a ▾ when there is more to read. **A tap opens the
+  full card** (exactly what Patches 126–140 showed), which stays for 8 s
+  (`NOTICE_EXPANDED_MS`) or until a second tap closes it and moves the queue on. The
+  game keeps running either way.
+- The element now takes pointer input (it used to be `pointer-events: none`); its
+  pointer and touch events stop at it, so a tap on a notice never reaches the joysticks.
+- Both forms are in the DOM and CSS shows one, so the text checks that read
+  `textContent` still pass. The compact stamp text is 0.7rem (≥ 11 px, the C7 floor).
+  New `story` tone, for Phase E.
+- `pushNotice` accepts `body` (trusted HTML, for story pages) and `expanded` (open from
+  the start, for something the player asked to read).
+- `qa/synergy_check.cjs` now checks the compact strip comes first, that a tap opens it
+  and a second closes it.
+
 ---
 
 ## Keep clauses (things future patches break by accident)

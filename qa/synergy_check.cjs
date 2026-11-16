@@ -7,7 +7,8 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
 (async () => {
   const browser = await chromium.launch();
   for (const vp of [{ width: 384, height: 717 }, { width: 915, height: 412 }, { width: 1280, height: 720 }]) {
-    const ctx = await browser.newContext({ viewport: vp, hasTouch: vp.width < 1000 });
+    const touch = vp.width < 1000;
+    const ctx = await browser.newContext({ viewport: vp, hasTouch: touch });
     const page = await ctx.newPage();
     const tag = `${vp.width}x${vp.height}`;
     const errors = [];
@@ -37,6 +38,13 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
     }
     ok(formed, `${tag} a Static Receiver card was offered and picked`);
     await page.waitForTimeout(450);   // past the stamp animation
+    // Patch 141: it arrives as a compact strip; a tap opens the full card.
+    const c = await page.evaluate(() => { const el = document.getElementById('synergy-banner'); const r = el.getBoundingClientRect();
+      return { text: el.innerText.replace(/\s+/g, ' ').trim(), h: r.height, expanded: el.classList.contains('expanded'), slowMo: window.__fractured.game.state.slowMo }; });
+    ok(!c.expanded && /SYNERGY FORMED/.test(c.text) && /The Blinding Signal/.test(c.text) && c.h <= 60 && !/Confuses/.test(c.text),
+       `${tag} compact strip first (${Math.round(c.h)}px: ${c.text})`);
+    if (touch) await page.tap('#synergy-banner'); else await page.click('#synergy-banner');
+    await page.waitForTimeout(200);
     const b = await page.evaluate(() => {
       const el = document.getElementById('synergy-banner');
       const g = window.__fractured.game;
@@ -60,11 +68,16 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
     ok(b.z > 100, `${tag} banner above the scanlines (z ${b.z})`);
     ok(b.onScreen, `${tag} banner fully on screen`);
     ok(b.minFont >= 11, `${tag} banner text >= 11px (min ${b.minFont})`);
-    ok(b.slowMo > 0, `${tag} slow-motion running (${b.slowMo} steps left)`);
+    ok(c.slowMo > 0, `${tag} slow-motion running (${c.slowMo} steps left)`);
     ok(b.codex && b.codex.blinding_signal === 1, `${tag} codex recorded it`);
     ok(await happy() === happy0 + 1, `${tag} happytime fired once`);
     console.log('    banner:', b.text);
     await page.screenshot({ path: `${S}/synergy_${tag}.png` });
+    // A second tap closes it.
+    if (touch) await page.tap('#synergy-banner'); else await page.click('#synergy-banner');
+    await page.waitForTimeout(150);
+    const closed = await page.evaluate(() => getComputedStyle(document.getElementById('synergy-banner')).display === 'none');
+    ok(closed, `${tag} a second tap closes it`);
 
     // Slow-motion ends and the banner clears itself.
     await page.waitForTimeout(3500);
@@ -79,7 +92,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
       const g = window.__fractured.game; g.state.player.weapons.broken_chalk.level = 5; g.refreshSynergies();
     });
     await page.waitForTimeout(100);
-    const second = await page.evaluate(() => document.getElementById('synergy-banner').innerText.replace(/\s+/g, ' '));
+    const second = await page.evaluate(() => document.getElementById('synergy-banner').textContent.replace(/\s+/g, ' '));
     ok(/Ritual Focus/.test(second) && /2 \/ 14/.test(second), `${tag} second synergy announced (${second.slice(0, 60)}…)`);
     ok(await happy() === happy0 + 1, `${tag} happytime not repeated in the same session`);
 
