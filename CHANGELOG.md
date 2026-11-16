@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–128)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–129)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1816,6 +1816,40 @@ New `qa/hud_check.cjs` checks 384×717, 915×412, 800×600, 960×600 and 1280×7
 - the tutorial note does not overlap the HUD;
 - the healthy, FRAYING and recovered labels read correctly, the low bar is hatched, and
   the longest label fits its panel.
+
+**Patch 129 — hub friction: four tabs and DESCEND from the hub (C6).**
+
+- **Eight folder tabs become four groups** (`src/ui/FolderTabs.js`):
+  - **DESCEND**: Evaluation, Descent Roadmap.
+  - **SYNAPSES**: the tree.
+  - **LOADOUT**: Therapy Regimen, Intrusive Thoughts.
+  - **RECORDS**: Mind Palace, Manifestation Log, Clinical Guide.
+
+  On a phone the old strip was about 1000 px of tabs, scrolling sideways with a hidden
+  scrollbar. The four groups fit any width at 44 px+. A group with more than one pane
+  shows a small row of paper sub-tabs; SYNAPSES has none.
+- **Implementation:** the eight `.tab-btn` buttons are untouched apart from their order.
+  They keep their data-targets and UIManager's click handler, which renders each pane
+  on open, and become the sub-tab row. A group button activates a pane by clicking that
+  pane's own `.tab-btn`, so there is one code path. Groups follow the active pane
+  through a MutationObserver, so the hub zones (`triggerInteraction`, which sets
+  classes directly) and the QA scripts stay in step without knowing about groups. A
+  group reopens on the pane last used in it.
+- **DESCEND in the walkable hub:** a top-centre button and the **Enter** key. They are
+  the same `#btn-start` click as AUTHORIZE DESCENT, so a run starts from the hub with
+  no walk to the machine. With a suspended run on file they open the machine's folder
+  (EVALUATION, with RESUME) instead of replacing it silently. The button is hidden
+  outside the hub and while the folder is open (checked at the top of `gameLoop`,
+  because the MENU branch returns early). Enter on a focused button is left to that
+  button.
+
+New `qa/hub_check.cjs` (384×717, 915×412, 1280×720) checks:
+- the hub button is shown, on screen and at least 44 px;
+- the Mind Palace desk opens RECORDS on the Mind Palace pane, with three sub-tabs;
+- the four groups fit at 44 px+;
+- SYNAPSES has no sub-row, and a group reopens on its last pane;
+- DESCEND by Enter (desktop) or tap (touch) starts a run, and Enter is inert mid-run;
+- with a suspended run, DESCEND opens EVALUATION with RESUME.
 
 ---
 

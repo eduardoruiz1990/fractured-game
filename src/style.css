@@ -153,6 +153,50 @@ body.quality-low #crt-scanlines { display: none; }
 .tab-btn:hover:not(.active) { background: rgba(255,255,255,0.22); color: #333; }
 .tab-btn.active { background-color: var(--paper-bg); color: var(--blood-red); font-weight: 900; border-top: 4px solid var(--blood-red); border-bottom: 3px solid var(--paper-bg); margin-bottom: -3px; text-shadow: none; border-radius: 3px 3px 0 0; box-shadow: 0 -3px 8px rgba(0,0,0,0.18); }
 
+/* Patch 129 (V2 plan C6): four group tabs (src/ui/FolderTabs.js) carry the folder-tab
+   look the eight .tab-btn buttons used to; those buttons are now the sub-tab row
+   underneath, showing only the active group's panes, as small paper index tabs.
+   Selectors are `.folder-tabs.subtabs ...` so they out-rank the mobile `.tab-btn` and
+   `.folder-tabs` rules regardless of source order. */
+.folder-groups { display: flex; background: var(--folder-tab); border-bottom: 3px solid var(--ink-black); }
+.group-btn {
+    flex: 1; padding: 15px 8px; min-height: 44px; background: transparent; border: none;
+    border-right: 1px solid #a89d85; font-family: var(--ui-font); font-weight: bold;
+    color: #555; cursor: pointer; transition: 0.2s; letter-spacing: 1px;
+    box-shadow: inset 0 -6px 8px -6px rgba(0,0,0,0.35);
+}
+.group-btn:last-child { border-right: none; }
+.group-btn:hover:not(.active) { background: rgba(255,255,255,0.22); color: #333; }
+.group-btn.active {
+    background-color: var(--paper-bg); color: var(--blood-red); font-weight: 900;
+    border-top: 4px solid var(--blood-red); border-bottom: 3px solid var(--paper-bg);
+    margin-bottom: -3px; border-radius: 3px 3px 0 0; box-shadow: 0 -3px 8px rgba(0,0,0,0.18);
+}
+.group-btn:focus-visible { outline: 3px solid var(--blood-red); outline-offset: -3px; }
+.folder-tabs.subtabs {
+    background: var(--paper-bg); background-image: none; border-bottom: 1px dashed #a89d85;
+    justify-content: center; gap: 8px; padding: 8px 10px 6px; flex-wrap: wrap;
+}
+.folder-tabs.subtabs.single { display: none; }
+.folder-tabs.subtabs .tab-btn {
+    flex: 0 0 auto; padding: 6px 14px; min-height: 32px; font-size: 0.75rem; letter-spacing: 1px;
+    border: 1px solid #a89d85; border-radius: 3px; margin: 0; box-shadow: none; color: #6b6355;
+    background: transparent; white-space: nowrap;
+}
+.folder-tabs.subtabs .tab-btn.active {
+    border: 1px solid var(--blood-red); border-top: 1px solid var(--blood-red); background: #fffdf7;
+    color: var(--blood-red); margin: 0; border-radius: 3px; box-shadow: 1px 1px 0 rgba(0,0,0,0.12);
+}
+.folder-tabs.subtabs .tab-btn.group-hidden { display: none; }
+@media (max-width: 768px), (max-height: 560px) {
+    .group-btn { font-size: 0.75rem; padding: 10px 4px; letter-spacing: 0.5px; }
+    .folder-tabs.subtabs { overflow-x: visible; padding: 6px 8px 5px; gap: 6px; }
+    .folder-tabs.subtabs .tab-btn { padding: 6px 8px; font-size: 0.7rem; letter-spacing: 0.2px; }
+}
+@media (pointer: coarse) {
+    .folder-tabs.subtabs .tab-btn { min-height: 40px; }
+}
+
 /* Patch 37: filed-paper margin rule. Positioned at 20px — inside this element's
    own 30px padding — so it can never collide with content. Left on the default
    background-attachment so it stays put while the pane scrolls. */
@@ -775,6 +819,28 @@ body.quality-low #crt-scanlines { display: none; }
     from { opacity: 0; transform: translateX(-50%) translateY(-5px); }
     to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
+
+/* Patch 129 (V2 plan C6): DESCEND in the walkable hub, so a run can start without
+   walking to the machine. Top-centre: the hub's zone prompt owns the bottom, and the
+   hub shows no HUD. The key hint shows only with a fine pointer. */
+#hub-descend {
+    position: absolute;
+    top: max(14px, env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 150;
+    width: auto;
+    min-height: 44px;
+    padding: 10px 30px;
+    font-size: 1.1rem;
+    letter-spacing: 3px;
+    color: var(--ui-gold);
+    border-color: var(--ui-gold);
+    background: rgba(10, 6, 6, 0.85);
+    box-shadow: 0 0 18px rgba(197, 160, 89, 0.18);
+}
+#hub-descend .hub-descend-key { display: none; font-size: 0.7rem; letter-spacing: 1px; opacity: 0.75; margin-left: 6px; }
+@media (hover: hover) and (pointer: fine) { #hub-descend .hub-descend-key { display: inline; } }
 
 /* Patch 126: synergy-formed notice (src/ui/SynergyBanner.js creates the element).
    Above the scanlines (z 100) and the tutorial note (150), below the level-up modal

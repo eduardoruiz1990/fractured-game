@@ -327,6 +327,7 @@ function hudText(el, value) {
 }
 let lastScoreHtml = null;
 let lastSanityState = null;   // Patch 128: class toggles only on a change
+let hubDescendNow = () => {};   // Patch 129: set where the hub listeners are wired
 function hudHtml(el, html) {
     if (!el || html === lastScoreHtml) return;   // #score is written only from here
     lastScoreHtml = html;
@@ -1982,6 +1983,39 @@ function initEngine() {
             };
 
             window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'e') triggerInteraction(); });
+
+            // Patch 129 (V2 plan C6): start a run from the hub without walking to the
+            // Descent Machine. The button and Enter do exactly what AUTHORIZE DESCENT
+            // does (the same #btn-start click, so the same launch path) — unless a
+            // suspended run is on file, when they open the machine's folder instead, so
+            // RESUME and the new descent are chosen between rather than one silently
+            // replacing the other.
+            const hubDescend = document.createElement('button');
+            hubDescend.id = 'hub-descend';
+            hubDescend.type = 'button';
+            hubDescend.className = 'file-btn primary';
+            hubDescend.innerHTML = 'DESCEND <span class="hub-descend-key">[ENTER]</span>';
+            hubDescend.style.display = 'none';
+            const gameContainer = document.getElementById('game-container');
+            if (gameContainer) gameContainer.appendChild(hubDescend);
+            hubDescendNow = () => {
+                if (gameState !== 'HUB') return;
+                const folder = document.getElementById('clinical-folder-menu');
+                if (folder && folder.style.display === 'flex') return;
+                if (readSuspendedRun() && game.hubWorld && Array.isArray(game.hubWorld.zones)) {
+                    const bed = game.hubWorld.zones.find(z => z.action === 'tab-main');
+                    if (bed) { game.hubWorld.activeZone = bed; triggerInteraction(); return; }
+                }
+                const start = document.getElementById('btn-start');
+                if (start) start.click();
+            };
+            hubDescend.addEventListener('click', (e) => { e.currentTarget.blur(); hubDescendNow(); });
+            window.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' || e.repeat) return;
+                // A focused button gets its own Enter click; do not fire twice.
+                if (e.target && e.target.tagName === 'BUTTON') return;
+                hubDescendNow();
+            });
             interactionPrompt.addEventListener('click', triggerInteraction);
             interactionPrompt.addEventListener('touchstart', (e) => { e.preventDefault(); triggerInteraction(); });
         }
@@ -2676,6 +2710,17 @@ function gameLoop(time) {
 
         syncPortalGameplayState();
         syncPortalContext();   // Patch 119
+
+        // Patch 129: the hub's DESCEND button shows only while walking the hub. Here,
+        // at the top, because the branches below return early for MENU and TITLE.
+        {
+            const hd = document.getElementById('hub-descend');
+            if (hd) {
+                const folder = document.getElementById('clinical-folder-menu');
+                const show = gameState === 'HUB' && !(folder && folder.style.display === 'flex');
+                hudStyle(hd, 'display', show ? 'block' : 'none');
+            }
+        }
 
         if (import.meta.env.DEV) {
         // Patch 50: one-shot in-loop throw for the FORCE TEST ERROR button. Cleared

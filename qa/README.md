@@ -16,6 +16,7 @@ node qa/death_screen_check.cjs     # cause/stats, PLAY AGAIN on screen + into a 
 node qa/levelup_check.cjs          # cards: real names + stat lines, >=11px, on screen, 1/2/3 + 300 ms guard, SYNERGY READY (Patch 125)
 node qa/synergy_check.cjs          # synergy formed: banner, slow motion, happytime once, codex silhouettes, cleared on death (Patch 126)
 node qa/hud_check.cjs              # HUD: >=11px on phones, above scanlines, one row at 800/960, Sanity state in words + hatch (Patch 128)
+node qa/hub_check.cjs              # folder: 4 groups + sub-tabs; hub DESCEND button/Enter, suspended run opens the machine (Patch 129)
 node qa/sprite_cache_check.cjs     # sprite cache plateaus while the tutorial cue fades (Patch 109)
 node qa/soak_check.cjs [--seconds 45] [--throttle 4] [--phone] [--floor 9]   # perf soak: all bosses + capped crowd; exits 1 on invariant breaks
 node qa/render_recovery_check.cjs   # injected render faults do not leak canvas state (Patch 113)

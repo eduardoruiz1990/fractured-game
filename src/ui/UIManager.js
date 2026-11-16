@@ -8,6 +8,7 @@ const escapeText = (v) => String(v == null ? '' : v)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 import { SynapseTree } from './SynapseTree.js';
 import { GuideUI } from './GuideUI.js';
+import { FolderTabs } from './FolderTabs.js';
 import { showConfirm } from './Dialog.js';
 import { BOONS } from './LevelUpUI.js';
 // Patch 98 — the roadmap reports depth past floor 5. See src/core/Endless.js.
@@ -233,6 +234,9 @@ export class UIManager {
 
         this.tabBtns = document.querySelectorAll('.tab-btn');
         this.tabPanes = document.querySelectorAll('.tab-pane');
+        // Patch 129: the eight tabs grouped into four (see FolderTabs.js). Built after
+        // tabBtns is captured: the same buttons, regrouped, keep their handlers.
+        this.folderTabs = new FolderTabs();
 
         // Patch 34b: one shared floating tooltip appended directly to <body>,
         // outside .inventory-panel's DOM subtree so its overflow-y:auto (which
