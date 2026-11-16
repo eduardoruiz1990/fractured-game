@@ -26,7 +26,7 @@ async function open(browser, opts = {}) {
 const settingsState = (page) => page.evaluate(() => ({
   shake: document.getElementById('toggle-shake').checked,
   photo: document.getElementById('toggle-photo').checked,
-  titleAnim: getComputedStyle(document.querySelector('#title-screen .title-glitch')).animationName
+  titleAnim: getComputedStyle(document.querySelector('#title-screen .title-glitch'), '::after').animationName   // Patch 162: the crack drift lives on the lower half
 }));
 
 (async () => {

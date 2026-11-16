@@ -785,59 +785,230 @@ export class Renderer {
     }
 
     drawMenuBackground(time, gameState) {
+        if (gameState === 'TITLE') {
+            // Patch 162: the cover scene paints every pixel itself; grain is lighter
+            // over it, and off on LOW like the in-run grain.
+            this.drawTitleScene(time);
+            if (this.filmGrainEnabled !== false) { this.ctx.globalAlpha = 0.45; this.drawFilmGrain(); this.ctx.globalAlpha = 1; }
+            return;
+        }
         this.ctx.fillStyle = `rgba(139, 0, 0, ${0.05 + Math.sin(time * 0.001) * 0.02})`;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        if (gameState === 'TITLE') {
-            this.drawTitleSilhouettes(time);
-        } else if (gameState === 'MENU') {
-            this.drawMenuStorm(time);
-        }
-
+        if (gameState === 'MENU') this.drawMenuStorm(time);
         this.drawFilmGrain();
     }
 
-    drawTitleSilhouettes(time) {
-        const cx = this.canvas.width / 2;
-        const cy = this.canvas.height / 2;
-        
-        this.ctx.save();
-        
-        // Creeping Fog
-        for (let i = 0; i < 5; i++) {
-            this.ctx.fillStyle = `rgba(50, 0, 0, ${0.05 + Math.sin(time * 0.0005 + i) * 0.02})`;
-            this.ctx.beginPath();
-            let yOffset = Math.sin(time * 0.001 + i) * 100;
-            this.ctx.ellipse(cx + Math.cos(time * 0.0002 + i)*300, cy + 100 + yOffset, 600 + i*100, 300 + i*50, 0, 0, Math.PI * 2);
-            this.ctx.fill();
-        }
-        
-        // Glitching Procedural Geometry
-        this.ctx.strokeStyle = `rgba(255, 0, 0, ${0.1 + Math.random() * 0.05})`;
-        this.ctx.lineWidth = 1;
-        for (let i = 0; i < 10; i++) {
-            let size = 100 + (time * 0.1 + i * 50) % 500;
-            this.ctx.save();
-            this.ctx.translate(cx, cy);
-            this.ctx.rotate((time * 0.0001) + (i * 0.5));
-            if (Math.random() > 0.95) this.ctx.translate((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20); // Glitch
-            this.ctx.strokeRect(-size/2, -size/2, size, size);
-            this.ctx.restore();
-        }
-        
-        // Drifting Embers
-        for (let i = 0; i < 40; i++) {
-            let px = (cx * 2 + Math.sin(i * 99) * cx * 2 + time * 0.05 * (1 + i % 3)) % (cx * 2);
-            let py = (cy * 2 + Math.cos(i * 77) * cy * 2 - time * 0.1 * (1 + i % 2)) % (cy * 2);
-            if (py < 0) py += cy * 2; // wrap
-            
-            this.ctx.fillStyle = `rgba(255, ${100 + (i%50)}, 0, ${0.3 + Math.sin(time*0.005 + i)*0.2})`;
-            this.ctx.beginPath();
-            this.ctx.arc(px, py, 1 + (i % 3), 0, Math.PI * 2);
-            this.ctx.fill();
-        }
+    /**
+     * Patch 162: the title screen is the store cover, alive. It replaces the red fog,
+     * spinning outlines and embers (Patch 52) with the covers' composition, so a player
+     * who clicked the cover lands in the same picture:
+     *   - the Panopticon's eye, huge and dim, looming behind the title and following
+     *     the light;
+     *   - the Subject at the bottom edge, its flashlight beam sweeping slowly upward;
+     *   - pairs of eyes blinking open in the dark at the edges, which shut when the
+     *     beam finds them; dust that only shows inside the beam;
+     *   - the floor-3 rings very faint underneath, a vignette and light grain.
+     * Everything static is a sprite built once (the drawGlow pattern; the vignette is
+     * rebuilt only when the canvas size changes); a frame is ~10 drawImage calls plus
+     * a few dozen fillRects. No shadowBlur, composite reset before returning, nothing
+     * read back. `titleAnchor` ({x, y, w}: the DOM title's centre and width in canvas
+     * pixels) is written by main.js; without it the eye sits in the upper third.
+     */
+    titleSceneSprites() {
+        if (this._title) return this._title;
+        const mk = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); return c; };
+        const t = {};
+        // the eye's body (no iris): spikes, rim, sclera and veins, at 512 px
+        t.eye = mk(512, 512, (c, w) => {
+            const r = w * 0.27;
+            c.translate(w / 2, w / 2);
+            c.fillStyle = '#7a1630';
+            for (let i = 0; i < 12; i++) {
+                const a = i / 12 * Math.PI * 2, L = r * (i % 2 ? 1.45 : 1.8);
+                c.beginPath();
+                c.moveTo(Math.cos(a - 0.17) * r * 0.9, Math.sin(a - 0.17) * r * 0.9);
+                c.lineTo(Math.cos(a) * L, Math.sin(a) * L);
+                c.lineTo(Math.cos(a + 0.17) * r * 0.9, Math.sin(a + 0.17) * r * 0.9);
+                c.closePath(); c.fill();
+                if (i % 2 === 0) { c.beginPath(); c.arc(Math.cos(a) * L, Math.sin(a) * L, r * 0.05, 0, Math.PI * 2); c.fillStyle = '#c23a5c'; c.fill(); c.fillStyle = '#7a1630'; }
+            }
+            c.beginPath(); c.arc(0, 0, r * 1.06, 0, Math.PI * 2); c.fillStyle = '#5c0f24'; c.fill();
+            c.lineWidth = r * 0.05; c.strokeStyle = '#c23a5c'; c.stroke();
+            const g = c.createRadialGradient(0, -r * 0.2, r * 0.1, 0, 0, r * 0.92);
+            g.addColorStop(0, '#d9b8bf'); g.addColorStop(1, '#8a5b66');
+            c.beginPath(); c.arc(0, 0, r * 0.92, 0, Math.PI * 2); c.fillStyle = g; c.fill();
+            c.strokeStyle = 'rgba(150, 30, 60, 0.55)'; c.lineWidth = r * 0.025;
+            for (let i = 0; i < 7; i++) {
+                const a = -Math.PI * 0.85 + i * 0.28;
+                c.beginPath(); c.moveTo(Math.cos(a) * r * 0.9, Math.sin(a) * r * 0.9);
+                c.quadraticCurveTo(Math.cos(a + 0.12) * r * 0.62, Math.sin(a + 0.12) * r * 0.62, Math.cos(a + 0.05) * r * 0.48, Math.sin(a + 0.05) * r * 0.48);
+                c.stroke();
+            }
+        });
+        t.eyeR = 512 * 0.27;   // sclera radius inside the sprite
+        // a soft red bloom behind the eye, a warm one for the flashlight lens
+        const glow = (rgb) => mk(256, 256, (c, w) => {
+            const g = c.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
+            g.addColorStop(0, `rgba(${rgb}, 1)`); g.addColorStop(0.35, `rgba(${rgb}, 0.35)`); g.addColorStop(1, `rgba(${rgb}, 0)`);
+            c.fillStyle = g; c.fillRect(0, 0, w, w);
+        });
+        t.redGlow = glow('150, 10, 40');
+        t.warmGlow = glow('255, 236, 200');
+        // the beam: a wedge pointing up from the bottom centre, bright at the lens
+        t.beam = mk(512, 1024, (c, w, h) => {
+            const g = c.createRadialGradient(w / 2, h, 0, w / 2, h, h);
+            g.addColorStop(0, 'rgba(255, 236, 200, 0.85)'); g.addColorStop(0.45, 'rgba(255, 225, 180, 0.32)');
+            g.addColorStop(0.85, 'rgba(255, 215, 170, 0.06)'); g.addColorStop(1, 'rgba(255, 215, 170, 0)');
+            c.beginPath(); c.moveTo(w / 2, h); c.lineTo(0, 0); c.lineTo(w, 0); c.closePath();
+            c.fillStyle = g; c.fill();
+        });
+        t.beamHalf = Math.atan2(256, 1024);   // the wedge's half-angle
+        this._title = t;
+        return t;
+    }
 
-        this.ctx.restore();
+    titleVignette(W, H) {
+        const v = this._titleVig;
+        if (v && v.width === W && v.height === H) return v;
+        const c = (v && v.getContext) ? v : document.createElement('canvas');
+        c.width = W; c.height = H;
+        const x = c.getContext('2d');
+        const g = x.createRadialGradient(W / 2, H * 0.45, Math.min(W, H) * 0.25, W / 2, H * 0.45, Math.hypot(W, H) * 0.62);
+        g.addColorStop(0, 'rgba(0, 0, 0, 0)'); g.addColorStop(1, 'rgba(0, 0, 0, 0.85)');
+        x.fillStyle = g; x.fillRect(0, 0, W, H);
+        this._titleVig = c;
+        return c;
+    }
+
+    drawTitleScene(time) {
+        const ctx = this.ctx, W = this.canvas.width, H = this.canvas.height;
+        if (!(W > 0 && H > 0)) return;
+        const S = this.titleSceneSprites();
+        const m = Math.min(W, H);
+        const A = this.titleAnchor;
+        const calm = !!this.calmMotion;
+        const t = Number.isFinite(time) ? time : 0;
+
+        // ground: near-black, the floor-3 rings barely there
+        ctx.fillStyle = '#050304';
+        ctx.fillRect(0, 0, W, H);
+        const floor = this.cachedFloorPatterns && this.cachedFloorPatterns[2];
+        if (floor && this.quality !== 'low') { ctx.globalAlpha = 0.18; ctx.fillStyle = floor; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+
+        // the eye: behind the title, a little above it
+        const tx = A && Number.isFinite(A.x) ? A.x : W / 2;
+        const ty = A && Number.isFinite(A.y) ? A.y : H * 0.3;
+        const eyeR = Math.max(60, Math.min(W * 0.36, H * 0.24, (A && A.w > 0 ? A.w * 0.42 : W * 0.3)));
+        // The iris sits just above the letters; when the title is near the top edge (a
+        // returning player's taller menu), the eye is kept at least partly on screen.
+        const ex = tx, ey = Math.max(ty - eyeR * 0.42, eyeR * 0.3);
+
+        // the Subject and the sweep (slow; slower still for calm motion)
+        const hx = W / 2, hy = H - Math.max(14, m * 0.035);
+        const toEye = Math.atan2(ey - hy, ex - hx);
+        const sweep = calm ? 0.18 : 0.38;
+        const ang = toEye + sweep * Math.sin(t * 0.00028) + 0.06 * Math.sin(t * 0.00071);
+        const beamLen = Math.hypot(ex - hx, ey - hy) * 1.08;
+
+        ctx.globalAlpha = 0.55;
+        ctx.drawImage(S.redGlow, ex - eyeR * 2.6, ey - eyeR * 2.6, eyeR * 5.2, eyeR * 5.2);
+        ctx.globalAlpha = 1;
+
+        // blink: every ~7 s the lid closes for ~180 ms (never with calm motion)
+        const cyc = (t % 7000) / 180;
+        const lid = (!calm && cyc < 1) ? Math.sin(cyc * Math.PI) : 0;
+        const k = eyeR / S.eyeR, size = 512 * k;
+        ctx.save();
+        ctx.translate(ex, ey);
+        ctx.scale(1, 1 - 0.92 * lid);
+        ctx.globalAlpha = 0.4;
+        ctx.drawImage(S.eye, -size / 2, -size / 2, size, size);
+        // the iris looks toward where the beam is pointing at the eye's height
+        const lookX = hx + Math.cos(ang) * beamLen - ex, lookY = hy + Math.sin(ang) * beamLen - ey;
+        const ld = Math.hypot(lookX, lookY) || 1, reach = eyeR * 0.3 * Math.min(1, ld / (eyeR * 2));
+        const ix = lookX / ld * reach, iy = lookY / ld * reach;
+        ctx.globalAlpha = 0.62;
+        ctx.fillStyle = '#b3123c';
+        ctx.beginPath(); ctx.arc(ix, iy, eyeR * 0.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#2a030b';
+        ctx.beginPath(); ctx.ellipse(ix * 1.08, iy * 1.08, eyeR * 0.3, eyeR * 0.17, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255, 220, 230, 0.55)';
+        ctx.beginPath(); ctx.ellipse(ix + eyeR * 0.22, iy + eyeR * 0.2, eyeR * 0.1, eyeR * 0.06, -0.3, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        ctx.globalAlpha = 1;
+
+        // the lurkers: pairs of eyes in the dark, away from the central column
+        if (!this._lurkers) this._lurkers = Array.from({ length: 9 }, (_, i) => ({ born: -i * 900, life: 0, x: 0, y: 0, s: 1, shut: 0 }));
+        const inBeam = (x, y) => {
+            const d = Math.hypot(x - hx, y - hy);
+            if (d > beamLen) return false;
+            let da = Math.atan2(y - hy, x - hx) - ang;
+            da = Math.atan2(Math.sin(da), Math.cos(da));
+            return Math.abs(da) < S.beamHalf * 0.9;
+        };
+        for (const L of this._lurkers) {
+            const age = t - L.born;
+            if (age < 0) continue;
+            if (age > L.life || !(L.life > 0)) {
+                const side = Math.random() < 0.5 ? -1 : 1;
+                const span = W * 0.5 - Math.min(W * 0.3, 260);
+                L.x = W / 2 + side * (W * 0.5 - Math.random() * Math.max(30, span) - 14);
+                L.y = H * (0.1 + Math.random() * 0.82);
+                L.s = 0.8 + Math.random() * 0.7; L.born = t + Math.random() * 1500; L.life = 2600 + Math.random() * 3200; L.shut = 0;
+                continue;
+            }
+            if (inBeam(L.x, L.y)) L.shut = Math.min(1, L.shut + 0.12);
+            const fade = Math.min(1, age / 500, (L.life - age) / 500) * (1 - L.shut);
+            if (fade <= 0.01) continue;
+            const r = Math.max(1.6, m * 0.0034) * L.s, gap = r * 2.6;
+            const blink = (!calm && ((age + L.x * 7) % 2300) < 110) ? 0.2 : 1;
+            ctx.globalAlpha = fade * 0.22;
+            ctx.drawImage(S.warmGlow, L.x - gap * 2.4, L.y - gap * 1.6, gap * 4.8, gap * 3.2);
+            ctx.globalAlpha = fade * 0.95;
+            ctx.fillStyle = '#f2d15a';
+            ctx.beginPath();
+            ctx.ellipse(L.x - gap, L.y, r * 1.15, r * 0.7 * blink, 0.18, 0, Math.PI * 2);
+            ctx.ellipse(L.x + gap, L.y, r * 1.15, r * 0.7 * blink, -0.18, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+
+        // the beam (additive), dust that shows only inside it, then the Subject
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.translate(hx, hy);
+        ctx.rotate(ang + Math.PI / 2);
+        ctx.globalAlpha = 0.42;
+        const bw = beamLen * Math.tan(S.beamHalf) * 2;
+        ctx.drawImage(S.beam, -bw / 2, -beamLen, bw, beamLen);
+        ctx.restore();
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        if (!this._titleDust) this._titleDust = Array.from({ length: 40 }, (_, i) => ({ x: Math.random(), y: Math.random(), v: 0.4 + Math.random(), p: i }));
+        ctx.fillStyle = '#ffe9c8';
+        for (const d of this._titleDust) {
+            const x = ((d.x * W + t * 0.006 * d.v) % W + W) % W;
+            const y = ((d.y * H - t * 0.012 * d.v) % H + H) % H;
+            if (!inBeam(x, y)) continue;
+            ctx.globalAlpha = 0.25 + 0.25 * Math.sin(t * 0.002 + d.p);
+            const s = 1 + (d.p % 2);
+            ctx.fillRect(x, y, s, s);
+        }
+        ctx.globalAlpha = 0.9;
+        const lens = Math.max(16, m * 0.05);
+        ctx.drawImage(S.warmGlow, hx + Math.cos(ang) * lens * 0.4 - lens, hy + Math.sin(ang) * lens * 0.4 - lens, lens * 2, lens * 2);
+        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        const pr = Math.max(9, m * 0.024);
+        ctx.fillStyle = '#151724';
+        ctx.beginPath(); ctx.arc(hx, hy, pr, 0, Math.PI * 2); ctx.fill();
+        ctx.lineWidth = Math.max(1.5, pr * 0.14); ctx.strokeStyle = '#3c4260'; ctx.stroke();
+        ctx.fillStyle = '#d8d2c4';
+        ctx.fillRect(hx + Math.cos(ang) * pr * 0.8 - 2, hy + Math.sin(ang) * pr * 0.8 - 2, 4, 4);
+
+        // vignette last (cached; rebuilt only on resize)
+        ctx.drawImage(this.titleVignette(W, H), 0, 0);
     }
 
     drawMenuStorm(time) {

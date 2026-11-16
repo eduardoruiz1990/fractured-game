@@ -2954,6 +2954,40 @@ Tests:
 
 New Keep clause 52.
 
+**Patch 162: the title screen becomes the store cover, alive. The playtest link drops the perf panel.**
+
+The user didn't like the title screen's background. It was red fog ellipses, spinning outlines, embers and heavy grain behind a plain white glitching "FRACTURED". It now matches the store covers (Patch 160), so a player who clicked a cover lands in the same picture.
+
+- **`Renderer.drawTitleScene`** replaces `drawTitleSilhouettes`. The layers, back to front:
+  - near-black ground with the floor-3 rings faintly under it (skipped on LOW);
+  - the Panopticon's eye, large and dim behind the title. Its iris follows where the flashlight points, and it blinks every ~7 s;
+  - pairs of yellow eyes opening in the dark at the edges, which shut when the beam reaches them;
+  - the Subject at the bottom edge, with its beam sweeping slowly upward (additive), and dust that shows only inside the beam;
+  - a vignette, and grain at 45% (off on LOW).
+
+  Performance:
+  - Static parts are sprites built once: the eye body, two glows and the beam. The vignette is rebuilt only on resize.
+  - A frame is about 10 `drawImage` calls plus a few dozen small fills.
+  - No `shadowBlur`. The composite operation and alpha are reset before returning, and nothing is read back (Keep clause 51).
+
+  Placement and motion:
+  - `main.js` measures the DOM title twice a second (a read, never a write) into `renderer.titleAnchor`. The eye sits just above the letters, and stays partly on screen when a returning player's taller menu pushes the title to the top.
+  - With Photosensitivity or OS reduced motion, the sweep halves and nothing blinks.
+- **The title text is the store logo.**
+  - **Font:** Special Elite by Astigmatic (Apache-2.0), subset to A–Z, 0–9 and a few marks with `pyftsubset`: 19 KB, `src/assets/fonts/special-elite-title.woff2`. `font-display: swap` falls back to Courier.
+  - **Look:** cream letters on red and gold offsets, cracked in two. The element carries only the dark halo, and `::before`/`::after` draw the halves from `data-text`, so the halo isn't clipped into a box.
+  - **Motion:** the glitch animation is gone. The lower half drifts on its crack over 7 s, and stops under reduced motion and Photosensitivity.
+  - **Sizing:** `clamp(2.4rem, min(13vw, 17vh), 8rem)`. The short-landscape rule still overrides it.
+- **Licence:** `public/licenses/LICENSE-SpecialElite.txt` ships in the bundle, and the credits gain a "TITLE LETTERING" line.
+- **Perf panel:** the CrazyGames and itch builds never contained it.
+  - It loads only in `npm run build:playtest`.
+  - `npm run package` refuses a bundle containing it (Keep clause 41).
+  - The playtest artifact link was built in playtest mode, which is why it showed. From now on that link is built in itch mode: the same game as the upload, minus the SDK tag, with no panel. Use `build:playtest` only when a phone benchmark is needed.
+- **Checks:**
+  - `qa/access_check.cjs` reads the title animation from `::after`, where it now lives.
+  - Run and passing: `sizes`, `text`, `story`, `settings`, `focus_keys`, `render_recovery`, `access`, `smoke`, and all Node suites.
+  - Screenshots for new and returning players at 384×717, 1280×720, 915×412 and 960×540 were checked by eye.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
