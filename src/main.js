@@ -1013,6 +1013,7 @@ function enterPlayingState() {
     // Patch 65: on a touch device the controls are now visible from the first frame of
     // play rather than from the first touch. Called here, after every menu close, so it
     // also undoes hideJoysticks()' latch reset on the way back into a run.
+    document.body.classList.remove('levelup-open');   // Patch 151: never carried into a new run
     if (inputManager && typeof inputManager.revealTouchControls === 'function') {
         inputManager.revealTouchControls();
     }
@@ -1163,6 +1164,21 @@ function autoSaveRun() {
     } catch (e) {
         errorLog.capture(e, 'autosave');
     }
+}
+
+// Patch 151 (V2 plan F5): whether the open folder covers the whole canvas (it does on a
+// phone, where .medical-folder goes full-screen). Re-measured at most twice a second
+// rather than every frame, so it never forces a layout of its own.
+let folderCoverCheckedAt = -Infinity;
+let folderCovers = false;
+function folderHidesCanvas(now) {
+    if (now - folderCoverCheckedAt < 500) return folderCovers;
+    folderCoverCheckedAt = now;
+    const f = document.querySelector('#clinical-folder-menu .medical-folder');
+    if (!f || f.offsetParent === null) return (folderCovers = false);
+    const r = f.getBoundingClientRect();
+    folderCovers = r.left <= 1 && r.top <= 1 && r.right >= window.innerWidth - 1 && r.bottom >= window.innerHeight - 1;
+    return folderCovers;
 }
 
 /** The walkable Mind Hub — the old INITIALIZE destination, now opt-in. */
@@ -2933,6 +2949,10 @@ function initEngine() {
         gameState = 'LEVEL_UP';
         inputManager.keys = { w: false, a: false, s: false, d: false, space: false }; 
         inputManager.updateKeyboardInput();
+        // Patch 151 (V2 plan F5): the touch controls (DASH sat over the right-hand card
+        // in phone landscape) and the notice strip step aside while the cards are up.
+        inputManager.hideJoysticks();
+        document.body.classList.add('levelup-open');
         audioEngine.playSFX('levelup');
         // Patch 130 (C8): a gold radial flash behind the cards (none in
         // photosensitivity mode); the cards themselves deal in via CSS.
@@ -2946,6 +2966,8 @@ function initEngine() {
             // this pick sets a longer slowMo first, and Math.max keeps that one.
             if (game.state) game.state.slowMo = Math.max(game.state.slowMo || 0, LEVELUP_EASE_STEPS);
             gameState = 'PLAYING';
+            document.body.classList.remove('levelup-open');   // Patch 151
+            inputManager.revealTouchControls();
         });
     };
 
@@ -3232,7 +3254,9 @@ function gameLoop(time) {
         }
 
         if (gameState === 'MENU' || gameState === 'TITLE') {
-            renderer.drawMenuBackground(time, gameState);
+            // Patch 151: on a phone the folder covers every pixel, so the storm behind
+            // it was drawn each frame for nobody to see.
+            if (!(gameState === 'MENU' && folderHidesCanvas(time))) renderer.drawMenuBackground(time, gameState);
         } 
         else if (gameState === 'PLAYING' || gameState === 'LEVEL_UP' || gameState === 'PAUSED' || gameState === 'EXIT_REACHED' || gameState === 'HUB') {
             

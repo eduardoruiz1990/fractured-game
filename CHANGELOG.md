@@ -2563,6 +2563,40 @@ small box... that if the player presses it, then it gets the large screen."
 - `qa/synergy_check.cjs`: up to 40 level-up rolls for the Static Receiver card (15
   occasionally missed it by chance).
 
+**Patch 151 — iframe and phone layouts, and the Mind Palace frame rate (plan F5).**
+
+Measured at 960×540, 800×600, 1280×720, 1024×768 and on phones both ways up (384×717,
+360×640, 717×384, 915×412). What did not fit, and the fix:
+
+- **Title, short heights** (the Patch 83 known issue). Under 620 px tall and at least
+  600 px wide, the title shrinks with the viewport height, BEGIN DESCENT and RESUME sit
+  side by side, the secondary buttons wrap in a row below them, and the returning
+  player's Patient strip takes a full row. The screen scrolls rather than clips if it
+  still does not fit.
+- **DESCEND pane, under 680 px tall.** AUTHORIZE DESCENT sat below the fold on every
+  phone and at 800×600, in a pane that scrolls without saying so. There, the Patient
+  strip and AUTHORIZE come first (flex `order`) and the evaluation copy and Patient-level
+  bar follow; the folder header is thinner. No markup changed.
+- **Level-up on touch.** In phone landscape DASH sat on top of the right-hand card, and
+  a notice (synergy / codex / event) could cover the bottom of the cards. `onLevelUp`
+  now calls `inputManager.hideJoysticks()` and sets `body.levelup-open`, which hides
+  `#synergy-banner`; the pick removes the class and calls `revealTouchControls()`.
+  `startNewRun` also clears the class, so it can never carry into a run.
+- **Mind Palace fps** (the A56 report). `#clinical-folder-menu` and `.folder-header`
+  both had a `backdrop-filter` blur over the canvas, which repaints every frame, so the
+  blur was recomputed every frame — over the whole screen on a phone, where the folder
+  is full-screen. Both removed (the overlay goes from 0.7 to 0.78 opacity, the header
+  from 0.88 to 0.96), and `#pause-menu`'s blur(8px) with it, for the same reason. On top
+  of that, while the folder covers every pixel (`folderHidesCanvas`, re-measured at most
+  twice a second) the storm behind it is not drawn at all. Headless, 384×717 with a 4×
+  CPU throttle and the Mind Palace open: main-thread task time per 2 s went from 487 ms
+  to 50 ms. Desktop sizes still draw the storm around the folder.
+- New `qa/sizes_check.cjs`: at all eight sizes, title, DESCEND (AUTHORIZE, the Patient
+  strip, the tabs, opened from the hub desk), HUD, level-up cards and pause buttons are
+  fully on screen without scrolling; on touch DASH and the notice strip stay off the
+  cards and DASH comes back after the pick; on a phone no storm is drawn behind the
+  folder; no `backdrop-filter` remains on the folder, its header or the pause menu.
+
 ---
 
 ## Keep clauses (things future patches break by accident)
