@@ -534,6 +534,34 @@ console.log('\nSynergy discovery (Patch 126)');
     check('no recipe contains a raw id', Object.values(SYNERGIES).every(sy => !/_/.test(synergyRecipe(sy))));
 }
 
+console.log('\nFirst minute (Patch 127)');
+{
+    const { ONBOARDING_XP } = await import('./src/data/Config.js');
+    const { ensureNewWeaponOffer } = await import('./src/ui/LevelUpUI.js');
+    check('levels 1 and 2 use the onboarding ramp',
+          getXPRequiredForLevel(1) === ONBOARDING_XP[0] && getXPRequiredForLevel(2) === ONBOARDING_XP[1]);
+    check('level 3 onward is the unchanged curve',
+          getXPRequiredForLevel(3) === Math.floor(50 * 1.12 ** 2) && getXPRequiredForLevel(10) === Math.floor(50 * 1.12 ** 9));
+    check('the tutorial kill (3 massive orbs = 75 XP) pays for both first cards',
+          ONBOARDING_XP[0] + ONBOARDING_XP[1] <= 75);
+
+    const W = (lv) => ({ flashlight: { level: lv.f ?? 1 }, static: { level: lv.s ?? 0 }, lead_pipe: { level: 0 } });
+    const boon = (id) => ({ type: 'boon', id });
+    const wep = (id, isNew) => ({ type: 'weapon', id, isNew });
+    const ranked = [boon('a'), wep('flashlight', false), boon('b'), boon('c'), wep('lead_pipe', true), wep('static', true)];
+    const sel = ranked.slice(0, 3);
+    const out = ensureNewWeaponOffer(sel, ranked, W({}));
+    check('one weapon owned and no new-weapon card: the last card becomes the best-ranked new weapon',
+          out.length === 3 && out[2].id === 'lead_pipe' && out[0] === sel[0] && out[1] === sel[1], JSON.stringify(out));
+    check('the input array is not mutated', sel[2].id === 'b');
+    const already = [boon('a'), wep('static', true), boon('b')];
+    check('a selection that already offers a new weapon is unchanged',
+          ensureNewWeaponOffer(already, ranked, W({})) === already);
+    check('two weapons owned: unchanged', ensureNewWeaponOffer(sel, ranked, W({ s: 1 })) === sel);
+    check('no new weapon left in the pool: unchanged',
+          ensureNewWeaponOffer(sel, ranked.filter(c => !c.isNew), W({})) === sel);
+}
+
 // ---------------------------------------------------------------------------
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

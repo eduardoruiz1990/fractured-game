@@ -34,7 +34,19 @@ export const ROOMS_PER_FLOOR = 5;
 export const ROOM_PACE = 10 / ROOMS_PER_FLOOR;
 export function isBossType(type) { return BOSS_TYPE_SET.has(type); }
 
+/**
+ * Patch 127 (V2 plan C1): the onboarding ramp. The first two level-ups cost 24 and
+ * 40 XP instead of 50 and 56; level 3 onward is the unchanged curve (62, 70, ...),
+ * so the curve stays strictly increasing and everything past the first minute is
+ * exactly as before. Measured with a headless bot on a returning player's room 1
+ * (no tutorial), the median first card moved from ~32 s to ~20-25 s (the bot is a
+ * poor orb collector; room 1 is kill-speed bound, not XP bound). The tutorial's
+ * guaranteed kill (75 XP) now pays for both of the first two cards.
+ */
+export const ONBOARDING_XP = [24, 40];
+
 export function getXPRequiredForLevel(level) {
+    if (level >= 1 && level <= ONBOARDING_XP.length) return ONBOARDING_XP[level - 1];
     return Math.floor(GAME_CONFIG.BASE_XP_REQ * Math.pow(GAME_CONFIG.LEVEL_XP_GROWTH_RATE, level - 1));
 }
 

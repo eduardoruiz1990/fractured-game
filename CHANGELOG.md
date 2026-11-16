@@ -1,4 +1,4 @@
-# FRACTURED — Change Log (Patches 49–71, 80–91, 93–126)
+# FRACTURED — Change Log (Patches 49–71, 80–91, 93–127)
 
 *Written 2026-08-04, extended 2026-08-05. Covers the CrazyGames Basic Launch
 remediation work driven by `BASIC_LAUNCH_FIX_QUEUE.md` and then
@@ -1759,6 +1759,32 @@ ids. New `qa/synergy_check.cjs` (three viewports) forms a synergy through a real
 checks the banner text, z-order, on-screen, ≥ 11 px, slow motion, codex record,
 happytime once per session, the second notice, the codex (2 formed, 8 locked with
 recipes and no names) and that death clears the banner. The dev hook gains `uiManager`.
+
+**Patch 127 — the first minute (C1).**
+
+Measured with a headless bot (fixed seeds, a fresh `Game` driven through
+`game.update`):
+- **Fresh profile (tutorial):** the guaranteed tutorial kill already produced the first
+  card at ~7 s of sim time; a real player reading the prompts is nearer 15–25 s.
+- **Returning player, room 1:** median first card at **32 s**, second at **46 s**. Room
+  1 is kill-speed bound (first XP lands ~14 s in, then roughly a kill every 2 s).
+
+Changes:
+- **Onboarding XP ramp** (`Config.ONBOARDING_XP = [24, 40]`): levels 1 and 2 cost 24
+  and 40 XP instead of 50 and 56. Level 3 onward is the unchanged curve, so the curve
+  stays strictly increasing and nothing past the first minute moves. The bot's median
+  first card for a returning player is now ~20–25 s (it collects orbs badly; a player
+  does better). The tutorial kill's 75 XP now pays for **both** of the first two cards.
+- **A second weapon is always offered** (`LevelUpUI.ensureNewWeaponOffer`): while the
+  player carries a single weapon, the last of the three cards is replaced by the
+  best-ranked NEW weapon if none was drawn. The affinity weighting favours the one
+  weapon already owned, so before this a player could see three flashlight-or-boon
+  offers in a row. With a second weapon comes the first "🔗 pairs with" tag (Patch 125).
+
+`test_content` (249) covers the ramp, the unchanged tail, the tutorial covering both
+cards, and `ensureNewWeaponOffer` (replaces only the last card, never mutates, leaves
+two-weapon and no-new-weapon cases alone). `qa/levelup_check.cjs` adds: 64 XP from a
+fresh run gives two cards in a row, and both offer a NEW weapon.
 
 ---
 
