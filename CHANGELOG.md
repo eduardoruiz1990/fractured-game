@@ -3360,6 +3360,18 @@ asks for visual onboarding).
   Architect (the final boss) is the fight most runs end on. One fresh novice cleared all
   five floors.
 
+**Patch 190 — CrazyGames' technical requirements, re-read (2026-11-18).**
+- `navigator.maxTouchPoints` is no longer used to guess a touch device (`main.js`'s
+  portrait-layout hint, `Input.js`'s `coarsePointer`). The requirements page says not to
+  detect mobile with it or with `ontouchstart`; a touchscreen laptop reports it and would
+  get the phone layout. `(pointer: coarse)` remains, corrected by real input as before.
+  `ErrorLog` still records it as a diagnostic only.
+- Already met: `user-select: none` on `body`; gameplayStart/Stop and loadingStart/Stop.
+- **Leaderboards:** the SDK has them (`CrazyGames.SDK.user.submitScore` with an
+  encrypted score, one board per game) but the docs say "only available for invited
+  games", so the Daily Session board cannot be built for a Basic Launch. Not started.
+- Not used: `reportGameCompletedPercentage`.
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.

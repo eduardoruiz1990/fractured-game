@@ -88,8 +88,7 @@ errorLog.setContext(() => ({
 let coarsePointerHint = false;
 try {
     coarsePointerHint =
-        (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) ||
-        (navigator.maxTouchPoints || 0) > 0;
+        (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches);   // Patch 190: no maxTouchPoints. CrazyGames' technical requirements forbid using it (or ontouchstart) to detect mobile: touchscreen laptops report it too.
 } catch (e) { coarsePointerHint = false; }
 
 /**
