@@ -14,7 +14,7 @@ import { PATIENTS, newlyAdmitted } from './data/Patients.js';   // Patch 136
 import { roomEventHud } from './systems/RoomEvents.js';   // Patch 138
 import { BUILD_ID } from './data/Build.js';   // Patch 159
 import { lockedWeapons } from './data/Unlocks.js';   // Patch 139
-import { ACHIEVEMENTS } from './data/Achievements.js';
+import { ACHIEVEMENTS, achievementProgress } from './data/Achievements.js';
 import { dailyKey, dailySetup, dailyScore } from './systems/Daily.js';   // Patch 140
 import { INTRUSIVE_THOUGHTS } from './data/Manifestations.js';
 import { MANIFESTATIONS } from './data/Manifestations.js';
@@ -2670,6 +2670,27 @@ function initEngine() {
      * synergies, the tokens worn into the run and the ones found in it. Read-only:
      * gear is fitted in the Mind Hub, so a run stays a run.
      */
+    /**
+     * Patch 173: the five unearned achievements nearest completion, so a paused player
+     * has something to aim at. Counter achievements rank by value/goal; the rest (a
+     * single feat) rank last, in list order.
+     */
+    function closestAchievementsHtml(meta, esc) {
+        const rows = [];
+        for (const a of ACHIEVEMENTS) {
+            let done = false;
+            try { done = !!a.test(meta || {}); } catch (e) { done = false; }
+            if (done) continue;
+            const pr = achievementProgress(a, meta);
+            rows.push({ a, ratio: pr && pr.goal > 0 ? pr.value / pr.goal : 0, pr });
+        }
+        rows.sort((x, y) => y.ratio - x.ratio);
+        return rows.slice(0, 5).map(({ a, ratio, pr }) =>
+            `<div class="pl-row pl-ach"><span class="pl-name">${esc(a.icon || '')} ${esc(a.name)}<span class="pl-sub">${esc(a.desc || '')}</span>` +
+            `<span class="pl-bar"><i style="width:${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%"></i></span></span>` +
+            `<span class="pl-count">${pr ? `${Math.floor(pr.value)}/${pr.goal}` : '—'}</span></div>`).join('');
+    }
+
     function renderPauseLoadout() {
         const el = document.getElementById('pause-loadout');
         if (!el) return;
@@ -2704,6 +2725,7 @@ function initEngine() {
                 `<h4>SYNERGIES</h4><div class="pl-chips">${syn || none}</div>` +
                 `<h4>TOKENS WORN</h4>${worn || none}` +
                 `<h4>TOKENS FOUND THIS RUN</h4><div class="pl-chips">${foundChips || none}</div>` +
+                `<h4>CLOSEST ACHIEVEMENTS</h4>${closestAchievementsHtml(meta, esc) || none}` +
                 `<div class="pl-note">Tokens are fitted in the Mind Hub between runs.</div>`;
         } catch (e) {
             el.innerHTML = '';   // the pause menu must open even if this cannot be drawn

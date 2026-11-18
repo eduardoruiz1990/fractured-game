@@ -3185,6 +3185,24 @@ regular enemies.
   found this run. Read-only; tokens are still fitted in the Mind Hub. It is wrapped so
   the pause menu opens even if the panel cannot be drawn.
 
+**Patch 173 — lens beam, Patients that look different and afraid, the Parasite, closest achievements (2026-11-18).**
+- **The beam leaves the lens.** `Renderer.lensPoint` (41 ahead, 5 to the side of the
+  player) is the origin of the light-mask cone and the warm tint. Visual only: the
+  weapon's cone is still measured from the player in `Combat.js`.
+- **Patients look different** (`PATIENT_LOOKS`, keyed on `state.player.character`):
+  Insomniac in blue with a pillow and eye bags, Vandal in a red hood with a pipe across
+  the back, Artist in mustard with a beret and satchel, Photographer in olive with a cap,
+  strap and camera bag.
+- **Fear.** `drawPlayer` derives a 0-1 fear from low Sanity and the nearest enemy's
+  distance: shoulders draw in, the figure trembles, the head turns to the threat, the
+  eye whites show and grow, sweat flies off; a flinch squash on being hit; blinks and a
+  slow look-around when calm.
+- **Parasite** rebuilt as a tick on six IK legs with a glowing abdomen and mandibles (it
+  was a spinning star). Its lash line is green.
+- **Pause inventory:** the five unearned achievements nearest completion, with bars.
+- **Level-up panel** restyled (dark glass, gold edge, cards with a gold spine); sizes
+  and layout rules unchanged.
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.

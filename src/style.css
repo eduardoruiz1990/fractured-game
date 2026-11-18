@@ -2295,3 +2295,26 @@ body.first-time #btn-title-endless, body.first-time #btn-title-hub { display: no
 .pl-chip { font-size: 12px; padding: 3px 7px; border: 1px solid rgba(0,0,0,0.45); background: rgba(255,255,255,0.35); color: #1b1b1b; }
 .pl-none { font-size: 12px; color: #555; }
 .pl-note { margin-top: 10px; font-size: 11px; color: #555; }
+
+/* Patch 173: closest achievements in the pause inventory. */
+.pl-ach .pl-name { flex: 1 1 auto; }
+.pl-bar { display: block; height: 5px; margin-top: 4px; background: rgba(0,0,0,0.18); border: 1px solid rgba(0,0,0,0.4); }
+.pl-bar i { display: block; height: 100%; background: #b98a2e; }
+.pl-count { flex: 0 0 auto; font-size: 12px; font-weight: 700; color: #1b1b1b; font-variant-numeric: tabular-nums; }
+
+/* Patch 173: the level-up panel and its cards. A dark glass panel with a gold edge;
+   each card is a rounded plate with a gold spine and a pressed state. Sizes and the
+   layout rules above are untouched (qa/levelup_check and sizes_check measure them). */
+#level-up-modal {
+    background: linear-gradient(180deg, rgba(22, 19, 30, 0.97), rgba(8, 8, 12, 0.98));
+    border: 1px solid #c9a24a; border-radius: 12px;
+    box-shadow: 0 0 0 1px #000, 0 0 44px rgba(233, 200, 119, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+#level-up-modal h2 { letter-spacing: 3px; }
+#level-up-modal .card {
+    background: linear-gradient(135deg, #221e2d, #131018);
+    border: 1px solid #50495f; border-left: 4px solid var(--ui-gold); border-radius: 9px;
+    box-shadow: 0 4px 0 #000, inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+#level-up-modal .card:active { transform: translateY(2px); box-shadow: 0 2px 0 #000; }
+#level-up-modal .card:focus-visible { outline: 2px solid #f6e2a6; outline-offset: 2px; }

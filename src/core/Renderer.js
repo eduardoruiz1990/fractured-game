@@ -21,8 +21,17 @@ import { bossTelegraphing } from './Haptics.js';   // Patch 150 (V2 plan F4)   /
 // the real working set — entity bodies x phase buckets x variants, glows per colour.
 const SPRITE_CACHE_MAX = 768;
 
+// Patch 173: the lens of the flashlight in the player's frame, in world units.
+const LENS_DIST = 41, LENS_SIDE = 5;
 // Patch 165: how dark the unlit world is (1 = the old pitch black).
 const DARKNESS_ALPHA = 0.6;
+// Patch 173: how each Patient is drawn (Renderer.drawPlayer).
+const PATIENT_LOOKS = {
+    insomniac:    { coat: '#3f78b5', coatDark: '#284f7a', skin: '#efd2b0', hair: '#2b2530', trouser: '#39446a', carry: 'pillow', bags: true },
+    vandal:       { coat: '#b0392f', coatDark: '#742019', skin: '#e3b48a', hair: '#1c1a1a', trouser: '#2a2a30', carry: 'pipe', hat: 'hood' },
+    artist:       { coat: '#d1a02c', coatDark: '#8f6a12', skin: '#f1d6bd', hair: '#5a3220', trouser: '#3a2f4a', carry: 'satchel', hat: 'beret' },
+    photographer: { coat: '#61803a', coatDark: '#3d5422', skin: '#c99874', hair: '#201a14', trouser: '#3b3a30', carry: 'camera', hat: 'cap', strap: '#15151a' }
+};
 const EYE_COLOURS = {
     SCAVENGER: '#ffd24a', PREDATOR: '#ff5a48', PARASITE: '#9dff6a',
     SPLITTER: '#f4f0e0', WARDEN: '#ffb347', BURROWER: '#ffc9a0'
@@ -1901,9 +1910,13 @@ export class Renderer {
             const reach = flRadius * flicker * (0.94 + t * 0.06);
             if (!Number.isFinite(spread) || !Number.isFinite(reach) || reach <= 0) continue;
 
+            // Patch 173: the beam leaves the LENS, not the player's chest. Visual only;
+            // the weapon's cone is still measured from the player (Combat.js).
+            const lens = this.lensPoint(state);
+            const lreach = Math.max(20, reach - LENS_DIST);
             const flHole = this.lightCtx.createRadialGradient(
-                state.player.x, state.player.y, 10,
-                state.player.x, state.player.y, reach
+                lens.x, lens.y, 3,
+                lens.x, lens.y, lreach
             );
             flHole.addColorStop(0, `rgba(255, 255, 255, ${strength})`);
             flHole.addColorStop(0.8, `rgba(255, 255, 255, ${strength * 0.9})`);
@@ -1911,9 +1924,9 @@ export class Renderer {
 
             this.lightCtx.fillStyle = flHole;
             this.lightCtx.beginPath();
-            this.lightCtx.moveTo(state.player.x, state.player.y);
+            this.lightCtx.moveTo(lens.x, lens.y);
             this.lightCtx.arc(
-                state.player.x, state.player.y, reach,
+                lens.x, lens.y, lreach,
                 state.player.angle - spread + jitter,
                 state.player.angle + spread + jitter
             );
@@ -1942,6 +1955,13 @@ export class Renderer {
         this.ctx.drawImage(this.lightCanvas, 0, 0, this.canvas.width, this.canvas.height);
         this.ctx.globalAlpha = 1;
         this.ctx.restore(); 
+    }
+
+    /** Patch 173: where the flashlight's lens is in the world (matches drawPlayer's rig). */
+    lensPoint(state) {
+        const a = Number.isFinite(state.player.angle) ? state.player.angle : 0;
+        const ca = Math.cos(a), sa = Math.sin(a);
+        return { x: state.player.x + ca * LENS_DIST - sa * LENS_SIDE, y: state.player.y + sa * LENS_DIST + ca * LENS_SIDE };
     }
 
     /**
@@ -2375,8 +2395,9 @@ export class Renderer {
         // Patch 169: a warm tint inside the beam (screen-blended), so the light reads as
         // light and not as a grey hole in the dark. One gradient a frame.
         if (fl && Number.isFinite(flRadius) && flRadius > 0 && Number.isFinite(state.player.angle) && Number.isFinite(fl.angle)) {
-            const wx = state.player.x, wy = state.player.y;
-            const warm = this.ctx.createRadialGradient(wx, wy, 8, wx, wy, flRadius);
+            const wl = this.lensPoint(state);
+            const wx = wl.x, wy = wl.y;
+            const warm = this.ctx.createRadialGradient(wx, wy, 3, wx, wy, Math.max(20, flRadius - LENS_DIST));
             warm.addColorStop(0, 'rgba(255, 226, 160, 0.30)');
             warm.addColorStop(0.7, 'rgba(255, 196, 110, 0.14)');
             warm.addColorStop(1, 'rgba(255, 180, 90, 0)');
@@ -2384,7 +2405,7 @@ export class Renderer {
             this.ctx.fillStyle = warm;
             this.ctx.beginPath();
             this.ctx.moveTo(wx, wy);
-            this.ctx.arc(wx, wy, flRadius, state.player.angle - fl.angle, state.player.angle + fl.angle);
+            this.ctx.arc(wx, wy, Math.max(20, flRadius - LENS_DIST), state.player.angle - fl.angle, state.player.angle + fl.angle);
             this.ctx.closePath();
             this.ctx.fill();
             this.ctx.globalCompositeOperation = 'source-over';
@@ -4305,87 +4326,57 @@ export class Renderer {
                     // Body spin carries the entity's phase so parasites don't all rotate
                     // in unison. The tether below cancels the exact same expression, so
                     // these two must stay in step if either is ever changed.
-                    let paraSpin = this.renderFrame * 0.2 + (ent.phase || 0);
-                    this.ctx.rotate(paraSpin);
-
-                    if (ent.lashingState === 'lashing' && ent.lashTarget) {
-                        this.ctx.save();
-                        let dx = ent.lashTarget.x - ent.x;
-                        let dy = ent.lashTarget.y - ent.y;
-
-                        this.ctx.rotate(-paraSpin);
-
-                        this.ctx.strokeStyle = `rgba(255, 100, 100, ${1 - (ent.lashTimer/30)})`;
-                        this.ctx.lineWidth = 3;
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(0,0);
-                        this.ctx.lineTo(dx, dy);
-                        this.ctx.stroke();
-                        
-                        this.ctx.restore();
+                    // Patch 173: the Parasite as a tick on six jointed legs (it was a
+                    // spinning eight-point star). It faces where it is going, its abdomen
+                    // swells and glows green, and it rears with the legs drawn in while it
+                    // lashes a host.
+                    const c = this.ctx;
+                    const lashing = ent.lashingState === 'lashing';
+                    if (lashing && ent.lashTarget) {
+                        c.strokeStyle = `rgba(190, 255, 120, ${Math.max(0, 1 - (ent.lashTimer / 30))})`;
+                        c.lineWidth = 3;
+                        c.beginPath(); c.moveTo(0, 0); c.lineTo(ent.lashTarget.x - ent.x, ent.lashTarget.y - ent.y); c.stroke();
                     }
-
-                    let pulse = this.entPulse(ent, 0.3) * 1.5;
-                    if (ent.lashingState === 'lashing') pulse = this.entPulse(ent, 1.5) * 3;
-
-                    let curl = ent.lashingState === 'lashing' ? 0.5 : 0;
-
-                    // Radial tendrils: tapered (wide at core, thin at tip) filled shapes
-                    // instead of uniform-width strokes, so they read as flesh, not wire.
-                    this.ctx.fillStyle = isFlashed ? '#ffffff' : ent.color;
-                    for (let i = 0; i < 8; i++) {
-                        let angle = (i/8) * Math.PI * 2 + (this.entPulse(ent, 0.5, i)*0.2) + curl;
-                        let length = 10 + Math.random() * 4;
-                        if (ent.lashingState === 'lashing') length -= 3;
-
-                        let dirX = Math.cos(angle), dirY = Math.sin(angle);
-                        let perpX = -dirY, perpY = dirX;
-                        let baseW = 1.6;
-                        let midX = dirX * (length * 0.55) + Math.cos(angle + 0.3) * 2;
-                        let midY = dirY * (length * 0.55) + Math.sin(angle + 0.3) * 2;
-
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(dirX*4 + perpX*baseW, dirY*4 + perpY*baseW);
-                        this.ctx.quadraticCurveTo(midX + perpX*baseW*0.4, midY + perpY*baseW*0.4, dirX*length, dirY*length);
-                        this.ctx.quadraticCurveTo(midX - perpX*baseW*0.4, midY - perpY*baseW*0.4, dirX*4 - perpX*baseW, dirY*4 - perpY*baseW);
-                        this.ctx.closePath();
-                        this.ctx.fill();
+                    const pvx = ent.vx || 0, pvy = ent.vy || 0;
+                    const face = lashing && ent.lashTarget ? Math.atan2(ent.lashTarget.y - ent.y, ent.lashTarget.x - ent.x)
+                        : ((Math.abs(pvx) + Math.abs(pvy) > 0.01) ? Math.atan2(pvy, pvx) : (ent.phase || 0));
+                    c.rotate(face);
+                    let pulse = this.entPulse(ent, lashing ? 1.5 : 0.3) * (lashing ? 2 : 1);
+                    const tSp = Math.min(3, Math.hypot(pvx, pvy));
+                    const tPh = this.renderFrame * (0.28 + tSp * 0.1) + ((ent.id * 211) % 6.283);
+                    const BODY = isFlashed ? '#ffffff' : '#27331a';
+                    const RIM = 'rgba(214, 255, 170, 0.8)';
+                    c.lineCap = 'round'; c.lineJoin = 'round';
+                    c.beginPath();
+                    for (let li = 0; li < 6; li++) {
+                        const sideY = li % 2 ? 1 : -1, row = (li / 2) | 0;        // 3 rows of 2
+                        const hipX = 3 - row * 3.5;
+                        const sw = Math.sin(tPh + row * 2.1 + (sideY > 0 ? Math.PI : 0));
+                        const footX = hipX + (1 - row) * 4 + sw * (lashing ? 0 : 2.4);
+                        const footY = sideY * (lashing ? 5 : 9.5);
+                        const lg = ik2(hipX, sideY * 2, footX, footY, 5, 5.5, sideY * (row === 0 ? -1 : 1));
+                        c.moveTo(hipX, sideY * 2); c.lineTo(lg.kx, lg.ky); c.lineTo(lg.ex, lg.ey);
                     }
-
-                    // Small core: faint faux-glow behind a compact body and dark nucleus,
-                    // drawn after the tendrils so it stays the visual focal point.
-                    //
-                    // Patch 41 (12b): the two fills below ARE cached (same quantised-bucket
-                    // recipe as Scavenger/Predator above) — they depend only on
-                    // (isFlashed, pulse), both deterministic per frame. The 8 tendrils
-                    // above are deliberately left OUT of caching and OUT of this key:
-                    // they call raw Math.random() every frame (`length = 10 +
-                    // Math.random()*4`), which is what gives the parasite its organic
-                    // wriggle. Math.random() cannot be bucketed into a cache key — baking
-                    // it into a cached sprite would freeze that jitter into one static
-                    // shape per bucket, trading a real animated detail for a cache hit.
-                    // drawGlow() is also left live and outside this cache, unchanged from
-                    // before — it already does its own (color, alpha) caching, and
-                    // composing it into this sprite would just double-cache the same glow.
-                    const paraGlowAmt = 6 + pulse;
-                    this.drawGlow(0, 0, 5 + paraGlowAmt, isFlashed ? '#ffcccc' : '#6b2222', 0.4);
-
-                    let pulseQ = Math.round(pulse * 2) / 2;
-                    const paraSprite = this.getSprite(
-                        `para|${isFlashed ? 1 : 0}|${pulseQ}`, 24, 24,
-                        (cx) => {
-                            cx.fillStyle = isFlashed ? '#ffcccc' : '#6b2222';
-                            cx.beginPath();
-                            cx.arc(0, 0, 5 + pulseQ, 0, Math.PI*2);
-                            cx.fill();
-
-                            cx.fillStyle = '#050505';
-                            cx.beginPath();
-                            cx.arc(0, 0, 2 + pulseQ*0.5, 0, Math.PI*2);
-                            cx.fill();
-                        }
-                    );
-                    this.drawSprite(paraSprite);
+                    c.strokeStyle = RIM; c.lineWidth = 2.6; c.stroke();
+                    c.strokeStyle = BODY; c.lineWidth = 1.3; c.stroke();
+                    // abdomen: swollen, glowing from inside
+                    this.drawGlow(-4, 0, 13 + pulse * 2, '#9dff6a', isFlashed ? 0.7 : 0.45);
+                    c.fillStyle = BODY;
+                    c.strokeStyle = RIM; c.lineWidth = 1.2;
+                    c.beginPath(); c.ellipse(-4, 0, 6.5 + pulse * 0.6, 5.2 + pulse * 0.6, 0, 0, Math.PI * 2); c.fill(); c.stroke();
+                    c.fillStyle = isFlashed ? '#ffffff' : '#9dff6a';
+                    c.beginPath(); c.ellipse(-4.5, 0, 3 + pulse * 0.4, 2.2 + pulse * 0.4, 0, 0, Math.PI * 2); c.fill();
+                    // head and mandibles
+                    c.fillStyle = BODY;
+                    c.beginPath(); c.arc(4, 0, 3.4, 0, Math.PI * 2); c.fill(); c.stroke();
+                    const jaw = 0.35 + Math.abs(Math.sin(tPh * 0.7)) * 0.4 + (lashing ? 0.5 : 0);
+                    c.strokeStyle = RIM; c.lineWidth = 1.4;
+                    c.beginPath();
+                    c.moveTo(6, -1.5); c.lineTo(6 + Math.cos(-jaw) * 5, -1.5 + Math.sin(-jaw) * 5);
+                    c.moveTo(6, 1.5); c.lineTo(6 + Math.cos(jaw) * 5, 1.5 + Math.sin(jaw) * 5);
+                    c.stroke();
+                    c.fillStyle = '#eaffc8';
+                    c.fillRect(4.6, -2.2, 1.5, 1.5); c.fillRect(4.6, 0.7, 1.5, 1.5);
 
                     this.ctx.restore();
                 }
@@ -5443,12 +5434,33 @@ export class Renderer {
         const c = this.ctx;
         const hurt = state.player.flashTime > 0;
         const hurtCol = (this.renderFrame % 6 < 3) ? '#ff3b30' : '#ffffff';
-        const COAT = hurt ? hurtCol : '#2f7f8c';
-        const COAT_DARK = hurt ? hurtCol : '#1d525b';
-        const SKIN = hurt ? hurtCol : '#efcfa4';
-        const HAIR = hurt ? hurtCol : '#3a2a20';
-        const TROUSER = hurt ? hurtCol : '#262a3a';
+        // Patch 173: each Patient has their own look (coat, hair, skin, what they carry).
+        const look = PATIENT_LOOKS[state.player.character] || PATIENT_LOOKS.insomniac;
+        const COAT = hurt ? hurtCol : look.coat;
+        const COAT_DARK = hurt ? hurtCol : look.coatDark;
+        const SKIN = hurt ? hurtCol : look.skin;
+        const HAIR = hurt ? hurtCol : look.hair;
+        const TROUSER = hurt ? hurtCol : look.trouser;
         const INK = 'rgba(8, 10, 16, 0.9)';
+
+        // Patch 173: fear. How frightened the figure looks: low Sanity, plus how close
+        // the nearest enemy is. It drives the hunch, the tremble, the wide eyes, where
+        // the head turns, and the sweat. One pass over the entities per frame.
+        let nearD = 9999, nearA = 0;
+        if (state.entities) {
+            for (let i = 0; i < state.entities.length; i++) {
+                const e = state.entities[i];
+                const ddx = e.x - state.player.x, ddy = e.y - state.player.y;
+                const dd = ddx * ddx + ddy * ddy;
+                if (dd < nearD * nearD) { nearD = Math.sqrt(dd); nearA = Math.atan2(ddy, ddx); }
+            }
+        }
+        const threat = nearD < 220 ? 1 - nearD / 220 : 0;
+        const fear = Math.max(0, Math.min(1, panic * 0.75 + threat * 0.6));
+        const tremble = fear > 0.25 ? (fear - 0.25) * 1.6 : 0;
+        if (tremble > 0) c.translate((Math.random() - 0.5) * tremble, (Math.random() - 0.5) * tremble);
+        // a flinch on being hit: the whole figure squashes back for a few frames
+        if (hurt) c.scale(0.9, 1.08);
 
         const mvLen = Math.hypot(moveX, moveY);
         const walking = isMoving && mvLen > 0.05;
@@ -5478,13 +5490,29 @@ export class Renderer {
         c.save();
         c.rotate(walking ? sw1 * 0.1 : 0);
         // backpack
-        c.fillStyle = hurt ? hurtCol : '#8a5a2b';
         c.strokeStyle = INK; c.lineWidth = 1.4;
-        c.beginPath(); c.rect(-13, -6, 7, 12); c.fill(); c.stroke();
-        c.fillStyle = hurt ? hurtCol : '#c98a3a';
-        c.fillRect(-12, -1.5, 5, 3);
+        if (look.carry === 'pipe') {            // the Vandal: a length of pipe across the back
+            c.fillStyle = hurt ? hurtCol : '#9aa0aa';
+            c.save(); c.rotate(0.5);
+            c.beginPath(); c.rect(-11, -13, 3.6, 26); c.fill(); c.stroke();
+            c.restore();
+        } else if (look.carry === 'satchel') {  // the Artist: a satchel with a brush sticking out
+            c.fillStyle = hurt ? hurtCol : '#6b4a8a';
+            c.beginPath(); c.rect(-13, -2, 8, 10); c.fill(); c.stroke();
+            c.strokeStyle = hurt ? hurtCol : '#e8d9b0'; c.lineWidth = 1.8;
+            c.beginPath(); c.moveTo(-10, -2); c.lineTo(-15, -9); c.stroke();
+            c.strokeStyle = INK; c.lineWidth = 1.4;
+        } else if (look.carry === 'camera') {   // the Photographer: a camera bag
+            c.fillStyle = hurt ? hurtCol : '#2b2b30';
+            c.beginPath(); c.rect(-13, -5, 7, 10); c.fill(); c.stroke();
+            c.fillStyle = hurt ? hurtCol : '#c9c9d2';
+            c.beginPath(); c.arc(-9.5, 0, 2.2, 0, Math.PI * 2); c.fill();
+        } else {                                // the Insomniac: a pillow strapped on
+            c.fillStyle = hurt ? hurtCol : '#e6e2d6';
+            c.beginPath(); c.ellipse(-10, 0, 4.5, 7, 0, 0, Math.PI * 2); c.fill(); c.stroke();
+        }
         // coat
-        let sw = 9 + breathe;
+        let sw = 9 + breathe - fear * 1.6;   // shoulders draw in when frightened
         c.fillStyle = COAT;
         c.beginPath();
         c.moveTo(8, 0);
@@ -5498,6 +5526,10 @@ export class Renderer {
         // collar and shoulder seam
         c.strokeStyle = COAT_DARK; c.lineWidth = 2;
         c.beginPath(); c.moveTo(2, -sw * 0.95); c.quadraticCurveTo(-3, 0, 2, sw * 0.95); c.stroke();
+        if (look.strap) {                       // a strap across the chest
+            c.strokeStyle = hurt ? hurtCol : look.strap; c.lineWidth = 1.8;
+            c.beginPath(); c.moveTo(4, -sw * 0.8); c.lineTo(-6, sw * 0.9); c.stroke();
+        }
 
         // --- free arm: swings against the legs ---
         {
@@ -5542,21 +5574,66 @@ export class Renderer {
         c.beginPath(); c.arc(13, 0, 3, 0, Math.PI * 2); c.fill();
         c.restore();
 
-        // --- head: turns toward where the body is going ---
+        // --- head: looks where the danger is, eyes widening with fear ---
         let headShiftX = Math.max(-3, Math.min(3, moveX * 0.4));
         let headShiftY = Math.max(-3, Math.min(3, moveY * 0.4));
-        let headJitterX = (Math.random() - 0.5) * panic * 3;
-        let headJitterY = (Math.random() - 0.5) * panic * 3;
-        const hx0 = 7 + headShiftX + headJitterX, hy0 = headShiftY + headJitterY;
+        const hx0 = 7 + headShiftX - fear * 1.5, hy0 = headShiftY;
+        // turn toward the nearest enemy (in the body's frame), or look about when calm
+        let turn = Math.sin(this.renderFrame * 0.021) * 0.25;
+        if (threat > 0) {
+            let rel = nearA - state.player.angle;
+            while (rel > Math.PI) rel -= Math.PI * 2;
+            while (rel < -Math.PI) rel += Math.PI * 2;
+            turn = Math.max(-1.1, Math.min(1.1, rel)) * Math.min(1, threat * 1.6);
+        }
+        c.save();
+        c.translate(hx0, hy0);
+        c.rotate(turn);
         c.fillStyle = HAIR;
         c.strokeStyle = INK; c.lineWidth = 1.5;
-        c.beginPath(); c.arc(hx0, hy0, 6.2, 0, Math.PI * 2); c.fill(); c.stroke();
+        c.beginPath(); c.arc(0, 0, 6.2, 0, Math.PI * 2); c.fill(); c.stroke();
+        if (look.hat === 'hood') {              // the hood is the coat's colour
+            c.fillStyle = COAT;
+            c.beginPath(); c.arc(-0.8, 0, 6.6, Math.PI * 0.42, Math.PI * 1.58); c.closePath(); c.fill(); c.stroke();
+        }
         c.fillStyle = SKIN;
-        c.beginPath(); c.ellipse(hx0 + 2.6, hy0, 3.6, 4.6, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.ellipse(2.6, 0, 3.6, 4.6, 0, 0, Math.PI * 2); c.fill();
         c.fillStyle = HAIR;   // a fringe, so the face has a top
-        c.beginPath(); c.ellipse(hx0 + 0.8, hy0 - 2.6, 3.4, 2.2, 0.5, 0, Math.PI * 2); c.fill();
-        c.fillStyle = '#12141c';
-        c.beginPath(); c.arc(hx0 + 4.4, hy0 - 1.7, 0.9, 0, Math.PI * 2); c.arc(hx0 + 4.4, hy0 + 1.7, 0.9, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.ellipse(0.8, -2.6, 3.4, 2.2, 0.5, 0, Math.PI * 2); c.fill();
+        if (look.hat === 'beret') {
+            c.fillStyle = hurt ? hurtCol : '#7a2f8a';
+            c.beginPath(); c.ellipse(-1.2, -1, 5.4, 4.6, 0.3, 0, Math.PI * 2); c.fill(); c.stroke();
+        } else if (look.hat === 'cap') {
+            c.fillStyle = hurt ? hurtCol : look.coatDark;
+            c.beginPath(); c.arc(-0.5, 0, 6.3, Math.PI * 0.5, Math.PI * 1.5); c.closePath(); c.fill(); c.stroke();
+            c.beginPath(); c.ellipse(5.6, 0, 2.6, 4.2, 0, 0, Math.PI * 2); c.fill();   // the peak
+        }
+        // eyes: whites show and grow as fear rises; a blink now and then when calm
+        const blink = fear < 0.3 && ((this.renderFrame + 17) % 190) < 6;
+        if (!blink) {
+            const ew = 0.9 + fear * 1.3;
+            if (fear > 0.2) {
+                c.fillStyle = '#ffffff';
+                c.beginPath(); c.arc(4.3, -1.8, ew + 0.5, 0, Math.PI * 2); c.arc(4.3, 1.8, ew + 0.5, 0, Math.PI * 2); c.fill();
+            }
+            c.fillStyle = '#12141c';
+            c.beginPath(); c.arc(4.6, -1.8, 0.9, 0, Math.PI * 2); c.arc(4.6, 1.8, 0.9, 0, Math.PI * 2); c.fill();
+        }
+        if (look.bags && fear < 0.5) {          // the Insomniac's eye bags
+            c.strokeStyle = 'rgba(90, 60, 110, 0.8)'; c.lineWidth = 0.8;
+            c.beginPath(); c.arc(3.6, -1.8, 1.6, -0.6, 0.6); c.arc(3.6, 1.8, 1.6, -0.6, 0.6); c.stroke();
+        }
+        c.restore();
+        // sweat, flung off when badly frightened
+        if (fear > 0.55) {
+            c.fillStyle = '#bfe6ff';
+            for (let i = 0; i < 2; i++) {
+                const tt = ((this.renderFrame * 0.06 + i * 0.5) % 1);
+                c.globalAlpha *= (1 - tt);
+                c.fillRect(hx0 - 4 - tt * 9, hy0 + (i ? 7 : -7) * (0.6 + tt), 1.8, 1.8);
+                c.globalAlpha /= (1 - tt) || 1;
+            }
+        }
 
         const spinner = state.player.weapons.fidget_spinner;
         if (spinner && spinner.level > 0) {
