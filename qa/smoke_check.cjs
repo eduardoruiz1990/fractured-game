@@ -171,10 +171,25 @@ async function playCrazyGames(browser, base, vp) {
   await page.screenshot({ path: path.join(SHOTS, `smoke_play_${tag}.png`) });
 
   // Pause: the menu, and gameplayStop. (Close a level-up first: pause waits for it.)
-  if (await levelUpOpen(page)) { if (touch) await page.tap('#cards-container .card').catch(() => {}); else await page.keyboard.press('1'); await page.waitForTimeout(400); }
-  if (touch) await page.tap('#btn-pause').catch(() => {}); else await page.keyboard.press('Escape');
-  await page.waitForTimeout(500);
-  const paused = await page.evaluate(() => { const p = document.getElementById('pause-menu'); return !!p && getComputedStyle(p).display !== 'none'; });
+  // Patch 180: level-ups come every 15-25 s in a horde, and a card ignores input for its
+  // first 300 ms, so one press did not always close it and a second card could open
+  // behind the first. Close whatever is open (up to 6 tries), then pause, and try the
+  // pause again if a card opened in between. The game's rule is unchanged.
+  const closeLevelUps = async () => {
+    for (let k = 0; k < 6 && await levelUpOpen(page); k++) {
+      await page.waitForTimeout(380);
+      if (touch) await page.tap('#cards-container .card').catch(() => {}); else await page.keyboard.press('1');
+      await page.waitForTimeout(450);
+    }
+  };
+  const isPaused = () => page.evaluate(() => { const p = document.getElementById('pause-menu'); return !!p && getComputedStyle(p).display !== 'none'; });
+  let paused = false;
+  for (let attempt = 0; attempt < 3 && !paused; attempt++) {
+    await closeLevelUps();
+    if (touch) await page.tap('#btn-pause').catch(() => {}); else await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    paused = await isPaused();
+  }
   const calls2 = await page.evaluate(() => window.__sdkCalls.map(c => c[0]));
   ok(paused && calls2.lastIndexOf('gameplayStop') > calls2.lastIndexOf('gameplayStart'), `${tag} pause shows the menu and the SDK heard gameplayStop`);
 
