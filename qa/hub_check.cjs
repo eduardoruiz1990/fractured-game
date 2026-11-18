@@ -17,7 +17,7 @@ const gs = (p) => p.evaluate(() => window.__fractured.gameState);
     await page.addInitScript({ path: S + '/sdkmock.js' });
     await page.goto('http://localhost:5199/', { waitUntil: 'networkidle' });
     await page.waitForTimeout(900);
-    await page.click('#btn-title-hub');
+    await page.evaluate(() => { const f = window.__fractured; if (f && f.saveManager) { f.saveManager.metaState.tutorialCompleted = true; f.saveManager.saveGame(); } document.body.classList.remove('first-time'); });   /* Patch 185: the Mind Hub button is hidden until the first room is behind the player (Patch 167); these checks are a returning player's */ await page.click('#btn-title-hub');
     await page.waitForTimeout(700);
 
     // --- the hub button ---------------------------------------------------------

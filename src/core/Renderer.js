@@ -1772,6 +1772,9 @@ export class Renderer {
         this.lightScale = low ? 0.35 : 1;
         this.fogCloudLimit = low ? 12 : 30;
         this.filmGrainEnabled = !low;
+        // Patch 185: the LOW tier also drops the per-enemy glows added in v3 (rim, burn
+        // bloom, eye halo). They are one drawImage each, per enemy, per frame.
+        this.lowTier = low;
     }
 
     drawLightingMasks(state, curShakeX, curShakeY) {
@@ -2412,7 +2415,7 @@ export class Renderer {
             const sz = r > 16 ? 5 : 4;
             const col = EYE_COLOURS[e.type] || '#ffe9a8';
             // a soft halo first (one translucent square), then the two eyes
-            this.drawGlow(e.x, e.y, r * 1.9, col, 0.2);   // cached sprite, one drawImage
+            if (!this.lowTier) this.drawGlow(e.x, e.y, r * 1.9, col, 0.2);   // cached sprite, one drawImage
             ctx.fillStyle = col;
             ctx.fillRect(cx + sx - sz / 2, cy + sy - sz / 2, sz, sz);
             ctx.fillRect(cx - sx - sz / 2, cy - sy - sz / 2, sz, sz);
@@ -3907,7 +3910,7 @@ export class Renderer {
                     this.ctx.beginPath();
                     this.ctx.ellipse(0, pr * 0.85, pr * 1.25, pr * 0.5, 0, 0, Math.PI * 2);
                     this.ctx.fill();
-                    this.drawGlow(0, 0, pr * 2.6, EYE_COLOURS[ent.type] || '#ffe9a8', isFlashed ? 0.5 : 0.24);
+                    if (!this.lowTier) this.drawGlow(0, 0, pr * 2.6, EYE_COLOURS[ent.type] || '#ffe9a8', isFlashed ? 0.5 : 0.24);
                     this.ctx.save();
                     const ps = ent.type === 'PARASITE' ? 1.6 : 1.3;   // Patch 169: the parasite was a speck
                     // Patch 170: every body is alive. A waddle and a breathing squash on
@@ -3915,7 +3918,7 @@ export class Renderer {
                     // is burning it (flashTime), a hot orange bloom over the rim glow.
                     const sp = Math.min(3, Math.hypot(ent.vx || 0, ent.vy || 0));
                     const wob = Math.sin(this.renderFrame * (0.14 + sp * 0.06) + ((ent.id * 97) % 6.283));
-                    if (isFlashed) this.drawGlow(0, 0, pr * 3.1, '#ff9a3c', 0.55);
+                    if (isFlashed && !this.lowTier) this.drawGlow(0, 0, pr * 3.1, '#ff9a3c', 0.55);
                     this.ctx.rotate(wob * 0.07);
                     this.ctx.scale(ps * (1 + wob * 0.06), ps * (1 - wob * 0.06));
                 }

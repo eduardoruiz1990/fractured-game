@@ -54,7 +54,7 @@ const visibleText = page => page.evaluate(() => document.body.innerText);
   await page.waitForTimeout(150);
 
   // --- the hub and every folder pane --------------------------------------------------------
-  await page.click('#btn-title-hub');
+  await page.evaluate(() => { const f = window.__fractured; if (f && f.saveManager) { f.saveManager.metaState.tutorialCompleted = true; f.saveManager.saveGame(); } document.body.classList.remove('first-time'); });   /* Patch 185: the Mind Hub button is hidden until the first room is behind the player (Patch 167); these checks are a returning player's */ await page.click('#btn-title-hub');
   await page.waitForTimeout(700);
   ok(await gs() === 'HUB', 'reached the hub');
   scan('hub', await visibleText(page));

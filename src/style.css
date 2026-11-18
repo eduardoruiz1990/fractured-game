@@ -2545,3 +2545,13 @@ body.first-time #btn-title-endless, body.first-time #btn-title-hub { display: no
 .casefile-page-title::before { content: "\1F4CE\00A0"; }
 .casefile-page-text { color: #e6e0d2; line-height: 1.55; font-size: 0.92rem; }
 .casefile-missing { border-left-color: rgba(255, 255, 255, 0.18) !important; color: #8d879a; }
+
+/* Patch 185: "SANITY 20% · FRAYING" overflowed its panel at 384 px (qa/hud_check). */
+#ui-layer .sanity-section.sanity-low #sanity-label, #ui-layer .sanity-section.sanity-breakdown #sanity-label { font-size: 11px; letter-spacing: 0; }
+
+/* Patch 185: the pause inventory must never push a button off screen (qa/sizes_check).
+   It takes what is left after the title, the line and the three buttons, and on a short
+   landscape screen it steps aside entirely. */
+#pause-menu .pause-loadout { max-height: max(0px, min(46vh, calc(100vh - 410px))); }
+#pause-menu .medical-folder { max-height: 98vh; }
+@media (max-height: 520px) { #pause-menu .pause-loadout { display: none; } #pause-menu #pause-desc { margin: 0 0 6px; } }

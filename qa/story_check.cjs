@@ -38,11 +38,13 @@ async function boot(browser, vp) {
       return { shown: !!el, card: el && el.dataset.card, text: el ? el.innerText : '', pe: el ? getComputedStyle(el).pointerEvents : '',
                gs: window.__fractured.gameState, seen: window.__fractured.saveManager.metaState.story.coldOpenSeen };
     });
-    ok(c0.shown && c0.card === '0' && /CONTENT NOTE/.test(c0.text) && /self-harm/.test(c0.text), `${tag} cold open starts on the content note`);
-    ok(c0.gs === 'PLAYING' && c0.pe === 'none', `${tag} it adds no click: the game is PLAYING under it and it takes no pointer input (${c0.gs}, ${c0.pe})`);
-    ok(c0.seen === true, `${tag} coldOpenSeen recorded when shown`);
-    await page.waitForTimeout(3700);
-    ok(await page.evaluate(() => (document.getElementById('story-coldopen') || {}).dataset?.card) === '1', `${tag} advances on its own`);
+    // Patch 167/185: the cold open no longer plays over the first room. A first launch
+    // goes straight into play, the content note is one line on the title screen, and
+    // coldOpenSeen is still recorded so nothing replays it later.
+    ok(!c0.shown, `${tag} no cold-open cards over the first room`);
+    ok(c0.gs === 'PLAYING', `${tag} the first click plays (${c0.gs})`);
+    ok(c0.seen === true, `${tag} coldOpenSeen recorded on the first run`);
+    ok(await page.evaluate(() => { const n = document.getElementById('title-content-note'); return !!n && /grief/i.test(n.textContent) && /no gore/i.test(n.textContent); }), `${tag} the content note is on the title screen`);
     const x0 = await page.evaluate(() => window.__fractured.game.state.player.x);
     await page.keyboard.down('d'); await page.waitForTimeout(400); await page.keyboard.up('d');
     await page.waitForTimeout(500);

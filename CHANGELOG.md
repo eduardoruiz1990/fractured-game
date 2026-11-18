@@ -3312,6 +3312,34 @@ The covers were looked at once at reduced size; the landscape cover has a creatu
 overlapping the title's left edge and wants a second look (re-render `L_ring` for a
 different scatter).
 
+**Patch 185 — the full browser-check pass and the slow-phone soak (2026-11-18).**
+All 31 dev-server checks in `qa/` were run for the first time since the v3 rework.
+- **Real bugs found and fixed:** "SANITY 20% · FRAYING" overflowed its HUD panel at
+  384 px (`hud_check`); the pause inventory pushed SYSTEM SETTINGS off screen on
+  landscape sizes (`sizes_check`), so it now takes only the space left and steps aside
+  under 520 px of height.
+- **Checks updated for intended changes:** `hub`, `text` and `sizes` set up a returning
+  player before opening the Mind Hub (hidden on a first visit since Patch 167);
+  `story` asserts there is no cold open and that the content note is on the title;
+  `juice` chooses the level-up cards a boss's XP now pays for before timing the slow
+  motion.
+- **Soak** (`soak_check --throttle 4 --phone`, floor 9, every boss, crowd at the cap,
+  software rendering), v3 against `master` in the same session:
+
+  | tier | build | enemies | loop CPU mean / p95 | frame p50 |
+  | --- | --- | --- | --- | --- |
+  | HIGH | master | 55 | 16.5 / 32.2 ms | 83 ms |
+  | HIGH | v3 | 73 | 25.5 / 45.3 ms | 150 ms |
+  | LOW | master | 42 | 12.9 / 21.9 ms | 83 ms |
+  | LOW | v3 | 60 | 19.3 / 34.2 ms | 117 ms |
+
+  Invariants hold on both tiers. v3 costs about 50% more CPU per frame in this worst
+  case; per enemy it is about the same on LOW and about 17% more on HIGH, so most of it
+  is simply more enemies. The LOW tier now also drops the per-enemy glows
+  (`Renderer.lowTier`). Headless numbers exaggerate fill cost and say nothing absolute
+  about a real GPU; the A56 reports "fluent".
+- Not run: `auto_quality_check`, `sim_cost_check`.
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.

@@ -63,6 +63,13 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++
   ok(boss.parts >= 100, `fragment burst (${boss.parts} particles)`);
   await page.waitForTimeout(80);
   await page.screenshot({ path: `${S}/juice_boss.png` });
+  // Patch 185: a boss's XP now pays for one or more level-ups, and the game holds
+  // while a card is open, so the slow motion cannot run down (nor a token be picked
+  // up) until the cards are chosen.
+  for (let k = 0; k < 8; k++) {
+    await page.waitForTimeout(450);
+    if (await page.evaluate(() => window.__fractured.gameState) === 'LEVEL_UP') { await page.keyboard.press('1'); }
+  }
   await page.waitForTimeout(2200);
   ok(await page.evaluate(() => window.__fractured.game.state.slowMo === 0 && window.__fractured.game.state.hitStop === 0),
      'boss slow motion ends');
