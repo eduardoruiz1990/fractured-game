@@ -3293,6 +3293,16 @@ clashed with the rest ("I had a Hades-style hub in mind").
   both together. They are computed in two places (the Renderer from the lens, Combat
   from the player).
 
+**Patch 183 — sound for the horde (2026-11-18).** All synthesised in
+`AudioEngine.playProceduralSFX`; no new files.
+- `kill` and `pickup` climb a pentatonic ladder while they keep coming (a run of kills
+  plays a rising phrase), and reset after a short gap. `levelup` is a four-note chime
+  (the key was already played by `main.js` and `LevelUpUI` but had no synthesiser branch,
+  so it was silent unless a sample existed). `door`, `chest_open`, `room_clear` are new.
+- Hooked in `Combat` (regular kills, door entry, chest burst) and `Director` (room
+  clear). The new keys clamp their volume multiplier at 1.2.
+- Verified to run without errors in a real session; not listened to.
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.

@@ -266,6 +266,7 @@ export class Combat {
                                 for (let k = 0; k < 8; k++) game.spawnPop(obj.x + Math.cos(k * 0.785) * 46, obj.y - 8 + Math.sin(k * 0.785) * 46, k % 2 ? '#fff3c4' : '#ffb347', 1.3);
                             }
                             state.cameraFlash = Math.max(state.cameraFlash || 0, 5);
+                            if (game.audioEngine) game.audioEngine.playSFX('chest_open', 0.9);   // Patch 183
                             game.spawnDamageText(obj.x, obj.y - 30, result.title, '#ffd27f', 1.5, 2.2);
                             if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 1.0);
                             if (typeof game.onChestOpened === 'function') {
@@ -293,7 +294,7 @@ export class Combat {
                         obj.entering = DOOR_ENTER_STEPS;
                         state.doorFx_busy = true;
                         state.doorFx = { born: state.frame, x: obj.x, y: obj.y, rewardType: obj.rewardType };
-                        if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 0.5);
+                        if (game.audioEngine) game.audioEngine.playSFX('door', 0.8);   // Patch 183
                         if (typeof game.onHaptic === 'function') game.onHaptic('hit');
                     }
                     if (obj.entering > 0) {
@@ -975,6 +976,7 @@ export class Combat {
                     }
                     game.spawnParticles(ent.x, ent.y, ent.color || '#fff', 8);   // Patch 168: 15 -> 8, the pop carries it
                     if (typeof game.spawnPop === 'function') game.spawnPop(ent.x, ent.y, POP_COLOURS[ent.type]);
+                    if (game.audioEngine) game.audioEngine.playSFX('kill', 0.55);   // Patch 183
                 }
                 
                 let poolKey = ent.type.toLowerCase();

@@ -518,6 +518,7 @@ export class Director {
             state.combatActive = false;
             state.roomCleared = true;
             lowerArena(state);   // Patch 137: the walls sink before the doors appear
+            if (this.game.audioEngine) this.game.audioEngine.playSFX('room_clear', 0.8);   // Patch 183
             endRoomEvent(state); // Patch 138
             this.spawnRewardDoors();
         }

@@ -675,6 +675,80 @@ export class AudioEngine {
         const gain = this.audioCtx.createGain();
         osc.connect(gain).connect(targetGainNode);
 
+        // Patch 183: the horde's own sounds. All synthesised (no new files), each a few
+        // short voices through one helper. Kills and pickups climb in pitch while they
+        // keep coming, so mowing through a crowd plays a rising run instead of one
+        // repeated blip.
+        volumeMult = Math.min(volumeMult, 1.2);   // callers pass up to 5 for sample-based keys
+        const tone = (type, f0, f1, t0, dur, vol) => {
+            const o = this.audioCtx.createOscillator(), g = this.audioCtx.createGain();
+            o.type = type;
+            o.frequency.setValueAtTime(Math.max(20, f0), now + t0);
+            if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), now + t0 + dur);
+            g.gain.setValueAtTime(0.0001, now + t0);
+            g.gain.linearRampToValueAtTime(Math.max(0.0002, vol * volumeMult), now + t0 + Math.min(0.012, dur * 0.3));
+            g.gain.exponentialRampToValueAtTime(0.0001, now + t0 + dur);
+            o.connect(g).connect(targetGainNode);
+            o.start(now + t0); o.stop(now + t0 + dur + 0.02);
+        };
+        const hiss = (t0, dur, vol, freq, kind = 'bandpass') => {
+            const n = this.audioCtx.createBufferSource(); n.buffer = this._sharedNoise();
+            const f = this.audioCtx.createBiquadFilter(); f.type = kind; f.frequency.setValueAtTime(freq, now + t0);
+            const g = this.audioCtx.createGain();
+            g.gain.setValueAtTime(Math.max(0.0002, vol * volumeMult), now + t0);
+            g.gain.exponentialRampToValueAtTime(0.0001, now + t0 + dur);
+            n.connect(f).connect(g).connect(targetGainNode);
+            n.start(now + t0, Math.random() * 0.5, dur + 0.02);
+            return f;
+        };
+        // a run of the pentatonic scale, stepped by how many came in quick succession
+        const ladder = (name, windowS, maxSteps) => {
+            const st = this._ladders || (this._ladders = {});
+            const L = st[name] || (st[name] = { n: 0, t: -9 });
+            L.n = (now - L.t < windowS) ? Math.min(maxSteps, L.n + 1) : 0;
+            L.t = now;
+            const PENT = [0, 2, 4, 7, 9];
+            const semis = PENT[L.n % 5] + 12 * Math.floor(L.n / 5);
+            return Math.pow(2, semis / 12);
+        };
+        if (key === 'kill') {
+            const k = ladder('kill', 0.45, 14);
+            tone('triangle', 330 * k, 150 * k, 0, 0.09, 0.22);
+            tone('sine', 660 * k, 990 * k, 0, 0.05, 0.08);
+            hiss(0, 0.05, 0.1, 2400, 'highpass');
+            return;
+        }
+        if (key === 'pickup') {
+            const k = ladder('pickup', 0.35, 19);
+            tone('sine', 660 * k, 880 * k, 0, 0.07, 0.12);
+            tone('triangle', 1320 * k, 1320 * k, 0.02, 0.05, 0.04);
+            return;
+        }
+        if (key === 'levelup') {
+            [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => { tone('triangle', f, f, i * 0.075, 0.32, 0.2); tone('sine', f * 2, f * 2, i * 0.075, 0.2, 0.07); });
+            tone('sine', 130.81, 130.81, 0, 0.6, 0.22);
+            hiss(0.22, 0.5, 0.05, 6000, 'highpass');
+            return;
+        }
+        if (key === 'door') {
+            const f = hiss(0, 0.75, 0.3, 300, 'bandpass');
+            f.frequency.exponentialRampToValueAtTime(3200, now + 0.6);
+            tone('sine', 110, 440, 0, 0.6, 0.22);
+            tone('triangle', 880, 1760, 0.35, 0.4, 0.1);
+            return;
+        }
+        if (key === 'chest_open') {
+            tone('sine', 90, 45, 0, 0.3, 0.5);
+            [1046.5, 1318.5, 1568, 2093, 2637].forEach((f, i) => tone('triangle', f, f, 0.05 + i * 0.055, 0.28, 0.13));
+            hiss(0.05, 0.6, 0.07, 7000, 'highpass');
+            return;
+        }
+        if (key === 'room_clear') {
+            tone('triangle', 392, 392, 0, 0.3, 0.16); tone('triangle', 523.25, 523.25, 0.14, 0.5, 0.18);
+            tone('sine', 784, 784, 0.14, 0.5, 0.07);
+            return;
+        }
+
         if (key === 'ui_hover') {
             osc.type = 'triangle'; osc.frequency.setValueAtTime(800, now);
             gain.gain.setValueAtTime(0.03 * volumeMult, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
