@@ -2274,3 +2274,7 @@ body.first-time #btn-title-endless, body.first-time #btn-title-hub { display: no
 @keyframes playPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.22); } }
 @media (prefers-reduced-motion: reduce) { #title-screen #btn-title-begin { animation: none; } }
 #ui-layer #xp-level { left: 8px; top: 62px; }
+
+/* Patch 168: the Sanity label stays on one line (" · FRAYING" wrapped under the bar). */
+#ui-layer #sanity-label { white-space: nowrap; }
+#ui-layer .sanity-section { flex: 0 1 40%; }

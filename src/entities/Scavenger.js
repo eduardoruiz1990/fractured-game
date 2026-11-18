@@ -1,5 +1,5 @@
 import { Enemy } from './Enemy.js';
-import { THIEF_CHANCE } from '../data/Horde.js';   // Patch 165
+import { THIEF_CHANCE, THIEF_FULL } from '../data/Horde.js';   // Patch 165
 
 export class Scavenger extends Enemy {
     constructor() {
@@ -21,6 +21,9 @@ export class Scavenger extends Enemy {
         this.variantTint = null;
         // Patch 165: in a horde most scavengers simply chase; a few still steal XP.
         this.thief = Math.random() < THIEF_CHANCE;
+        // Patch 168: what a thief has eaten. It is paid back in one orb when it dies
+        // (Combat.js), and a thief that is full (THIEF_FULL) stops stealing.
+        this.stolen = 0;
         return this.initBase(id, x, y, 20, 1.55 * stress);   // Patch 165: was 1.2; a horde has to arrive
     }
 
@@ -51,9 +54,10 @@ export class Scavenger extends Enemy {
                         xp.y += (this.y - xp.y) * 0.1;
                         if (d < 15) {
                             xp.collected = true; 
-                            this.hp += 5; 
-                            this.maxHp += 5; 
-                            this.speed += 0.05;
+                            this.stolen += xp.value || 0;
+                            this.hp += 2; 
+                            this.maxHp += 2; 
+                            if (this.stolen >= THIEF_FULL) { this.thief = false; this.vacuumTimer = 0; }
                             game.spawnParticles(this.x, this.y, '#ffffff', 2);
                         }
                     }
@@ -90,9 +94,10 @@ export class Scavenger extends Enemy {
                         this.vacuumTimer = 60; 
                     } else if (minDist < 15) { 
                         nearestXP.collected = true; 
-                        this.hp += 10; 
-                        this.maxHp += 10; 
-                        this.speed += 0.1; 
+                        this.stolen += nearestXP.value || 0;
+                        this.hp += 2; 
+                        this.maxHp += 2; 
+                        if (this.stolen >= THIEF_FULL) this.thief = false;
                     }
                 } else {
                     let distToPlayer = Math.max(Math.hypot(state.player.x - this.x, state.player.y - this.y), 0.001);

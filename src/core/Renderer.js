@@ -1964,6 +1964,26 @@ export class Renderer {
             }
             c.fill();
         }
+        // Patch 168: kill pops. A fixed ring of slots written by Game.spawnPop: a white
+        // flash and an expanding ring in the dead enemy's colour, over 16 steps.
+        const pops = state.pops;
+        if (pops) {
+            const c = this.ctx;
+            for (let i = 0; i < pops.length; i++) {
+                const p = pops[i];
+                const age = state.frame - p.born;
+                if (!(age >= 0 && age < 16) || !this.inView(p.x, p.y)) continue;
+                const t = age / 16;
+                if (age < 5) this.drawGlow(p.x, p.y, 26 - age * 2, '#fff6dc', 0.85 - age * 0.15);
+                c.globalAlpha = 1 - t;
+                c.strokeStyle = p.color;
+                c.lineWidth = 3 * (1 - t) + 0.5;
+                c.beginPath();
+                c.arc(p.x, p.y, 8 + age * 2.4, 0, Math.PI * 2);
+                c.stroke();
+            }
+            c.globalAlpha = 1;
+        }
         const ents = state.entities;
         if (!ents || !ents.length) return;
         const px = state.player.x, py = state.player.y;
@@ -3261,6 +3281,22 @@ export class Renderer {
                     this.ctx.scale(1.45, 1.45);
                 }
 
+                // Patch 168: one presentation layer for every regular enemy, before its
+                // own sprite: a ground shadow, a rim glow in its eye colour (dark bodies
+                // no longer melt into a dark floor), and the body drawn 30% larger. The
+                // hit radius is unchanged. Balanced by the restore after the dispatch.
+                const dressed = !isBossType(ent.type) && !ent.burrowed;
+                if (dressed) {
+                    const pr = ent.radius || 12;
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(0, pr * 0.85, pr * 1.25, pr * 0.5, 0, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    this.drawGlow(0, 0, pr * 2.6, EYE_COLOURS[ent.type] || '#ffe9a8', isFlashed ? 0.5 : 0.24);
+                    this.ctx.save();
+                    this.ctx.scale(1.3, 1.3);
+                }
+
                 if (ent.type === 'ARCHITECT') {
                     this.ctx.save();
                     const archSquash = this.hitSquash(ent);
@@ -3754,11 +3790,11 @@ export class Renderer {
                     let sackSize = 10 + (ent.hp > 30 ? 3 : 0);
 
                     const scavSprite = this.getSprite(
-                        `scav|${isFlashed ? 1 : 0}|${sackSize}|${bobQ}`, 64, 64,
+                        `scav2|${isFlashed ? 1 : 0}|${sackSize}|${bobQ}`, 64, 64,
                         (cx) => {
                             // Sack: heavy load dragging behind the hunch, drawn first so the
                             // body's back edge overlaps its top and reads as "carried".
-                            cx.fillStyle = isFlashed ? '#999999' : '#1a1c1a';
+                            cx.fillStyle = isFlashed ? '#f2ead8' : '#2b2536';
                             cx.beginPath();
                             cx.ellipse(-9, 6 + bobQ * 0.5, sackSize, sackSize * 0.85, 0.3, 0, Math.PI * 2);
                             cx.fill();
@@ -3774,7 +3810,9 @@ export class Renderer {
 
                             // Hunched body: shoulders arch up just behind a low, dropped head,
                             // then slope down toward the rear where the sack tucks in behind.
-                            cx.fillStyle = isFlashed ? '#bbbbbb' : '#2a2d2a';
+                            // Patch 168: a shade with a pale rim and two lit eyes, so it
+                            // reads against any floor instead of being black on brown.
+                            cx.fillStyle = isFlashed ? '#ffffff' : '#3a3148';
                             cx.beginPath();
                             cx.moveTo(13, 4 + bobQ);
                             cx.quadraticCurveTo(10, -11, 2, -9 + bobQ);
@@ -3783,10 +3821,14 @@ export class Renderer {
                             cx.quadraticCurveTo(6, 9, 13, 4 + bobQ);
                             cx.closePath();
                             cx.fill();
+                            cx.strokeStyle = 'rgba(236, 224, 196, 0.7)';
+                            cx.lineWidth = 1.4;
+                            cx.stroke();
 
-                            cx.fillStyle = '#aaaa00';
+                            cx.fillStyle = '#ffd24a';
                             cx.beginPath();
-                            cx.arc(11, 1 + bobQ, 1.5, 0, Math.PI*2);
+                            cx.arc(9.5, -3 + bobQ, 2.1, 0, Math.PI*2);
+                            cx.arc(10.5, 3.5 + bobQ, 2.1, 0, Math.PI*2);
                             cx.fill();
                         }
                     );
@@ -3794,8 +3836,8 @@ export class Renderer {
 
                     // Sweeping arm stays live — it swings independently of the body and
                     // would otherwise multiply the sprite count by every sweep position.
-                    this.ctx.strokeStyle = '#111';
-                    this.ctx.lineWidth = 2.5;
+                    this.ctx.strokeStyle = '#d8ccb0';
+                    this.ctx.lineWidth = 2;
                     this.ctx.beginPath();
                     this.ctx.moveTo(4, 6 + bobQ);
                     let sweepOffset = ent.vacuumState === 'vacuuming' ? 0 : this.entPulse(ent, 0.2)*5;
@@ -4158,6 +4200,7 @@ export class Renderer {
                     }
                 }
 
+                if (dressed) this.ctx.restore();   // Patch 168: undo the presentation scale
                 if (isElite) this.ctx.restore();   // Patch 133: undo the elite scale
 
                 if (!isElite && ent.hp < ent.maxHp && ent.flashTime <= 0 && !isBossType(ent.type)) {
@@ -5043,6 +5086,11 @@ export class Renderer {
         } else {
             this.ctx.rotate(state.player.angle);
         }
+
+        // Patch 168: the player is the one thing that must never be lost in a crowd:
+        // a warm halo under them, and the figure drawn 25% larger (hitbox unchanged).
+        this.drawGlow(0, 0, 44, '#ffe2a8', 0.22);
+        this.ctx.scale(1.25, 1.25);
 
         let shake = panic * 3;
 

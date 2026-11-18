@@ -21,7 +21,7 @@ export const FIRST_ROOM = { perSec: 2.2, seconds: 26, alive: 10 };
 export function hordeSpawnPerSec(floor, roomNumber) {
     const f = Math.max(1, Math.floor(floor) || 1);
     const r = Math.max(1, Math.floor(roomNumber) || 1);
-    return 2.4 + Math.min(f, 10) * 0.9 + r * 0.3;
+    return 2.7 + Math.min(f, 10) * 0.9 + r * 0.35;   // Patch 168: was 2.4 / 0.3 (first playtest: early floors too easy)
 }
 
 /** How long a regular room spawns for, in seconds, at that rate. */
@@ -39,7 +39,7 @@ export function hordeBudget(floor, roomNumber) {
 export function hordeAliveTarget(floor, roomNumber) {
     const f = Math.max(1, Math.floor(floor) || 1);
     const r = Math.max(1, Math.floor(roomNumber) || 1);
-    return Math.min(90, 12 + Math.min(f, 8) * 6 + r * 3);
+    return Math.min(90, 14 + Math.min(f, 8) * 6 + r * 3);   // Patch 168: was 12
 }
 
 /**
@@ -50,4 +50,11 @@ export function hordeAliveTarget(floor, roomNumber) {
 export const LUCIDITY_PER_XP = 0.4;
 
 /** Share of scavengers that still go after XP orbs; the rest simply chase. */
-export const THIEF_CHANCE = 0.12;
+export const THIEF_CHANCE = 0.06;
+
+/**
+ * Patch 168: XP a thief can carry before it stops stealing. Thieves used to grow with
+ * every orb, outlive the fodder around them and eat a whole room's XP (a test player
+ * was still level 1 after 96 kills). Now a thief fills up, and drops all of it on death.
+ */
+export const THIEF_FULL = 14;

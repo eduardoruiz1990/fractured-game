@@ -1,5 +1,8 @@
 // src/systems/Combat.js
 import { LUCIDITY_PER_XP } from '../data/Horde.js';   // Patch 165
+import { ROOM_PACE } from '../data/Config.js';   // Patch 168
+// Patch 168: kill-pop ring colours (the same as the eyes in the dark).
+const POP_COLOURS = { SCAVENGER: '#ffd24a', PREDATOR: '#ff5a48', PARASITE: '#9dff6a', SPLITTER: '#f4f0e0', WARDEN: '#ffb347', BURROWER: '#ffc9a0' };
 import { getActiveSynergies, LIGHT_RECOIL_RESIST, TOKEN_RARITIES } from '../data/Manifestations.js';
 
 // Patch 130 (V2 plan C8): juice constants. Sim steps (Game.update counts them).
@@ -867,6 +870,8 @@ export class Combat {
                     else if (ent.type === 'WARDEN') dropAmount = 6;
                     else if (ent.type === 'BURROWER') dropAmount = 4;
                     if (ent.maxHp > 30) dropAmount += 5; 
+                    // Patch 168: a thief pays back what it ate, plus a tip.
+                    if (ent.stolen > 0) { dropAmount += Math.ceil(ent.stolen * 1.25 / ROOM_PACE); ent.stolen = 0; }   // orbs are ROOM_PACE XP each
                     if (ent.type === 'SCAVENGER' && state.player.curses && state.player.curses.includes('compulsive_cleaner')) {
                         dropAmount += 3; 
                     }
@@ -894,7 +899,8 @@ export class Combat {
                     if (!state.bossSpawned) {
                         state.convergence += (ent.type === 'PREDATOR' ? 3 : 1);
                     }
-                    game.spawnParticles(ent.x, ent.y, ent.color || '#fff', 15);
+                    game.spawnParticles(ent.x, ent.y, ent.color || '#fff', 8);   // Patch 168: 15 -> 8, the pop carries it
+                    if (typeof game.spawnPop === 'function') game.spawnPop(ent.x, ent.y, POP_COLOURS[ent.type]);
                 }
                 
                 let poolKey = ent.type.toLowerCase();

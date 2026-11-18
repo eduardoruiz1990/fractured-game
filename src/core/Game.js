@@ -340,6 +340,9 @@ export class Game {
             entities: [],
             projectiles: [],
             particles: [],
+            // Patch 168: kill pops, a fixed ring of slots (no allocation per kill).
+            pops: Array.from({ length: 48 }, () => ({ x: 0, y: 0, born: -999, color: '#fff' })),
+            popIdx: 0,
             xpDrops: [],
             tokenDrops: [], 
             damageTexts: [],
@@ -602,6 +605,15 @@ export class Game {
         if (this.state.sanity <= 0 && this.onDeath) {
             this.onDeath();
         }
+    }
+
+    /** Patch 168: a kill pop (drawn by Renderer.drawEyesInDark). */
+    spawnPop(x, y, color) {
+        const st = this.state;
+        if (!st.pops || !Number.isFinite(x) || !Number.isFinite(y)) return;
+        const p = st.pops[st.popIdx];
+        st.popIdx = (st.popIdx + 1) % st.pops.length;
+        p.x = x; p.y = y; p.born = st.frame; p.color = color || '#ffe9a8';
     }
 
     spawnParticles(x, y, color, count) {

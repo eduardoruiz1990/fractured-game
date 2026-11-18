@@ -42,8 +42,8 @@
 // five times as many), and `pack` is retired (kept at 1; arrivals are continuous).
 export const FLOOR_PRESSURE = [
     null,
-    { orbHeal: 0.3, damage: 0.8, budget: 1, pack: 1, hp: 0.6, speed: 1, density: 1 },
-    { orbHeal: 0.28, damage: 1.1, budget: 1.05, pack: 1, hp: 1.0, speed: 1.06, density: 1 },
+    { orbHeal: 0.3, damage: 0.9, budget: 1, pack: 1, hp: 0.75, speed: 1, density: 1 },
+    { orbHeal: 0.26, damage: 1.2, budget: 1.05, pack: 1, hp: 1.2, speed: 1.08, density: 1 },
     { orbHeal: 0.25, damage: 1.2, budget: 1.1, pack: 1, hp: 1.4, speed: 1.1, density: 1 },
     { orbHeal: 0.22, damage: 1.3, budget: 1.15, pack: 1, hp: 1.9, speed: 1.13, density: 1 },
     { orbHeal: 0.2, damage: 1.4, budget: 1.2, pack: 1, hp: 2.5, speed: 1.16, density: 1 }

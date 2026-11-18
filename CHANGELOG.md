@@ -3106,6 +3106,30 @@ v2 work never touched because every earlier phase polished the game as designed:
   (`body.first-time`). The Records Retention notice waits for `tutorialCompleted`.
 - Reward doors sit inside a portrait view (`doorDX`).
 
+**Patch 168 — first visual pass and the first phone playtest (2026-11-18).**
+The A56 playtest of v3: fluent, the horde is fun, thumbs felt natural in portrait, the
+early floors lean too easy, and the game still needs a visual overhaul.
+- **Regular enemies get one presentation layer** in `Renderer`'s entity loop, before
+  their own sprite: a ground shadow, a rim glow in their eye colour, and the body drawn
+  1.3× (hit radius unchanged; `dressed`, restored after the dispatch).
+- **The Scavenger is redrawn** as a shade with a pale outline and two lit eyes (cache
+  key `scav2`); it was near-black on a dark floor.
+- **The player** has a warm halo and is drawn 1.25× (hitbox unchanged).
+- **Kill pops:** `Game.spawnPop` writes into `state.pops`, a fixed ring of 48 slots (no
+  allocation); `Renderer.drawEyesInDark` draws a flash and an expanding ring after the
+  darkness. Death particles 15 → 8.
+- **Quiet damage numbers:** a regular enemy shows a number only for a hit of 10+, and
+  none on death. Bosses and elites are unchanged.
+- **XP thieves fixed.** With a horde, thieves outlived the fodder, grew on every orb and
+  ate a room's XP (a test player was level 1 after 96 kills). `THIEF_CHANCE` 0.12 → 0.06,
+  a thief stops at `THIEF_FULL` (14 XP), gains +2 HP an orb instead of +5/+10, and
+  **drops what it stole ×1.25 when it dies**.
+- **Difficulty:** floor 1 HP 0.6 → 0.75 and damage 0.8 → 0.9; floor 2 HP 1.0 → 1.2 and
+  damage 1.1 → 1.2; spawn rate and alive target raised slightly (`Horde.js`). A first
+  attempt went further and took a careless player to 22% Sanity in room 1; this is the
+  eased version. Simulator, fresh save: floor 1 lows 90–98%, floor 2 lows 70–78%.
+- The Sanity label no longer wraps under its bar.
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.

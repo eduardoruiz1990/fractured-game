@@ -106,7 +106,10 @@ export class Enemy {
         this.damageTick++;
         
         if (this.damageTick >= 15 || this.hp <= 0) {
-            if (game && this.damageAccumulator >= 1) {
+            // Patch 168: in a horde, a "2" over every body is noise. Regular enemies
+            // show a number only for a real hit (10+); their deaths show a pop instead.
+            const quiet = !isBossType(this.type) && !this.elite;
+            if (game && this.damageAccumulator >= 1 && !(quiet && (this.damageAccumulator < 10 || this.hp <= 0))) {
                 let isFinal = this.hp <= 0;
                 let color = this.damageAccumulator > 15 ? '#c5a059' : '#ffaaaa';
                 if (isFinal) color = '#ff3333'; 
