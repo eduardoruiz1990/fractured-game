@@ -157,7 +157,7 @@ export class Renderer {
             // "HEAL", not a bare "+50": a player reported not being able to tell
             // whether this door raised max Sanity or restored lost Sanity. It restores
             // (Combat.js ROOM_DOOR: min(maxHp, sanity + 50)), so the label says so.
-            HEAL: { color: '#33ff55', glowRgb: '100, 255, 100', label: 'HEAL +50 SANITY' },
+            HEAL: { color: '#33ff55', glowRgb: '100, 255, 100', label: 'HEAL +50' },
             WEAPON_UPGRADE: { color: '#4499ff', glowRgb: '80, 160, 255', label: 'WEAPON UP' },
             TOKEN_DOOR: { color: '#ff8c00', glowRgb: '255, 140, 0', label: 'TOKEN' },
             RISK_REWARD: { color: '#ff3333', glowRgb: '255, 60, 60', label: 'RISK / REWARD' }
@@ -1981,6 +1981,20 @@ export class Renderer {
                 c.beginPath();
                 c.arc(p.x, p.y, 8 + age * 2.4, 0, Math.PI * 2);
                 c.stroke();
+                // Patch 169: the body burns away: a white core shrinking, embers thrown out.
+                if (age < 9) {
+                    c.fillStyle = '#fffaf0';
+                    c.beginPath();
+                    c.arc(p.x, p.y, 11 * (1 - age / 9), 0, Math.PI * 2);
+                    c.fill();
+                }
+                c.fillStyle = p.color;
+                for (let k = 0; k < 5; k++) {
+                    const ang = k * 1.2566 + i * 0.7;
+                    const dist = 6 + age * (2.2 + (k % 2) * 0.9);
+                    const sz = 3 * (1 - t) + 1;
+                    c.fillRect(p.x + Math.cos(ang) * dist - sz / 2, p.y + Math.sin(ang) * dist - sz / 2 - age * 0.3, sz, sz);
+                }
             }
             c.globalAlpha = 1;
         }
@@ -2284,6 +2298,24 @@ export class Renderer {
         }
 
         this.ctx.globalCompositeOperation = 'source-over'; 
+
+        // Patch 169: a warm tint inside the beam (screen-blended), so the light reads as
+        // light and not as a grey hole in the dark. One gradient a frame.
+        if (fl && Number.isFinite(flRadius) && flRadius > 0 && Number.isFinite(state.player.angle) && Number.isFinite(fl.angle)) {
+            const wx = state.player.x, wy = state.player.y;
+            const warm = this.ctx.createRadialGradient(wx, wy, 8, wx, wy, flRadius);
+            warm.addColorStop(0, 'rgba(255, 226, 160, 0.30)');
+            warm.addColorStop(0.7, 'rgba(255, 196, 110, 0.14)');
+            warm.addColorStop(1, 'rgba(255, 180, 90, 0)');
+            this.ctx.globalCompositeOperation = 'screen';
+            this.ctx.fillStyle = warm;
+            this.ctx.beginPath();
+            this.ctx.moveTo(wx, wy);
+            this.ctx.arc(wx, wy, flRadius, state.player.angle - fl.angle, state.player.angle + fl.angle);
+            this.ctx.closePath();
+            this.ctx.fill();
+            this.ctx.globalCompositeOperation = 'source-over';
+        }
 
         if (state.cameraFlash > 0) {
             this.ctx.save();
@@ -3073,28 +3105,99 @@ export class Renderer {
                     this.ctx.moveTo(-10, -5); this.ctx.lineTo(10, -5); this.ctx.lineTo(0, 10);
                     this.ctx.fill();
                 } else if (obj.type === 'ROOM_DOOR') {
-                    let pulse = Math.sin(this.renderFrame * 0.1) * 10;
+                    // Patch 169: the reward door, redrawn. It was a black rectangle with a
+                    // coloured stroke. Now: light spilling on the floor, a stone arch, a
+                    // lit portal with rising streaks, the reward's glyph in the arch and
+                    // a backed label under the sill. Two doors at most, so the two
+                    // gradients per door per frame are affordable.
                     const doorInfo = this.roomDoorVisual(obj.rewardType);
+                    const c = this.ctx;
+                    const tick = this.renderFrame;
+                    const pulse = Math.sin(tick * 0.08 + obj.x * 0.01) * 0.5 + 0.5;
+                    const W = 30, H = 46;          // half-width, half-height of the opening
 
-                    const doorGlow = this.ctx.createRadialGradient(0, 0, 10, 0, 0, 80 + pulse);
-                    doorGlow.addColorStop(0, `rgba(${doorInfo.glowRgb}, 0.8)`);
-                    doorGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                    this.ctx.fillStyle = doorGlow;
-                    this.ctx.beginPath();
-                    this.ctx.arc(0, 0, 80 + pulse, 0, Math.PI * 2);
-                    this.ctx.fill();
+                    // light on the floor in front of the door
+                    c.save();
+                    c.translate(0, H + 6);
+                    c.scale(1, 0.42);
+                    this.drawGlow(0, 0, 92 + pulse * 10, doorInfo.color, 0.5);
+                    c.restore();
+                    this.drawGlow(0, -6, 78 + pulse * 8, doorInfo.color, 0.28);
 
-                    this.ctx.fillStyle = '#111';
-                    this.ctx.fillRect(-25, -40, 50, 80);
-                    this.ctx.strokeStyle = doorInfo.color;
-                    this.ctx.lineWidth = 3;
-                    this.ctx.strokeRect(-25, -40, 50, 80);
+                    // the arch path: straight jambs, a round head
+                    const arch = (hw, hh) => {
+                        c.beginPath();
+                        c.moveTo(-hw, hh);
+                        c.lineTo(-hw, -hh + hw);
+                        c.arc(0, -hh + hw, hw, Math.PI, 0);
+                        c.lineTo(hw, hh);
+                        c.closePath();
+                    };
 
-                    this.ctx.fillStyle = doorInfo.color;
-                    this.ctx.textAlign = 'center';
-                    this.ctx.textBaseline = 'middle';
-                    this.ctx.font = "bold 16px 'Courier New', Courier, monospace";
-                    this.ctx.fillText(doorInfo.label, 0, -60);
+                    // stone frame
+                    arch(W + 9, H + 7);
+                    c.fillStyle = '#2a2622';
+                    c.fill();
+                    c.strokeStyle = '#6f675c';
+                    c.lineWidth = 2;
+                    c.stroke();
+
+                    // the portal
+                    arch(W, H);
+                    const pg = c.createLinearGradient(0, -H, 0, H);
+                    pg.addColorStop(0, `rgba(${doorInfo.glowRgb}, 0.95)`);
+                    pg.addColorStop(0.55, `rgba(${doorInfo.glowRgb}, 0.45)`);
+                    pg.addColorStop(1, 'rgba(10, 8, 14, 0.95)');
+                    c.fillStyle = pg;
+                    c.fill();
+                    c.save();
+                    c.clip();
+                    c.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                    c.lineWidth = 1.5;
+                    c.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const sx = -W + 5 + i * ((W * 2 - 10) / 5);
+                        const sy = H - ((tick * (0.8 + i * 0.13) + i * 37) % (H * 2));
+                        c.moveTo(sx, sy); c.lineTo(sx, sy - 12);
+                    }
+                    c.stroke();
+                    c.restore();
+                    arch(W, H);
+                    c.strokeStyle = doorInfo.color;
+                    c.lineWidth = 3;
+                    c.stroke();
+
+                    // the reward's glyph, in the head of the arch
+                    c.save();
+                    c.translate(0, -H + W + 2);
+                    c.fillStyle = '#ffffff';
+                    c.strokeStyle = '#ffffff';
+                    c.lineWidth = 4;
+                    c.lineCap = 'round';
+                    c.beginPath();
+                    const rt = obj.rewardType;
+                    if (rt === 'HEAL') { c.moveTo(-10, 0); c.lineTo(10, 0); c.moveTo(0, -10); c.lineTo(0, 10); c.stroke(); }
+                    else if (rt === 'WEAPON_UPGRADE') { c.moveTo(0, 11); c.lineTo(0, -9); c.moveTo(-8, -1); c.lineTo(0, -10); c.lineTo(8, -1); c.stroke(); }
+                    else if (rt === 'TOKEN_DOOR') { c.moveTo(0, -12); c.lineTo(10, 0); c.lineTo(0, 12); c.lineTo(-10, 0); c.closePath(); c.fill(); }
+                    else if (rt === 'RISK_REWARD') { c.moveTo(0, -11); c.lineTo(0, 3); c.stroke(); c.beginPath(); c.arc(0, 10, 2.6, 0, Math.PI * 2); c.fill(); }
+                    else {   // LUCIDITY: a four-point star
+                        c.moveTo(0, -13); c.lineTo(3.5, -3.5); c.lineTo(13, 0); c.lineTo(3.5, 3.5);
+                        c.lineTo(0, 13); c.lineTo(-3.5, 3.5); c.lineTo(-13, 0); c.lineTo(-3.5, -3.5); c.closePath(); c.fill();
+                    }
+                    c.restore();
+
+                    // the label, on a dark plate under the sill
+                    c.font = "bold 13px 'Courier New', Courier, monospace";
+                    c.textAlign = 'center';
+                    c.textBaseline = 'middle';
+                    const tw = c.measureText(doorInfo.label).width + 14;
+                    c.fillStyle = 'rgba(8, 6, 10, 0.86)';
+                    c.fillRect(-tw / 2, H + 12, tw, 20);
+                    c.strokeStyle = doorInfo.color;
+                    c.lineWidth = 1;
+                    c.strokeRect(-tw / 2, H + 12, tw, 20);
+                    c.fillStyle = doorInfo.color;
+                    c.fillText(doorInfo.label, 0, H + 22.5);
                 }
                 
                 this.ctx.restore();
@@ -3294,7 +3397,8 @@ export class Renderer {
                     this.ctx.fill();
                     this.drawGlow(0, 0, pr * 2.6, EYE_COLOURS[ent.type] || '#ffe9a8', isFlashed ? 0.5 : 0.24);
                     this.ctx.save();
-                    this.ctx.scale(1.3, 1.3);
+                    const ps = ent.type === 'PARASITE' ? 1.6 : 1.3;   // Patch 169: the parasite was a speck
+                    this.ctx.scale(ps, ps);
                 }
 
                 if (ent.type === 'ARCHITECT') {
@@ -3912,10 +4016,11 @@ export class Renderer {
                     // for a 1px-vs-0.5px step in the body-edge breathing.
                     let pulseA = Math.round(this.entPulse(ent, 0.2) * 2);
                     let pulseB = Math.round(this.entPulse(ent, 0.2, Math.PI/2) * 2);
-                    const predColor = isFlashed ? '#ddaaaa' : (ent.buffed ? '#3a0a0a' : '#111111');
+                    // Patch 169: crimson with a pale rim (was #111 on a dark floor).
+                    const predColor = isFlashed ? '#ffe0d8' : (ent.buffed ? '#8a1414' : '#5c1622');
 
                     const predSprite = this.getSprite(
-                        `pred|${isFlashed ? 1 : 0}|${ent.buffed ? 1 : 0}|${lunging ? 1 : 0}|${pulseA}|${pulseB}`, 64, 64,
+                        `pred2|${isFlashed ? 1 : 0}|${ent.buffed ? 1 : 0}|${lunging ? 1 : 0}|${pulseA}|${pulseB}`, 64, 64,
                         (cx) => {
                             cx.fillStyle = predColor;
                             cx.beginPath();
@@ -3931,6 +4036,9 @@ export class Renderer {
                             cx.lineTo(9, -5 - pulseB);
                             cx.closePath();
                             cx.fill();
+                            cx.strokeStyle = 'rgba(255, 176, 160, 0.75)';
+                            cx.lineWidth = 1.3;
+                            cx.stroke();
 
                             // Jagged spine: serrated ridge along the top edge, tail to shoulders.
                             cx.beginPath();
@@ -3946,6 +4054,7 @@ export class Renderer {
                             }
                             cx.lineTo(spineEndX, -4);
                             cx.closePath();
+                            cx.fillStyle = isFlashed ? '#ffffff' : '#a02c38';
                             cx.fill();
 
                             cx.strokeStyle = predColor;
@@ -3969,14 +4078,14 @@ export class Renderer {
                     this.drawSprite(predSprite);
 
                     const predGlowAmt = (ent.attackState === 'telegraphing') ? 20 : 10;
-                    const predEyeColor = (ent.attackState === 'telegraphing') ? '#ff3333' : (ent.buffed ? '#ff0000' : '#cc0000');
+                    const predEyeColor = (ent.attackState === 'telegraphing') ? '#ffffff' : (ent.buffed ? '#ff5040' : '#ff7a5a');
 
                     // Single glowing red eye, centered on the snout.
                     this.drawGlow(13 + stretch, 0, 10 + predGlowAmt, predEyeColor, 0.5);
 
                     this.ctx.fillStyle = predEyeColor;
                     this.ctx.beginPath();
-                    this.ctx.ellipse(13 + stretch, 0, 3, 2, 0, 0, Math.PI*2);
+                    this.ctx.ellipse(13 + stretch, 0, 4, 2.8, 0, 0, Math.PI*2);
                     this.ctx.fill();
 
                     this.ctx.restore();

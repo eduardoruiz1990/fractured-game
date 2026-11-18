@@ -3130,6 +3130,18 @@ early floors lean too easy, and the game still needs a visual overhaul.
   eased version. Simulator, fresh save: floor 1 lows 90–98%, floor 2 lows 70–78%.
 - The Sanity label no longer wraps under its bar.
 
+**Patch 169 — doors, the Predator, the beam, the burn-away (2026-11-18).**
+- **Reward doors redrawn** (`Renderer`, the `ROOM_DOOR` branch): light spilling on the
+  floor, a stone arch, a lit portal with rising streaks, the reward's glyph in the head
+  of the arch (star, cross, arrow, diamond, exclamation) and the label on a dark plate
+  under the sill. They were a black rectangle with a coloured stroke. HEAL's label is
+  now `HEAL +50`.
+- **Predator** recoloured crimson with a pale rim and a larger eye (cache key `pred2`);
+  it was `#111` on a dark floor. **Parasite** drawn 1.6× (it was a speck).
+- **Warm beam:** a screen-blended amber gradient inside the flashlight cone
+  (`drawEffectsAndAuras`), one gradient a frame; the composite mode is reset after it.
+- **Burn-away:** a kill pop now also has a shrinking white core and five embers.
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.
