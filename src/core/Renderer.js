@@ -9,6 +9,7 @@ import { errorLog } from './ErrorLog.js';
 // Director.js clamps spawns inside — see the note on ARENA_VOID_RADIUS in Config.js.
 import { ARENA_VOID_RADIUS, isBossType, DOOR_ENTER_STEPS } from '../data/Config.js';
 import { ik2, WalkerRig } from './Rig.js';   // Patch 171
+import { forEachDecor, LAMP_RADIUS } from '../systems/Decor.js';   // Patch 177
 import { ARENA_LAYOUTS, ARENA_RISE_STEPS, ARENA_FADE_STEPS, GRID_TELEGRAPH_STEPS } from '../systems/Arena.js';   // Patch 137
 // Patch 96 — THE RECURSION's look: the five biomes cycle past floor 5, with a capped
 // depth escalation layered over them. The cap is a memory bound, not a taste one —
@@ -38,6 +39,15 @@ const BOSS_LEGS = {
     AMALGAMATION: { n: 8, rest: 62, step: 22, time: 8,  hip: 34, l1: 22, l2: 24, w: 6.5, lift: 6,  body: '#2c3a1c', rim: 'rgba(214, 255, 170, 0.8)',  glow: '#b6ff5a' },
     ARCHITECT:    { n: 3, rest: 70, step: 34, time: 11, hip: 16, l1: 40, l2: 44, w: 3,   lift: 12, body: '#1a1626', rim: 'rgba(255, 226, 150, 0.95)', glow: '#ffd24a', turn: 0.004 }
 };
+// Patch 177: prop colours per biome (paintDecor). Muted on purpose: furniture must
+// never be mistaken for an enemy, which is dark with a bright rim and lit eyes.
+const DECOR_PALETTES = [
+    { base: '#7a5636', dark: '#4a321e', rim: 'rgba(240, 214, 170, 0.45)', accent: '#d9c9a8', ink: '#1c1410', lamp: '#ffcf8a' },
+    { base: '#46566e', dark: '#232c3c', rim: 'rgba(200, 220, 255, 0.42)', accent: '#c9d2e0', ink: '#0b0d15', lamp: '#bcd6ff' },
+    { base: '#7c2c38', dark: '#3d1018', rim: 'rgba(255, 180, 180, 0.42)', accent: '#ff7a86', ink: '#1a0508', lamp: '#ff9a8a' },
+    { base: '#34784a', dark: '#163822', rim: 'rgba(200, 255, 200, 0.4)',  accent: '#b6ff5a', ink: '#081409', lamp: '#c8ff9a' },
+    { base: '#34305a', dark: '#18152c', rim: 'rgba(255, 226, 150, 0.5)',  accent: '#e9c877', ink: '#0a0816', lamp: '#ffe2a0' }
+];
 const EYE_COLOURS = {
     SCAVENGER: '#ffd24a', PREDATOR: '#ff5a48', PARASITE: '#9dff6a',
     SPLITTER: '#f4f0e0', WARDEN: '#ffb347', BURROWER: '#ffc9a0'
@@ -1841,6 +1851,25 @@ export class Renderer {
 
         // Patch 135: a Crawlspace's warning ring is lit, so the tell is never hidden
         // by the dark (it is the whole counterplay).
+        // Patch 177: every lamp in view is a pool of light in the dark.
+        if (!state.isHub && !(state.powerOut > 0 && !state.roomCleared)) {
+            const bnd = this.decorBounds(state);
+            const lf = this.renderFrame;
+            forEachDecor(bnd.l - LAMP_RADIUS, bnd.t - LAMP_RADIUS, bnd.r + LAMP_RADIUS, bnd.b + LAMP_RADIUS,
+                paletteIndexForFloor(state.floor), state.floor, state.roomNumber, (d) => {
+                    if (d.kind !== 'lamp') return;
+                    const fl = 0.85 + 0.15 * Math.sin(lf * 0.07 + d.seed * 40) * (Math.sin(lf * 0.31 + d.seed * 9) > -0.92 ? 1 : 0.3);
+                    const g = this.lightCtx.createRadialGradient(d.x, d.y, 8, d.x, d.y, LAMP_RADIUS);
+                    g.addColorStop(0, `rgba(255, 255, 255, ${0.95 * fl})`);
+                    g.addColorStop(0.55, `rgba(255, 255, 255, ${0.55 * fl})`);
+                    g.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                    this.lightCtx.fillStyle = g;
+                    this.lightCtx.beginPath();
+                    this.lightCtx.arc(d.x, d.y, LAMP_RADIUS, 0, Math.PI * 2);
+                    this.lightCtx.fill();
+                }, this.decorClear(state));
+        }
+
         if (state.entities) {
             for (const ent of state.entities) {
                 if (ent.type !== 'BURROWER' || ent.burrowState !== 'warning') continue;
@@ -1961,6 +1990,169 @@ export class Renderer {
         this.ctx.drawImage(this.lightCanvas, 0, 0, this.canvas.width, this.canvas.height);
         this.ctx.globalAlpha = 1;
         this.ctx.restore(); 
+    }
+
+    /**
+     * Patch 177: set dressing (systems/Decor.js). Each prop is a cached sprite, drawn
+     * turned and scaled; a lamp is a sprite plus a warm pool on the floor (its hole in
+     * the darkness is cut in drawLightingMasks). Nothing here collides.
+     */
+    decorBounds(state) {
+        const pad = 140;
+        const hw = (this.worldViewWidth || this.canvas.width) / 2 / this.zoom + pad;
+        const hh = (this.worldViewHeight || this.canvas.height) / 2 / this.zoom + pad;
+        // the camera is centred on the player; the portrait band only shifts it up
+        return { l: state.player.x - hw, r: state.player.x + hw, t: state.player.y - hh, b: state.player.y + hh + (this.controlBandH || 0) / this.zoom };
+    }
+
+    decorClear(state) {
+        const ox = state.mapOriginX || 0, oy = state.mapOriginY || 0;
+        const lim = ARENA_VOID_RADIUS - 120;
+        return (x, y) => {
+            const dx = x - ox, dy = y - oy;
+            if (dx * dx + dy * dy > lim * lim) return false;        // not out in the Void
+            return dx * dx + dy * dy > 130 * 130;                    // nor on the room's centre, where a run starts
+        };
+    }
+
+    drawDecor(state) {
+        if (!state || state.isHub) return;
+        const pal = paletteIndexForFloor(state.floor);
+        const bnd = this.decorBounds(state);
+        const c = this.ctx;
+        const flick = this.renderFrame;
+        forEachDecor(bnd.l, bnd.t, bnd.r, bnd.b, pal, state.floor, state.roomNumber, (d) => {
+            if (d.kind === 'lamp') {
+                const fl = 0.85 + 0.15 * Math.sin(flick * 0.07 + d.seed * 40) * (Math.sin(flick * 0.31 + d.seed * 9) > -0.92 ? 1 : 0.3);
+                this.drawSprite(this.getSprite(`decor|lamp|${pal}`, 64, 64, (cx) => this.paintDecor(cx, 'lamp', pal)), d.x, d.y);
+                this.drawGlow(d.x, d.y, 26, '#fff3cf', 0.85 * fl);
+                return;
+            }
+            const sprite = this.getSprite(`decor|${d.id}|${pal}`, 128, 128, (cx) => this.paintDecor(cx, d.id, pal));
+            c.save();
+            c.translate(d.x, d.y);
+            c.rotate(d.rot);
+            c.scale(d.scale, d.scale);
+            this.drawSprite(sprite);
+            c.restore();
+        }, this.decorClear(state));
+    }
+
+    /** Patch 177: one prop, painted once into its sprite. Origin at the centre. */
+    paintDecor(cx, id, pal) {
+        const P = DECOR_PALETTES[pal];
+        const box = (x, y, w, h, fill) => { cx.fillStyle = fill; cx.beginPath(); cx.rect(x, y, w, h); cx.fill(); cx.stroke(); };
+        cx.lineJoin = 'round'; cx.lineCap = 'round';
+        // a soft contact shadow under everything
+        cx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        cx.beginPath(); cx.ellipse(3, 6, id === 'lamp' ? 14 : 46, id === 'lamp' ? 9 : 30, 0, 0, Math.PI * 2); cx.fill();
+        cx.strokeStyle = P.rim; cx.lineWidth = 1.6;
+        switch (id) {
+            case 'lamp':
+                cx.fillStyle = P.dark; cx.beginPath(); cx.arc(0, 0, 11, 0, Math.PI * 2); cx.fill(); cx.stroke();
+                cx.fillStyle = '#fff3cf'; cx.beginPath(); cx.arc(0, 0, 6, 0, Math.PI * 2); cx.fill();
+                break;
+            // --- 1 The Office ---
+            case 'desk':
+                box(-44, -24, 88, 48, P.base); box(-40, -20, 30, 40, P.dark);
+                cx.fillStyle = P.accent; cx.fillRect(-2, -14, 22, 16); cx.fillRect(14, 2, 18, 13);
+                cx.fillStyle = P.dark; cx.beginPath(); cx.arc(30, -12, 6, 0, Math.PI * 2); cx.fill(); cx.stroke();
+                break;
+            case 'chair':
+                box(-16, -16, 32, 32, P.base); box(-18, -22, 36, 9, P.dark);
+                cx.beginPath(); cx.moveTo(-14, 16); cx.lineTo(-22, 30); cx.moveTo(14, 16); cx.lineTo(22, 30); cx.stroke();
+                break;
+            case 'cabinet':
+                box(-22, -34, 44, 68, P.dark);
+                for (let i = 0; i < 3; i++) { box(-18, -30 + i * 22, 36, 18, P.base); cx.fillStyle = P.accent; cx.fillRect(-6, -23 + i * 22, 12, 3); }
+                break;
+            case 'papers':
+                for (let i = 0; i < 6; i++) { cx.save(); cx.translate(-30 + (i * 37) % 60, -22 + (i * 23) % 44); cx.rotate(i * 0.9); box(-9, -12, 18, 24, P.accent); cx.restore(); }
+                break;
+            // --- 2 The Inkblots ---
+            case 'easel':
+                box(-26, -34, 52, 62, P.accent);
+                cx.fillStyle = P.ink; cx.beginPath(); cx.ellipse(-9, -4, 9, 16, 0.3, 0, Math.PI * 2); cx.ellipse(9, -4, 9, 16, -0.3, 0, Math.PI * 2); cx.fill();
+                cx.beginPath(); cx.moveTo(-26, 28); cx.lineTo(-34, 44); cx.moveTo(26, 28); cx.lineTo(34, 44); cx.stroke();
+                break;
+            case 'inkpool':
+                cx.fillStyle = P.ink; cx.beginPath();
+                for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2, r = 30 + ((i * 53) % 17); cx.lineTo(Math.cos(a) * r, Math.sin(a) * r * 0.75); }
+                cx.closePath(); cx.fill(); cx.stroke();
+                cx.fillStyle = 'rgba(200, 220, 255, 0.22)'; cx.beginPath(); cx.ellipse(-10, -8, 12, 5, -0.4, 0, Math.PI * 2); cx.fill();
+                break;
+            case 'mirror':
+                cx.fillStyle = P.base; cx.beginPath(); cx.moveTo(-8, -40); cx.lineTo(22, -20); cx.lineTo(12, 36); cx.lineTo(-22, 22); cx.closePath(); cx.fill(); cx.stroke();
+                cx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; cx.beginPath(); cx.moveTo(-4, -26); cx.lineTo(8, 20); cx.moveTo(6, -18); cx.lineTo(12, 6); cx.stroke();
+                break;
+            case 'cards':
+                for (let i = 0; i < 4; i++) { cx.save(); cx.translate(-22 + i * 15, -6 + (i % 2) * 14); cx.rotate(i * 0.5 - 0.6); box(-11, -15, 22, 30, P.accent); cx.fillStyle = P.ink; cx.beginPath(); cx.arc(0, 0, 6, 0, Math.PI * 2); cx.fill(); cx.restore(); }
+                break;
+            // --- 3 The Panopticon ---
+            case 'post':
+                cx.fillStyle = P.dark; cx.beginPath();
+                for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + 0.39; cx.lineTo(Math.cos(a) * 30, Math.sin(a) * 30); }
+                cx.closePath(); cx.fill(); cx.stroke();
+                cx.fillStyle = P.base; cx.beginPath(); cx.arc(0, 0, 17, 0, Math.PI * 2); cx.fill(); cx.stroke();
+                cx.fillStyle = P.accent; cx.beginPath(); cx.arc(0, 0, 6, 0, Math.PI * 2); cx.fill();
+                break;
+            case 'grate':
+                box(-34, -34, 68, 68, P.dark);
+                for (let i = -2; i <= 2; i++) { cx.beginPath(); cx.moveTo(i * 13, -30); cx.lineTo(i * 13, 30); cx.moveTo(-30, i * 13); cx.lineTo(30, i * 13); cx.stroke(); }
+                break;
+            case 'fence':
+                box(-50, -5, 100, 10, P.base);
+                for (let i = -2; i <= 2; i++) box(i * 22 - 4, -12, 8, 24, P.dark);
+                break;
+            case 'tally':
+                cx.strokeStyle = P.accent; cx.lineWidth = 2.4;
+                for (let g = 0; g < 3; g++) { for (let i = 0; i < 4; i++) { cx.beginPath(); cx.moveTo(-34 + g * 26 + i * 5, -14); cx.lineTo(-34 + g * 26 + i * 5, 14); cx.stroke(); } cx.beginPath(); cx.moveTo(-38 + g * 26, 10); cx.lineTo(-14 + g * 26, -10); cx.stroke(); }
+                break;
+            // --- 4 The Amalgamation ---
+            case 'pod':
+                cx.fillStyle = P.base; cx.beginPath(); cx.ellipse(0, 0, 26, 34, 0, 0, Math.PI * 2); cx.fill(); cx.stroke();
+                cx.fillStyle = P.accent; cx.globalAlpha = 0.7; cx.beginPath(); cx.ellipse(0, 4, 10, 16, 0, 0, Math.PI * 2); cx.fill(); cx.globalAlpha = 1;
+                cx.beginPath(); cx.moveTo(0, -34); cx.quadraticCurveTo(-14, 0, 0, 34); cx.stroke();
+                break;
+            case 'roots':
+                cx.strokeStyle = P.base; cx.lineWidth = 7;
+                for (let i = 0; i < 5; i++) { const a = i * 1.3; cx.beginPath(); cx.moveTo(0, 0); cx.quadraticCurveTo(Math.cos(a) * 24, Math.sin(a + 0.8) * 24, Math.cos(a) * 46, Math.sin(a) * 40); cx.stroke(); }
+                cx.strokeStyle = P.rim; cx.lineWidth = 1.2;
+                for (let i = 0; i < 5; i++) { const a = i * 1.3; cx.beginPath(); cx.moveTo(0, 0); cx.quadraticCurveTo(Math.cos(a) * 24, Math.sin(a + 0.8) * 24, Math.cos(a) * 46, Math.sin(a) * 40); cx.stroke(); }
+                break;
+            case 'spores':
+                for (let i = 0; i < 7; i++) { const a = i * 0.9, r = 8 + (i * 29) % 26; cx.fillStyle = i % 2 ? P.base : P.dark; cx.beginPath(); cx.arc(Math.cos(a) * r, Math.sin(a) * r, 7 + (i % 3) * 3, 0, Math.PI * 2); cx.fill(); cx.stroke(); }
+                cx.fillStyle = P.accent; cx.beginPath(); cx.arc(0, 0, 4, 0, Math.PI * 2); cx.fill();
+                break;
+            case 'ribs':
+                cx.strokeStyle = P.accent; cx.lineWidth = 4; cx.globalAlpha = 0.75;
+                for (let i = -2; i <= 2; i++) { cx.beginPath(); cx.arc(i * 14, 20, 34, Math.PI * 1.15, Math.PI * 1.85); cx.stroke(); }
+                cx.globalAlpha = 1;
+                break;
+            // --- 5 The Architect ---
+            case 'drafting':
+                box(-44, -28, 88, 56, P.base);
+                cx.strokeStyle = P.accent; cx.lineWidth = 1.2;
+                for (let i = -3; i <= 3; i++) { cx.beginPath(); cx.moveTo(i * 12, -24); cx.lineTo(i * 12, 24); cx.stroke(); }
+                cx.beginPath(); cx.arc(8, 0, 16, 0, Math.PI * 2); cx.moveTo(-36, 18); cx.lineTo(36, -18); cx.stroke();
+                break;
+            case 'column':
+                box(-28, -28, 56, 56, P.dark);
+                cx.fillStyle = P.base; cx.beginPath(); cx.arc(0, 0, 20, 0, Math.PI * 2); cx.fill(); cx.stroke();
+                cx.strokeStyle = P.accent; cx.lineWidth = 2; cx.beginPath(); cx.arc(0, 0, 12, 0, Math.PI * 2); cx.stroke();
+                break;
+            case 'setsquare':
+                cx.fillStyle = 'rgba(233, 200, 119, 0.16)'; cx.strokeStyle = P.accent; cx.lineWidth = 2.4;
+                cx.beginPath(); cx.moveTo(-34, 30); cx.lineTo(34, 30); cx.lineTo(-34, -34); cx.closePath(); cx.fill(); cx.stroke();
+                cx.beginPath(); cx.moveTo(-20, 20); cx.lineTo(10, 20); cx.lineTo(-20, -8); cx.closePath(); cx.stroke();
+                break;
+            case 'scaffold':
+                cx.strokeStyle = P.accent; cx.lineWidth = 3;
+                cx.beginPath(); cx.rect(-36, -30, 72, 60); cx.moveTo(-36, -30); cx.lineTo(36, 30); cx.moveTo(36, -30); cx.lineTo(-36, 30); cx.stroke();
+                for (const [px, py] of [[-36, -30], [36, -30], [-36, 30], [36, 30]]) { cx.fillStyle = P.dark; cx.beginPath(); cx.arc(px, py, 6, 0, Math.PI * 2); cx.fill(); cx.stroke(); }
+                break;
+            default: break;
+        }
     }
 
     /** Patch 173: where the flashlight's lens is in the world (matches drawPlayer's rig). */
@@ -2397,6 +2589,21 @@ export class Renderer {
         }
 
         this.ctx.globalCompositeOperation = 'source-over'; 
+
+        // Patch 177: each lamp's warm pool, screen-blended OVER the darkness (the hole cut
+        // in the mask only un-dims the floor; this is what makes it read as light).
+        {
+            const bnd = this.decorBounds(state);
+            const lpal = paletteIndexForFloor(state.floor);
+            const lf = this.renderFrame;
+            this.ctx.globalCompositeOperation = 'screen';
+            forEachDecor(bnd.l - LAMP_RADIUS, bnd.t - LAMP_RADIUS, bnd.r + LAMP_RADIUS, bnd.b + LAMP_RADIUS, lpal, state.floor, state.roomNumber, (d) => {
+                if (d.kind !== 'lamp') return;
+                const fl = 0.85 + 0.15 * Math.sin(lf * 0.07 + d.seed * 40) * (Math.sin(lf * 0.31 + d.seed * 9) > -0.92 ? 1 : 0.3);
+                this.drawGlow(d.x, d.y, LAMP_RADIUS, DECOR_PALETTES[lpal].lamp, 0.42 * fl);
+            }, this.decorClear(state));
+            this.ctx.globalCompositeOperation = 'source-over';
+        }
 
         // Patch 169: a warm tint inside the beam (screen-blended), so the light reads as
         // light and not as a grey hole in the dark. One gradient a frame.
@@ -3051,6 +3258,7 @@ export class Renderer {
             this.ctx.restore();
         }
 
+        this.drawDecor(state);       // Patch 177: furniture and lamps, under the walls and everything that moves
         this.drawObstacles(state);   // Patch 137: the room's walls, under everything that moves
 
         if (state.safeZones) {
