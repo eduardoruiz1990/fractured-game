@@ -103,7 +103,9 @@ recovery. A short content note is in the Clinical Guide.
 ## Category and tags (suggested)
 
 - **Category:** Action
-- **Tags:** survival, roguelike, bullet hell, horror, dark, 2D, mouse, keyboard, mobile.
+- **Tags:** Horde Survival, Survival, Mobile, Horror, Roguelike, Top-Down, 2D.
+  - Patch 186: all eight comparable games on CrazyGames (checked 18 Nov 2026) carry
+    Action + Horde Survival + Survival; the earlier list missed Horde Survival.
   - Use `mobile` only if `QA_CHECKLIST.md` §4's phone runs all passed.
   - Replace any tag the portal does not offer with its nearest listed tag.
 
