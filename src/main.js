@@ -3433,13 +3433,14 @@ function gameLoop(time) {
                     let hpRatio = Math.max(0, activeBoss.hp / activeBoss.maxHp);
                     hudStyle(conBar, 'width', hudPct(hpRatio));
                     
-                    let bossName = 'SUBJECT: SPHERE HEAD';
-                    if (activeBoss.type === 'RORSCHACH') bossName = 'SUBJECT: RORSCHACH';
-                    if (activeBoss.type === 'PANOPTICON') bossName = 'SUBJECT: THE PANOPTICON';
-                    if (activeBoss.type === 'AMALGAMATION') bossName = 'SUBJECT: THE AMALGAMATION';
-                    if (activeBoss.type === 'ARCHITECT') bossName = 'SUBJECT: THE ARCHITECT';
+                    // Patch 170: the name and a percentage; the long form wrapped on phones.
+                    let bossName = 'SPHERE HEAD';
+                    if (activeBoss.type === 'RORSCHACH') bossName = 'RORSCHACH';
+                    if (activeBoss.type === 'PANOPTICON') bossName = 'THE PANOPTICON';
+                    if (activeBoss.type === 'AMALGAMATION') bossName = 'THE AMALGAMATION';
+                    if (activeBoss.type === 'ARCHITECT') bossName = 'THE ARCHITECT';
 
-                    hudText(conText, `${bossName} - VITAL SIGNS: ${Math.ceil(hpRatio * 100)}%`);
+                    hudText(conText, `${bossName} ${Math.ceil(hpRatio * 100)}%`);
                     hudStyle(conBar, 'background', 'linear-gradient(90deg, #8b0000, #ff0000)');
                     hudStyle(conText, 'color', 'var(--ui-red)');
                     hudStyle(conContainer, 'borderColor', 'var(--ui-red)');

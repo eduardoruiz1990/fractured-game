@@ -608,12 +608,12 @@ export class Game {
     }
 
     /** Patch 168: a kill pop (drawn by Renderer.drawEyesInDark). */
-    spawnPop(x, y, color) {
+    spawnPop(x, y, color, size = 1) {
         const st = this.state;
         if (!st.pops || !Number.isFinite(x) || !Number.isFinite(y)) return;
         const p = st.pops[st.popIdx];
         st.popIdx = (st.popIdx + 1) % st.pops.length;
-        p.x = x; p.y = y; p.born = st.frame; p.color = color || '#ffe9a8';
+        p.x = x; p.y = y; p.born = st.frame; p.color = color || '#ffe9a8'; p.size = size;
     }
 
     spawnParticles(x, y, color, count) {

@@ -115,3 +115,6 @@ export function ownedWeaponCount(weapons) {
     for (const id in weapons) if (weapons[id] && weapons[id].level > 0) n++;
     return n;
 }
+
+/** Patch 170: steps between touching a reward door and the room changing (the entry animation). */
+export const DOOR_ENTER_STEPS = 16;

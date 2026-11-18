@@ -3142,6 +3142,21 @@ early floors lean too easy, and the game still needs a visual overhaul.
   (`drawEffectsAndAuras`), one gradient a frame; the composite mode is reset after it.
 - **Burn-away:** a kill pop now also has a shrinking white core and five embers.
 
+**Patch 170 — walking through doors, living enemies, bosses that own the floor (2026-11-18).**
+- **Door entry.** Touching a reward door no longer changes the room on that step.
+  `Combat` starts an entry of `DOOR_ENTER_STEPS` (16, `Config.js`): the player is drawn
+  into the arch with i-frames, and `state.doorFx` is set. The room changes on the last
+  step. `Renderer.drawDoorTransition` (screen space, after the vignette) fills the
+  screen with the door's light from the door, then opens an iris from the player onto
+  the new room with `ROOM n / N` (or `BOSS ROOM`). The door swells and the player
+  shrinks during the entry. `test_rewards.js` ticks until the room changes.
+- **Enemies move like bodies:** a waddle and a breathing squash per enemy, faster with
+  speed, and an orange bloom while the light burns them.
+- **Bosses:** a wide ground shadow and two counter-rotating dashed rings in the boss's
+  colour; under half health the rings turn red and spin up. A boss dies in a ring of
+  eleven detonations (`spawnPop` takes a size); an elite's death gets a large pop.
+- Boss HUD line is the name and a percentage (the long form wrapped on phones).
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.

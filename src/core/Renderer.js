@@ -7,7 +7,7 @@
 import { errorLog } from './ErrorLog.js';
 // The arena wall drawn below is the same boundary Game.js drains Sanity past and
 // Director.js clamps spawns inside — see the note on ARENA_VOID_RADIUS in Config.js.
-import { ARENA_VOID_RADIUS, isBossType } from '../data/Config.js';
+import { ARENA_VOID_RADIUS, isBossType, DOOR_ENTER_STEPS } from '../data/Config.js';
 import { ARENA_LAYOUTS, ARENA_RISE_STEPS, ARENA_FADE_STEPS, GRID_TELEGRAPH_STEPS } from '../systems/Arena.js';   // Patch 137
 // Patch 96 — THE RECURSION's look: the five biomes cycle past floor 5, with a capped
 // depth escalation layered over them. The cap is a memory bound, not a taste one —
@@ -1482,6 +1482,7 @@ export class Renderer {
 
             if (gameState !== 'HUB') {
                 if (this.diag.vignette) this.drawVignette(state);
+                if (state.doorFx) { try { this.drawDoorTransition(state); } catch (e) { /* cosmetic; never fatal */ } }   // Patch 170
 
                 // Patch 146: a defeated boss's last line, as a subtitle.
                 if (state.subtitle && state.subtitle.steps > 0) {
@@ -1942,6 +1943,75 @@ export class Renderer {
     }
 
     /**
+     * Patch 170: walking through a reward door, in screen space. state.doorFx is set by
+     * Combat when the player touches a door.
+     *   steps 0..ENTER      the door's light swells from the door until it fills the screen
+     *                       (the room changes behind it on the last step)
+     *   steps ENTER..END    an iris opens from the player onto the new room, with the
+     *                       room's name
+     * Keyed on state.frame, so it holds still under hit-stop and pause.
+     */
+    drawDoorTransition(state) {
+        const fx = state.doorFx;
+        const age = state.frame - fx.born;
+        const ENTER = DOOR_ENTER_STEPS, END = DOOR_ENTER_STEPS + 40;
+        if (!(age >= 0 && age <= END)) return;
+        const c = this.ctx;
+        const w = this.canvas.width, h = this.canvas.height;
+        const info = this.roomDoorVisual(fx.rewardType);
+        const maxR = Math.hypot(w, h);
+        const pcx = Number.isFinite(this.cameraCenterX) ? this.cameraCenterX : w / 2;
+        const pcy = Number.isFinite(this.cameraCenterY) ? this.cameraCenterY : h / 2;
+        c.save();
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        if (age < ENTER) {
+            const t = age / ENTER;
+            const sx = pcx + (fx.x - state.player.x) * this.zoom;
+            const sy = pcy + (fx.y - state.player.y) * this.zoom;
+            if (Number.isFinite(sx) && Number.isFinite(sy)) {
+                const r = 30 + maxR * t * t * t;
+                c.fillStyle = info.color;
+                c.globalAlpha = 0.55 + 0.45 * t;
+                c.beginPath(); c.arc(sx, sy, r, 0, Math.PI * 2); c.fill();
+                c.fillStyle = '#ffffff';
+                c.globalAlpha = 0.9;
+                c.beginPath(); c.arc(sx, sy, r * 0.55, 0, Math.PI * 2); c.fill();
+            }
+        } else {
+            const t = (age - ENTER) / (END - ENTER);
+            const hole = maxR * Math.pow(t, 1.7);
+            // the light, with a growing hole onto the new room
+            c.globalAlpha = 1 - t * 0.35;
+            c.fillStyle = '#ffffff';
+            c.beginPath();
+            c.rect(0, 0, w, h);
+            c.arc(pcx, pcy, hole, 0, Math.PI * 2, true);
+            c.fill('evenodd');
+            // a coloured lip on the iris
+            c.globalAlpha = Math.max(0, 1 - t);
+            c.strokeStyle = info.color;
+            c.lineWidth = 10 + 30 * (1 - t);
+            c.beginPath(); c.arc(pcx, pcy, hole, 0, Math.PI * 2); c.stroke();
+            // the room's name
+            const ta = Math.sin(Math.min(1, t * 1.15) * Math.PI);
+            if (ta > 0.02) {
+                const boss = state.roomNumber >= (state.maxRoomsPerFloor || 5);
+                const label = boss ? 'BOSS ROOM' : `ROOM ${state.roomNumber} / ${state.maxRoomsPerFloor || 5}`;
+                const fs = Math.max(22, Math.min(54, w * 0.085));
+                c.globalAlpha = ta;
+                c.font = `bold ${fs}px 'Courier New', Courier, monospace`;
+                c.textAlign = 'center'; c.textBaseline = 'middle';
+                c.fillStyle = 'rgba(0, 0, 0, 0.75)';
+                c.fillText(label, w / 2 + 2, pcy - h * 0.2 + 2);
+                c.fillStyle = boss ? '#ff5a48' : '#f2d27a';
+                c.fillText(label, w / 2, pcy - h * 0.2);
+            }
+        }
+        c.globalAlpha = 1;
+        c.restore();
+    }
+
+    /**
      * Patch 165: eyes in the dark. Every regular enemy outside the beam shows a pair of
      * small bright eyes facing the player, drawn after the darkness, so a horde closing
      * in reads at a glance on a small screen. Two fillRects per enemy; no gradients.
@@ -1974,12 +2044,13 @@ export class Renderer {
                 const age = state.frame - p.born;
                 if (!(age >= 0 && age < 16) || !this.inView(p.x, p.y)) continue;
                 const t = age / 16;
-                if (age < 5) this.drawGlow(p.x, p.y, 26 - age * 2, '#fff6dc', 0.85 - age * 0.15);
+                const pz = p.size || 1;
+                if (age < 5) this.drawGlow(p.x, p.y, (26 - age * 2) * pz, '#fff6dc', 0.85 - age * 0.15);
                 c.globalAlpha = 1 - t;
                 c.strokeStyle = p.color;
                 c.lineWidth = 3 * (1 - t) + 0.5;
                 c.beginPath();
-                c.arc(p.x, p.y, 8 + age * 2.4, 0, Math.PI * 2);
+                c.arc(p.x, p.y, (8 + age * 2.4) * pz, 0, Math.PI * 2);
                 c.stroke();
                 // Patch 169: the body burns away: a white core shrinking, embers thrown out.
                 if (age < 9) {
@@ -3115,6 +3186,7 @@ export class Renderer {
                     const tick = this.renderFrame;
                     const pulse = Math.sin(tick * 0.08 + obj.x * 0.01) * 0.5 + 0.5;
                     const W = 30, H = 46;          // half-width, half-height of the opening
+                    if (obj.entering > 0) { const sw = 1 + (1 - obj.entering / DOOR_ENTER_STEPS) * 0.35; c.scale(sw, sw); }   // Patch 170
 
                     // light on the floor in front of the door
                     c.save();
@@ -3398,7 +3470,42 @@ export class Renderer {
                     this.drawGlow(0, 0, pr * 2.6, EYE_COLOURS[ent.type] || '#ffe9a8', isFlashed ? 0.5 : 0.24);
                     this.ctx.save();
                     const ps = ent.type === 'PARASITE' ? 1.6 : 1.3;   // Patch 169: the parasite was a speck
-                    this.ctx.scale(ps, ps);
+                    // Patch 170: every body is alive. A waddle and a breathing squash on
+                    // its own clock (id), faster the faster it moves; and while the light
+                    // is burning it (flashTime), a hot orange bloom over the rim glow.
+                    const sp = Math.min(3, Math.hypot(ent.vx || 0, ent.vy || 0));
+                    const wob = Math.sin(this.renderFrame * (0.14 + sp * 0.06) + ((ent.id * 97) % 6.283));
+                    if (isFlashed) this.drawGlow(0, 0, pr * 3.1, '#ff9a3c', 0.55);
+                    this.ctx.rotate(wob * 0.07);
+                    this.ctx.scale(ps * (1 + wob * 0.06), ps * (1 - wob * 0.06));
+                }
+
+                // Patch 170: a boss owns the floor it stands on: a wide shadow, a slow
+                // rune ring in its colour, and under half health the ring turns red and
+                // spins up. Drawn before the boss's own sprite.
+                if (isBossType(ent.type) && ent.hp > 0) {
+                    const br = (ent.radius || 40);
+                    const hurt = ent.maxHp > 0 && ent.hp / ent.maxHp < 0.5;
+                    const ringCol = hurt ? '#ff4a3a' : (ent.originalColor && /^#[0-9a-f]{6}$/i.test(ent.originalColor) ? ent.originalColor : '#e9c877');
+                    const spin = this.renderFrame * (hurt ? 0.035 : 0.012);
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(0, br * 0.9, br * 1.7, br * 0.6, 0, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    this.drawGlow(0, 0, br * 3.4, ringCol, hurt ? 0.3 : 0.18);
+                    this.ctx.save();
+                    this.ctx.rotate(spin);
+                    this.ctx.strokeStyle = ringCol;
+                    this.ctx.globalAlpha *= 0.75;
+                    this.ctx.lineWidth = 3;
+                    this.ctx.setLineDash([18, 10]);
+                    this.ctx.beginPath(); this.ctx.arc(0, 0, br * 1.9, 0, Math.PI * 2); this.ctx.stroke();
+                    this.ctx.rotate(-spin * 2.3);
+                    this.ctx.lineWidth = 1.5;
+                    this.ctx.setLineDash([4, 12]);
+                    this.ctx.beginPath(); this.ctx.arc(0, 0, br * 2.25, 0, Math.PI * 2); this.ctx.stroke();
+                    this.ctx.setLineDash([]);
+                    this.ctx.restore();
                 }
 
                 if (ent.type === 'ARCHITECT') {
@@ -5200,6 +5307,11 @@ export class Renderer {
         // a warm halo under them, and the figure drawn 25% larger (hitbox unchanged).
         this.drawGlow(0, 0, 44, '#ffe2a8', 0.22);
         this.ctx.scale(1.25, 1.25);
+        // Patch 170: stepping into a door, the figure shrinks away into the light.
+        if (state.doorFx) {
+            const da = state.frame - state.doorFx.born;
+            if (da >= 0 && da < DOOR_ENTER_STEPS) { const ds = 1 - (da / DOOR_ENTER_STEPS) * 0.75; this.ctx.scale(ds, ds); }
+        }
 
         let shake = panic * 3;
 

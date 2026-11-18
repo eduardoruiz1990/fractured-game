@@ -1,6 +1,6 @@
 // src/systems/Combat.js
 import { LUCIDITY_PER_XP } from '../data/Horde.js';   // Patch 165
-import { ROOM_PACE } from '../data/Config.js';   // Patch 168
+import { ROOM_PACE, DOOR_ENTER_STEPS } from '../data/Config.js';   // Patch 168, 170
 // Patch 168: kill-pop ring colours (the same as the eyes in the dark).
 const POP_COLOURS = { SCAVENGER: '#ffd24a', PREDATOR: '#ff5a48', PARASITE: '#9dff6a', SPLITTER: '#f4f0e0', WARDEN: '#ffb347', BURROWER: '#ffc9a0' };
 import { getActiveSynergies, LIGHT_RECOIL_RESIST, TOKEN_RARITIES } from '../data/Manifestations.js';
@@ -242,7 +242,27 @@ export class Combat {
                     }
                 } else if (obj.type === 'ROOM_DOOR') {
                     const distToPlayer = Math.hypot(obj.x - state.player.x, obj.y - state.player.y);
-                    if (distToPlayer < obj.radius + state.player.radius) {
+                    // Patch 170: walking THROUGH the door. Touching it starts a short
+                    // entry (DOOR_ENTER_STEPS): the player is drawn into the arch and
+                    // cannot be hurt, the screen fills with the door's light
+                    // (Renderer.drawDoorTransition reads state.doorFx), and only then
+                    // does the room change, behind the light.
+                    if (!obj.entering && !state.doorFx_busy && distToPlayer < obj.radius + state.player.radius) {
+                        obj.entering = DOOR_ENTER_STEPS;
+                        state.doorFx_busy = true;
+                        state.doorFx = { born: state.frame, x: obj.x, y: obj.y, rewardType: obj.rewardType };
+                        if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 0.5);
+                        if (typeof game.onHaptic === 'function') game.onHaptic('hit');
+                    }
+                    if (obj.entering > 0) {
+                        obj.entering--;
+                        state.player.x += (obj.x - state.player.x) * 0.22;
+                        state.player.y += (obj.y - state.player.y) * 0.22;
+                        state.player.iframes = Math.max(state.player.iframes || 0, 50);
+                    }
+                    if (obj.entering === 0) {
+                        obj.entering = undefined;
+                        state.doorFx_busy = false;
                         obj.dead = true;
 
                         // Patch 165: the first door a new player walks through ends
@@ -826,6 +846,14 @@ export class Combat {
                         // Patch 146 (V2 plan E4): the defense's last line, as a subtitle.
                         const lastLine = bossDeathLine(ent.type);
                         if (lastLine) state.subtitle = { text: lastLine, steps: BOSS_DEATH_SUBTITLE_STEPS, total: BOSS_DEATH_SUBTITLE_STEPS };
+                        // Patch 170: a boss goes out in a ring of detonations.
+                        if (typeof game.spawnPop === 'function') {
+                            game.spawnPop(ent.x, ent.y, '#ffffff', 5);
+                            for (let k = 0; k < 10; k++) {
+                                const ba = k * 0.628, bd = 50 + (k % 3) * 45;
+                                game.spawnPop(ent.x + Math.cos(ba) * bd, ent.y + Math.sin(ba) * bd, k % 2 ? '#ffd27f' : '#ff5a48', 1.6 + (k % 3) * 0.5);
+                            }
+                        }
                         state.cameraShake = 50;
                         if (game.audioEngine) game.audioEngine.playSFX('death', 1.5);
                         // Patch 130 (V2 plan C8): the kill lands. A short impact freeze,
@@ -857,6 +885,7 @@ export class Combat {
                         dropPage(game, ent.x - 44, ent.y + 10, 'elite');   // Patch 144: half the time
                         game.spawnXP(ent.x + 30, ent.y, 2, true);
                         game.spawnParticles(ent.x, ent.y, '#ffd27f', 40);
+                        if (typeof game.spawnPop === 'function') game.spawnPop(ent.x, ent.y, '#ffd27f', 3);   // Patch 170
                         game.spawnDamageText(ent.x, ent.y - 40, `${ent.eliteName || 'ELITE'} DISPERSED`, '#ffd27f', 1.4, 2.4);
                         state.hitStop = Math.max(state.hitStop || 0, 6);
                         state.cameraShake = Math.max(state.cameraShake, 16);
