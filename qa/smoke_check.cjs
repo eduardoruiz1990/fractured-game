@@ -106,7 +106,8 @@ async function playCrazyGames(browser, base, vp) {
   if (touch) await page.tap('#btn-title-begin'); else await page.click('#btn-title-begin');
   await page.waitForTimeout(1200);
   const cold = await page.evaluate(() => !!document.querySelector('#story-coldopen'));
-  ok(cold, `${tag} the cold open plays on a first launch`);
+  // Patch 167: no cold open any more; a first launch goes straight into a real room.
+  ok(!cold, `${tag} no cold-open cards on a first launch (straight into play)`);
   const calls1 = await page.evaluate(() => window.__sdkCalls.map(c => c[0]));
   ok(calls1.includes('init') && calls1.includes('gameplayStart'), `${tag} SDK heard init and gameplayStart (${[...new Set(calls1)].join(',')})`);
   // The first input dismisses it.
@@ -165,7 +166,8 @@ async function playCrazyGames(browser, base, vp) {
       await note(); i++;
     }
   }
-  ok(seen.size >= 3, `${tag} the tutorial advanced under real input: ${seen.size} banner lines ${JSON.stringify([...seen].slice(0, 6))}`);
+  // Patch 167: the first room carries two or three hints, not a stepped tutorial.
+  ok(seen.size >= 2, `${tag} the first-room hints showed under real input: ${seen.size} banner lines ${JSON.stringify([...seen].slice(0, 6))}`);
   await page.screenshot({ path: path.join(SHOTS, `smoke_play_${tag}.png`) });
 
   // Pause: the menu, and gameplayStop. (Close a level-up first: pause waits for it.)

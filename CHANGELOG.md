@@ -3040,6 +3040,96 @@ The user reported that on a phone left alone, aim assist "basically plays itself
 
 ---
 
+## V3 — NIGHT SHIFT: the horde rework (Patches 165–167, 2026-11-18)
+
+**Why.** A critique of v2 as a product, played at phone size, found three things the
+v2 work never touched because every earlier phase polished the game as designed:
+
+1. **It was not a horde game.** A room spent about 17 budget points at one arrival a
+   second; `data/Difficulty.js` itself measured 0.5–2.9 enemies alive. A scripted
+   player got about 10 kills and no level-up in the first 30 seconds.
+2. **A screenshot was a black rectangle.** Pitch-black outside the beam, zoom 0.58–0.70
+   (a 12-unit enemy drawn 7–8 px wide), brown enemies on a brown floor, full-strength
+   grain and 80% scanlines on top.
+3. **The first minute was reading.** Four cold-open cards, a stepped tutorial with one
+   enemy, three bezelled HUD panels of jargon, and no XP bar.
+
+**Patch 165 — the horde.**
+- `src/data/Horde.js` (new, pure): a room spawns at `hordeSpawnPerSec(floor, room)`
+  for `hordeRoomSeconds` (the budget is the product) while fewer than
+  `hordeAliveTarget` regular enemies are alive. `Director.spawnWave` uses an
+  accumulator (`state.spawnAcc`), so 4.7 arrivals a second is exact. `pack` in
+  `Difficulty.js` is retired (kept at 1).
+- **Enemies arrive at the edge of the view rectangle** (+70 units), not on a circle
+  around its corners. On a portrait phone that circle was 740 units out, past the hard
+  leash, so every arrival was teleported back in on screen. Bosses (`minSpawnRadius`)
+  keep the far ring. `Enemy.applyMovement`'s hard leash is now never inside the view's
+  diagonal + 260.
+- `Game.separateCrowd()`: each regular enemy is pushed off three others per step (a
+  different three each step). Linear cost; without it a horde stacks into one sprite.
+- Scavengers: base speed 1.2 → 1.55; only `THIEF_CHANCE` (12%) still chase XP orbs;
+  the per-scavenger scan of every entity for the boss reads `state.activeBoss`.
+- Economy refit to four to five times the kills: XP curve is a power law
+  (`25 * level^1.25` after the two onboarding levels), orbs heal 0.2–0.3 Sanity
+  (were 1.5–3), Lucidity banks at `LUCIDITY_PER_XP` (0.4) in whole points, pickup
+  radius 70 → 115. **Passive Sanity drain is gone** (Nyctophobia and Glass Cannon keep
+  theirs). Floor 1 enemies have 0.6× HP and hit for 0.8×; HP rises to 2.5× by floor 5.
+- Live-enemy cap 60 → 90 (HIGH), 45 → 55 (LOW).
+- Fix found by the fuzz suite: the Polaroid's knockback divided by the distance to the
+  target, which is exactly 0 when a Burrower surfaces on the player (NaN position).
+- Measured (`sim_difficulty.js`, fresh save): 9–12 enemies alive in regular rooms,
+  about 10 level-ups on floor 1, 4–5 minutes a floor. In the browser a weaving player
+  gets 113 kills and 4 level-ups in the first 45 s.
+
+**Patch 166 — readability and the HUD.**
+- `Renderer.updateZoom`: floors 0.70/0.58 → 0.90/0.86.
+- The darkness mask is composited at `DARKNESS_ALPHA` (0.6), not 1. A Power Outage and
+  Tunnel Vision still go to 0.96.
+- `Renderer.drawEyesInDark`: after the mask, every unlit regular enemy shows a pair of
+  eyes (two `fillRect`s and one cached glow), coloured by type, and XP shards glint (one
+  path for all). Floor palettes lifted three to four times in luminance, same
+  identities. Grain at 30%; `#crt-scanlines` opacity 0.8 → 0.22.
+- HUD (`index.html`, the Patch 166 block at the end of `style.css`): an XP bar across
+  the top with the level, Sanity + dash at the left, **this room's** progress in the
+  middle (it moves while you fight), floor / kills / Lucidity at the right, a 40 px
+  pause icon. Same element ids.
+
+**Patch 167 — the first session.**
+- No scripted tutorial room: `Director.spawnRoomInner` sets `state.firstRoom` and uses
+  `FIRST_ROOM` (10 alive, 26 s, no modifier, event or elite). `main.js` shows two or
+  three hint lines over play. `tutorialCompleted` is set by the first door, as before.
+  `Tutorial.js` is no longer entered (nothing sets `state.isTutorial`); it and
+  `test_tutorial.js` are left in place.
+- The cold open no longer plays over the first room (`coldOpenSeen` is marked); its
+  content note is one line on the title.
+- A first-time title is the logo, a filled PLAY button and SYSTEM SETTINGS
+  (`body.first-time`). The Records Retention notice waits for `tutorialCompleted`.
+- Reward doors sit inside a portrait view (`doorDX`).
+
+**New Keep clauses.**
+- **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
+  regular spawns back on the corner-radius circle: on portrait it is beyond the leash.
+- **55. `DARKNESS_ALPHA` stays well under 1.** The game must be readable in a
+  screenshot and on a phone in daylight; darkness is mood, the eyes are the threat.
+- **56. The PLAY button's box never moves** (its pulse is `filter`, not `transform`):
+  the browser checks wait for a stable element.
+- **57. Any change to kill volume goes through `Horde.js` and is followed by
+  `sim_difficulty.js`**: XP, healing and Lucidity are all fitted to it.
+
+**Checks.** All assertion suites pass; `test_bosses`, `test_content`, `test_viewport`
+and `qa/smoke_check.cjs` had expectations updated for the contracts above.
+`qa/smoke_check.cjs --no-soak` passes on the built bundles.
+
+**Not re-verified in this pass:** the other `qa/*.cjs` scripts (several assert the old
+HUD text, the cold open or tutorial steps and will need the same kind of update), the
+soak on a throttled phone profile at the new caps, and the marketing covers/videos,
+which still show the old darkness.
+
+**Known issues.** The floor-3 boss (Panopticon) kills every scripted player, before and
+after this rework; it wants its own pass. `Tutorial.js` is dead code pending removal.
+
+---
+
 ## Keep clauses (things future patches break by accident)
 
 1. **Never touch `localStorage` directly in `main.js`.** Use
