@@ -78,7 +78,7 @@
 
     <div id="title-screen" class="fullscreen-menu">
         <div class="title-glitch" data-text="FRACTURED">FRACTURED<span class="title-stamp">SECOND OPINION</span></div>
-        <div class="title-subtitle">PSYCHOLOGICAL EVALUATION ENGINE</div>
+        <div class="title-subtitle">YOUR LIGHT IS YOUR WEAPON</div>
         <!-- Patch 52: the primary action now goes STRAIGHT into a run. The old single
              INITIALIZE button led to the walkable hub, which meant a new player had to
              cross a dark room and find the right desk before anything resembling
@@ -87,7 +87,7 @@
              the secondary MIND HUB button. -->
         <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
             <button class="file-btn primary" id="btn-title-resume" style="display: none; width: auto; padding: 15px 50px; font-size: 1.5rem; border-color: var(--ui-gold); color: var(--ui-gold); background: transparent; text-shadow: 0 0 10px var(--ui-gold); box-shadow: 0 0 20px rgba(197, 160, 89, 0.1);">RESUME DESCENT</button>
-            <button class="file-btn primary" id="btn-title-begin" style="width: auto; padding: 15px 50px; font-size: 1.5rem; border-color: var(--ui-gold); color: var(--ui-gold); background: transparent; text-shadow: 0 0 10px var(--ui-gold); box-shadow: 0 0 20px rgba(197, 160, 89, 0.1);">BEGIN DESCENT</button>
+            <button class="file-btn primary" id="btn-title-begin" style="width: auto; padding: 15px 50px; font-size: 1.5rem; border-color: var(--ui-gold); color: var(--ui-gold); background: transparent; text-shadow: 0 0 10px var(--ui-gold); box-shadow: 0 0 20px rgba(197, 160, 89, 0.1);">PLAY</button>
             <button class="file-btn" id="btn-title-hub" style="width: auto; margin-top: 6px; padding: 10px 34px; font-size: 0.95rem; opacity: 0.85;">MIND HUB</button>
         </div>
         <!-- Patch 52b: was bare #8b0000 text, which disappeared into the dark red
@@ -97,6 +97,8 @@
         <!-- Patch 60: returning-player case record. Hidden entirely for a first-time
              player — "0 DESCENTS" is noise on an empty file, and the whole point of
              the Patch 52 title screen is that it stays uncluttered. -->
+        <!-- Patch 167: the content note, one line, in place of the four-card cold open. -->
+        <div id="title-content-note">A story about grief and getting better. No gore.</div>
         <div id="title-case-record" style="display: none; margin-top: 18px; color: #7a7264; font-family: var(--ui-font); font-size: 0.78rem; letter-spacing: 3px; text-align: center; text-shadow: 0 1px 3px #000;"></div>
         <div id="title-suspended-note" style="display: none; margin-top: 24px; padding: 8px 22px; background: rgba(8, 8, 10, 0.85); border: 1px solid rgba(197, 160, 89, 0.5); color: #e8dcc8; font-family: var(--ui-font); font-size: 0.85rem; font-weight: bold; letter-spacing: 3px; text-align: center; text-shadow: 0 1px 3px #000; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);"></div>
     </div>
@@ -520,16 +522,18 @@
 
     <!-- HUD -->
     <div id="ui-layer">
+        <!-- Patch 166: the XP bar. A survivors-like had no visible XP progress. -->
+        <div id="xp-strip"><div id="xp-fill"></div><span id="xp-level">LV 1</span></div>
         <div class="hud-top">
             <div class="sanity-section">
                 <div class="hud-label" id="sanity-label">SANITY 100%</div>
                 <div class="sanity-bar-container"><div id="sanity-bar"></div></div>
-                <div class="hud-label hud-label-dash">ADRENAL RECHARGE</div>
+                <div class="hud-label hud-label-dash">DASH</div>
                 <div class="dash-bar-container"><div id="dash-bar"></div></div>
             </div>
             
             <div class="convergence-section">
-                <div id="convergence-text" class="hud-label-large">NIGHTMARE PROGRESS: 0%</div>
+                <div id="convergence-text" class="hud-label-large">ROOM 1/5</div>
                 <div class="convergence-bar-container"><div id="convergence-bar"></div></div>
                 <!-- Patch 38: visual props moved to the stylesheet. `display: none`
                      stays inline on purpose — main.js toggles it every frame, and
@@ -538,15 +542,15 @@
             </div>
 
             <div class="score-section">
-                <div id="score" class="hud-label-large">LUCIDITY: 0<br>FLOOR: 1</div>
-                <button id="btn-pause" class="hud-icon-btn" title="Pause Game (ESC or P)">⏸ PAUSE</button>
+                <div id="score" class="hud-label-large">FLOOR 1</div>
+                <button id="btn-pause" class="hud-icon-btn" title="Pause Game (ESC or P)" aria-label="Pause">⏸</button>
             </div>
         </div>
     </div>
 
     <!-- LEVEL UP MODAL -->
     <div id="level-up-modal" class="level-up-modal">
-        <h2 style="color: var(--ui-gold); margin: 0; text-shadow: 0 0 10px rgba(197, 160, 89, 0.5);">MANIFESTATION</h2>
+        <h2 style="color: var(--ui-gold); margin: 0; text-shadow: 0 0 10px rgba(197, 160, 89, 0.5);">LEVEL UP · CHOOSE ONE</h2>
         <div class="cards-container" id="cards-container"></div>
         <button class="file-btn" id="btn-reroll" style="display:none; margin-top: 20px;">Reroll Choices (-20 Sanity)</button>
     </div>

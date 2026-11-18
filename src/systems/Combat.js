@@ -1,4 +1,5 @@
 // src/systems/Combat.js
+import { LUCIDITY_PER_XP } from '../data/Horde.js';   // Patch 165
 import { getActiveSynergies, LIGHT_RECOIL_RESIST, TOKEN_RARITIES } from '../data/Manifestations.js';
 
 // Patch 130 (V2 plan C8): juice constants. Sim steps (Game.update counts them).
@@ -241,12 +242,13 @@ export class Combat {
                     if (distToPlayer < obj.radius + state.player.radius) {
                         obj.dead = true;
 
-                        if (state.isTutorial) {
-                            state.isTutorial = false;
-                            if (game.saveManager) {
-                                game.saveManager.metaState.tutorialCompleted = true;
-                                game.saveManager.saveGame();
-                            }
+                        // Patch 165: the first door a new player walks through ends
+                        // their first session's hand-holding (no scripted tutorial room).
+                        state.isTutorial = false;
+                        state.firstRoom = false;
+                        if (game.saveManager && !game.saveManager.metaState.tutorialCompleted) {
+                            game.saveManager.metaState.tutorialCompleted = true;
+                            game.saveManager.saveGame();
                         }
 
                         if (obj.rewardType === 'LUCIDITY') {                            state.lucidity += 50;
@@ -410,7 +412,8 @@ export class Combat {
                                 if (camBatt) { ent.acidTime = camBatt.duration; ent.acidDmg = camBatt.damage; }
                             }
 
-                            ent.x += (dx / dist) * 30;
+                            // Patch 165: a Burrower surfaces exactly on the player (dist 0).
+                            if (dist > 0.001) ent.x += (dx / dist) * 30;
                         }
                     }
                 }
@@ -912,7 +915,7 @@ export class Combat {
         // that Game.init computes, instead of recomputing from upgrades.magnet —
         // that mirror only covers legacy+tree, so token magnet was invisible here.
         // Falls back to the old derivation for states built before this field existed.
-        let baseVacRadius = 70;
+        let baseVacRadius = 115;   // Patch 165: was 70; a horde leaves orbs everywhere
         if (state.player.vacRadiusBonusPx !== undefined) {
             baseVacRadius += state.player.vacRadiusBonusPx;
         } else if (state.player.upgrades && state.player.upgrades.magnet) {
@@ -933,7 +936,10 @@ export class Combat {
                 if (distToPlayer < 15) {
                     xp.collected = true; 
                     state.xp += xp.value; 
-                    state.lucidity += xp.value;
+                    // Patch 165: a horde drops far more orbs; Lucidity banks at a fraction,
+                    // in whole points (the remainder carries).
+                    state.lucidityCarry = (state.lucidityCarry || 0) + xp.value * LUCIDITY_PER_XP;
+                    if (state.lucidityCarry >= 1) { const whole = Math.floor(state.lucidityCarry); state.lucidity += whole; state.lucidityCarry -= whole; }
                     // Patch 156: per floor (data/Difficulty.js); 3 on floor 1, as it was.
                     state.sanity = Math.min(state.player.maxHp, state.sanity + floorPressure(state.floor).orbHeal);
                     pickupCount++;

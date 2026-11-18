@@ -1,4 +1,5 @@
 import { Enemy } from './Enemy.js';
+import { THIEF_CHANCE } from '../data/Horde.js';   // Patch 165
 
 export class Scavenger extends Enemy {
     constructor() {
@@ -18,16 +19,17 @@ export class Scavenger extends Enemy {
         // forever. Director.spawnEntity() re-rolls and re-applies after this returns.
         this.variant = null;
         this.variantTint = null;
-        return this.initBase(id, x, y, 20, 1.2 * stress);
+        // Patch 165: in a horde most scavengers simply chase; a few still steal XP.
+        this.thief = Math.random() < THIEF_CHANCE;
+        return this.initBase(id, x, y, 20, 1.55 * stress);   // Patch 165: was 1.2; a horde has to arrive
     }
 
     update(state, game) {
-        let bossExists = false; 
-        let bossX = 0, bossY = 0;
-        
-        state.entities.forEach(e => { 
-            if(e.type === 'BOSS') { bossExists = true; bossX = e.x; bossY = e.y; } 
-        });
+        // Patch 165: read the tracked boss instead of scanning every entity per scavenger
+        // (the scan cost grew with the square of the crowd).
+        const ab = state.activeBoss;
+        const bossExists = !!ab && ab.type === 'BOSS';
+        const bossX = bossExists ? ab.x : 0, bossY = bossExists ? ab.y : 0;
 
         if (bossExists && Math.hypot(bossX - this.x, bossY - this.y) < 300) {
             let bDist = Math.max(Math.hypot(bossX - this.x, bossY - this.y), 0.001);
@@ -74,7 +76,7 @@ export class Scavenger extends Enemy {
                 let nearestXP = null; 
                 let minDist = 300; 
                 
-                state.xpDrops.forEach(xp => {
+                if (this.thief) state.xpDrops.forEach(xp => {
                     let d = Math.max(Math.hypot(xp.x - this.x, xp.y - this.y), 0.001);
                     if (d < minDist) { minDist = d; nearestXP = xp; }
                 });
@@ -95,8 +97,8 @@ export class Scavenger extends Enemy {
                 } else {
                     let distToPlayer = Math.max(Math.hypot(state.player.x - this.x, state.player.y - this.y), 0.001);
                     if (distToPlayer > 60) {
-                        this.vx = (state.player.x - this.x) / distToPlayer * (this.speed * 0.8);
-                        this.vy = (state.player.y - this.y) / distToPlayer * (this.speed * 0.8);
+                        this.vx = (state.player.x - this.x) / distToPlayer * this.speed;
+                        this.vy = (state.player.y - this.y) / distToPlayer * this.speed;
                     } else {
                         this.vx = Math.cos(state.frame * 0.05 + this.id) * (this.speed * 0.5);
                         this.vy = Math.sin(state.frame * 0.05 + this.id) * (this.speed * 0.5);

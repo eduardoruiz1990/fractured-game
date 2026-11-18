@@ -390,37 +390,42 @@ console.log('\nSpawn ring clears the view (Patch 70)');
         game.state.mapOriginY = 0;
 
         // The furthest point on screen from the player, in world units.
-        const cornerDist = Math.hypot((v.w / 2) / v.zoom, (v.h / 2) / v.zoom);
+        // Patch 165: regular enemies arrive at the edge of the VIEW RECTANGLE (plus a
+        // margin), not beyond its corner radius: off screen on every spawn, and never
+        // more than a short walk from it.
+        const halfW = (v.w / 2) / v.zoom, halfH = (v.h / 2) / v.zoom;
+        const cornerDist = Math.hypot(halfW, halfH);
 
-        let worst = Infinity;
+        let onScreen = 0, farthest = 0;
         for (let i = 0; i < 200; i++) {
             game.state.entities.length = 0;
             game.director.spawnEntity('SCAVENGER', v.w, v.h);
             const e = game.state.entities[0];
-            worst = Math.min(worst, Math.hypot(e.x, e.y));
+            if (Math.abs(e.x) < halfW && Math.abs(e.y) < halfH) onScreen++;
+            farthest = Math.max(farthest, Math.hypot(e.x, e.y));
         }
 
         check(`${v.name}: every spawn lands off screen`,
-              worst > cornerDist,
-              `closest spawn ${worst.toFixed(0)}px vs a ${cornerDist.toFixed(0)}px corner`);
+              onScreen === 0, `${onScreen} of 200 spawned inside the view`);
+        check(`${v.name}: no spawn is farther than the view's corner plus its margin`,
+              farthest <= cornerDist + 110, `farthest ${farthest.toFixed(0)}px vs a ${cornerDist.toFixed(0)}px corner`);
     });
 
-    // Desktop pacing must not move: the legacy radius is kept as a floor precisely so
-    // this refactor cannot retune the game for players who never had the bug.
+    // Bosses keep the far ring (minSpawnRadius): they must not appear at the edge.
     const game = new Game();
     game.init(mockSave);
     game.state.viewZoom = 1.3;
     game.state.player.x = 0; game.state.player.y = 0;
     game.state.mapOriginX = 0; game.state.mapOriginY = 0;
     game.state.stress = 1.0;
-    let maxSeen = 0;
-    for (let i = 0; i < 200; i++) {
+    let minSeen = Infinity;
+    for (let i = 0; i < 50; i++) {
         game.state.entities.length = 0;
-        game.director.spawnEntity('SCAVENGER', 1920, 1080);
-        maxSeen = Math.max(maxSeen, Math.hypot(game.state.entities[0].x, game.state.entities[0].y));
+        game.director.spawnEntity('SCAVENGER', 1920, 1080, null, null, 1, 1400);
+        minSeen = Math.min(minSeen, Math.hypot(game.state.entities[0].x, game.state.entities[0].y));
     }
-    check('1080p desktop still spawns on the legacy 1010px ring, unchanged',
-          Math.abs(maxSeen - 1010) < 1, `got ${maxSeen.toFixed(1)}px`);
+    check('a spawn with a minimum radius still lands on the far ring',
+          minSeen >= 1399, `got ${minSeen.toFixed(1)}px`);
 }
 
 // ---------------------------------------------------------------------------
@@ -444,7 +449,7 @@ console.log('\nPatch 110 — global live-enemy ceiling, boss fights included');
     // 1. Floor 4 boss fight with the room already full: spawnWave must hold.
     const g = setup(4);
     const cap = g.director.liveEntityCap;
-    check('the default ceiling is 60', cap === 60, `got ${cap}`);
+    check('the default ceiling is 90 (Patch 165: horde)', cap === 90, `got ${cap}`);
     g.director.spawnEntity('AMALGAMATION', 1920, 1080);
     while (regulars(g) < cap) g.director.spawnEntity('SCAVENGER', 1920, 1080);
     for (let i = 0; i < 1200; i++) g.director.spawnWave(1920, 1080);

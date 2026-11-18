@@ -1,5 +1,6 @@
 // src/systems/Director.js
 import { floorPressure } from '../data/Difficulty.js';   // Patch 156
+import { HORDE_BOSS_ADD_GAP, FIRST_ROOM, hordeSpawnPerSec, hordeBudget, hordeAliveTarget } from '../data/Horde.js';   // Patch 165
 import { ObjectPool } from './ObjectPool.js';
 import { Scavenger } from '../entities/Scavenger.js';
 import { Predator } from '../entities/Predator.js';
@@ -40,7 +41,7 @@ import {
  * enemyBudget is uncapped by design: a deep floor is meant to be able to COST 200
  * points without ever having 200 bodies alive at once on a phone.
  */
-const ENDLESS_MAX_LIVE_ENTITIES = 60;
+const ENDLESS_MAX_LIVE_ENTITIES = 90;   // Patch 165: was 60; a horde needs the bodies
 
 // Patch 110 (V2 plan B1, QA P0): the ceiling above only applied in endless rooms with
 // NO boss alive. Boss fights are exactly where bodies pile up — spawnWave keeps adding
@@ -149,20 +150,24 @@ export class Director {
         state.combatActive = true;
         state.roomCleared = false;
         
-        if (floor === 1 && roomNumber === 1 && this.game.saveManager && !this.game.saveManager.metaState.tutorialCompleted) {
-            state.isTutorial = true;
-            raiseArena(state, null);   // Patch 137: the tutorial room is always open
-            armRoomEvent(state, null);  // Patch 138: and has no event
-            state.enemyBudget = 1;
-            state.stress = 0;
-            state.budgetTimer = 0;
-            return;
-        }
-        
+        // Patch 165: no scripted tutorial room. A new player's first room is a real,
+        // small horde (FIRST_ROOM); the controls are taught by a hint over play.
+        const firstRoom = floor === 1 && roomNumber === 1 && !!this.game.saveManager
+            && !this.game.saveManager.metaState.tutorialCompleted && !state.daily;
         state.isTutorial = false;
-        // Patch 123: the room term runs at ROOM_PACE (see Config.ROOMS_PER_FLOOR).
-        // Patch 156: times the floor's pressure (data/Difficulty.js); 1 on floor 1.
-        state.enemyBudget = Math.floor((10 + (floor * 5) + (roomNumber * 2 * ROOM_PACE)) * floorPressure(floor).budget);
+        state.firstRoom = firstRoom;
+        // Patch 165: the budget is what the room's spawn rate spends in the room's
+        // length (data/Horde.js), times the floor's pressure (data/Difficulty.js).
+        state.enemyBudget = Math.floor(hordeBudget(floor, roomNumber) * floorPressure(floor).budget);
+        state.spawnPerSec = hordeSpawnPerSec(floor, roomNumber);
+        state.aliveTarget = hordeAliveTarget(floor, roomNumber);
+        if (firstRoom) {
+            state.enemyBudget = Math.round(FIRST_ROOM.perSec * FIRST_ROOM.seconds);
+            state.spawnPerSec = FIRST_ROOM.perSec;
+            state.aliveTarget = FIRST_ROOM.alive;
+        }
+        state.spawnAcc = 0;
+        state.roomBudgetTotal = state.enemyBudget;
         state.budgetTimer = 0;
         state.packLeft = 0;
 
@@ -172,13 +177,13 @@ export class Director {
         const isBossRoom = roomNumber >= state.maxRoomsPerFloor && !state.bossSpawned;
 
         // Patch 137 (V2 plan D5): the floor's room shape, raised around the player.
-        const layout = layoutForRoom(floor, roomNumber, { isBossRoom, isTutorial: false });
+        const layout = layoutForRoom(floor, roomNumber, { isBossRoom, isTutorial: firstRoom });
         raiseArena(state, layout, state.player.x, state.player.y);
         if (layout && typeof this.game.spawnDamageText === 'function') {
             this.game.spawnDamageText(state.player.x, state.player.y - 70, ARENA_LAYOUTS[layout].name, '#cfc6b0', 1.1, 2.4);
         }
 
-        if (isBossRoom) {
+        if (isBossRoom || firstRoom) {
             state.roomModifier = null;
         } else {
             const modRoll = Math.random();
@@ -194,7 +199,9 @@ export class Director {
                 state.enemyBudget = Math.floor(state.enemyBudget * 0.65);
             } else if (state.roomModifier === 'SWARM') {
                 // More, weaker spawns — the bias toward SCAVENGER lives in spawnWave().
-                state.enemyBudget = Math.floor(state.enemyBudget * 1.8);
+                state.enemyBudget = Math.floor(state.enemyBudget * 1.4);
+                state.aliveTarget = Math.floor(state.aliveTarget * 1.4);
+                state.spawnPerSec *= 1.4;
             } else if (state.roomModifier === 'HAZARD') {
                 state.hazardPuddleTimer = 0;
             }
@@ -203,11 +210,12 @@ export class Director {
         // Patch 133 (V2 plan D4): a named elite, promoted from the regular spawn that
         // takes the budget to half (see spawnWave). -1 = none this room.
         state.eliteSpawned = false;
-        state.eliteAt = Math.random() < eliteChanceForRoom(floor, roomNumber, isBossRoom, false)
+        state.roomBudgetTotal = state.enemyBudget;
+        state.eliteAt = !firstRoom && Math.random() < eliteChanceForRoom(floor, roomNumber, isBossRoom, false)
             ? Math.floor(state.enemyBudget * 0.5) : -1;
 
         // Patch 138 (V2 plan D5): a room event, only where no modifier was rolled.
-        armRoomEvent(state, eventForRoom(floor, roomNumber, { isBossRoom, hasModifier: !!state.roomModifier }));
+        armRoomEvent(state, firstRoom ? null : eventForRoom(floor, roomNumber, { isBossRoom, hasModifier: !!state.roomModifier }));
 
         if (roomNumber >= state.maxRoomsPerFloor && !state.bossSpawned) {
             state.enemyBudget = 0;
@@ -255,6 +263,8 @@ export class Director {
     }
 
     spawnRewardDoors() {
+        // Patch 167: the doors sit inside a portrait phone's view (was a fixed 200).
+        const doorDX = Math.max(110, Math.min(200, (Number.isFinite(this.game.state.viewHalfW) ? this.game.state.viewHalfW : 260) - 70));
         const state = this.game.state;
         const px = state.player.x;
         const py = state.player.y;
@@ -279,12 +289,12 @@ export class Director {
 
         state.interactables.push({
             type: 'ROOM_DOOR',
-            x: px - 200, y: py - 200, radius: 40, active: true, dead: false,
+            x: px - doorDX, y: py - 200, radius: 40, active: true, dead: false,
             rewardType: rewardA
         });
         state.interactables.push({
             type: 'ROOM_DOOR',
-            x: px + 200, y: py - 200, radius: 40, active: true, dead: false,
+            x: px + doorDX, y: py - 200, radius: 40, active: true, dead: false,
             rewardType: rewardB
         });
     }
@@ -395,32 +405,24 @@ export class Director {
             // is as tense as it was on a 10-room floor.
             state.stress = 1.0 + (state.roomNumber * 0.1 * ROOM_PACE);
 
-            let spawnRate = bossAlive ? 120 : Math.max(15, 60 - (state.roomNumber * 2 * ROOM_PACE));
+            // Patch 165: the horde. A regular room spawns at its own rate
+            // (state.spawnPerSec, an accumulator, so 4.7 a second is exact) while it
+            // is under its alive target, until the budget is spent. `spawnRate` stays
+            // the frame gate for boss adds only.
+            const aliveTarget = bossAlive ? 14 + Math.min(state.floor, 6) * 3
+                : (Number.isFinite(state.aliveTarget) ? state.aliveTarget : 20);
+            const underTarget = this.liveRegularEnemyCount() < aliveTarget;
+            let due = bossAlive && state.budgetTimer % HORDE_BOSS_ADD_GAP === 0;
             if (!bossAlive) {
-                // Patch 136: the Insomniac sees in a blackout — no faster arrivals.
-                if (state.roomModifier === 'BLACKOUT' && !state.player.blackoutImmune) spawnRate = Math.max(8, Math.floor(spawnRate * 0.6));
-                else if (state.roomModifier === 'SWARM') spawnRate = Math.max(8, Math.floor(spawnRate * 0.5));
-                // Patch 156: the floor's arrival rate (data/Difficulty.js). 1 on floor 1.
-                const density = floorPressure(state.floor).density;
-                if (density !== 1) spawnRate = Math.max(8, Math.round(spawnRate / density));
+                let perSec = Number.isFinite(state.spawnPerSec) ? state.spawnPerSec : 3;
+                if (state.roomModifier === 'BLACKOUT' && !state.player.blackoutImmune) perSec *= 1.25;
+                state.spawnAcc = Math.min(3, (state.spawnAcc || 0) + perSec / 60);
+                if (state.spawnAcc >= 1 && underTarget) { state.spawnAcc -= 1; due = true; }
             }
 
-            // Patch 94 — endless-only live-entity ceiling.
-            //
-            // enemyBudget stays uncapped past floor 5 by design: a deep floor SHOULD
-            // cost more to clear. But budget is a cost total, not a crowd size, and
-            // nothing else in spawnWave limits how many bodies are alive at once — so
-            // an uncapped budget on a phone is an uncapped simulation and render cost.
-            // Holding spawns while the room is already full converts the extra budget
-            // into a LONGER fight rather than a denser one, which is also the better
-            // read: the pressure is sustained instead of arriving all at once.
-            //
-            // Budget is not consumed while held, so nothing is lost — only deferred.
-            // Patch 110: counted only on the frames a spawn would actually fire, and over
-            // regular enemies on every floor (see DEFAULT_LIVE_ENTITY_CAP).
-            if (state.budgetTimer % spawnRate === 0 && !this.hasRoomForEnemy()) {
+            if (due && (!underTarget || !this.hasRoomForEnemy())) {
                 // Held: no spawn, no budget spent this tick.
-            } else if (state.budgetTimer % spawnRate === 0) {
+            } else if (due) {
                 // Determine spawn pools by biome (Floor)
                 let spawnType = 'SCAVENGER';
                 let roll = Math.random();
@@ -510,11 +512,6 @@ export class Director {
                     // 1). The rest of a pack follows 6 frames apart, then the usual gap.
                     // Without it a room is spawn-rate bound: one enemy at a time, each
                     // dead before the next arrives, however tough it is.
-                    const pack = floorPressure(state.floor).pack;
-                    if (pack > 1 && !state.isTutorial && state.enemyBudget > 0) {
-                        state.packLeft = (state.packLeft > 0 ? state.packLeft : pack) - 1;
-                        if (state.packLeft > 0) state.budgetTimer -= Math.min(6, spawnRate - 1);
-                    }
                 }
             }
         } else if (state.entities.length === 0 && !state.roomCleared && !state.bossSpawned) {
@@ -793,15 +790,26 @@ export class Director {
             // canvases (ultrawide, 4K) that fails at the centre of the room, so the
             // sampling loop below could never succeed — skip straight to the rim walk
             // rather than burning a dozen rejected candidates on every spawn.
-            const ringReachable = spawnRadius <= SPAWN_CLAMP_RADIUS + playerDist;
+            // Patch 165: regular enemies arrive at the EDGE OF THE VIEW (the view
+            // rectangle plus a margin), not on a circle around its corners. On a
+            // portrait phone that circle was 740 units out for a 280-unit half-width:
+            // past the hard leash, so every arrival was teleported back in on screen,
+            // and a walk-in from there would take ten seconds. Bosses (minSpawnRadius)
+            // keep the far ring.
+            const edgeSpawn = !(minSpawnRadius > 0);
+            const edgeDist = (a) => Math.min(
+                (halfW + 70) / Math.max(Math.abs(Math.cos(a)), 0.0001),
+                (halfH + 70) / Math.max(Math.abs(Math.sin(a)), 0.0001));
+            const ringReachable = edgeSpawn || spawnRadius <= SPAWN_CLAMP_RADIUS + playerDist;
 
             if (ringReachable) {
                 for (let i = 0; i < 12; i++) {
                     // Patch 137: a shaped room's spawn sectors (corridor ends, gates)
                     // for the first tries; one Math.random call when there are none.
                     const a = i < 8 ? spawnAngle(state) : Math.random() * Math.PI * 2;
-                    const cx = state.player.x + Math.cos(a) * spawnRadius;
-                    const cy = state.player.y + Math.sin(a) * spawnRadius;
+                    const sr = edgeSpawn ? edgeDist(a) : spawnRadius;
+                    const cx = state.player.x + Math.cos(a) * sr;
+                    const cy = state.player.y + Math.sin(a) * sr;
                     if (inArena(cx, cy) && offScreen(cx, cy)) { x = cx; y = cy; break; }
                 }
             }
@@ -912,7 +920,20 @@ export class Director {
             }
 
             // Patch 137: a ring spawn that lands in a wall is moved out of it.
-            if (arenaSolid(state) && !isBossType(ent.type)) resolveObstacles(state.obstacles, ent, ent.radius || 12);
+            if (arenaSolid(state) && !isBossType(ent.type)) {
+                const sx = ent.x, sy = ent.y;
+                resolveObstacles(state.obstacles, ent, ent.radius || 12);
+                // Patch 165: an edge-of-view spawn sits close to the screen, so a wall
+                // pushing it out can push it INTO view, or past the world clamp. Then
+                // it keeps its spawn point and the arena pass moves it next step.
+                if (forceX === null && forceY === null && (ent.x !== sx || ent.y !== sy)) {
+                    const hw = Number.isFinite(state.viewHalfW) ? state.viewHalfW : (w / 2) / zoom;
+                    const hh = Number.isFinite(state.viewHalfH) ? state.viewHalfH : (h / 2) / zoom;
+                    const onScreen = Math.abs(ent.x - state.player.x) < hw && Math.abs(ent.y - state.player.y) < hh;
+                    const outside = Math.hypot(ent.x - mapOriginX, ent.y - mapOriginY) > SPAWN_CLAMP_RADIUS;
+                    if (onScreen || outside) { ent.x = sx; ent.y = sy; }
+                }
+            }
             state.entities.push(ent);
             if (this.game.audioEngine && Math.random() < 0.3) {                this.game.audioEngine.playSFX('enemy_spawn', 0.3);
             }

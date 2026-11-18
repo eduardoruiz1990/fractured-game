@@ -501,7 +501,9 @@ console.log('\nPhase D weapons (Patch 132)');
     // Arsenal behaviour, one weapon at a time, enemies parked in front of the player.
     const park = (g, n, dist = 120) => {
         for (let i = 0; i < n; i++) g.director.spawnEntity('SCAVENGER', null, null, g.state.player.x + dist + i * 40, g.state.player.y);
-        g.state.entities.forEach(e => { e.update = () => {}; });
+        // Patch 165: floor-1 fodder has 12 HP; these checks measure a weapon's hit, so
+        // the targets get enough HP to survive it.
+        g.state.entities.forEach(e => { e.update = () => {}; e.hp = e.maxHp = 200; });
     };
     const tick = (g, steps) => { for (let i = 0; i < steps; i++) { g.state.frame++; Combat.resolveWeapons(g); } };
     const solo = (g, id) => { g.state.player.weapons.flashlight.level = 0; g.state.player.weapons.flashlight.radius = 0; g.state.player.weapons[id].level = 1; };
@@ -568,7 +570,10 @@ console.log('\nElites and chests (Patch 133)');
     g.director.spawnRoom(2, 2);
     g.state.eliteAt = Math.floor(g.state.enemyBudget * 0.5);
     let guard = 0;
-    while (!g.state.eliteSpawned && g.state.enemyBudget > 0 && guard++ < 5000) { g.state.budgetTimer = -1; g.director.spawnWave(1280, 720); }
+    // Patch 165: arrivals come off an accumulator and stop at the alive target, so the
+    // loop feeds both (nothing dies here).
+    g.director.liveEntityCap = 9999;
+    while (!g.state.eliteSpawned && g.state.enemyBudget > 0 && guard++ < 5000) { g.state.spawnAcc = 1; g.state.aliveTarget = 9999; g.director.spawnWave(1280, 720); }
     check('the room promotes exactly one elite at half budget', g.state.eliteSpawned && g.state.entities.filter(e => e.elite).length === 1,
           `budget ${g.state.enemyBudget}, elites ${g.state.entities.filter(e => e.elite).length}`);
 
@@ -922,8 +927,10 @@ console.log('\nFirst minute (Patch 127)');
     const { ensureNewWeaponOffer } = await import('./src/ui/LevelUpUI.js');
     check('levels 1 and 2 use the onboarding ramp',
           getXPRequiredForLevel(1) === ONBOARDING_XP[0] && getXPRequiredForLevel(2) === ONBOARDING_XP[1]);
-    check('level 3 onward is the unchanged curve',
-          getXPRequiredForLevel(3) === Math.floor(50 * 1.12 ** 2) && getXPRequiredForLevel(10) === Math.floor(50 * 1.12 ** 9));
+    // Patch 165: the horde curve, a power law (Config.LEVEL_XP_SCALE / LEVEL_XP_POWER).
+    check('level 3 onward is the horde power curve, strictly rising',
+          getXPRequiredForLevel(3) === Math.floor(25 * 3 ** 1.25) && getXPRequiredForLevel(10) === Math.floor(25 * 10 ** 1.25)
+          && [3, 4, 5, 10, 20, 40].every(l => getXPRequiredForLevel(l + 1) > getXPRequiredForLevel(l)));
     check('the tutorial kill (3 massive orbs = 75 XP) pays for both first cards',
           ONBOARDING_XP[0] + ONBOARDING_XP[1] <= 75);
 
@@ -949,8 +956,9 @@ console.log('\nFirst minute (Patch 127)');
 {
     console.log('\n-- Floor pressure (Patch 156) --');
     const KEYS = ['orbHeal', 'damage', 'budget', 'pack', 'hp', 'speed', 'density'];
-    const IDENTITY = { orbHeal: 3, damage: 1, budget: 1, pack: 1, hp: 1, speed: 1, density: 1 };
-    check('floor 1 is exactly the pre-156 game', KEYS.every(k => FLOOR_PRESSURE[1][k] === IDENTITY[k]),
+    // Patch 165: floor 1 is no longer the identity row; it is the gentlest horde row.
+    check('floor 1 is the gentlest row: weakest enemies, softest hits',
+          [2, 3, 4, 5].every(f => FLOOR_PRESSURE[f].hp > FLOOR_PRESSURE[1].hp && FLOOR_PRESSURE[f].damage > FLOOR_PRESSURE[1].damage),
           JSON.stringify(FLOOR_PRESSURE[1]));
     for (let f = 1; f <= 5; f++) {
         const r = FLOOR_PRESSURE[f];

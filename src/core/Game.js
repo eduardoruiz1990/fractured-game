@@ -455,6 +455,34 @@ export class Game {
      *   'BOSS', ...) or 'VOLATILE'. Recorded as state.lastDamageSource for the death
      *   screen's "what broke you" line. Optional: an omitted source keeps the last one.
      */
+    /** Patch 165: see the call in processGameLogic. Regular enemies only. */
+    separateCrowd() {
+        const ents = this.state.entities;
+        const n = ents.length;
+        if (n < 2) return;
+        const f = this.state.frame | 0;
+        const offs = [1, 2 + (f % 5), 7 + (f % 11)];
+        for (let i = 0; i < n; i++) {
+            const a = ents[i];
+            if (!a || isBossType(a.type) || a.vacuumState === 'vacuuming' || a.burrowState) continue;
+            const ra = a.radius || 12;
+            for (let k = 0; k < 3; k++) {
+                const b = ents[(i + offs[k]) % n];
+                if (!b || b === a || isBossType(b.type) || b.burrowState) continue;
+                const dx = b.x - a.x, dy = b.y - a.y;
+                const min = ra + (b.radius || 12);
+                if (dx > min || dx < -min || dy > min || dy < -min) continue;
+                const d2 = dx * dx + dy * dy;
+                if (!(d2 < min * min)) continue;   // also rejects NaN
+                if (d2 < 0.0001) { a.x -= 0.6; b.x += 0.6; continue; }
+                const d = Math.sqrt(d2);
+                const push = (min - d) * 0.25 / d;
+                a.x -= dx * push; a.y -= dy * push;
+                b.x += dx * push; b.y += dy * push;
+            }
+        }
+    }
+
     takeDamage(amount, source) {
         // Already invulnerable from a previous hit this window — ignore entirely,
         // same as denialShieldActive's block below, just without consuming anything.
@@ -939,12 +967,17 @@ export class Game {
 
         if (this.state.sanity > 0 && !this.state.inVoid && !isInsideSafeZone && this.state.combatActive) {
             if (!this.state.isTutorial) {
-                let drainRate = 0.02;
-                if (this.state.player.curses && this.state.player.curses.includes('nyctophobia')) drainRate = 0.05;
+                // Patch 165: no passive drain by default. Sanity that falls on its own
+                // read as a bug to new players, and with a horde on screen the enemies
+                // are the pressure. The curses and Glass Cannon keep theirs.
+                let drainRate = 0;
+                if (this.state.player.curses && this.state.player.curses.includes('nyctophobia')) drainRate = 0.03;
+                if (this.state.player.boons && this.state.player.boons.includes('glass_cannon')) drainRate += 0.01;
                 if (this.state.player.curses && this.state.player.curses.includes('manic_episode')) drainRate *= 2;
                 // glass_cannon: the drain half of its tradeoff (damage half is in Combat.js).
                 if (this.state.player.boons && this.state.player.boons.includes('glass_cannon')) drainRate *= 2;
                 this.state.sanity -= drainRate;
+                if (drainRate > 0)
                 // Patch 124: only claims the kill if nothing else has hurt the player
                 // this floor; a hit from an enemy is the more useful answer.
                 if (!this.state.lastDamageSource) this.state.lastDamageSource = 'DRAIN';
@@ -990,6 +1023,12 @@ export class Game {
                 }
             }
         }
+
+        // Patch 165: crowd separation. Without it a horde collapses onto one point and
+        // reads as a single enemy. Each body is checked against three others per step
+        // (a different three every step), so the cost is linear in the crowd and the
+        // pile still spreads out within a few frames.
+        if (!frozen) this.separateCrowd();
 
         // Patch 137: after everything has moved, the room's walls push the player and
         // the regular enemies back out (and the Blueprint rearranges itself).

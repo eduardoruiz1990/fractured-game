@@ -242,7 +242,11 @@ export class Enemy {
 
         const SOFT_LEASH = isTutorial ? safeR * 1.5 : visible;
         const RECOVERED = SOFT_LEASH * 0.6;                  // comfortably back in frame
-        const HARD_LEASH = isTutorial ? safeR * 2.2 : Math.max(600, visible * 2.2);
+        // Patch 165: never inside the view's own diagonal, or an enemy that has just
+        // arrived at the edge of a tall or wide screen is teleported straight back.
+        const diag = (Number.isFinite(state.viewHalfW) && Number.isFinite(state.viewHalfH))
+            ? Math.hypot(state.viewHalfW, state.viewHalfH) : 0;
+        const HARD_LEASH = isTutorial ? safeR * 2.2 : Math.max(600, visible * 2.2, diag + 260);
         const RETURN_RADIUS = isTutorial ? safeR : visible * 0.8;
         const STRAY_GRACE = isTutorial ? 45 : 90;            // tutorial gets help twice as fast
         const isLeashable = !isBossType(this.type);

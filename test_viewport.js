@@ -89,8 +89,9 @@ console.log('\nDesktop camera is untouched by this patch');
 {
     [[1920, 1080], [1366, 768], [2560, 1440], [1280, 800], [800, 600]].forEach(([w, h]) => {
         const r = fit(w, h, false);
-        check(`${w}x${h}: zoom matches the pre-patch formula exactly`,
-              Math.abs(r.zoom - legacyZoom(w, h)) < 1e-12,
+        // Patch 165: the landscape floor rose from 0.70 to 0.90; above it, unchanged.
+        check(`${w}x${h}: zoom matches the pre-patch formula, floored at 0.90`,
+              Math.abs(r.zoom - Math.max(0.90, legacyZoom(w, h))) < 1e-12,
               `${r.zoom} vs ${legacyZoom(w, h)}`);
         check(`${w}x${h}: no band, camera on the canvas centre, world uses the whole canvas`,
               r.controlBandH === 0 && r.cameraCenterY === h / 2 &&
@@ -112,8 +113,10 @@ console.log('\nPortrait band and camera');
         check(`${w}x${h}: the camera sits above the canvas centre, so thumbs are clear`,
               r.cameraCenterY < h / 2 && r.cameraCenterY === r.worldViewHeight / 2,
               `centreY ${r.cameraCenterY} vs canvas centre ${h / 2}`);
-        check(`${w}x${h}: shows more world than the desktop floor would`,
-              r.zoom < 0.70 && r.zoom >= 0.58, `zoom ${r.zoom}`);
+        // Patch 165: the horde camera. Portrait sits just under the landscape floor
+        // (0.86 vs 0.90): close enough to read a crowd, a little wider than landscape.
+        check(`${w}x${h}: portrait sits at the horde camera's floor`,
+              r.zoom < 0.90 && r.zoom >= 0.86, `zoom ${r.zoom}`);
     });
 
     // The band must not swallow a short screen if portraitMode is ever forced on one.
@@ -122,13 +125,13 @@ console.log('\nPortrait band and camera');
           squat.worldViewHeight >= 400 * 0.6, `viewH ${squat.worldViewHeight}`);
 }
 
-console.log('\nPortrait actually widens the view');
+console.log('\nPortrait draws enemies large enough to read (Patch 165)');
 {
-    const before = 390 / 0.70;                 // what the old floor allowed
-    const after = 390 / fit(390, 844, true).zoom;
-    check('a 390px-wide phone sees meaningfully more world across',
-          after > before * 1.15,
-          `${after.toFixed(0)} world units vs ${before.toFixed(0)}`);
+    const z = fit(390, 844, true).zoom;
+    check('a 12-unit enemy is at least 20px across on a 390px phone',
+          24 * z >= 20, `${(24 * z).toFixed(1)}px at zoom ${z}`);
+    check('the phone still sees at least 430 world units across',
+          390 / z >= 430, `${(390 / z).toFixed(0)} world units`);
 }
 
 console.log('\nDegenerate canvas');

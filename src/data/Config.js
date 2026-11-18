@@ -5,7 +5,9 @@ export const GAME_CONFIG = {
     SANITY_DRAIN_RATE: 0.03,
     BREAKDOWN_DELAY_FRAMES: 60, // 1 second lag at 60fps
     BASE_XP_REQ: 50,
-    LEVEL_XP_GROWTH_RATE: 1.12
+    LEVEL_XP_GROWTH_RATE: 1.12,   // unused since Patch 165, kept for old references
+    LEVEL_XP_SCALE: 25,
+    LEVEL_XP_POWER: 1.25
 };
 
 /**
@@ -47,7 +49,10 @@ export const ONBOARDING_XP = [24, 40];
 
 export function getXPRequiredForLevel(level) {
     if (level >= 1 && level <= ONBOARDING_XP.length) return ONBOARDING_XP[level - 1];
-    return Math.floor(GAME_CONFIG.BASE_XP_REQ * Math.pow(GAME_CONFIG.LEVEL_XP_GROWTH_RATE, level - 1));
+    // Patch 165: a horde pays four to five times the XP, so the curve is a power law
+    // fitted to that income: about 7 level-ups on floor 1, then 4-5 a floor
+    // (cumulative ~12 * L^2.1). The old exponential (50 * 1.12^L) gave 15 on floor 1.
+    return Math.floor(GAME_CONFIG.LEVEL_XP_SCALE * Math.pow(Math.max(1, level), GAME_CONFIG.LEVEL_XP_POWER));
 }
 
 /**

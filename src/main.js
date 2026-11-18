@@ -658,8 +658,8 @@ function saveSettings() {
 // session if live gameplay is slow; it never steps back up on its own (that would
 // flap), but choosing AUTO again in Settings re-evaluates from HIGH.
 const QUALITY_CAPS = {
-    high: { liveEntityCap: 60, particleCap: 450 },
-    low:  { liveEntityCap: 45, particleCap: 200 }
+    high: { liveEntityCap: 90, particleCap: 450 },   // Patch 165: horde caps (were 60/45)
+    low:  { liveEntityCap: 55, particleCap: 200 }
 };
 function currentQualityTier() {
     const q = gameSettings.quality;
@@ -1084,10 +1084,10 @@ function startNewRun(opts = {}) {
     const story = saveManager.metaState.story || {};
     // (state.isTutorial is set by Director.spawnRoom on the first step, so this reads
     // the same condition it uses.)
-    if (!saveManager.metaState.tutorialCompleted && (game.state.floor || 1) === 1 && !story.coldOpenSeen) {
-        saveManager.markStory('coldOpenSeen');
-        showColdOpen();
-    }
+    // Patch 167: the cold open no longer plays over a new player's first room. Four
+    // cards of text before the first kill is where v1 lost two players in three; the
+    // content note is one line on the title now, and the cards live in the Case File.
+    if (!story.coldOpenSeen) saveManager.markStory('coldOpenSeen');
 }
 
 /**
@@ -1313,6 +1313,9 @@ function dailyDescribe(setup) {
 function refreshDailyEntries() {
     if (!saveManager) return;
     const show = !!saveManager.metaState.tutorialCompleted;
+    // Patch 167: a first-time title is the logo and one button. The sealed Recursion
+    // and the Mind Hub appear once the first room is behind the player (style.css).
+    document.body.classList.toggle('first-time', !show);
     const key = dailyKey();
     const setup = dailySetup(key);
     const d = dailyDescribe(setup);
@@ -1499,6 +1502,9 @@ function showStorageNoticeIfNeeded() {
     // here: if the same player later opens the itch build, they still see it once.
     if (portalSDK.available) return;
     if (saveManager.metaState.storageNoticeAcknowledged === true) return;
+    // Patch 167: not on a first visit. It covered a third of a phone's title screen
+    // before the player had a save worth losing.
+    if (!saveManager.metaState.tutorialCompleted) return;
     el.classList.add('is-visible');
     applyStorageNoticeLayout();
 }
@@ -3440,8 +3446,18 @@ function gameLoop(time) {
                     hudStyle(conContainer, 'boxShadow', '0 0 20px rgba(139, 0, 0, 0.8)');
                 } else if (conBar && game.state.maxRoomsPerFloor) {
                     let bossRatio = Math.min(1, game.state.roomNumber / game.state.maxRoomsPerFloor);
-                    hudStyle(conBar, 'width', hudPct(bossRatio));
-                    hudText(conText, bossRatio >= 1 ? "ANOMALY DETECTED" : `NIGHTMARE PROGRESS: ${Math.floor(bossRatio * 100)}%`);
+                    if (bossRatio >= 1) hudStyle(conBar, 'width', hudPct(bossRatio));
+                    // Patch 166: the bar is THIS room's progress (bodies dealt with out of
+                    // the room's total), so it moves while the player fights.
+                    const st = game.state;
+                    const roomTotal = st.roomBudgetTotal > 0 ? st.roomBudgetTotal : 0;
+                    if (bossRatio < 1) {
+                        const left = Math.max(0, st.enemyBudget || 0) + st.entities.length;
+                        bossRatio = st.roomCleared ? 1 : (roomTotal > 0 ? Math.max(0, Math.min(1, 1 - left / (roomTotal + 1))) : 0);
+                        hudStyle(conBar, 'width', hudPct(bossRatio));
+                        bossRatio = Math.min(bossRatio, 0.999);
+                    }
+                    hudText(conText, bossRatio >= 1 ? "BOSS ROOM" : (st.roomCleared ? 'ROOM CLEAR — PICK A DOOR' : `ROOM ${st.roomNumber}/${st.maxRoomsPerFloor}`));
                     
                     if (bossRatio >= 1) {
                         hudStyle(conBar, 'background', 'var(--ui-gold)');
@@ -3466,7 +3482,7 @@ function gameLoop(time) {
                     if (game.state.combatActive && !activeBoss) {
                         let totalRemaining = game.state.enemyBudget + game.state.entities.length;
                         // Patch 138: an event in progress says what to do instead.
-                        hudText(enemyCounter, roomEventHud(game.state) || `NIGHTMARES LEFT: ${totalRemaining}`);
+                        hudText(enemyCounter, roomEventHud(game.state) || `${totalRemaining} LEFT`);
                         hudStyle(enemyCounter, 'display', 'block');
                     } else {
                         hudStyle(enemyCounter, 'display', 'none');
@@ -3483,11 +3499,20 @@ function gameLoop(time) {
                 // the Wastes on screen and nothing connects the two.
                 // Patch 123: ROOM n/5 — with five rooms the count is short enough to
                 // be worth showing, and it tells a new player the boss is close.
-                const roomReadout = `${game.state.roomNumber}/${game.state.maxRoomsPerFloor || ROOMS_PER_FLOOR}`;
+                // Patch 166: floor, kills and Lucidity; the room moved to the middle bar.
                 const floorReadout = isEndless(game.state.floor)
-                    ? `CYCLE ${cycleLabel(game.state.floor)} - FLOOR: ${game.state.floor} - ROOM: ${roomReadout}`
-                    : `FLOOR: ${game.state.floor} - ROOM: ${roomReadout}`;
-                hudHtml(document.getElementById('score'), `LUCIDITY: ${game.state.lucidity} <br> ${floorReadout}`);
+                    ? `CYCLE ${cycleLabel(game.state.floor)} · FLOOR ${game.state.floor}`
+                    : `FLOOR ${game.state.floor}`;
+                hudHtml(document.getElementById('score'), `${floorReadout}<span class="hud-sub">☠ ${game.state.runKills || 0} · ✦ ${game.state.lucidity}</span>`);
+
+                // Patch 166: the XP bar and level.
+                {
+                    const need = getXPRequiredForLevel(game.state.level);
+                    let xr = need > 0 ? game.state.xp / need : 0;
+                    if (!Number.isFinite(xr)) xr = 0;
+                    hudStyle(document.getElementById('xp-fill'), 'width', hudPct(Math.max(0, Math.min(1, xr))));
+                    hudText(document.getElementById('xp-level'), `LV ${game.state.level}`);
+                }
 
                 // Patch 25: screen-fixed tutorial banner, driven off the same
                 // state.isTutorial gate Director.spawnRoom/Combat.js already use.
@@ -3501,7 +3526,17 @@ function gameLoop(time) {
                 const tutorialBanner = document.getElementById('tutorial-banner');
                 const tutorialBannerText = document.getElementById('tutorial-banner-text');
                 if (tutorialBanner && tutorialBannerText) {
-                    const tutorialLine = Tutorial.bannerCopy(game.state, inputManager.getInputMode());
+                    // Patch 167: with no scripted tutorial, the first room carries one
+                    // hint for its first seconds, then a second about doors.
+                    let tutorialLine = Tutorial.bannerCopy(game.state, inputManager.getInputMode());
+                    if (!tutorialLine && game.state.firstRoom && gameState === 'PLAYING') {
+                        const touch = inputManager.getInputMode() === 'touch';
+                        if (game.state.roomCleared) tutorialLine = 'Room clear. Walk into a door to pick your reward.';
+                        else if (game.state.frame < 420) tutorialLine = touch
+                            ? 'Drag anywhere to move. Your light burns them.'
+                            : 'WASD to move. Aim the light with the mouse.';
+                        else if (game.state.frame < 780) tutorialLine = 'Grab the glowing shards to level up.';
+                    }
                     if (tutorialLine) {
                         // Patch 66: restart the fade whenever the line changes, so a new
                         // instruction is visibly new. The class has to be removed and a

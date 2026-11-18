@@ -20,6 +20,13 @@ import { bossTelegraphing } from './Haptics.js';   // Patch 150 (V2 plan F4)   /
 // the real working set — entity bodies x phase buckets x variants, glows per colour.
 const SPRITE_CACHE_MAX = 768;
 
+// Patch 165: how dark the unlit world is (1 = the old pitch black).
+const DARKNESS_ALPHA = 0.6;
+const EYE_COLOURS = {
+    SCAVENGER: '#ffd24a', PREDATOR: '#ff5a48', PARASITE: '#9dff6a',
+    SPLITTER: '#f4f0e0', WARDEN: '#ffb347', BURROWER: '#ffc9a0'
+};
+
 export class Renderer {
     constructor(canvas, ctx) {
         this.canvas = canvas;
@@ -198,8 +205,11 @@ export class Renderer {
      */
     updateZoom() {
         const MAX_ZOOM = 1.3;            // desktop, unchanged
-        const MIN_ZOOM = 0.70;           // readability floor for small screens
-        const MIN_ZOOM_PORTRAIT = 0.58;  // portrait trades sprite size for warning distance
+        // Patch 165: 0.70/0.58 drew a 12-unit enemy at 7-8 px on a phone. With enemies
+        // arriving at the edge of the view (Director.spawnEntity) the warning distance is
+        // the screen itself, so the camera can sit close enough to read the crowd.
+        const MIN_ZOOM = 0.90;
+        const MIN_ZOOM_PORTRAIT = 0.86;
         const TARGET_W = 900;            // world units we want visible horizontally
         const TARGET_H = 620;            // and vertically
 
@@ -392,11 +402,14 @@ export class Renderer {
         const patterns = [];
 
         const biomes = [
-            { bg: '#1a1410', line: '#0f0a05', accent1: 'rgba(50, 30, 20, 0.4)', accent2: 'rgba(0, 0, 0, 0.5)', crack: 'rgba(0, 0, 0, 0.55)' }, // Floor 1: Wastes (Rusty Browns)
-            { bg: '#0d0d0d', line: '#222222', accent1: 'rgba(80, 80, 80, 0.2)', accent2: 'rgba(0, 0, 0, 0.6)' }, // Floor 2: Divide (Stark Grayscale)
-            { bg: '#250808', line: '#110202', accent1: 'rgba(100, 10, 10, 0.3)', accent2: 'rgba(0, 0, 0, 0.7)' }, // Floor 3: Panopticon (Oppressive Reds)
-            { bg: '#081a0c', line: '#030a04', accent1: 'rgba(20, 80, 20, 0.3)', accent2: 'rgba(5, 15, 5, 0.6)' }, // Floor 4: Amalgamation (Toxic Greens)
-            { bg: '#000000', line: '#b8860b', accent1: 'rgba(218, 165, 32, 0.1)', accent2: 'rgba(0, 0, 0, 0.8)' }  // Floor 5: Architect (Pitch Black & Gold)
+            // Patch 165: every floor lifted out of near-black and given a clear hue, so a
+            // biome is recognisable in the dim light outside the beam and on a phone
+            // screen in daylight. Same identities, three to four times the luminance.
+            { bg: '#4a3526', line: '#2b1d12', accent1: 'rgba(120, 78, 46, 0.45)', accent2: 'rgba(20, 12, 6, 0.45)', crack: 'rgba(16, 9, 4, 0.6)' }, // Floor 1: Wastes (rust and amber)
+            { bg: '#2b3442', line: '#4a586e', accent1: 'rgba(140, 160, 190, 0.25)', accent2: 'rgba(8, 12, 20, 0.5)' }, // Floor 2: Divide (cold steel blue)
+            { bg: '#541a20', line: '#2c0a0e', accent1: 'rgba(170, 40, 46, 0.35)', accent2: 'rgba(24, 4, 6, 0.55)' }, // Floor 3: Panopticon (crimson)
+            { bg: '#1a4a2c', line: '#0c2414', accent1: 'rgba(60, 150, 80, 0.3)', accent2: 'rgba(6, 22, 10, 0.5)' }, // Floor 4: Amalgamation (toxic green)
+            { bg: '#1c1830', line: '#c9972a', accent1: 'rgba(218, 165, 32, 0.16)', accent2: 'rgba(6, 4, 16, 0.6)' }  // Floor 5: Architect (midnight violet and gold)
         ];
 
         const tileWrap = (cx, fn) => {
@@ -1456,6 +1469,7 @@ export class Renderer {
                 this.drawWorldItems(state, audioEngine);
                 if (this.diag.fog) this.drawFog(state);
                 if (this.diag.lights) this.drawLightingMasks(state, curShakeX, curShakeY);
+                if (this.diag.lights) this.drawEyesInDark(state);   // Patch 165
                 this.drawObstacleOutlines(state);   // Patch 137: walls stay readable in the dark
                 if (this.cbAssist) this.drawTelegraphRings(state);   // Patch 150: Colour-Blind Assist
                 this.drawEffectsAndAuras(state);
@@ -1487,7 +1501,8 @@ export class Renderer {
                     this.bossAnnouncementTimer = Math.max(0, this.bossAnnouncementTimer - this.drawSteps());
                 }
                 
-                if (this.filmGrainEnabled !== false) this.drawFilmGrain();   // Patch 115: off on LOW
+                // Patch 165: grain at 30%. At full strength it flattened every colour.
+                if (this.filmGrainEnabled !== false) { this.ctx.globalAlpha = 0.3; this.drawFilmGrain(); this.ctx.globalAlpha = 1; }
             } else if (this.filmGrainEnabled !== false) {
                 // Patch 157: the hub honours the tier's film grain like gameplay does. It
                 // drew this full-screen pattern pass every frame even on LOW.
@@ -1915,8 +1930,74 @@ export class Renderer {
         this.ctx.save();
         this.ctx.setTransform(1, 0, 0, 1, 0, 0); 
         // Patch 115: drawn to the full canvas — the mask may be stored at reduced size.
+        // Patch 165: at DARKNESS_ALPHA, not 1. Pitch black outside the beam hid the
+        // horde, the floor and the room; now the dark is dim, not blind. A Power
+        // Outage and the Tunnel Vision curse still go fully dark.
+        const blind = (state.powerOut > 0 && !state.roomCleared && !state.player.blackoutImmune)
+            || (state.player.curses && state.player.curses.includes('tunnel_vision'));
+        this.ctx.globalAlpha = blind ? 0.96 : DARKNESS_ALPHA;
         this.ctx.drawImage(this.lightCanvas, 0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.globalAlpha = 1;
         this.ctx.restore(); 
+    }
+
+    /**
+     * Patch 165: eyes in the dark. Every regular enemy outside the beam shows a pair of
+     * small bright eyes facing the player, drawn after the darkness, so a horde closing
+     * in reads at a glance on a small screen. Two fillRects per enemy; no gradients.
+     */
+    drawEyesInDark(state) {
+        // XP shards glint through the dark too: one path, one fill for all of them.
+        const drops = state.xpDrops;
+        if (drops && drops.length) {
+            const c = this.ctx;
+            const tw = this.renderFrame * 0.12;
+            c.fillStyle = '#bfe6ff';
+            c.beginPath();
+            for (let i = 0; i < drops.length; i++) {
+                const xp = drops[i];
+                if (!this.inView(xp.x, xp.y)) continue;
+                const r = 4 + Math.sin(tw + xp.x * 0.05) * 1.2;
+                c.moveTo(xp.x, xp.y - r); c.lineTo(xp.x + r * 0.7, xp.y);
+                c.lineTo(xp.x, xp.y + r); c.lineTo(xp.x - r * 0.7, xp.y);
+                c.closePath();
+            }
+            c.fill();
+        }
+        const ents = state.entities;
+        if (!ents || !ents.length) return;
+        const px = state.player.x, py = state.player.y;
+        const fl = state.player.weapons && state.player.weapons.flashlight;
+        const flR = (fl && Number.isFinite(fl.radius)) ? fl.radius : 250;
+        const flA = (fl && Number.isFinite(fl.angle)) ? fl.angle : 0.6;
+        const pa = state.player.angle || 0;
+        const blink = this.renderFrame;
+        const ctx = this.ctx;
+        for (let i = 0; i < ents.length; i++) {
+            const e = ents[i];
+            if (!e || isBossType(e.type) || e.burrowState === 'burrowed') continue;
+            const dx = px - e.x, dy = py - e.y;
+            const d = Math.hypot(dx, dy);
+            if (!(d > 1)) continue;
+            if (d < flR) {
+                let diff = Math.atan2(-dy, -dx) - pa;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                if (Math.abs(diff) < flA) continue;   // lit: the sprite itself shows
+            }
+            if (((blink + ((e.id * 997) | 0)) % 173) < 5) continue;   // a blink
+            const r = e.radius || 12;
+            const ux = dx / d, uy = dy / d;
+            const cx = e.x + ux * r * 0.35, cy = e.y + uy * r * 0.35;
+            const sx = -uy * r * 0.34, sy = ux * r * 0.34;
+            const sz = r > 16 ? 5 : 4;
+            const col = EYE_COLOURS[e.type] || '#ffe9a8';
+            // a soft halo first (one translucent square), then the two eyes
+            this.drawGlow(e.x, e.y, r * 1.9, col, 0.2);   // cached sprite, one drawImage
+            ctx.fillStyle = col;
+            ctx.fillRect(cx + sx - sz / 2, cy + sy - sz / 2, sz, sz);
+            ctx.fillRect(cx - sx - sz / 2, cy - sy - sz / 2, sz, sz);
+        }
     }
 
     drawEffectsAndAuras(state) {

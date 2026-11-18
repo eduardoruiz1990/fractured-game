@@ -65,7 +65,7 @@ canvas { display: block; }
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
     background-size: 100% 2px, 3px 100%;
-    pointer-events: none; z-index: 100; opacity: 0.8;
+    pointer-events: none; z-index: 100; opacity: 0.22;   /* Patch 165: was 0.8; it dimmed the whole game */
 }
 /* Patch 122: the LOW graphics tier drops the overlay (see applyQualityTier in main.js). */
 body.quality-low #crt-scanlines { display: none; }
@@ -2187,3 +2187,90 @@ body.levelup-open .joystick-base { visibility: hidden; }
     .folder-header .title-typewriter { font-size: 0.95rem; letter-spacing: 1px; }
     .folder-header .patient-stamp { font-size: 0.85rem; padding: 2px 8px; border-width: 2px; }
 }
+
+
+/* ==========================================================================
+   Patch 166 (v3): the HUD, rebuilt for a horde on a phone.
+   Three bezelled instrument panels used 13% of a phone screen for jargon
+   ("NIGHTMARE PROGRESS", "ADRENAL RECHARGE") and showed no XP. Now: an XP bar
+   across the top edge, Sanity + dash at the left, the room's progress in the
+   middle, floor / kills / Lucidity and a pause icon at the right. Same element
+   ids, so main.js and the checks still find everything. The #ui-layer prefix
+   outranks every earlier HUD rule, including the media-query ones.
+   ========================================================================== */
+#ui-layer { padding: 0; padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+#xp-strip {
+    position: relative; width: 100%; height: 12px; flex: 0 0 auto;
+    background: rgba(0, 0, 0, 0.7); border-bottom: 1px solid rgba(197, 160, 89, 0.45);
+}
+#xp-fill {
+    height: 100%; width: 0%; transform-origin: left center;
+    background: linear-gradient(90deg, #8a6a2a, #f2d27a 70%, #fff3c4);
+    box-shadow: 0 0 8px rgba(242, 210, 122, 0.7);
+    transition: width 0.18s ease-out;
+}
+#xp-level {
+    position: absolute; right: 6px; top: 14px; font-family: var(--ui-font);
+    font-size: 12px; font-weight: 900; letter-spacing: 1px; color: #f2d27a;
+    text-shadow: 0 1px 0 #000, 0 0 6px rgba(0,0,0,0.9);
+}
+#ui-layer .hud-top {
+    position: absolute; top: calc(14px + env(safe-area-inset-top)); left: 0; right: 0; width: auto;
+    padding: 6px 8px 0; gap: 8px; flex-wrap: nowrap; align-items: flex-start; justify-content: space-between;
+}
+#ui-layer .sanity-section, #ui-layer .convergence-section, #ui-layer .score-section {
+    background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; margin: 0; min-width: 0;
+}
+#ui-layer .sanity-section::before, #ui-layer .convergence-section::before, #ui-layer .score-section::before,
+#ui-layer .sanity-section::after, #ui-layer .convergence-section::after, #ui-layer .score-section::after { display: none; }
+#ui-layer .hud-label, #ui-layer .hud-label-large {
+    font-size: 12px; line-height: 1.25; letter-spacing: 0.5px; margin: 0 0 3px; font-weight: 800;
+    color: #f1ede2; text-shadow: 0 1px 0 #000, 0 0 5px rgba(0,0,0,0.95);
+}
+#ui-layer .sanity-section { order: 1; flex: 0 1 34%; max-width: 230px; width: auto; }
+#ui-layer .sanity-bar-container {
+    height: 12px; border: 1px solid rgba(0,0,0,0.9); border-radius: 3px; overflow: hidden;
+    background: rgba(0, 0, 0, 0.62); box-shadow: 0 0 0 1px rgba(255,255,255,0.14);
+}
+#ui-layer #sanity-bar { border-radius: 2px; }
+#ui-layer .hud-label-dash { display: none; }
+#ui-layer .dash-bar-container {
+    width: 62%; height: 5px; margin-top: 4px; border: 0; border-radius: 3px; overflow: hidden;
+    background: rgba(0, 0, 0, 0.62); box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+}
+#ui-layer .convergence-section { order: 2; flex: 1 1 auto; max-width: 300px; align-items: center; }
+#ui-layer .convergence-section .hud-label-large { text-align: center; }
+#ui-layer .convergence-bar-container {
+    width: 100%; height: 8px; margin-top: 0; border: 0; border-radius: 4px; overflow: hidden;
+    background: rgba(0, 0, 0, 0.62); box-shadow: 0 0 0 1px rgba(255,255,255,0.14);
+}
+#ui-layer #convergence-bar { transition: width 0.25s linear; }
+#ui-layer #enemy-counter { font-size: 11px; margin-top: 3px; color: #ffb9a8; text-shadow: 0 1px 0 #000; }
+#ui-layer .score-section { order: 3; flex: 0 0 auto; max-width: 34%; align-items: flex-end; margin-right: 46px; position: static; }
+#ui-layer .score-section .hud-label-large { text-align: right; white-space: nowrap; }
+#ui-layer #score .hud-sub { display: block; font-size: 11px; font-weight: 700; color: #d9c48a; }
+#ui-layer #btn-pause {
+    position: absolute; top: 6px; right: 6px; margin: 0; width: 40px; height: 40px; padding: 0;
+    font-size: 18px; line-height: 1; border-radius: 6px; border: 1px solid rgba(255,255,255,0.28);
+    background: rgba(0, 0, 0, 0.55); color: #f1ede2;
+}
+#ui-layer #xp-level { right: auto; left: 8px; top: 56px; }
+
+/* Patch 167: a first-time title is the logo and one button. */
+body.first-time #btn-title-endless, body.first-time #btn-title-hub { display: none !important; }
+#title-content-note {
+    margin-top: 16px; font-family: var(--ui-font); font-size: 12px; letter-spacing: 1px;
+    color: #a89f8c; text-align: center; text-shadow: 0 1px 3px #000;
+}
+/* The primary button: filled, so it reads as THE thing to press. */
+#title-screen #btn-title-begin {
+    background: linear-gradient(180deg, #e9c877, #b98a2e) !important; color: #1a1206 !important;
+    border-color: #f6e2a6 !important; text-shadow: none !important; letter-spacing: 6px;
+    padding: 16px 64px !important; font-size: 1.7rem !important;
+    box-shadow: 0 6px 0 #6b4d14, 0 10px 26px rgba(0, 0, 0, 0.6) !important;
+    animation: playPulse 1.8s ease-in-out infinite;
+}
+/* A glow pulse, not a scale: the button's box must not move (the browser checks click it). */
+@keyframes playPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.22); } }
+@media (prefers-reduced-motion: reduce) { #title-screen #btn-title-begin { animation: none; } }
+#ui-layer #xp-level { left: 8px; top: 62px; }
