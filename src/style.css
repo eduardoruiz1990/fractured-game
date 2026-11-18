@@ -2535,3 +2535,13 @@ body.first-time #btn-title-endless, body.first-time #btn-title-hub { display: no
 }
 #interaction-prompt #prompt-text { font-size: 1.05rem; font-weight: 800; }
 #interaction-prompt { min-width: min(300px, 86vw); text-align: center; }
+
+/* Patch 179: the Case File, illustrated. */
+.casefile-art { border: 1px solid rgba(233, 200, 119, 0.4); border-radius: 12px; overflow: hidden; margin: 8px 0 10px; line-height: 0; }
+.casefile-art svg { width: 100%; height: auto; display: block; }
+.casefile-art--locked { filter: brightness(0.32) saturate(0.2); border-style: dashed; }
+.casefile-chapter-h { color: #f2d27a; letter-spacing: 2px; border-bottom: 0; margin-bottom: 0; }
+.casefile-page { border: 1px solid rgba(233, 200, 119, 0.3) !important; border-left: 3px solid #e9c877 !important; }
+.casefile-page-title::before { content: "\1F4CE\00A0"; }
+.casefile-page-text { color: #e6e0d2; line-height: 1.55; font-size: 0.92rem; }
+.casefile-missing { border-left-color: rgba(255, 255, 255, 0.18) !important; color: #8d879a; }

@@ -4099,7 +4099,18 @@ export class Renderer {
                         {dist: 18, ang: 5.4,  rx: 21, ry: 27, rot: 0.5,  spin: 0.012}
                     ];
 
-                    this.ctx.fillStyle = isFlashed ? '#ddaaaa' : ent.color;
+                    // Patch 180: the house style's pale rim. Every lobe is first laid down
+                    // slightly larger in the rim colour, so only the fused outline shows it.
+                    this.ctx.fillStyle = isFlashed ? '#ffffff' : 'rgba(214, 255, 170, 0.85)';
+                    amalLobes.forEach((lb, m) => {
+                        let breath = Math.sin(this.renderFrame * 0.05 + m * 1.3) * 4;
+                        this.ctx.beginPath();
+                        this.ctx.ellipse(Math.cos(lb.ang) * (lb.dist + breath), Math.sin(lb.ang) * (lb.dist + breath),
+                                         lb.rx + breath + 2.6, Math.max(1, lb.ry - breath * 0.5 + 2.6),
+                                         lb.rot + this.renderFrame * lb.spin, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    });
+                    this.ctx.fillStyle = isFlashed ? '#ffe9e2' : '#2c3a1c';
                     amalLobes.forEach((lb, m) => {
                         let breath = Math.sin(this.renderFrame * 0.05 + m * 1.3) * 4;
                         let lx = Math.cos(lb.ang) * (lb.dist + breath);
@@ -4223,6 +4234,11 @@ export class Renderer {
                         this.ctx.lineTo(rorLobes[rorLobes.length - 1].x * ent.radius, rorLobes[rorLobes.length - 1].y * ent.radius);
                         this.ctx.closePath();
                         this.ctx.fill();
+                        // Patch 180: a pale lilac rim, so the blot reads against any floor.
+                        this.ctx.strokeStyle = isFlashed ? '#ffffff' : 'rgba(226, 190, 255, 0.85)';
+                        this.ctx.lineWidth = 2;
+                        this.ctx.lineJoin = 'round';
+                        this.ctx.stroke();
 
                         this.ctx.strokeStyle = 'rgba(180, 100, 220, 0.4)';
                         this.ctx.lineWidth = 1.5;

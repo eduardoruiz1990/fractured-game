@@ -3230,6 +3230,34 @@ limbs) and chose glass-and-gold over the paper "medical file" for every menu.
 (24 stateless motes, off on the LOW tier), and a level-up throws a gold burst around the
 player.
 
+**Patches 176–180 — the second phone review: levels, the hub, the doll, the lore (2026-11-18).**
+From the user's A56 screenshots: Intrusive Thoughts were white on grey; items needed a
+visual home ("like Diablo"); the lore deserved pictures; and the walkable hub's look
+clashed with the rest ("I had a Hades-style hub in mind").
+- **176.** Every `.synapse-node-file` outside the Synapse grid (the Intrusive Thoughts
+  cards) is dark glass with light text; the inline FORGE buttons are gold on glass.
+  **The loadout strip is a paper doll** (`UIManager.renderSlotChips`): the Patient in the
+  middle (inline SVG), each slot beside the body part it dresses, with an icon and the
+  worn token's rarity on the frame. It replaces the equipped column on every width.
+- **177. Set dressing** (`src/systems/Decor.js`, new, pure and stateless). The world is
+  cut into 230-unit cells; a hash of (cell, floor, room) decides whether a cell holds a
+  prop, which of the floor's four, where and how turned, or a LAMP. Props are cached
+  sprites (`Renderer.paintDecor`), muted so they are never mistaken for enemies. A lamp
+  cuts a hole in the darkness mask and adds a screen-blended warm pool over it.
+  Decoration only: nothing collides or blocks light. No decor in the Void or on a room's
+  centre.
+- **178. The hub is THE BEDROOM** (`HubWorld.js` rewritten; zone ids, positions, radii
+  and actions unchanged). Floorboards, a rug, moonlight. The BED starts a run; the DESK
+  shows a notebook per Patient Level; the WARDROBE has a hook per token slot, lit in the
+  worn token's rarity; the SHELF has a trophy per boss beaten (a dashed plinth for the
+  rest) and a jar per regular enemy that fills with kills (full at 500); a CORKBOARD
+  pins a sheet for every Case File page found, joined by red thread. The hub's darkness
+  is lighter and its light no longer strobes. The station prompt is glass-and-gold.
+- **179. The Case File is illustrated:** each chapter opens on an inline-SVG scene of its
+  place (the chair outside the office, the inkblot cards, the watchtower, the pile, the
+  blueprint), a dark outline until the chapter's boss has been faced.
+- **180.** The Amalgamation and Rorschach get the house style's pale rim.
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.
