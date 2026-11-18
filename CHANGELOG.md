@@ -3372,6 +3372,29 @@ asks for visual onboarding).
   games", so the Daily Session board cannot be built for a Basic Launch. Not started.
 - Not used: `reportGameCompletedPercentage`.
 
+**Patch 191 — the loadout on a desktop, and better-or-worse at a glance (2026-11-18).**
+- **The close button was cut in half.** It sat 20 px outside the folder's corner, and the
+  folder has clipped its contents since it got rounded corners (Patch 174). It is now
+  inside the corner.
+- **Desktop layout.** The left column was empty apart from SET PROGRESS while the doll,
+  the inventory and the detail panel shared the right one. Now: left = doll, then the
+  detail panel, then set progress; right = the whole inventory. `renderSlotChips` moves
+  the doll and `#item-details` (class `item-details--docked`) by whether
+  `.equipped-panel` is displayed, so the phone layout (which hides that column) keeps the
+  doll above the list and the sticky sheet at the foot. The desktop rules restate the
+  phone media query because they come after it in the file.
+- **Comparison (`compareTokens` in `UIManager.js`).** Every inventory card carries a badge
+  against what is worn in its slot: `+` empty slot, `▲` upgrade, `▼` downgrade, `=` same,
+  `≠` a different effect (with a small ▲/▼ when every changed line leans one way).
+  Selecting a card outlines it and opens a comparison block: a verdict pill, what it is
+  compared with, and one row per attribute, green or red. Attributes both items have are
+  marked BOTH, listed first, and say which is better; `dashCooldown` is the one stat
+  where lower is better (`LOWER_IS_BETTER`).
+- A verdict of ▲/▼ across two different tokens is only given when every changed line
+  agrees and no special effect is swapped; otherwise it is `≠`, by design: the game does
+  not rank a dash effect against a light effect.
+- The slot chips on the doll are drop targets, as the old slot squares were.
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.

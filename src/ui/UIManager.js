@@ -120,6 +120,77 @@ function computeEffectDiff(fromTokenData, fromRarity, toTokenData, toRarity) {
     return lines;
 }
 
+// Patch 191: a structured comparison of a candidate token against the one worn in its
+// slot, for the card badges and the detail panel. Built on the same scaling as
+// computeEffectDiff, so the two cannot disagree.
+//
+//   rows     one per numeric attribute either token has: { label, from, to, delta,
+//            shared, better } where `shared` means BOTH tokens affect it (a like-for-like
+//            comparison) and `better` is true/false/null (null = no change)
+//   grants   { lose, gain } special effects swapped
+//   verdict  'new'     nothing is worn in the slot
+//            'up'      the same token at a higher rarity (or strictly better on every line)
+//            'down'    the same token at a lower rarity (or strictly worse on every line)
+//            'same'    no difference
+//            'diff'    a different effect; `lean` says which way the SHARED attributes
+//                      point: 'up', 'down', 'mixed' or null when nothing is shared
+const LOWER_IS_BETTER = new Set(['dashCooldown']);
+function scaledEffects(tokenData, rarity) {
+    const mult = (TOKEN_RARITIES[rarity] && TOKEN_RARITIES[rarity].multiplier) || 1.0;
+    const out = {};
+    for (const [key, value] of Object.entries((tokenData && tokenData.effects) || {})) {
+        if (key === 'tagDamage') {
+            for (const [tag, amt] of Object.entries(value)) out[`tagDamage:${tag}`] = amt > 0 ? Math.round(amt * mult) : amt;
+        } else if (TOKEN_EFFECT_LABELS[key]) {
+            out[key] = value > 0 ? Math.round(value * mult) : value;
+        }
+    }
+    return out;
+}
+function effectLabel(key, v) {
+    if (key.startsWith('tagDamage:')) return `${v > 0 ? '+' : ''}${v}% ${key.replace('tagDamage:', '')} damage`;
+    return TOKEN_EFFECT_LABELS[key](v);
+}
+export function compareTokens(wornData, wornRarity, candData, candRarity) {
+    if (!wornData) return { verdict: 'new', lean: null, rows: [], grants: { lose: null, gain: null } };
+    const from = scaledEffects(wornData, wornRarity), to = scaledEffects(candData, candRarity);
+    const rows = [];
+    new Set([...Object.keys(from), ...Object.keys(to)]).forEach(key => {
+        const a = from[key] || 0, b = to[key] || 0, delta = b - a;
+        const shared = key in from && key in to;
+        const base = key.startsWith('tagDamage:') ? key : key;
+        const better = delta === 0 ? null : (LOWER_IS_BETTER.has(base) ? delta < 0 : delta > 0);
+        rows.push({ key, shared, from: key in from ? effectLabel(key, a) : null, to: key in to ? effectLabel(key, b) : null,
+            delta: delta === 0 ? null : effectLabel(key, delta), better });
+    });
+    const fromGrant = (wornData.effects && wornData.effects.grant) || null;
+    const toGrant = (candData.effects && candData.effects.grant) || null;
+    const grants = fromGrant !== toGrant
+        ? { lose: fromGrant ? (TOKEN_GRANT_LABELS[fromGrant] || fromGrant) : null, gain: toGrant ? (TOKEN_GRANT_LABELS[toGrant] || toGrant) : null }
+        : { lose: null, gain: null };
+    const changed = rows.filter(r => r.better !== null);
+    const anyGrant = !!(grants.lose || grants.gain);
+    const sharedRows = changed.filter(r => r.shared);
+    const lean = !sharedRows.length ? null
+        : sharedRows.every(r => r.better) ? 'up' : sharedRows.every(r => !r.better) ? 'down' : 'mixed';
+    let verdict;
+    if (wornData.id === candData.id) {
+        const a = RARITY_UPGRADE_ORDER.indexOf(wornRarity), b = RARITY_UPGRADE_ORDER.indexOf(candRarity);
+        verdict = b > a ? 'up' : b < a ? 'down' : 'same';
+    } else if (!changed.length && !anyGrant) verdict = 'same';
+    else if (!anyGrant && changed.every(r => r.better)) verdict = 'up';
+    else if (!anyGrant && changed.every(r => !r.better)) verdict = 'down';
+    else verdict = 'diff';
+    return { verdict, lean, rows, grants };
+}
+const COMPARE_BADGE = {
+    new:  { text: '+', title: 'Nothing is worn in this slot' },
+    up:   { text: '▲', title: 'Better than what you are wearing' },
+    down: { text: '▼', title: 'Worse than what you are wearing' },
+    same: { text: '=', title: 'The same as what you are wearing' },
+    diff: { text: '≠', title: 'A different effect from what you are wearing' }
+};
+
 // Patch 176: the paper doll in the LOADOUT pane (renderSlotChips).
 const DOLL_SLOT_ICONS = { head: '🧠', body: '🦺', hands: '🧤', legs: '👟', prescription: '💊' };
 const DOLL_SVG = `<svg viewBox="0 0 120 190" xmlns="http://www.w3.org/2000/svg">
@@ -1218,6 +1289,26 @@ export class UIManager {
             bar.id = 'loadout-slot-chips';
             this.inventoryGrid.parentNode.insertBefore(bar, this.inventoryGrid);
         }
+        // Patch 191: where there is a left column (desktop; the phone layout hides it)
+        // the doll goes there, above SET PROGRESS, and the whole right column is the
+        // inventory. Checked on every render, so a resize settles on the next one.
+        const eqPanel = document.querySelector('#tab-loadout .equipped-panel');
+        let wide = false;
+        try { wide = !!eqPanel && getComputedStyle(eqPanel).display !== 'none'; } catch (e) { wide = false; }
+        if (wide && bar.parentNode !== eqPanel) eqPanel.insertBefore(bar, eqPanel.firstChild);
+        else if (!wide && bar.parentNode !== this.inventoryGrid.parentNode) this.inventoryGrid.parentNode.insertBefore(bar, this.inventoryGrid);
+        // The detail panel follows the same rule: on a desktop it sits in the left
+        // column right under the doll, so the comparison is beside what is worn and
+        // the inventory keeps the whole right column; on a phone it stays the sticky
+        // bar at the foot of the pane.
+        const details = document.getElementById('item-details');
+        const invCol = this.inventoryGrid.parentNode;
+        const container = document.querySelector('#tab-loadout .loadout-container');
+        if (details && container) {
+            if (wide && details.previousElementSibling !== bar) eqPanel.insertBefore(details, bar.nextSibling);
+            else if (!wide && details.parentNode !== container.parentNode && container.parentNode) container.parentNode.insertBefore(details, container.nextSibling);
+            details.classList.toggle('item-details--docked', wide);
+        }
         bar.innerHTML = '';
 
         // Patch 176: the strip is now a paper doll. The Patient stands in the middle
@@ -1271,6 +1362,10 @@ export class UIManager {
                 sub.textContent = `${filled}/${TOKEN_SLOT_TYPES.length} worn`;
             }
             chip.appendChild(sub);
+
+            // Patch 191: a slot on the doll takes a dragged token of its own type (the
+            // old slot squares it replaced were the only drop targets).
+            if (slot !== 'all') this.attachSlotDropTarget(chip, slot);
 
             chip.onclick = () => {
                 this.loadoutSlotFilter = slot;
@@ -1426,7 +1521,21 @@ export class UIManager {
 
             el.innerHTML = `<div style="font-size:1.5rem;">${icon}</div><div>${tokenData.name}</div>` +
                 `<button type="button" class="inline-forge-btn" style="margin-top:2px; font-size:0.55rem; width:100%; background:var(--ink-black); color:var(--ui-gold); border:1px solid #333; font-family:inherit; padding:2px;">${forgeLabel}</button>`;
-            el.onclick = () => this.selectInventoryItem(invItem, tokenData);
+            // Patch 191: a corner badge on every card: how it compares with what is worn
+            // in its slot (see compareTokens). A different item whose shared attributes
+            // all point one way carries a small arrow beside the "different" sign.
+            {
+                const cmp = compareTokens(equippedItem ? TOKENS[equippedItem.id] : null, equippedItem && equippedItem.rarity, tokenData, invItem.rarity);
+                const b = COMPARE_BADGE[cmp.verdict];
+                const badge = document.createElement('span');
+                badge.className = `cmp-badge cmp-${cmp.verdict}`;
+                badge.textContent = b.text + (cmp.verdict === 'diff' && cmp.lean === 'up' ? '▲' : cmp.verdict === 'diff' && cmp.lean === 'down' ? '▼' : '');
+                badge.title = b.title;
+                badge.setAttribute('aria-label', b.title);
+                el.appendChild(badge);
+                if (this.selectedInventoryItem === invItem.uid) el.classList.add('inventory-item--selected');
+            }
+            el.onclick = () => { this.selectInventoryItem(invItem, tokenData); this.markSelectedCard(el); };
             // Patch 34b: shared body-level tooltip (see showItemTooltip) instead of
             // a per-card absolutely-positioned child — see the CSS comment on
             // .item-tooltip for why the old approach clipped at the grid's edges.
@@ -1458,9 +1567,63 @@ export class UIManager {
         this.detailName.innerText = "Select an Item";
         this.detailDesc.innerText = "Configure your fractured mind before descending.";
         this.detailSet.innerText = "";
+        this.renderCompareBlock(null, null, null, null);   // Patch 191
         this.btnEquipItem.style.display = 'none';
         this.btnUnequipItem.style.display = 'none';
         this.btnUpgradeItem.style.display = 'none';
+    }
+
+    /** Patch 191: outline the card that was just picked (the grid is not re-rendered). */
+    markSelectedCard(el) {
+        if (!this.inventoryGrid) return;
+        this.inventoryGrid.querySelectorAll('.inventory-item--selected').forEach(n => n.classList.remove('inventory-item--selected'));
+        if (el) el.classList.add('inventory-item--selected');
+    }
+
+    /**
+     * Patch 191: the comparison block in the detail panel. A verdict in words and
+     * colour, then one row per attribute: what the worn token gives, what this one
+     * gives, and the change, green when this one is better and red when it is worse.
+     * Attributes BOTH tokens affect are marked, because those are the like-for-like ones.
+     * Pass a null candidate to clear it.
+     */
+    renderCompareBlock(wornData, wornItem, candData, candItem) {
+        const host = this.detailSet && this.detailSet.parentNode;
+        if (!host) return;
+        let box = document.getElementById('detail-compare');
+        if (!box) { box = document.createElement('div'); box.id = 'detail-compare'; host.appendChild(box); }
+        if (!candData || !candItem) { box.innerHTML = ''; box.style.display = 'none'; return; }
+        const esc = (v) => String(v).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+        const cmp = compareTokens(wornData, wornItem && wornItem.rarity, candData, candItem.rarity);
+        const VERDICT = {
+            new: ['EMPTY SLOT', 'Nothing is worn here. Equipping this only adds.'],
+            up: ['UPGRADE', 'Better than what you are wearing.'],
+            down: ['DOWNGRADE', 'Worse than what you are wearing.'],
+            same: ['NO CHANGE', 'The same as what you are wearing.'],
+            diff: ['DIFFERENT EFFECT', cmp.lean === 'up' ? 'A different item. Where they overlap, this one is better.'
+                : cmp.lean === 'down' ? 'A different item. Where they overlap, this one is worse.'
+                : cmp.lean === 'mixed' ? 'A different item. Where they overlap, it is better on some and worse on others.'
+                : 'A different item. They do not affect the same things.']
+        }[cmp.verdict];
+        let html = `<div class="cmp-head"><span class="cmp-pill cmp-${cmp.verdict}">${COMPARE_BADGE[cmp.verdict].text} ${VERDICT[0]}</span>` +
+            `<span class="cmp-vs">${wornData ? `vs <strong>${esc(wornData.name)}</strong> (${esc(wornItem.rarity)}), worn` : ''}</span></div>` +
+            `<div class="cmp-note">${VERDICT[1]}</div>`;
+        if (cmp.rows.length || cmp.grants.lose || cmp.grants.gain) {
+            html += '<div class="cmp-rows">';
+            // shared attributes first: they are the direct comparison
+            [...cmp.rows].sort((a, b) => (b.shared ? 1 : 0) - (a.shared ? 1 : 0)).forEach(r => {
+                const cls = r.better === null ? 'cmp-flat' : (r.better ? 'cmp-good' : 'cmp-bad');
+                const arrow = r.better === null ? '=' : (r.better ? '▲' : '▼');
+                html += `<div class="cmp-row ${cls}"><span class="cmp-attr">${r.shared ? '<em>BOTH</em>' : ''}${esc(r.to || r.from)}</span>` +
+                    `<span class="cmp-was">${r.from ? esc(r.from) : 'none'} → ${r.to ? esc(r.to) : 'none'}</span>` +
+                    `<span class="cmp-delta">${arrow}${r.delta ? ' ' + esc(r.delta) : ''}</span></div>`;
+            });
+            if (cmp.grants.lose) html += `<div class="cmp-row cmp-bad"><span class="cmp-attr">${esc(cmp.grants.lose)}</span><span class="cmp-was">special effect</span><span class="cmp-delta">▼ lose</span></div>`;
+            if (cmp.grants.gain) html += `<div class="cmp-row cmp-good"><span class="cmp-attr">${esc(cmp.grants.gain)}</span><span class="cmp-was">special effect</span><span class="cmp-delta">▲ gain</span></div>`;
+            html += '</div>';
+        }
+        box.innerHTML = html;
+        box.style.display = 'block';
     }
 
     selectInventoryItem(invItem, tokenData) {
@@ -1496,14 +1659,10 @@ export class UIManager {
         const meta = this.saveManager.metaState;
         const equippedUid = meta.equippedTokens[tokenData.type];
         const equippedItem = equippedUid ? meta.inventory.find(i => i.uid === equippedUid) : null;
-        let compareLine = '';
-        if (equippedItem) {
-            const equippedTokenData = TOKENS[equippedItem.id];
-            const diffLines = computeEffectDiff(equippedTokenData, equippedItem.rarity, tokenData, invItem.rarity);
-            compareLine = `\nvs ${equippedTokenData.name} (equipped): ${diffLines.length ? diffLines.join(', ') : '(no change)'}`;
-        }
-
-        this.detailSet.innerText = `Set: ${setData.name} | (2) ${setData['2']} | (4) ${setData['4']}\n${rarityDeltaLine}${compareLine}\n\n[CLICK PRESCRIBE TO EQUIP]`;
+        // Patch 191: the comparison is its own block now (renderCompareBlock), not a
+        // line of text at the end of this one.
+        this.detailSet.innerText = `Set: ${setData.name} | (2) ${setData['2']} | (4) ${setData['4']}\n${rarityDeltaLine}`;
+        this.renderCompareBlock(equippedItem ? TOKENS[equippedItem.id] : null, equippedItem, tokenData, invItem);
 
         this.btnEquipItem.innerText = "[ PRESCRIBE TO PATIENT ]";
         this.btnEquipItem.style.cssText = 'display: block; width: 100%; background-color: var(--blood-red); color: white; padding: 12px; font-weight: bold; font-size: 1rem; border: 2px solid #ef4444; margin-bottom: 15px; cursor: pointer; text-shadow: 0 0 5px red; font-family: Courier New; text-transform: uppercase; white-space: normal; line-height: 1.2;';
@@ -1527,6 +1686,7 @@ export class UIManager {
     selectEquippedSlot(slotType, invItem) {
         this.selectedSlotType = slotType;
         this.selectedInventoryItem = null;
+        this.renderCompareBlock(null, null, null, null);   // Patch 191: a worn token is not compared with itself
 
         const tokenData = TOKENS[invItem.id];
         const rarityData = TOKEN_RARITIES[invItem.rarity];

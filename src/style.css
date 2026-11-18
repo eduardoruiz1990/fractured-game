@@ -2495,7 +2495,7 @@ body.first-time #btn-title-endless, body.first-time #btn-title-hub { display: no
 
 /* The paper doll: the Patient in the middle, each slot beside the body part it
    dresses. Replaces the equipped column on every width. */
-.equipped-panel > .token-slot, .equipped-panel > .section-label:first-child { display: none; }
+.equipped-panel > .token-slot, .equipped-panel > .section-label:first-of-type { display: none; }
 #loadout-slot-chips.paper-doll {
     display: grid; overflow: visible; gap: 8px; padding: 6px 0 12px; margin: 0 0 10px;
     grid-template-columns: minmax(0, 1fr) minmax(96px, 0.9fr) minmax(0, 1fr);
@@ -2555,3 +2555,105 @@ body.first-time #btn-title-endless, body.first-time #btn-title-hub { display: no
 #pause-menu .pause-loadout { max-height: max(0px, min(46vh, calc(100vh - 410px))); }
 #pause-menu .medical-folder { max-height: 98vh; }
 @media (max-height: 520px) { #pause-menu .pause-loadout { display: none; } #pause-menu #pause-desc { margin: 0 0 6px; } }
+
+/* ==========================================================================
+   Patch 191: the loadout on a desktop, and the better-or-worse comparison.
+   ========================================================================== */
+/* The close button sat 20 px OUTSIDE the folder's corner; the folder clips its
+   contents since it got rounded corners (Patch 174), which cut the button in half. */
+#btn-close-folder {
+    top: 14px !important; right: 14px !important; width: 40px !important; height: 40px !important;
+    background: rgba(14, 12, 20, 0.9) !important; border: 1px solid #ff6a5c !important; color: #ff8f84 !important;
+    font-size: 1.1rem !important; box-shadow: none !important; border-radius: 50% !important;
+}
+#btn-close-folder:hover { background: rgba(255, 106, 92, 0.25) !important; color: #fff !important; }
+#clinical-folder-menu .folder-header { padding-right: 70px; }
+
+/* Left column: the doll, then set progress. Right column: all inventory. */
+.equipped-panel { display: flex; flex-direction: column; gap: 10px; flex: 0 0 min(42%, 440px); border-right: 1px solid rgba(255, 255, 255, 0.14); padding-right: 22px; }
+/* ...but not on a phone: there the column is hidden and the doll sits above the list
+   (the same condition as the phone layout's own rule, restated because this block
+   comes after it). */
+@media (max-width: 660px), (pointer: coarse) and (max-height: 560px) { .equipped-panel { display: none; } }
+.equipped-panel > .section-label, .equipped-panel > #set-progress-container { width: 100%; }
+.equipped-panel > .section-label { margin-top: 6px !important; }
+/* "PRESCRIBED TOKENS" headed the slot squares the doll replaced (it is the label with no inline style). */
+.equipped-panel > .section-label:not([style]) { display: none; }
+@media (min-width: 661px) and (min-height: 561px) { #clinical-folder-menu .medical-folder { height: 90vh; max-height: 940px; } }
+.equipped-panel #loadout-slot-chips.paper-doll { border-bottom: 1px solid rgba(255, 255, 255, 0.12); margin-bottom: 4px; }
+.inventory-panel-container { flex: 1 1 auto; }
+.inventory-panel { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; padding: 6px 8px 6px 2px; scrollbar-width: thin; scrollbar-color: rgba(233, 200, 119, 0.5) transparent; }
+.inventory-panel::-webkit-scrollbar, .pause-loadout::-webkit-scrollbar, .folder-content::-webkit-scrollbar, #detail-compare::-webkit-scrollbar { width: 8px; }
+.inventory-panel::-webkit-scrollbar-thumb, .pause-loadout::-webkit-scrollbar-thumb, .folder-content::-webkit-scrollbar-thumb { background: rgba(233, 200, 119, 0.45); border-radius: 4px; }
+.inventory-panel::-webkit-scrollbar-track, .pause-loadout::-webkit-scrollbar-track, .folder-content::-webkit-scrollbar-track { background: transparent; }
+.inventory-item { position: relative; aspect-ratio: auto; min-height: 92px; padding: 8px 6px; font-size: 0.74rem; line-height: 1.2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-align: center; cursor: pointer; }
+.inventory-item { width: 100%; box-sizing: border-box; overflow-wrap: anywhere; }
+.inventory-item--selected { outline: 2px solid #f2d27a; outline-offset: 2px; background: rgba(233, 200, 119, 0.16) !important; }
+.loadout-slot-chip.drag-target-valid { outline: 2px dashed #86e0a2; outline-offset: 2px; background: rgba(134, 224, 162, 0.16) !important; }
+
+/* The badge on every card. */
+.cmp-badge {
+    position: absolute; top: -7px; right: -7px; min-width: 24px; height: 24px; padding: 0 5px; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center; border-radius: 12px;
+    font: 800 13px/1 var(--ui-font); border: 1px solid #000; box-shadow: 0 2px 0 #000; pointer-events: none;
+}
+.cmp-up { background: #2f9e58; color: #fff; }
+.cmp-down { background: #c8453b; color: #fff; }
+.cmp-same { background: #5b5870; color: #fff; }
+.cmp-diff { background: #e9c877; color: #1a1206; }
+.cmp-new { background: #3b82c4; color: #fff; }
+
+/* The comparison block in the detail panel. */
+#detail-compare { margin-top: 10px; padding: 10px 12px; border: 1px solid rgba(233, 200, 119, 0.4); border-radius: 10px; background: rgba(0, 0, 0, 0.3); max-height: 34vh; overflow-y: auto; }
+.cmp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.cmp-pill { position: static; display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 14px; font: 800 14px/1 var(--ui-font); letter-spacing: 1px; border: 1px solid #000; box-shadow: 0 2px 0 #000; }
+.cmp-vs { font-size: 0.86rem; color: #b9b3c6; }
+.cmp-vs strong { color: #f2eee3; }
+.cmp-note { font-size: 0.86rem; color: #d6d0e2; margin: 6px 0 8px; }
+.cmp-rows { display: flex; flex-direction: column; gap: 4px; }
+.cmp-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) auto; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 6px; font-size: 0.86rem; border-left: 4px solid transparent; }
+.cmp-row.cmp-good { background: rgba(47, 158, 88, 0.16); border-left-color: #2f9e58; }
+.cmp-row.cmp-bad { background: rgba(200, 69, 59, 0.16); border-left-color: #c8453b; }
+.cmp-row.cmp-flat { background: rgba(255, 255, 255, 0.05); }
+.cmp-attr { color: #f2eee3; font-weight: 700; min-width: 0; }
+.cmp-attr em { font-style: normal; font-size: 0.62rem; letter-spacing: 1px; padding: 1px 5px; margin-right: 6px; border-radius: 3px; background: #e9c877; color: #1a1206; vertical-align: 1px; }
+.cmp-was { color: #a9a3b6; min-width: 0; }
+.cmp-delta { font-weight: 800; white-space: nowrap; text-align: right; }
+.cmp-good .cmp-delta { color: #86e0a2; } .cmp-bad .cmp-delta { color: #ff8f84; } .cmp-flat .cmp-delta { color: #a9a3b6; }
+@media (max-width: 640px) { .cmp-row { grid-template-columns: minmax(0, 1fr) auto; } .cmp-was { display: none; } }
+#detail-set { color: #b9b3c6 !important; white-space: pre-line; }
+.item-details-panel { align-items: flex-start; }
+
+/* Patch 191: the detail panel. Everything inside reads top to bottom: name, the
+   comparison, then the small print; the buttons sit beside the name on a desktop and
+   across the top on a phone. */
+.item-details-panel > div:first-child { display: flex; flex-direction: column; min-width: 0; }
+.item-details-panel #detail-name { order: 0; }
+.item-details-panel #detail-compare { order: 1; margin-top: 6px; }
+.item-details-panel #detail-desc { order: 2; margin-top: 8px !important; }
+.item-details-panel #detail-set { order: 3; font-size: 0.74rem !important; font-weight: 500 !important; }
+/* desktop: docked in the left column, under the doll */
+.item-details-panel.item-details--docked {
+    position: static; flex: 0 0 auto; margin-top: 0; padding: 12px 14px; gap: 10px;
+    box-shadow: none; flex-direction: column; align-items: stretch;
+}
+.equipped-panel { overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(233, 200, 119, 0.5) transparent; }
+.item-details--docked .cmp-row { grid-template-columns: minmax(0, 1fr) auto; }
+.item-details--docked .cmp-was { display: none; }
+.item-details--docked #detail-name { font-size: 1.05rem; }
+.item-details--docked .detail-actions { order: -1; min-width: 0; width: 100%; flex: 0 0 auto; flex-direction: row; }
+.item-details--docked .detail-actions .file-btn { flex: 1 1 0; width: auto !important; max-width: none; font-size: 0.82rem !important; padding: 9px 10px !important; }
+.item-details--docked #detail-compare { max-height: none; }
+.inventory-panel { min-height: 120px; }
+/* phone: the sticky bar is a short sheet, buttons first, scrolling inside itself */
+@media (max-width: 660px), (pointer: coarse) and (max-height: 560px) {
+    .item-details-panel:not(.item-details--docked) {
+        flex-direction: column; align-items: stretch; gap: 8px; max-height: 56vh; overflow-y: auto;
+        flex: 0 0 auto;   /* it scrolls inside itself, so without this the pane's column squeezes it to a sliver */
+        border-radius: 14px 14px 0 0; padding: 10px 12px;
+    }
+    .item-details-panel:not(.item-details--docked) .detail-actions { order: -1; width: 100%; flex-direction: row; }
+    .item-details-panel:not(.item-details--docked) .detail-actions .file-btn { flex: 1 1 0; }
+    .item-details-panel:not(.item-details--docked) #detail-set { display: none; }
+    #detail-compare { max-height: none; padding: 8px 10px; }
+}
