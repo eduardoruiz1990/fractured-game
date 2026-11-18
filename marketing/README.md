@@ -1,4 +1,4 @@
-# FRACTURED: Second Opinion: store assets (Patches 160, 163)
+# FRACTURED: Survivors: store assets (Patches 160, 163)
 
 These are the covers, logo and preview videos for the CrazyGames developer portal, and the tools that made them. Every image comes from the real game:
 - The engine draws each layer in a headless browser.
@@ -24,7 +24,7 @@ From November 23rd 2026, cover click-through rate is a Basic Launch metric. Trea
 
 **Covers**
 - **Sizes:** all three sizes are given, and they look like one set: the same eye, the same beam, the same title.
-- **Allowed text:** the title is the only text: FRACTURED, with SECOND OPINION as a red clinic stamp, the same as on the title screen (Patch 163). There is no "New" or "Play", no logos, store badges or icons, and no border.
+- **Allowed text:** the title is the only text: FRACTURED, with SURVIVORS as a red clinic stamp, the same as on the title screen (Patch 163). There is no "New" or "Play", no logos, store badges or icons, and no border.
 - **Focal point:** one focal point, the Panopticon's eye, with the flashlight beam leading to it. The title is large and stylised.
 - **Not a raw screenshot:** the layers are separate engine renders at 5–6× zoom, composited. Nothing is upscaled, so nothing is blurry.
 

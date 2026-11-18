@@ -13,7 +13,7 @@ export function gazeHits(angleDiff, dist, gazeWidth, gazeRange = GAZE_RANGE) {
 
 export class Panopticon extends Enemy {
     constructor() {
-        super('PANOPTICON', 40, '#ff0055', 'boss_hurt');
+        super('PANOPTICON', 26, '#ff0055', 'boss_hurt');   // Patch 189: contact 40 -> 26
         this.gazeState = 'moving';
         this.gazeTimer = 0;
         this.gazeAngle = 0;
@@ -30,7 +30,10 @@ export class Panopticon extends Enemy {
         this.gazeTimer = 120;
         this.gazeAngle = 0;
         this.aggression = 1;   // Patch 94 — pooled state; see the note in Boss.init.
-        return this.initBase(id, x, y, 4000, 1.2);
+        // Patch 189: 4000 -> 2600. The first boss has 800; a fivefold jump at floor 3,
+        // with a sweep that could deal 90 of a new player's 100 Sanity, killed every
+        // simulated player on every profile. It is still the hardest fight so far.
+        return this.initBase(id, x, y, 2600, 1.2);
     }
 
     update(state, game) {
@@ -65,7 +68,7 @@ export class Panopticon extends Enemy {
 
             if (this.gazeTimer <= 0) {
                 this.gazeState = 'sweeping';
-                this.gazeTimer = 180; 
+                this.gazeTimer = 150;   // Patch 189: was 180
                 game.state.cameraShake = 20;
             }
         } 
@@ -79,12 +82,12 @@ export class Panopticon extends Enemy {
             
             // --- NERFED: SLOWER BEAM SWEEP ---
             // Reduced from 0.015 to 0.010 so it's noticeably slower than your sprint speed!
-            this.gazeAngle += Math.sign(angleDiff) * 0.010; 
+            this.gazeAngle += Math.sign(angleDiff) * 0.0085;   // Patch 189: was 0.010; circling inside ~290 units now outruns it
             
             if (gazeHits(angleDiff, distToPlayer, this.gazeWidth, this.gazeRange)) {
                 if (!state.player.dash || !state.player.dash.active) {
                     if (state.frame % 15 === 0) {
-                        game.takeDamage(15, this.type); 
+                        game.takeDamage(9, this.type);   // Patch 189: was 15 (a full sweep: 90 -> 45)
                         if (game.audioEngine) game.audioEngine.playSFX('player_hurt', 0.4);
                     }
                 }
@@ -101,12 +104,13 @@ export class Panopticon extends Enemy {
                 this.gazeTimer = cadence(60, this.aggression, 24);
 
                 // Bullet Hell Burst
-                for (let i = 0; i < 18; i++) {
-                    let pAngle = (i / 18) * Math.PI * 2;
+                // Patch 189: 18 bolts of 30 -> 14 of 16, so the ring has gaps to step through.
+                for (let i = 0; i < 14; i++) {
+                    let pAngle = (i / 14) * Math.PI * 2;
                     game.director.spawnProjectile(
                         this.x, this.y,
                         Math.cos(pAngle) * 5, Math.sin(pAngle) * 5, 
-                        12, 30, '#ff0055', 240
+                        12, 16, '#ff0055', 240
                     );
                 }
                 if (game.audioEngine) game.audioEngine.playSFX('breaker_box', 1.0);

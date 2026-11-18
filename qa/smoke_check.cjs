@@ -167,7 +167,8 @@ async function playCrazyGames(browser, base, vp) {
     }
   }
   // Patch 167: the first room carries two or three hints, not a stepped tutorial.
-  ok(seen.size >= 2, `${tag} the first-room hints showed under real input: ${seen.size} banner lines ${JSON.stringify([...seen].slice(0, 6))}`);
+  // Patch 188: the move hint is drawn on the canvas now; one text line remains.
+  ok(seen.size >= 1, `${tag} the first-room hint line showed under real input: ${seen.size} banner lines ${JSON.stringify([...seen].slice(0, 6))}`);
   await page.screenshot({ path: path.join(SHOTS, `smoke_play_${tag}.png`) });
 
   // Pause: the menu, and gameplayStop. (Close a level-up first: pause waits for it.)

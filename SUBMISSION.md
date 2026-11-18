@@ -1,4 +1,4 @@
-# FRACTURED: Second Opinion: CrazyGames submission sheet (v2.0.0)
+# FRACTURED: Survivors: CrazyGames submission sheet (v2.0.0)
 
 Draft text for the developer-portal form, written from the game as built (Patch 159).
 Check every line against the uploaded build before pasting, and tick
@@ -34,9 +34,9 @@ All of these are in `marketing/`; see `marketing/README.md` for the rules they f
 
 ## Title
 
-FRACTURED: Second Opinion
+FRACTURED: Survivors
 
-The v2 name (Patch 163). It is the same game as the declined v1, reworked.
+The v3 name (Patch 187; v2 was prepared as "FRACTURED: Second Opinion" and never launched). It is the same game as the declined v1, reworked. Seven of the eight comparable games on CrazyGames carry "Survivor(s)" in the title, so the subtitle now names the genre.
 - If the portal treats the title as the game's identity, keep it as the resubmission's title, and say in the notes that v1 was "FRACTURED".
 - The subtitle appears on the title screen, the covers, the logo and the page title.
 
@@ -123,7 +123,7 @@ recovery. A short content note is in the Clinical Guide.
 
 ## Notes to the CrazyGames team (resubmission)
 
-v1 (as "FRACTURED") was declined after Basic Launch (average playtime 1m36s, gameplay conversion 32%). v2 is "FRACTURED: Second Opinion".
+v1 (as "FRACTURED") was declined after Basic Launch (average playtime 1m36s, gameplay conversion 32%). the resubmission is "FRACTURED: Survivors".
 What v2 changes, in the order a new player meets it:
 
 - **v3 (after v2 was prepared): the core loop itself.** v2 polished a game that sent

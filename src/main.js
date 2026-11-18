@@ -3608,10 +3608,9 @@ function gameLoop(time) {
                     if (!tutorialLine && game.state.firstRoom && gameState === 'PLAYING') {
                         const touch = inputManager.getInputMode() === 'touch';
                         if (game.state.roomCleared) tutorialLine = 'Room clear. Walk into a door to pick your reward.';
-                        else if (game.state.frame < 420) tutorialLine = touch
-                            ? 'Drag anywhere to move. Your light burns them.'
-                            : 'WASD to move. Aim the light with the mouse.';
-                        else if (game.state.frame < 780) tutorialLine = 'Grab the glowing shards to level up.';
+                        // Patch 188: the move hint is a picture now (Renderer.drawFirstRunHint);
+                        // one short line follows it, once the player is moving.
+                        else if (game.state.frame > 300 && game.state.frame < 780) tutorialLine = 'Grab the glowing shards to level up.';
                     }
                     if (tutorialLine) {
                         // Patch 66: restart the fade whenever the line changes, so a new

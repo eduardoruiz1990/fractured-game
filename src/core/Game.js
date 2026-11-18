@@ -1036,6 +1036,9 @@ export class Game {
             }
         }
 
+        // Patch 188: how long a new player has actually been moving (the control hint fades on it).
+        if (this.state.firstRoom && moveInput && moveInput.isMoving) this.state.hintMoveFrames = (this.state.hintMoveFrames || 0) + 1;
+
         // Patch 165: crowd separation. Without it a horde collapses onto one point and
         // reads as a single enemy. Each body is checked against three others per step
         // (a different three every step), so the cost is linear in the crowd and the

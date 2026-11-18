@@ -3340,6 +3340,26 @@ All 31 dev-server checks in `qa/` were run for the first time since the v3 rewor
   about a real GPU; the A56 reports "fluent".
 - Not run: `auto_quality_check`, `sim_cost_check`.
 
+**Patches 187–189 — the name, a picture for the first control, the floor-3 boss (2026-11-18).**
+From the benchmark against eight survivors-likes on CrazyGames (seven carry
+"Survivor(s)" in the title; all carry the Horde Survival tag; CrazyGames' quality guide
+asks for visual onboarding).
+- **187. The game is FRACTURED: Survivors** (was "Second Opinion", a subtitle that never
+  launched). Title screen stamp, page title and meta, the end-card string, the cover
+  tool, `SUBMISSION.md`, `marketing/README.md`. The stamp is set larger for the shorter
+  word. Covers, logo and both preview videos rebuilt. The Synapse node named "Second
+  Opinion" is unrelated and unchanged.
+- **188. The first room's move hint is a picture** (`Renderer.drawFirstRunHint`): a thumb
+  dragging a ghost stick on touch, W A S D lighting in turn on a keyboard. It fades after
+  about a second of real movement (`state.hintMoveFrames`) or 12 s. The text line it
+  replaces is gone; "Grab the glowing shards" and the door line remain.
+- **189. The Panopticon.** HP 4000 → 2600, sweep 15 → 9 a tick over 150 steps (was 180),
+  tracking 0.010 → 0.0085 rad a step, the closing ring 18 bolts of 30 → 14 of 16, contact
+  40 → 26. Simulator, 10 runs each: it killed 100% of players on every profile before;
+  now 10% of fresh novices, 50% of fresh and returning competent players, and the
+  Architect (the final boss) is the fight most runs end on. One fresh novice cleared all
+  five floors.
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.

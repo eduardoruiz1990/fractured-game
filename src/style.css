@@ -1275,12 +1275,12 @@ body.quality-low #crt-scanlines { display: none; }
     92.5% { transform: translate(0.015em, 0.035em) rotate(0.2deg); }
     95% { transform: translate(0.035em, 0.05em) rotate(0.6deg); }
 }
-/* Patch 163: the name is FRACTURED: Second Opinion. The subtitle is a red clinic
+/* Patch 163: the name is FRACTURED: Survivors. The subtitle is a red clinic
    stamp slammed across the title's corner, sized in em with the title (min 11 px). */
 #title-screen .title-stamp {
     position: absolute; right: 0.15em; bottom: -0.55em; z-index: 2;   /* over the letters' halves */
     font-family: var(--ui-font); font-weight: bold;
-    font-size: max(12px, 0.21em); letter-spacing: 0.16em; line-height: 1;
+    font-size: max(14px, 0.3em); letter-spacing: 0.16em; line-height: 1;   /* Patch 187: a shorter word, set larger */
     color: #e0283f; border: 0.14em solid #e0283f; border-radius: 0.15em;
     padding: 0.32em 0.55em 0.26em;
     background: rgba(12, 4, 6, 0.6);

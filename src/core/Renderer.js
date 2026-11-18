@@ -1511,6 +1511,7 @@ export class Renderer {
             if (gameState !== 'HUB') {
                 if (this.diag.vignette) this.drawVignette(state);
                 if (state.doorFx) { try { this.drawDoorTransition(state); } catch (e) { /* cosmetic; never fatal */ } }   // Patch 170
+                if (state.firstRoom && !state.roomCleared) { try { this.drawFirstRunHint(state); } catch (e) { /* cosmetic; never fatal */ } }   // Patch 188
 
                 // Patch 146: a defeated boss's last line, as a subtitle.
                 if (state.subtitle && state.subtitle.steps > 0) {
@@ -2247,6 +2248,69 @@ export class Renderer {
         const a = Number.isFinite(state.player.angle) ? state.player.angle : 0;
         const ca = Math.cos(a), sa = Math.sin(a);
         return { x: state.player.x + ca * LENS_DIST - sa * LENS_SIDE, y: state.player.y + sa * LENS_DIST + ca * LENS_SIDE };
+    }
+
+    /**
+     * Patch 188: the first room teaches its one control with a picture, not a sentence
+     * (CrazyGames' quality guide: "Prioritize visuals and limit the use of text", "Show
+     * the user how to control the game with a keyboard overlay or mouse gestures").
+     * On touch, a thumb drags around a ghost stick where the left thumb rests; on a
+     * keyboard, the W A S D keys light in turn. It fades once the player has actually
+     * moved for about a second (state.hintMoveFrames, counted in Game), or after 12 s.
+     * Screen space, a handful of fills, first room of a new save only.
+     */
+    drawFirstRunHint(state) {
+        const moved = state.hintMoveFrames || 0;
+        const age = state.frame || 0;
+        let alpha = Math.min(1, age / 30) * Math.max(0, 1 - Math.max(0, moved - 45) / 30) * Math.max(0, Math.min(1, (720 - age) / 40));
+        if (!(alpha > 0.02)) return;
+        const c = this.ctx;
+        const w = this.canvas.width, h = this.canvas.height;
+        const t = this.renderFrame * 0.045;
+        const touch = state.inputMode === 'touch';
+        c.save();
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.globalAlpha = alpha;
+        c.lineCap = 'round'; c.lineJoin = 'round';
+        const label = (text, x, y) => {
+            c.font = "800 15px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif";
+            c.textAlign = 'center'; c.textBaseline = 'middle';
+            c.fillStyle = 'rgba(0, 0, 0, 0.7)'; c.fillText(text, x + 1, y + 1);
+            c.fillStyle = '#f2d27a'; c.fillText(text, x, y);
+        };
+        if (touch) {
+            const band = this.controlBandH || 0;
+            const cx = w * 0.27, cy = band > 0 ? h - band * 0.52 : h * 0.74;
+            const R = Math.max(40, Math.min(58, w * 0.13));
+            // the ghost stick
+            c.strokeStyle = 'rgba(242, 210, 122, 0.75)'; c.lineWidth = 2.5;
+            c.setLineDash([7, 7]); c.beginPath(); c.arc(cx, cy, R, 0, Math.PI * 2); c.stroke(); c.setLineDash([]);
+            // the thumb: out, around, back
+            const tx = cx + Math.cos(t) * R * 0.62, ty = cy + Math.sin(t * 1.0) * R * 0.5;
+            c.strokeStyle = 'rgba(255, 243, 196, 0.5)'; c.lineWidth = 3;
+            c.beginPath(); c.moveTo(cx, cy); c.lineTo(tx, ty); c.stroke();
+            c.fillStyle = 'rgba(0, 0, 0, 0.45)'; c.beginPath(); c.arc(tx + 2, ty + 3, R * 0.36, 0, Math.PI * 2); c.fill();
+            c.fillStyle = '#fff3c4'; c.beginPath(); c.arc(tx, ty, R * 0.34, 0, Math.PI * 2); c.fill();
+            c.strokeStyle = 'rgba(8, 10, 16, 0.85)'; c.lineWidth = 2; c.stroke();
+            label('DRAG TO MOVE', cx, cy - R - 20);
+        } else {
+            const k = 44, gap = 6, cx = w / 2, cy = h * 0.8;
+            const keys = [['W', 0, -1], ['A', -1, 0], ['S', 0, 0], ['D', 1, 0]];
+            const lit = Math.floor(t * 0.9) % 4;
+            keys.forEach(([ch, gx, gy], i) => {
+                const x = cx + gx * (k + gap) - k / 2, y = cy + gy * (k + gap) - k / 2;
+                c.fillStyle = i === lit ? '#f2d27a' : 'rgba(20, 18, 28, 0.88)';
+                c.strokeStyle = 'rgba(242, 210, 122, 0.9)'; c.lineWidth = 2;
+                c.beginPath(); if (c.roundRect) c.roundRect(x, y, k, k, 8); else c.rect(x, y, k, k); c.fill(); c.stroke();
+                c.font = "800 18px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif";
+                c.textAlign = 'center'; c.textBaseline = 'middle';
+                c.fillStyle = i === lit ? '#1a1206' : '#f2eee3';
+                c.fillText(ch, x + k / 2, y + k / 2 + 1);
+            });
+            label('MOVE', cx, cy - k * 1.5 - 22);
+        }
+        c.globalAlpha = 1;
+        c.restore();
     }
 
     /**
