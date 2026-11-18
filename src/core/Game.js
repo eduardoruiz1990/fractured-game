@@ -1071,6 +1071,9 @@ export class Game {
 
         const requiredXP = getXPRequiredForLevel(this.state.level);
         if (this.state.xp >= requiredXP && this.onLevelUp) {
+            // Patch 175: a gold burst around the player as the level lands.
+            this.spawnPop(this.state.player.x, this.state.player.y, '#f2d27a', 5);
+            for (let k = 0; k < 6; k++) this.spawnPop(this.state.player.x + Math.cos(k * 1.047) * 38, this.state.player.y + Math.sin(k * 1.047) * 38, '#fff3c4', 1.4);
             this.state.level++;
             this.state.xp -= requiredXP;
             this.onLevelUp();

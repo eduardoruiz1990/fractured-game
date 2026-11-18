@@ -3226,6 +3226,10 @@ limbs) and chose glass-and-gold over the paper "medical file" for every menu.
   Guide's inner diagrams, the story/Case File reader and the ending screens were not
   individually checked in the new skin.
 
+**Patch 175 — atmosphere (2026-11-18).** Dust motes drift in the flashlight beam
+(24 stateless motes, off on the LOW tier), and a level-up throws a gold burst around the
+player.
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.

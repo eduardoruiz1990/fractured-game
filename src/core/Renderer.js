@@ -2415,6 +2415,27 @@ export class Renderer {
             this.ctx.closePath();
             this.ctx.fill();
             this.ctx.globalCompositeOperation = 'source-over';
+
+            // Patch 175: dust adrift in the beam. Twenty-four motes placed by a fixed
+            // recipe along the cone (no state, no allocation), drifting outward and
+            // fading at both ends. Skipped on the LOW tier.
+            if (this.filmGrainEnabled !== false) {
+                const reach = Math.max(20, flRadius - LENS_DIST);
+                const f = this.renderFrame;
+                this.ctx.fillStyle = '#fff4d2';
+                for (let i = 0; i < 24; i++) {
+                    const t = ((i * 0.137 + f * (0.0016 + (i % 5) * 0.0004)) % 1);
+                    const off = (((i * 7919) % 100) / 100 - 0.5) * 2 * fl.angle * 0.85 + Math.sin(f * 0.013 + i) * 0.04;
+                    const a = state.player.angle + off;
+                    const r = 14 + t * reach * 0.92;
+                    const al = Math.sin(t * Math.PI) * (0.25 + (i % 3) * 0.15);
+                    if (al <= 0.02) continue;
+                    this.ctx.globalAlpha = al;
+                    const sz = 1.5 + (i % 3) * 0.7;
+                    this.ctx.fillRect(wx + Math.cos(a) * r - sz / 2, wy + Math.sin(a) * r - sz / 2 + Math.sin(f * 0.02 + i * 2) * 2, sz, sz);
+                }
+                this.ctx.globalAlpha = 1;
+            }
         }
 
         if (state.cameraFlash > 0) {
