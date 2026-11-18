@@ -1395,8 +1395,9 @@ export class Renderer {
                     this.lightCtx.scale(this.zoom, this.zoom);
                     this.lightCtx.translate(-state.player.x, -state.player.y);
 
-                    let darkness = state.hubWorld.lightIntensity < 0.5 ? 0.95 : 0.82;
-                    this.lightCtx.fillStyle = `rgba(5, 8, 12, ${darkness})`;
+                    // Patch 178: the bedroom is dim and warm, not a blacked-out ward.
+                    let darkness = state.hubWorld.lightIntensity < 0.7 ? 0.74 : 0.56;
+                    this.lightCtx.fillStyle = `rgba(10, 7, 16, ${darkness})`;
                     this.lightCtx.fillRect(state.player.x - 2000, state.player.y - 2000, 4000, 4000);
 
                     this.lightCtx.globalCompositeOperation = 'destination-out';

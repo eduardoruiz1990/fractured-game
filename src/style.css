@@ -2524,3 +2524,14 @@ body.first-time #btn-title-endless, body.first-time #btn-title-hub { display: no
 #loadout-slot-chips.paper-doll [data-slot="legs"] { grid-area: legs; }
 #loadout-slot-chips.paper-doll [data-slot="prescription"] { grid-area: prescription; }
 #loadout-slot-chips.paper-doll [data-slot="all"] { grid-area: all; min-height: 44px; border-style: solid; border-color: rgba(233, 200, 119, 0.4); }
+
+/* Patch 178: the hub's station prompt, in glass and gold (its colours were set inline
+   per zone; the border and text now stay gold whatever the zone). */
+#interaction-prompt {
+    background: linear-gradient(180deg, rgba(30, 26, 42, 0.96), rgba(11, 10, 16, 0.98)) !important;
+    border: 1px solid rgba(233, 200, 119, 0.7) !important; border-radius: 14px !important;
+    color: #f2d27a !important; box-shadow: 0 6px 0 #000, 0 0 26px rgba(233, 200, 119, 0.22) !important;
+    padding: 12px 22px !important; letter-spacing: 1px; text-shadow: none !important; max-width: 86vw;
+}
+#interaction-prompt #prompt-text { font-size: 1.05rem; font-weight: 800; }
+#interaction-prompt { min-width: min(300px, 86vw); text-align: center; }
