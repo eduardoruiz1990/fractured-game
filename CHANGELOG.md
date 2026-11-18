@@ -3303,6 +3303,15 @@ clashed with the rest ("I had a Hades-style hub in mind").
   clear). The new keys clamp their volume multiplier at 1.2.
 - Verified to run without errors in a real session; not listened to.
 
+**Patch 184 — store assets and copy rebuilt for v3 (2026-11-18).** The four cover
+layers, the three covers and both preview videos were re-rendered from the current game
+with `marketing/tools/` (no tool changes were needed; both captures ran with no page
+errors). `SUBMISSION.md`'s short description, description and resubmission notes now
+describe the horde game, the bedroom hub and the v3 first minute. The logo is unchanged.
+The covers were looked at once at reduced size; the landscape cover has a creature
+overlapping the title's left edge and wants a second look (re-render `L_ring` for a
+different scatter).
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.
