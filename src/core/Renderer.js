@@ -1971,6 +1971,43 @@ export class Renderer {
             this.lightCtx.fill();
         }
 
+        // Patch 182: walls block the light. Behind every solid block and post, as seen
+        // from the lens, the darkness is painted back over whatever the beam and the
+        // ambient ring had cleared. One quad per wall edge that faces away from the
+        // light. The wall's own top stays lit, so it reads as standing in the beam.
+        if (state.obstacles && state.obstacles.length && this.arenaAlpha(state) > 0.5) {
+            const lp = this.lensPoint(state);
+            const lc = this.lightCtx;
+            lc.globalCompositeOperation = 'source-over';
+            lc.fillStyle = this.getAtmosphere(state.floor).dark;
+            const FAR = 900;
+            const cast = (ax, ay, bx, by) => {
+                const dax = ax - lp.x, day = ay - lp.y, dbx = bx - lp.x, dby = by - lp.y;
+                const la = Math.hypot(dax, day) || 1, lb = Math.hypot(dbx, dby) || 1;
+                lc.beginPath();
+                lc.moveTo(ax, ay); lc.lineTo(bx, by);
+                lc.lineTo(bx + dbx / lb * FAR, by + dby / lb * FAR);
+                lc.lineTo(ax + dax / la * FAR, ay + day / la * FAR);
+                lc.closePath(); lc.fill();
+            };
+            for (const o of state.obstacles) {
+                if (!o.solid || o.cap) continue;
+                if (o.kind === 'block') {
+                    const x0 = o.x - o.hw, x1 = o.x + o.hw, y0 = o.y - o.hh, y1 = o.y + o.hh;
+                    if (lp.x >= x0 && lp.x <= x1 && lp.y >= y0 && lp.y <= y1) continue;   // the lens is over it
+                    if (lp.y < y1) cast(x0, y1, x1, y1);   // far (bottom) edge, light above it
+                    if (lp.y > y0) cast(x0, y0, x1, y0);
+                    if (lp.x < x1) cast(x1, y0, x1, y1);
+                    if (lp.x > x0) cast(x0, y0, x0, y1);
+                } else if (o.kind === 'post') {
+                    const dx = o.x - lp.x, dy = o.y - lp.y, d = Math.hypot(dx, dy);
+                    if (d <= o.r) continue;
+                    const nx = -dy / d * o.r, ny = dx / d * o.r;
+                    cast(o.x + nx, o.y + ny, o.x - nx, o.y - ny);
+                }
+            }
+        }
+
         this.lightCtx.restore();
         // KEEP (Patch 36): restore() already reverts globalCompositeOperation,
         // so this is redundant today — but this function is the codebase's
@@ -2164,6 +2201,44 @@ export class Renderer {
         }
     }
 
+    /**
+     * Patch 182: depth from the one light in the game. Every enemy standing in the
+     * flashlight's cone throws a long tapered shadow across the floor, away from the
+     * lens, and it swings as the beam or the enemy moves. One path, one fill for all.
+     */
+    drawBeamShadows(state) {
+        const ents = state.entities;
+        const fl = state.player.weapons && state.player.weapons.flashlight;
+        if (!ents || !ents.length || !fl || !(fl.radius > 0)) return;
+        const lp = this.lensPoint(state);
+        const pa = state.player.angle || 0;
+        const c = this.ctx;
+        c.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        c.beginPath();
+        for (let i = 0; i < ents.length; i++) {
+            const e = ents[i];
+            if (!e || e.burrowed) continue;
+            const dx = e.x - lp.x, dy = e.y - lp.y;
+            const d = Math.hypot(dx, dy);
+            if (!(d > 6) || d > fl.radius) continue;
+            let diff = Math.atan2(dy, dx) - pa;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            if (Math.abs(diff) > fl.angle) continue;
+            if (!this.inView(e.x, e.y)) continue;
+            const r = (e.radius || 12) * (isBossType(e.type) ? 1 : 1.1);
+            const ux = dx / d, uy = dy / d, px = -uy, py = ux;
+            // nearer the lens, the shadow is longer and spreads more
+            const len = Math.min(200, 60 + r * 2.6 + (1 - d / fl.radius) * 70);
+            c.moveTo(e.x + px * r * 0.8, e.y + py * r * 0.8);
+            c.lineTo(e.x + ux * len + px * r * 1.5, e.y + uy * len + py * r * 1.5);
+            c.lineTo(e.x + ux * len - px * r * 1.5, e.y + uy * len - py * r * 1.5);
+            c.lineTo(e.x - px * r * 0.8, e.y - py * r * 0.8);
+            c.closePath();
+        }
+        c.fill();
+    }
+
     /** Patch 173: where the flashlight's lens is in the world (matches drawPlayer's rig). */
     lensPoint(state) {
         const a = Number.isFinite(state.player.angle) ? state.player.angle : 0;
@@ -2251,14 +2326,24 @@ export class Renderer {
         if (drops && drops.length) {
             const c = this.ctx;
             const tw = this.renderFrame * 0.12;
+            // Patch 182: each shard hovers; a small shadow on the floor under it says so.
+            c.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            c.beginPath();
+            for (let i = 0; i < drops.length; i++) {
+                const xp = drops[i];
+                if (!this.inView(xp.x, xp.y)) continue;
+                c.moveTo(xp.x + 3.5, xp.y + 8); c.ellipse(xp.x, xp.y + 8, 3.5, 1.6, 0, 0, Math.PI * 2);
+            }
+            c.fill();
             c.fillStyle = '#bfe6ff';
             c.beginPath();
             for (let i = 0; i < drops.length; i++) {
                 const xp = drops[i];
                 if (!this.inView(xp.x, xp.y)) continue;
                 const r = 4 + Math.sin(tw + xp.x * 0.05) * 1.2;
-                c.moveTo(xp.x, xp.y - r); c.lineTo(xp.x + r * 0.7, xp.y);
-                c.lineTo(xp.x, xp.y + r); c.lineTo(xp.x - r * 0.7, xp.y);
+                const hy = xp.y - 3 + Math.sin(tw * 0.8 + xp.x * 0.07) * 2.5;   // the hover
+                c.moveTo(xp.x, hy - r); c.lineTo(xp.x + r * 0.7, hy);
+                c.lineTo(xp.x, hy + r); c.lineTo(xp.x - r * 0.7, hy);
                 c.closePath();
             }
             c.fill();
@@ -3286,6 +3371,7 @@ export class Renderer {
         }
 
         this.drawDecor(state);       // Patch 177: furniture and lamps, under the walls and everything that moves
+        this.drawBeamShadows(state); // Patch 182: long shadows thrown by whatever stands in the beam
         this.drawObstacles(state);   // Patch 137: the room's walls, under everything that moves
 
         if (state.safeZones) {

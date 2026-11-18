@@ -103,6 +103,42 @@ function tagDamageMultiplier(tags, tagDamageStats) {
     return 1 + bonus / 100;
 }
 
+/**
+ * Patch 182: whether a solid wall stands between (ax, ay) and (bx, by). Blocks are
+ * axis-aligned boxes (a slab test), posts are circles. Arcs do not block: they are
+ * thin and curved, and the Renderer does not shadow them either.
+ */
+export function beamBlocked(obstacles, ax, ay, bx, by) {
+    if (!obstacles || !obstacles.length) return false;
+    const dx = bx - ax, dy = by - ay;
+    for (let i = 0; i < obstacles.length; i++) {
+        const o = obstacles[i];
+        if (!o || !o.solid || o.cap) continue;
+        if (o.kind === 'block') {
+            let t0 = 0, t1 = 1, hit = true;
+            for (let axis = 0; axis < 2 && hit; axis++) {
+                const p0 = axis ? ay : ax, d = axis ? dy : dx;
+                const lo = (axis ? o.y - o.hh : o.x - o.hw), hi = (axis ? o.y + o.hh : o.x + o.hw);
+                if (Math.abs(d) < 1e-9) { if (p0 < lo || p0 > hi) hit = false; continue; }
+                let ta = (lo - p0) / d, tb = (hi - p0) / d;
+                if (ta > tb) { const tmp = ta; ta = tb; tb = tmp; }
+                if (ta > t0) t0 = ta;
+                if (tb < t1) t1 = tb;
+                if (t0 > t1) hit = false;
+            }
+            // t0 > 0: the light starts outside the wall; an enemy standing inside one is not hidden
+            if (hit && t0 > 0.001 && t0 < 0.999 && t1 < 0.999) return true;
+        } else if (o.kind === 'post' && o.r > 0) {
+            const len2 = dx * dx + dy * dy;
+            if (len2 < 1e-9) continue;
+            const t = Math.max(0, Math.min(1, ((o.x - ax) * dx + (o.y - ay) * dy) / len2));
+            const cx = ax + dx * t - o.x, cy = ay + dy * t - o.y;
+            if (cx * cx + cy * cy < o.r * o.r * 0.7 && t > 0.02 && t < 0.98) return true;
+        }
+    }
+    return false;
+}
+
 export class Combat {
     static resolveWeapons(game) {
         const state = game.state;
@@ -720,7 +756,10 @@ export class Combat {
                             && state.player.synergies
                             && state.player.synergies.includes('ritual_focus');
 
-                        const inCone = Math.abs(angleDiff) < hitAngle;
+                        // Patch 182: the beam stops at walls (the Renderer shows it stopping), so
+                        // an enemy behind a solid wall is in shadow and takes no light damage.
+                        const inCone = Math.abs(angleDiff) < hitAngle
+                            && !beamBlocked(state.obstacles, state.player.x, state.player.y, ent.x, ent.y);
                         if (inCone || wardedBypass) {
                             // Patch 63: where in the beam the target is standing now
                             // matters. A ritual_focus bypass is NOT the beam touching

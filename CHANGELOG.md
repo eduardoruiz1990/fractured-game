@@ -3278,6 +3278,21 @@ clashed with the rest ("I had a Hades-style hub in mind").
 - **Hub:** a baked name plate by every station and the corkboard, and a gold marker
   bobbing over each station.
 
+**Patch 182 — depth from the one light in the game (2026-11-18).**
+- **Walls block the beam.** `drawLightingMasks` paints the darkness back behind every
+  solid block and post as seen from the lens (one quad per edge facing away). The wall's
+  top stays lit.
+- **And block its damage.** `Combat.beamBlocked` (exported): the flashlight does not
+  burn an enemy with a solid block or post between it and the player. Arcs do not block,
+  and no other weapon is affected. Enemies get brief cover behind walls; the simulator's
+  floor 1-2 numbers did not move.
+- **Beam shadows.** `Renderer.drawBeamShadows`: every enemy inside the cone throws a
+  tapered shadow away from the lens, longer the nearer it is. One path for all.
+- XP shards hover over a small floor shadow.
+- **Keep clause 58:** if the beam's look and its damage ever disagree about walls, fix
+  both together. They are computed in two places (the Renderer from the lens, Combat
+  from the player).
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.
