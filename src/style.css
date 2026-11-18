@@ -2474,3 +2474,53 @@ body.first-time #btn-title-endless, body.first-time #btn-title-hub { display: no
 }
 .medical-folder select option { background: #15131d; color: #f2eee3; }
 @media (max-width: 520px) { .folder-header .patient-stamp { display: none; } }
+
+/* ==========================================================================
+   Patch 176: readability fixes from the A56 screenshots, and the paper doll.
+   ========================================================================== */
+/* Intrusive Thoughts (and every node card outside the Synapse grid) were white text
+   on a light grey plate. */
+.synapse-node-file {
+    background: rgba(255, 255, 255, 0.05) !important; color: var(--ink-black);
+    border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 12px; filter: none;
+}
+.synapse-node-file .node-info strong { color: #f2eee3; text-shadow: none; font-size: 1.02rem; }
+.synapse-node-file .node-info .typewriter-text { color: #b9b3c6; font-weight: 500; text-shadow: none; }
+.synapse-node-file .file-btn.small { min-width: 96px; }
+.inline-forge-btn {
+    background: rgba(233, 200, 119, 0.14) !important; color: #f2d27a !important;
+    border: 1px solid rgba(233, 200, 119, 0.5) !important; border-radius: 6px; font-weight: 700;
+}
+.item-details-panel { background: rgba(14, 12, 20, 0.96); border: 1px solid var(--gold-line); border-radius: 12px; }
+
+/* The paper doll: the Patient in the middle, each slot beside the body part it
+   dresses. Replaces the equipped column on every width. */
+.equipped-panel > .token-slot, .equipped-panel > .section-label:first-child { display: none; }
+#loadout-slot-chips.paper-doll {
+    display: grid; overflow: visible; gap: 8px; padding: 6px 0 12px; margin: 0 0 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(96px, 0.9fr) minmax(0, 1fr);
+    grid-template-areas: "head fig body" "hands fig prescription" "legs fig all";
+    align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+#loadout-slot-chips.paper-doll .doll-figure { grid-area: fig; display: flex; justify-content: center; }
+#loadout-slot-chips.paper-doll .doll-figure svg { width: 100%; max-width: 150px; height: auto; display: block; }
+#loadout-slot-chips.paper-doll .loadout-slot-chip {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    min-height: 62px; width: 100%; padding: 6px 6px; flex: none; white-space: normal;
+    background: rgba(255, 255, 255, 0.05); border: 1px dashed rgba(255, 255, 255, 0.28); border-radius: 12px;
+    color: var(--ink-black); font-family: var(--ui-font);
+}
+#loadout-slot-chips.paper-doll .loadout-slot-chip--filled { border-style: solid; background: rgba(255, 255, 255, 0.09); }
+#loadout-slot-chips.paper-doll .loadout-slot-chip--active { outline: 2px solid #f2d27a; outline-offset: 1px; }
+#loadout-slot-chips.paper-doll .loadout-slot-chip-icon { font-size: 1.35rem; line-height: 1; }
+#loadout-slot-chips.paper-doll .loadout-slot-chip-name { font-size: 0.68rem; letter-spacing: 1.5px; color: #e9c877; font-weight: 800; }
+#loadout-slot-chips.paper-doll .loadout-slot-chip-sub {
+    font-size: 0.72rem; color: #d6d0e2; text-align: center; overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; max-width: 100%;
+}
+#loadout-slot-chips.paper-doll [data-slot="head"] { grid-area: head; }
+#loadout-slot-chips.paper-doll [data-slot="body"] { grid-area: body; }
+#loadout-slot-chips.paper-doll [data-slot="hands"] { grid-area: hands; }
+#loadout-slot-chips.paper-doll [data-slot="legs"] { grid-area: legs; }
+#loadout-slot-chips.paper-doll [data-slot="prescription"] { grid-area: prescription; }
+#loadout-slot-chips.paper-doll [data-slot="all"] { grid-area: all; min-height: 44px; border-style: solid; border-color: rgba(233, 200, 119, 0.4); }

@@ -120,6 +120,27 @@ function computeEffectDiff(fromTokenData, fromRarity, toTokenData, toRarity) {
     return lines;
 }
 
+// Patch 176: the paper doll in the LOADOUT pane (renderSlotChips).
+const DOLL_SLOT_ICONS = { head: '🧠', body: '🦺', hands: '🧤', legs: '👟', prescription: '💊' };
+const DOLL_SVG = `<svg viewBox="0 0 120 190" xmlns="http://www.w3.org/2000/svg">
+  <defs><radialGradient id="dollGlow" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#e9c877" stop-opacity="0.28"/><stop offset="1" stop-color="#e9c877" stop-opacity="0"/></radialGradient></defs>
+  <ellipse cx="60" cy="92" rx="58" ry="88" fill="url(#dollGlow)"/>
+  <ellipse cx="60" cy="178" rx="34" ry="7" fill="rgba(0,0,0,0.5)"/>
+  <g stroke="#0b0d14" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M47 118 L44 166 L55 166 L60 126 L65 166 L76 166 L73 118 Z" fill="#39446a"/>
+    <path d="M40 166 h17 v8 h-19 z M63 166 h17 l2 8 h-19 z" fill="#d9d2c2"/>
+    <path d="M36 66 Q60 56 84 66 L80 122 Q60 128 40 122 Z" fill="#3f78b5"/>
+    <path d="M36 68 L22 104 L30 108 L42 82 Z M84 68 L98 104 L90 108 L78 82 Z" fill="#3f78b5"/>
+    <circle cx="25" cy="109" r="6" fill="#efd2b0"/><circle cx="95" cy="109" r="6" fill="#efd2b0"/>
+    <rect x="92" y="100" width="20" height="8" rx="2" fill="#5a5f6a"/><circle cx="113" cy="104" r="4.5" fill="#fff6cc"/>
+    <circle cx="60" cy="40" r="21" fill="#efd2b0"/>
+    <path d="M39 38 Q40 16 60 17 Q80 16 81 38 Q70 26 60 29 Q50 26 39 38 Z" fill="#2b2530"/>
+  </g>
+  <circle cx="52" cy="42" r="2.6" fill="#12141c"/><circle cx="68" cy="42" r="2.6" fill="#12141c"/>
+  <path d="M54 52 Q60 55 66 52" stroke="#12141c" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M47 46 q5 3 10 0 M63 46 q5 3 10 0" stroke="rgba(90,60,110,0.7)" stroke-width="1.4" fill="none"/>
+</svg>`;
+
 export class UIManager {
     constructor(saveManager, audioEngine, onStartGameCallback) {
         this.saveManager = saveManager;
@@ -1199,6 +1220,16 @@ export class UIManager {
         }
         bar.innerHTML = '';
 
+        // Patch 176: the strip is now a paper doll. The Patient stands in the middle
+        // and each slot sits by the part of the body it dresses, with the token's
+        // icon and its rarity colour, so what is worn can be read at a glance.
+        bar.classList.add('paper-doll');
+        const fig = document.createElement('div');
+        fig.className = 'doll-figure';
+        fig.setAttribute('aria-hidden', 'true');
+        fig.innerHTML = DOLL_SVG;
+        bar.appendChild(fig);
+
         // 'all' first so the default state is the leftmost chip and the strip reads
         // left-to-right as "everything, then narrow it down".
         const entries = ['all', ...TOKEN_SLOT_TYPES];
@@ -1228,6 +1259,13 @@ export class UIManager {
                 const tokenData = equippedItem ? TOKENS[equippedItem.id] : null;
                 sub.textContent = tokenData ? tokenData.name : '— empty —';
                 if (tokenData) chip.classList.add('loadout-slot-chip--filled');
+                // Patch 176: the slot's icon, and the worn token's rarity on the frame.
+                const ic = document.createElement('span');
+                ic.className = 'loadout-slot-chip-icon';
+                ic.textContent = DOLL_SLOT_ICONS[slot] || '◆';
+                chip.insertBefore(ic, chip.firstChild);
+                const rar = equippedItem && TOKEN_RARITIES[equippedItem.rarity];
+                if (rar) { chip.style.borderColor = rar.color; chip.style.boxShadow = `0 0 12px ${rar.color}55, inset 0 0 0 1px ${rar.color}55`; }
             } else {
                 const filled = TOKEN_SLOT_TYPES.filter(s => meta.equippedTokens[s]).length;
                 sub.textContent = `${filled}/${TOKEN_SLOT_TYPES.length} worn`;
