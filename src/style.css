@@ -65,7 +65,7 @@ canvas { display: block; }
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
     background-size: 100% 2px, 3px 100%;
-    pointer-events: none; z-index: 100; opacity: 0.8;
+    pointer-events: none; z-index: 100; opacity: 0.22;   /* Patch 165: was 0.8; it dimmed the whole game */
 }
 /* Patch 122: the LOW graphics tier drops the overlay (see applyQualityTier in main.js). */
 body.quality-low #crt-scanlines { display: none; }
@@ -128,7 +128,7 @@ body.quality-low #crt-scanlines { display: none; }
    part of the clinical-file language. Guests stay UNIDENTIFIED, which is in-theme. */
 .patient-identity {
     display: flex; align-items: center; gap: 8px;
-    font-family: var(--ui-font); font-size: 0.85rem; color: #4a4335;
+    font-family: var(--ui-font); font-size: 0.85rem; color: #b3adc0;
     letter-spacing: 1px; text-transform: uppercase;
     border-bottom: 1px dashed rgba(17,17,17,0.35); padding-bottom: 3px;
 }
@@ -147,15 +147,15 @@ body.quality-low #crt-scanlines { display: none; }
     .patient-identity { font-size: 0.7rem; }
     #patient-name { max-width: 12ch; }
 }
-.section-label { font-weight: bold; color: #222; text-transform: uppercase; margin-bottom: 10px; font-size: 0.95rem; letter-spacing: 1px; }
+.section-label { font-weight: bold; color: #f2eee3; text-transform: uppercase; margin-bottom: 10px; font-size: 0.95rem; letter-spacing: 1px; }
 
 .folder-tabs { display: flex; background: var(--folder-tab); border-bottom: 3px solid var(--ink-black); }
-.tab-btn { flex: 1; padding: 15px; background: transparent; border: none; border-right: 1px solid #a89d85; font-family: var(--ui-font); font-weight: bold; color: #555; cursor: pointer; transition: 0.2s; text-transform: uppercase; }
+.tab-btn { flex: 1; padding: 15px; background: transparent; border: none; border-right: 1px solid #a89d85; font-family: var(--ui-font); font-weight: bold; color: #b3adc0; cursor: pointer; transition: 0.2s; text-transform: uppercase; }
 /* Patch 37: the folder metaphor only works if the open tab looks physically in
    FRONT of the others. Inactive tabs get an inner bottom shadow so they read as
    tucked behind; the active one gets a lifted edge and rounded top corners. */
 .tab-btn:not(.active) { box-shadow: inset 0 -6px 8px -6px rgba(0,0,0,0.35); }
-.tab-btn:hover:not(.active) { background: rgba(255,255,255,0.22); color: #333; }
+.tab-btn:hover:not(.active) { background: rgba(255,255,255,0.22); color: #b3adc0; }
 .tab-btn.active { background-color: var(--paper-bg); color: var(--blood-red); font-weight: 900; border-top: 4px solid var(--blood-red); border-bottom: 3px solid var(--paper-bg); margin-bottom: -3px; text-shadow: none; border-radius: 3px 3px 0 0; box-shadow: 0 -3px 8px rgba(0,0,0,0.18); }
 
 /* Patch 129 (V2 plan C6): four group tabs (src/ui/FolderTabs.js) carry the folder-tab
@@ -167,11 +167,11 @@ body.quality-low #crt-scanlines { display: none; }
 .group-btn {
     flex: 1; padding: 15px 8px; min-height: 44px; background: transparent; border: none;
     border-right: 1px solid #a89d85; font-family: var(--ui-font); font-weight: bold;
-    color: #555; cursor: pointer; transition: 0.2s; letter-spacing: 1px;
+    color: #b3adc0; cursor: pointer; transition: 0.2s; letter-spacing: 1px;
     box-shadow: inset 0 -6px 8px -6px rgba(0,0,0,0.35);
 }
 .group-btn:last-child { border-right: none; }
-.group-btn:hover:not(.active) { background: rgba(255,255,255,0.22); color: #333; }
+.group-btn:hover:not(.active) { background: rgba(255,255,255,0.22); color: #b3adc0; }
 .group-btn.active {
     background-color: var(--paper-bg); color: var(--blood-red); font-weight: 900;
     border-top: 4px solid var(--blood-red); border-bottom: 3px solid var(--paper-bg);
@@ -189,7 +189,7 @@ body.quality-low #crt-scanlines { display: none; }
     background: transparent; white-space: nowrap;
 }
 .folder-tabs.subtabs .tab-btn.active {
-    border: 1px solid var(--blood-red); border-top: 1px solid var(--blood-red); background: #fffdf7;
+    border: 1px solid var(--blood-red); border-top: 1px solid var(--blood-red); background: rgba(233, 200, 119, 0.18);
     color: var(--blood-red); margin: 0; border-radius: 3px; box-shadow: 1px 1px 0 rgba(0,0,0,0.12);
 }
 .folder-tabs.subtabs .tab-btn.group-hidden { display: none; }
@@ -280,7 +280,7 @@ body.quality-low #crt-scanlines { display: none; }
     font-family: 'Courier New', Courier, monospace;
     font-size: 0.8rem;
     line-height: 1.35;
-    color: #111;
+    color: #f2eee3;
     background: rgba(255, 255, 255, 0.55);
     border: 1px dashed #777;
     word-break: break-all;
@@ -301,19 +301,19 @@ body.quality-low #crt-scanlines { display: none; }
 #death-actions #btn-restart.secondary { font-size: 1rem; padding: 8px 20px; background: transparent; box-shadow: none; }
 
 /* Patch 124: the cause line and the four-number strip at the top of the death file. */
-#death-cause { color: #111; font-size: 1.15rem; line-height: 1.4; margin: 0 0 12px; }
+#death-cause { color: #f2eee3; font-size: 1.15rem; line-height: 1.4; margin: 0 0 12px; }
 #death-cause strong { color: var(--ui-red); }
-#death-cause .death-where { display: block; font-size: 0.9rem; color: #444; margin-top: 4px; }
+#death-cause .death-where { display: block; font-size: 0.9rem; color: #b3adc0; margin-top: 4px; }
 #death-cause .death-record { display: block; font-size: 0.9rem; color: #7a5a10; margin-top: 4px; font-weight: bold; }
 #death-stats {
     display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
     margin: 0 0 14px; padding: 8px 0; border-top: 1px dashed #999; border-bottom: 1px dashed #999;
-    font-family: var(--ui-font); color: #111;
+    font-family: var(--ui-font); color: #f2eee3;
 }
 #death-stats .stat-value { display: block; font-size: 1.35rem; font-weight: bold; font-variant-numeric: tabular-nums; }
-#death-stats .stat-label { display: block; font-size: 0.72rem; letter-spacing: 0.08em; color: #555; }
+#death-stats .stat-label { display: block; font-size: 0.72rem; letter-spacing: 0.08em; color: #b3adc0; }
 .death-file { text-align: left; margin-top: 10px; }
-.death-file summary { cursor: pointer; font-size: 0.9rem; color: #555; letter-spacing: 0.06em; min-height: 32px; }
+.death-file summary { cursor: pointer; font-size: 0.9rem; color: #b3adc0; letter-spacing: 0.06em; min-height: 32px; }
 .death-file .run-summary { margin-top: 8px; }
 /* Short landscape (phones on their side, small iframes): actions side by side so the
    sticky bar is one row, not a third of the screen over the rewarded offers. */
@@ -336,7 +336,7 @@ body.quality-low #crt-scanlines { display: none; }
 }
 #death-rewarded .file-btn { min-height: 44px; }
 #death-rewarded .file-btn:disabled { opacity: 0.45; cursor: default; }
-#death-rewarded-note { margin: 0; font-size: 0.8rem; color: #555; min-height: 1em; }
+#death-rewarded-note { margin: 0; font-size: 0.8rem; color: #b3adc0; min-height: 1em; }
 
 /* Sized here rather than inline so the media queries below can actually shrink them —
    an inline font-size wins over every stylesheet rule that is not !important. */
@@ -433,7 +433,7 @@ body.quality-low #crt-scanlines { display: none; }
 .inventory-panel { flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 10px; align-content: start; overflow-y: auto; padding: 5px; }
 
 .token-slot, .inventory-item {
-    width: 100%; aspect-ratio: 1; background: #fdfaf3; border: 2px solid var(--ink-black); box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+    width: 100%; aspect-ratio: 1; background: rgba(255, 255, 255, 0.05); border: 2px solid var(--ink-black); box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center; font-size: 0.7rem; font-weight: bold; color: var(--ink-black); cursor: pointer; transition: all 0.2s; position: relative;
 }
@@ -496,7 +496,7 @@ body.quality-low #crt-scanlines { display: none; }
 .token-slot.drag-target-invalid { border-color: var(--ui-red); opacity: 0.5; }
 
 /* Synapse Tree List */
-.synapse-node-file { width: 100%; max-width: 500px; border-bottom: 2px dashed #c2b59b; padding: 15px 20px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; background: rgba(253, 250, 243, 0.85); box-shadow: 2px 2px 10px rgba(0,0,0,0.1); border-radius: 4px; }
+.synapse-node-file { width: 100%; max-width: 500px; border-bottom: 1px solid rgba(255, 255, 255, 0.14); padding: 15px 20px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; background: rgba(253, 250, 243, 0.85); box-shadow: 2px 2px 10px rgba(0,0,0,0.1); border-radius: 4px; }
 .node-info strong { font-size: 1.1rem; color: var(--ink-black); text-shadow: 1px 1px 0 #fff; }
 
 /* Synapse Tree grid — node states (Patch 29.8). Scoped under #synapse-tree-grid
@@ -565,7 +565,7 @@ body.quality-low #crt-scanlines { display: none; }
 /* Roadmap Timeline */
 .roadmap-timeline { display: flex; flex-direction: column; gap: 15px; position: relative; padding-left: 20px; }
 .roadmap-timeline::before { content: ''; position: absolute; left: 6px; top: 0; bottom: 0; width: 4px; background: #c2b59b; }
-.roadmap-node { padding: 15px; background: #fdfaf3; border: 2px solid #c2b59b; position: relative; font-weight: bold; color: #888; margin-left: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); }
+.roadmap-node { padding: 15px; background: rgba(255, 255, 255, 0.05); border: 2px solid #c2b59b; position: relative; font-weight: bold; color: #888; margin-left: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); }
 .roadmap-node::before { content: ''; position: absolute; left: -22px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; border-radius: 50%; background: var(--paper-bg); border: 4px solid #c2b59b; z-index: 2; }
 .roadmap-node.completed { border-color: var(--ink-black); color: var(--ink-black); text-decoration: line-through; }
 .roadmap-node.completed::before { background: var(--ink-black); border-color: var(--ink-black); }
@@ -582,7 +582,7 @@ body.quality-low #crt-scanlines { display: none; }
 
 .roadmap-summary {
     margin-left: 10px; margin-bottom: 6px; padding: 14px 16px;
-    background: #fdfaf3; border: 2px solid var(--ink-black);
+    background: rgba(255, 255, 255, 0.05); border: 2px solid var(--ink-black);
     box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
 }
 /* Sits outside the timeline's node rail — it's a header, not a stop on the path. */
@@ -594,7 +594,7 @@ body.quality-low #crt-scanlines { display: none; }
     color: #6b6355; letter-spacing: 1px; text-transform: uppercase;
 }
 .roadmap-progress-track {
-    margin-top: 10px; height: 14px; background: #e0d8c6;
+    margin-top: 10px; height: 14px; background: rgba(255, 255, 255, 0.1);
     border: 2px solid var(--ink-black); position: relative; overflow: hidden;
 }
 .roadmap-progress-fill {
@@ -616,7 +616,7 @@ body.quality-low #crt-scanlines { display: none; }
 .roadmap-status.redacted { color: #9a917f; border-style: dashed; }
 
 .roadmap-area { font-family: var(--ui-font); font-size: 1.05rem; font-weight: bold; letter-spacing: 1px; color: var(--ink-black); }
-.roadmap-boss { font-family: var(--ui-font); font-size: 0.78rem; color: #55503f; margin-top: 4px; letter-spacing: 1px; }
+.roadmap-boss { font-family: var(--ui-font); font-size: 0.78rem; color: #b3adc0; margin-top: 4px; letter-spacing: 1px; }
 .roadmap-note { font-size: 0.72rem; color: #6b6355; margin-top: 6px; font-weight: normal; line-height: 1.35; }
 
 /* A sealed floor is redacted, not merely greyed — it should read as withheld. */
@@ -955,16 +955,16 @@ body.quality-low #crt-scanlines { display: none; }
 #synergy-banner[data-tone="achievement"] { border-color: #c5a059; }
 #synergy-banner[data-tone="achievement"] .syn-stamp { border-color: #c5a059; color: #f0d08a; }
 .records-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
-.record-cell { background: #fdfaf3; border: 2px solid #ccc; padding: 8px; text-align: center; }
+.record-cell { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(233, 200, 119, 0.35); padding: 8px; text-align: center; }
 .record-value { display: block; font-weight: bold; font-size: 1rem; color: var(--ink-black); }
 .record-label { display: block; font-size: 0.7rem; letter-spacing: 1px; color: #6f6656; margin-top: 3px; }
-.ach-card { background: #fdfaf3; border: 2px solid var(--ui-gold); box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 12px; text-align: center; }
-.ach-card.locked { background: #f4f1ea; border: 2px dashed #c2b59b; box-shadow: 4px 4px 0 rgba(0,0,0,0.06); }
+.ach-card { background: rgba(255, 255, 255, 0.05); border: 2px solid var(--ui-gold); box-shadow: 4px 4px 0 rgba(0,0,0,0.1); padding: 12px; text-align: center; }
+.ach-card.locked { background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.22); box-shadow: 4px 4px 0 rgba(0,0,0,0.06); }
 .ach-icon { font-size: 2.2rem; line-height: 1; }
 .ach-card.locked .ach-icon { opacity: 0.25; filter: grayscale(1); }
 .ach-name { font-weight: bold; color: var(--ink-black); margin-top: 8px; font-size: 0.85rem; }
-.ach-desc { font-size: 0.74rem; color: #4a4338; margin-top: 4px; line-height: 1.35; }
-.ach-progress { height: 5px; background: #e2dccd; margin-top: 8px; }
+.ach-desc { font-size: 0.74rem; color: #b3adc0; margin-top: 4px; line-height: 1.35; }
+.ach-progress { height: 5px; background: rgba(255, 255, 255, 0.1); margin-top: 8px; }
 .ach-progress span { display: block; height: 100%; background: #8b6d2f; }
 .ach-count, .ach-date { font-size: 0.7rem; color: #8a8172; margin-top: 4px; letter-spacing: 1px; }
 /* Patch 141: notices arrive as a compact strip (stamp + name); a tap opens the full
@@ -1035,7 +1035,7 @@ body.quality-low #crt-scanlines { display: none; }
 }
 .cards-container { display: flex; gap: 25px; flex-wrap: wrap; justify-content: center; perspective: 1000px; }
 .card {
-    position: relative; background: #eee; color: #111; padding: 10px 10px 16px 10px; width: 180px; min-height: 240px; height: auto;
+    position: relative; background: rgba(255, 255, 255, 0.12); color: #f2eee3; padding: 10px 10px 16px 10px; width: 180px; min-height: 240px; height: auto;
     box-shadow: 5px 10px 20px rgba(0,0,0,0.8); cursor: pointer; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); text-align: center;
     display: flex; flex-direction: column; justify-content: flex-start; border-radius: 2px;
 }
@@ -1275,12 +1275,12 @@ body.quality-low #crt-scanlines { display: none; }
     92.5% { transform: translate(0.015em, 0.035em) rotate(0.2deg); }
     95% { transform: translate(0.035em, 0.05em) rotate(0.6deg); }
 }
-/* Patch 163: the name is FRACTURED: Second Opinion. The subtitle is a red clinic
+/* Patch 163: the name is FRACTURED: Survivors. The subtitle is a red clinic
    stamp slammed across the title's corner, sized in em with the title (min 11 px). */
 #title-screen .title-stamp {
     position: absolute; right: 0.15em; bottom: -0.55em; z-index: 2;   /* over the letters' halves */
     font-family: var(--ui-font); font-weight: bold;
-    font-size: max(12px, 0.21em); letter-spacing: 0.16em; line-height: 1;
+    font-size: max(14px, 0.3em); letter-spacing: 0.16em; line-height: 1;   /* Patch 187: a shorter word, set larger */
     color: #e0283f; border: 0.14em solid #e0283f; border-radius: 0.15em;
     padding: 0.32em 0.55em 0.26em;
     background: rgba(12, 4, 6, 0.6);
@@ -1699,7 +1699,7 @@ body.quality-low #crt-scanlines { display: none; }
     font-family: var(--ui-font);
     font-size: 0.78rem;
     line-height: 1.45;
-    color: #555;
+    color: #b3adc0;
     margin: 0 auto 10px;
     max-width: 540px;
 }
@@ -1803,7 +1803,7 @@ body.quality-low #crt-scanlines { display: none; }
         align-items: center;
         justify-content: center;
         gap: 1px;
-        background: #fdfaf3;
+        background: rgba(255, 255, 255, 0.05);
         border: 2px solid #8d8574;
         border-radius: 2px;
         color: #6d6659;
@@ -2000,7 +2000,7 @@ body.quality-low #crt-scanlines { display: none; }
 .patient-chip .patient-icon { font-size: 1.05rem; line-height: 1; }
 .patient-chip .patient-new {
     position: absolute; top: -8px; right: -6px; padding: 1px 4px;
-    font-size: 0.6rem; letter-spacing: 0.1em; color: #0a0505; background: #7CFFB2;
+    font-size: 0.6rem; letter-spacing: 0.1em; color: #f2eee3; background: #7CFFB2;
 }
 .patient-chip.locked { opacity: 0.45; border-style: dashed; }
 .patient-chip.locked.peek { opacity: 0.8; }
@@ -2091,12 +2091,12 @@ body.quality-low #crt-scanlines { display: none; }
 .story-credit-t { font-size: 0.95rem; }
 .story-choice { margin-bottom: 14px; }
 .story-choice .story-btn { width: 100%; }
-.story-choice-desc { font-size: 0.85rem; margin: 6px 2px 0; color: #3a332a; }
+.story-choice-desc { font-size: 0.85rem; margin: 6px 2px 0; color: #b3adc0; }
 
 /* E3: RECORDS → CASE FILE. */
 .casefile-head { text-align: center; margin-bottom: 14px; color: var(--ink-black); }
 .casefile-title { margin: 0 0 8px; letter-spacing: 2px; border-bottom: 2px solid var(--ink-black); padding-bottom: 8px; }
-.casefile-intro { font-size: 0.85rem; color: #555; margin: 0 0 6px; }
+.casefile-intro { font-size: 0.85rem; color: #b3adc0; margin: 0 0 6px; }
 .casefile-count { font-size: 0.8rem; color: var(--ui-red); font-weight: bold; margin: 0; }
 .casefile-replays { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 14px; }
 .casefile-replay { min-height: 44px; font-size: 0.75rem; }
@@ -2115,7 +2115,7 @@ body.quality-low #crt-scanlines { display: none; }
     background: rgba(79, 126, 154, 0.08);
     font-size: 0.8rem; line-height: 1.45; color: var(--ink-black); font-style: italic;
 }
-.session-note-label { display: block; font-size: 0.7rem; letter-spacing: 2px; color: #2f5d78; margin-bottom: 4px; font-style: normal; font-weight: bold; }
+.session-note-label { display: block; font-size: 0.7rem; letter-spacing: 2px; color: #b3adc0; margin-bottom: 4px; font-style: normal; font-weight: bold; }
 
 @media (max-width: 600px) {
     .story-text, .story-ending-text { font-size: 0.9rem; }
@@ -2187,3 +2187,371 @@ body.levelup-open .joystick-base { visibility: hidden; }
     .folder-header .title-typewriter { font-size: 0.95rem; letter-spacing: 1px; }
     .folder-header .patient-stamp { font-size: 0.85rem; padding: 2px 8px; border-width: 2px; }
 }
+
+
+/* ==========================================================================
+   Patch 166 (v3): the HUD, rebuilt for a horde on a phone.
+   Three bezelled instrument panels used 13% of a phone screen for jargon
+   ("NIGHTMARE PROGRESS", "ADRENAL RECHARGE") and showed no XP. Now: an XP bar
+   across the top edge, Sanity + dash at the left, the room's progress in the
+   middle, floor / kills / Lucidity and a pause icon at the right. Same element
+   ids, so main.js and the checks still find everything. The #ui-layer prefix
+   outranks every earlier HUD rule, including the media-query ones.
+   ========================================================================== */
+#ui-layer { padding: 0; padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+#xp-strip {
+    position: relative; width: 100%; height: 12px; flex: 0 0 auto;
+    background: rgba(0, 0, 0, 0.7); border-bottom: 1px solid rgba(197, 160, 89, 0.45);
+}
+#xp-fill {
+    height: 100%; width: 0%; transform-origin: left center;
+    background: linear-gradient(90deg, #8a6a2a, #f2d27a 70%, #fff3c4);
+    box-shadow: 0 0 8px rgba(242, 210, 122, 0.7);
+    transition: width 0.18s ease-out;
+}
+#xp-level {
+    position: absolute; right: 6px; top: 14px; font-family: var(--ui-font);
+    font-size: 12px; font-weight: 900; letter-spacing: 1px; color: #f2d27a;
+    text-shadow: 0 1px 0 #000, 0 0 6px rgba(0,0,0,0.9);
+}
+#ui-layer .hud-top {
+    position: absolute; top: calc(14px + env(safe-area-inset-top)); left: 0; right: 0; width: auto;
+    padding: 6px 8px 0; gap: 8px; flex-wrap: nowrap; align-items: flex-start; justify-content: space-between;
+}
+#ui-layer .sanity-section, #ui-layer .convergence-section, #ui-layer .score-section {
+    background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; margin: 0; min-width: 0;
+}
+#ui-layer .sanity-section::before, #ui-layer .convergence-section::before, #ui-layer .score-section::before,
+#ui-layer .sanity-section::after, #ui-layer .convergence-section::after, #ui-layer .score-section::after { display: none; }
+#ui-layer .hud-label, #ui-layer .hud-label-large {
+    font-size: 12px; line-height: 1.25; letter-spacing: 0.5px; margin: 0 0 3px; font-weight: 800;
+    color: #f1ede2; text-shadow: 0 1px 0 #000, 0 0 5px rgba(0,0,0,0.95);
+}
+#ui-layer .sanity-section { order: 1; flex: 0 1 34%; max-width: 230px; width: auto; }
+#ui-layer .sanity-bar-container {
+    height: 12px; border: 1px solid rgba(0,0,0,0.9); border-radius: 3px; overflow: hidden;
+    background: rgba(0, 0, 0, 0.62); box-shadow: 0 0 0 1px rgba(255,255,255,0.14);
+}
+#ui-layer #sanity-bar { border-radius: 2px; }
+#ui-layer .hud-label-dash { display: none; }
+#ui-layer .dash-bar-container {
+    width: 62%; height: 5px; margin-top: 4px; border: 0; border-radius: 3px; overflow: hidden;
+    background: rgba(0, 0, 0, 0.62); box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+}
+#ui-layer .convergence-section { order: 2; flex: 1 1 auto; max-width: 300px; align-items: center; }
+#ui-layer .convergence-section .hud-label-large { text-align: center; }
+#ui-layer .convergence-bar-container {
+    width: 100%; height: 8px; margin-top: 0; border: 0; border-radius: 4px; overflow: hidden;
+    background: rgba(0, 0, 0, 0.62); box-shadow: 0 0 0 1px rgba(255,255,255,0.14);
+}
+#ui-layer #convergence-bar { transition: width 0.25s linear; }
+#ui-layer #enemy-counter { font-size: 11px; margin-top: 3px; color: #ffb9a8; text-shadow: 0 1px 0 #000; }
+#ui-layer .score-section { order: 3; flex: 0 0 auto; max-width: 34%; align-items: flex-end; margin-right: 46px; position: static; }
+#ui-layer .score-section .hud-label-large { text-align: right; white-space: nowrap; }
+#ui-layer #score .hud-sub { display: block; font-size: 11px; font-weight: 700; color: #d9c48a; }
+#ui-layer #btn-pause {
+    position: absolute; top: 6px; right: 6px; margin: 0; width: 40px; height: 40px; padding: 0;
+    font-size: 18px; line-height: 1; border-radius: 6px; border: 1px solid rgba(255,255,255,0.28);
+    background: rgba(0, 0, 0, 0.55); color: #f1ede2;
+}
+#ui-layer #xp-level { right: auto; left: 8px; top: 56px; }
+
+/* Patch 167: a first-time title is the logo and one button. */
+body.first-time #btn-title-endless, body.first-time #btn-title-hub { display: none !important; }
+#title-content-note {
+    margin-top: 16px; font-family: var(--ui-font); font-size: 12px; letter-spacing: 1px;
+    color: #a89f8c; text-align: center; text-shadow: 0 1px 3px #000;
+}
+/* The primary button: filled, so it reads as THE thing to press. */
+#title-screen #btn-title-begin {
+    background: linear-gradient(180deg, #e9c877, #b98a2e) !important; color: #f2eee3 !important;
+    border-color: #f6e2a6 !important; text-shadow: none !important; letter-spacing: 6px;
+    padding: 16px 64px !important; font-size: 1.7rem !important;
+    box-shadow: 0 6px 0 #6b4d14, 0 10px 26px rgba(0, 0, 0, 0.6) !important;
+    animation: playPulse 1.8s ease-in-out infinite;
+}
+/* A glow pulse, not a scale: the button's box must not move (the browser checks click it). */
+@keyframes playPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.22); } }
+@media (prefers-reduced-motion: reduce) { #title-screen #btn-title-begin { animation: none; } }
+#ui-layer #xp-level { left: 8px; top: 62px; }
+
+/* Patch 168: the Sanity label stays on one line (" · FRAYING" wrapped under the bar). */
+#ui-layer #sanity-label { white-space: nowrap; }
+#ui-layer .sanity-section { flex: 0 1 40%; }
+
+/* Patch 172: the in-run inventory on the pause screen. */
+.pause-loadout { text-align: left; margin: 0 0 16px; max-height: 46vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    border: 1px solid rgba(0,0,0,0.25); background: rgba(0,0,0,0.06); padding: 10px 12px; font-family: var(--ui-font); }
+.pause-loadout:empty { display: none; }
+.pause-loadout h4 { margin: 10px 0 5px; font-size: 12px; letter-spacing: 2px; color: #6b1a12; }
+.pause-loadout h4:first-child { margin-top: 0; }
+.pl-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px dotted rgba(0,0,0,0.25); font-size: 13px; color: #f2eee3; }
+.pl-row .pl-name { min-width: 0; font-weight: 700; }
+.pl-row .pl-sub { display: block; font-weight: 400; font-size: 11px; color: #b3adc0; }
+.pl-pips { flex: 0 0 auto; display: flex; gap: 3px; }
+.pl-pips i { width: 9px; height: 9px; border: 1px solid #1b1b1b; display: block; }
+.pl-pips i.on { background: #b98a2e; }
+.pl-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.pl-chip { font-size: 12px; padding: 3px 7px; border: 1px solid rgba(0,0,0,0.45); background: rgba(255,255,255,0.35); color: #f2eee3; }
+.pl-none { font-size: 12px; color: #b3adc0; }
+.pl-note { margin-top: 10px; font-size: 11px; color: #b3adc0; }
+
+/* Patch 173: closest achievements in the pause inventory. */
+.pl-ach .pl-name { flex: 1 1 auto; }
+.pl-bar { display: block; height: 5px; margin-top: 4px; background: rgba(0,0,0,0.18); border: 1px solid rgba(0,0,0,0.4); }
+.pl-bar i { display: block; height: 100%; background: #b98a2e; }
+.pl-count { flex: 0 0 auto; font-size: 12px; font-weight: 700; color: #f2eee3; font-variant-numeric: tabular-nums; }
+
+/* Patch 173: the level-up panel and its cards. A dark glass panel with a gold edge;
+   each card is a rounded plate with a gold spine and a pressed state. Sizes and the
+   layout rules above are untouched (qa/levelup_check and sizes_check measure them). */
+#level-up-modal {
+    background: linear-gradient(180deg, rgba(22, 19, 30, 0.97), rgba(8, 8, 12, 0.98));
+    border: 1px solid #c9a24a; border-radius: 12px;
+    box-shadow: 0 0 0 1px #000, 0 0 44px rgba(233, 200, 119, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+#level-up-modal h2 { letter-spacing: 3px; }
+#level-up-modal .card {
+    background: linear-gradient(135deg, #221e2d, #131018);
+    border: 1px solid #50495f; border-left: 4px solid var(--ui-gold); border-radius: 9px;
+    box-shadow: 0 4px 0 #000, inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+#level-up-modal .card:active { transform: translateY(2px); box-shadow: 0 2px 0 #000; }
+#level-up-modal .card:focus-visible { outline: 2px solid #f6e2a6; outline-offset: 2px; }
+
+/* ==========================================================================
+   Patch 174 (v3): GLASS AND GOLD. The menus leave the paper "medical file".
+   The user chose this over the old look (2026-11-18), so the CLAUDE.md note
+   about preserving the clinical folder chrome no longer applies.
+
+   How: the two variables every menu is built from are flipped (paper becomes
+   dark glass, ink becomes bone), so the hundreds of rules that read them
+   follow without being rewritten; then the chrome that painted paper by hand
+   (folder, header, buttons, tabs, notices) is restated below. The UI face
+   becomes a clean sans; the title keeps its lettering. Layout, sizes and
+   element ids are untouched.
+   ========================================================================== */
+:root {
+    --paper-bg: #15131d;
+    --ink-black: #f2eee3;
+    --folder-tab: #262231;
+    --ui-red: #ff6a5c;
+    --blood-red: #ff6a5c;
+    --glass: linear-gradient(180deg, rgba(30, 26, 42, 0.97), rgba(11, 10, 16, 0.985));
+    --gold-line: rgba(233, 200, 119, 0.6);
+    --ui-font: "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", system-ui, -apple-system, sans-serif;
+}
+.medical-folder {
+    background: var(--glass); background-image: var(--glass);
+    border: 1px solid var(--gold-line); border-radius: 16px; overflow: hidden;
+    box-shadow: 0 0 0 1px #000, 0 18px 60px rgba(0, 0, 0, 0.85), 0 0 46px rgba(233, 200, 119, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.folder-header {
+    background: linear-gradient(180deg, rgba(52, 44, 70, 0.98), rgba(26, 23, 37, 0.98));
+    border-bottom: 1px solid var(--gold-line);
+}
+.title-typewriter {
+    color: #f2d27a; text-shadow: 0 2px 0 #000, 0 0 18px rgba(233, 200, 119, 0.35);
+    letter-spacing: 4px; font-weight: 800;
+}
+.typewriter-text { color: var(--ink-black); font-weight: 600; }
+.medical-folder h1, .medical-folder h2, .medical-folder h3, .medical-folder h4, .medical-folder h5, .medical-folder h6, .medical-folder p { text-shadow: none; }
+
+.file-btn {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--gold-line); border-radius: 10px; color: var(--ink-black);
+    text-shadow: none; letter-spacing: 1.5px; font-weight: 700;
+    box-shadow: 0 3px 0 #000, inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.file-btn:hover:not(:disabled) { background: rgba(233, 200, 119, 0.2); color: #fff6dc; }
+.file-btn.primary {
+    background: linear-gradient(180deg, #ecca7a, #b98a2e); color: #1a1206; border-color: #f6e2a6;
+    box-shadow: 0 4px 0 #6b4d14, 0 8px 22px rgba(0, 0, 0, 0.55);
+}
+.file-btn.primary:hover:not(:disabled) { background: linear-gradient(180deg, #f6dc98, #caa044); color: #1a1206; }
+.file-btn.danger { border-color: rgba(255, 106, 92, 0.75); color: #ff8f84; }
+.file-btn.danger:hover:not(:disabled) { background: rgba(255, 106, 92, 0.22); color: #fff; }
+.file-btn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #000; }
+.file-btn:focus-visible { outline: 2px solid #f6e2a6; outline-offset: 2px; }
+
+/* the title screen's secondary buttons were paper slabs */
+#title-screen .file-btn:not(#btn-title-begin):not(#btn-title-resume) {
+    background: rgba(14, 12, 20, 0.72); color: #efe7d2; border-color: rgba(233, 200, 119, 0.45);
+}
+#title-screen #btn-title-resume { background: rgba(14, 12, 20, 0.72) !important; }
+.title-subtitle { letter-spacing: 5px; }
+
+/* the in-run inventory, restated for dark glass */
+.pause-loadout { border: 1px solid rgba(233, 200, 119, 0.28); background: rgba(0, 0, 0, 0.32); border-radius: 10px; }
+.pause-loadout h4 { color: #e9c877; }
+.pl-row { color: var(--ink-black); border-bottom-color: rgba(255, 255, 255, 0.14); }
+.pl-row .pl-sub, .pl-none, .pl-note { color: #a9a3b6; }
+.pl-pips i { border-color: rgba(233, 200, 119, 0.7); border-radius: 2px; }
+.pl-pips i.on { background: #e9c877; }
+.pl-chip { border-color: rgba(233, 200, 119, 0.4); background: rgba(255, 255, 255, 0.06); color: var(--ink-black); border-radius: 6px; }
+.pl-bar { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.18); border-radius: 3px; overflow: hidden; }
+.pl-bar i { background: linear-gradient(90deg, #b98a2e, #f2d27a); }
+.pl-count { color: #f2d27a; }
+
+/* Patch 174, continued: the pieces that painted paper with literal colours. */
+.folder-groups, .folder-tabs { border-bottom-color: var(--gold-line); }
+.tab-btn, .group-btn { color: #a9a3b6; border-right-color: rgba(255, 255, 255, 0.08); box-shadow: none; }
+.tab-btn:not(.active), .group-btn:not(.active) { box-shadow: none; }
+.tab-btn:hover:not(.active), .group-btn:hover:not(.active) { background: rgba(233, 200, 119, 0.12); color: #f2eee3; }
+.tab-btn.active, .group-btn.active {
+    background: linear-gradient(180deg, rgba(233, 200, 119, 0.22), rgba(233, 200, 119, 0.04)); background-color: transparent;
+    color: #f2d27a; border-top: 3px solid #e9c877; border-bottom-color: transparent;
+}
+.folder-tabs.subtabs .tab-btn { border-color: rgba(255, 255, 255, 0.2); color: #a9a3b6; border-radius: 8px; }
+.folder-tabs.subtabs .tab-btn.active {
+    background: rgba(233, 200, 119, 0.18); color: #f2d27a; border: 1px solid #e9c877; border-radius: 8px; box-shadow: none;
+}
+.section-label { color: #e9c877; }
+.token-slot, .inventory-item, .loadout-slot-chip, .roadmap-node, .roadmap-summary, .record-cell, .ach-card, .casefile-page,
+#folder-patient-strip .patient-chip, .patient-chip {
+    background: rgba(255, 255, 255, 0.05); border-color: rgba(233, 200, 119, 0.35); color: var(--ink-black);
+    border-radius: 10px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.token-slot.filled, .inventory-item.filled { background: rgba(255, 255, 255, 0.1); color: var(--ink-black); }
+.rarity-rare { background: rgba(85, 85, 255, 0.18) !important; }
+.rarity-epic { background: rgba(170, 85, 255, 0.18) !important; }
+.rarity-legendary { background: rgba(255, 140, 0, 0.18) !important; }
+.rarity-mythic { background: rgba(255, 85, 85, 0.18) !important; }
+.item-details-panel, .synapse-node-file { border-color: rgba(255, 255, 255, 0.16); }
+.roadmap-node { color: #a9a3b6; border-width: 1px; }
+.roadmap-node.active { background: rgba(255, 106, 92, 0.16); color: #ff9a8f; border-color: #ff6a5c; }
+.roadmap-progress-track, .ach-progress { background: rgba(255, 255, 255, 0.1); border-radius: 4px; overflow: hidden; }
+.ach-card { border: 1px solid #e9c877; }
+.ach-card.locked { background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.22); }
+.ach-desc, .record-label, .roadmap-boss, .casefile-intro { color: #a9a3b6; }
+.patient-chip.selected, #folder-patient-strip .patient-chip.selected, .patient-chip[aria-pressed="true"] {
+    background: rgba(233, 200, 119, 0.2); border-color: #e9c877; color: #f2d27a;
+}
+/* the level-up card's base was #eee, its hover #fff */
+.card { background: linear-gradient(135deg, #221e2d, #131018); color: var(--ink-black); }
+.card:hover { background: linear-gradient(135deg, #2c2739, #17141d) !important; }
+/* death screen */
+#death-cause, #death-stats, #death-stats .stat-value { color: var(--ink-black); }
+#death-stats .stat-label, .death-file summary, #death-rewarded-note, #death-cause .death-where { color: #a9a3b6; }
+#death-stats { border-color: rgba(255, 255, 255, 0.16); }
+/* text inputs, selects and the export field */
+.medical-folder input, .medical-folder select, .medical-folder textarea, .fullscreen-menu input, .fullscreen-menu select, .fullscreen-menu textarea {
+    background: rgba(0, 0, 0, 0.45); color: var(--ink-black); border: 1px solid rgba(233, 200, 119, 0.4); border-radius: 8px;
+}
+/* the storage notice and achievement toast */
+#storage-notice { background: rgba(14, 12, 20, 0.96); border-top: 1px solid var(--gold-line); }
+
+/* Patch 174, continued: the Synapse Tree's node cards and the stamps. */
+#synapse-tree-grid .synapse-node-file {
+    background: rgba(255, 255, 255, 0.05); border-radius: 10px; color: var(--ink-black);
+    border: 1px solid rgba(255, 255, 255, 0.14); border-top: 3px solid currentColor;
+}
+#synapse-tree-grid .synapse-node-file.synapse-node--available,
+#synapse-tree-grid .synapse-node-file.synapse-node--unaffordable {
+    border: 1px solid #e9c877; border-top: 3px solid #e9c877;
+    background: rgba(233, 200, 119, 0.1); box-shadow: 0 0 14px rgba(233, 200, 119, 0.2);
+}
+#synapse-tree-grid .synapse-node-file.synapse-node--purchased { background: rgba(120, 220, 150, 0.08); border-color: rgba(120, 220, 150, 0.45); }
+#synapse-tree-grid .synapse-node-file.synapse-node--purchased .file-btn.small {
+    color: #86e0a2; border: 1px solid #86e0a2; transform: none; opacity: 1; border-radius: 8px;
+}
+#synapse-tree-grid .synapse-node-file.synapse-node--purchased .file-btn.small:disabled { opacity: 1; }
+#synapse-tree-grid .synapse-node-file.synapse-node--locked { filter: none; opacity: 0.62; }
+#synapse-tree-grid .synapse-node-name { color: var(--ink-black); }
+#synapse-tree-grid .synapse-node-desc { color: #a9a3b6; }
+#synapse-tree-grid .synapse-node-badge { color: #f2d27a; }
+.patient-stamp {
+    color: #f2d27a; border: 1px solid #e9c877; border-radius: 8px; transform: none;
+    background: rgba(233, 200, 119, 0.12); box-shadow: none; opacity: 1; letter-spacing: 1px;
+}
+.folder-header .patient-stamp { font-size: 0.8rem; padding: 4px 8px; margin-right: 44px; }
+.trophy-card { border-radius: 10px; color: var(--ink-black); }
+
+/* Patch 174: last literals. Node names were set inline in the branch's dark colour. */
+#synapse-tree-grid .synapse-node-name { color: var(--ink-black) !important; }
+.medical-folder select, .fullscreen-menu select, .medical-folder input[type="text"], .fullscreen-menu input[type="text"] {
+    background: rgba(0, 0, 0, 0.5) !important; color: var(--ink-black) !important; border: 1px solid rgba(233, 200, 119, 0.4) !important; border-radius: 8px;
+}
+.medical-folder select option { background: #15131d; color: #f2eee3; }
+@media (max-width: 520px) { .folder-header .patient-stamp { display: none; } }
+
+/* ==========================================================================
+   Patch 176: readability fixes from the A56 screenshots, and the paper doll.
+   ========================================================================== */
+/* Intrusive Thoughts (and every node card outside the Synapse grid) were white text
+   on a light grey plate. */
+.synapse-node-file {
+    background: rgba(255, 255, 255, 0.05) !important; color: var(--ink-black);
+    border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 12px; filter: none;
+}
+.synapse-node-file .node-info strong { color: #f2eee3; text-shadow: none; font-size: 1.02rem; }
+.synapse-node-file .node-info .typewriter-text { color: #b9b3c6; font-weight: 500; text-shadow: none; }
+.synapse-node-file .file-btn.small { min-width: 96px; }
+.inline-forge-btn {
+    background: rgba(233, 200, 119, 0.14) !important; color: #f2d27a !important;
+    border: 1px solid rgba(233, 200, 119, 0.5) !important; border-radius: 6px; font-weight: 700;
+}
+.item-details-panel { background: rgba(14, 12, 20, 0.96); border: 1px solid var(--gold-line); border-radius: 12px; }
+
+/* The paper doll: the Patient in the middle, each slot beside the body part it
+   dresses. Replaces the equipped column on every width. */
+.equipped-panel > .token-slot, .equipped-panel > .section-label:first-child { display: none; }
+#loadout-slot-chips.paper-doll {
+    display: grid; overflow: visible; gap: 8px; padding: 6px 0 12px; margin: 0 0 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(96px, 0.9fr) minmax(0, 1fr);
+    grid-template-areas: "head fig body" "hands fig prescription" "legs fig all";
+    align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+#loadout-slot-chips.paper-doll .doll-figure { grid-area: fig; display: flex; justify-content: center; }
+#loadout-slot-chips.paper-doll .doll-figure svg { width: 100%; max-width: 150px; height: auto; display: block; }
+#loadout-slot-chips.paper-doll .loadout-slot-chip {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    min-height: 62px; width: 100%; padding: 6px 6px; flex: none; white-space: normal;
+    background: rgba(255, 255, 255, 0.05); border: 1px dashed rgba(255, 255, 255, 0.28); border-radius: 12px;
+    color: var(--ink-black); font-family: var(--ui-font);
+}
+#loadout-slot-chips.paper-doll .loadout-slot-chip--filled { border-style: solid; background: rgba(255, 255, 255, 0.09); }
+#loadout-slot-chips.paper-doll .loadout-slot-chip--active { outline: 2px solid #f2d27a; outline-offset: 1px; }
+#loadout-slot-chips.paper-doll .loadout-slot-chip-icon { font-size: 1.35rem; line-height: 1; }
+#loadout-slot-chips.paper-doll .loadout-slot-chip-name { font-size: 0.68rem; letter-spacing: 1.5px; color: #e9c877; font-weight: 800; }
+#loadout-slot-chips.paper-doll .loadout-slot-chip-sub {
+    font-size: 0.72rem; color: #d6d0e2; text-align: center; overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; max-width: 100%;
+}
+#loadout-slot-chips.paper-doll [data-slot="head"] { grid-area: head; }
+#loadout-slot-chips.paper-doll [data-slot="body"] { grid-area: body; }
+#loadout-slot-chips.paper-doll [data-slot="hands"] { grid-area: hands; }
+#loadout-slot-chips.paper-doll [data-slot="legs"] { grid-area: legs; }
+#loadout-slot-chips.paper-doll [data-slot="prescription"] { grid-area: prescription; }
+#loadout-slot-chips.paper-doll [data-slot="all"] { grid-area: all; min-height: 44px; border-style: solid; border-color: rgba(233, 200, 119, 0.4); }
+
+/* Patch 178: the hub's station prompt, in glass and gold (its colours were set inline
+   per zone; the border and text now stay gold whatever the zone). */
+#interaction-prompt {
+    background: linear-gradient(180deg, rgba(30, 26, 42, 0.96), rgba(11, 10, 16, 0.98)) !important;
+    border: 1px solid rgba(233, 200, 119, 0.7) !important; border-radius: 14px !important;
+    color: #f2d27a !important; box-shadow: 0 6px 0 #000, 0 0 26px rgba(233, 200, 119, 0.22) !important;
+    padding: 12px 22px !important; letter-spacing: 1px; text-shadow: none !important; max-width: 86vw;
+}
+#interaction-prompt #prompt-text { font-size: 1.05rem; font-weight: 800; }
+#interaction-prompt { min-width: min(300px, 86vw); text-align: center; }
+
+/* Patch 179: the Case File, illustrated. */
+.casefile-art { border: 1px solid rgba(233, 200, 119, 0.4); border-radius: 12px; overflow: hidden; margin: 8px 0 10px; line-height: 0; }
+.casefile-art svg { width: 100%; height: auto; display: block; }
+.casefile-art--locked { filter: brightness(0.32) saturate(0.2); border-style: dashed; }
+.casefile-chapter-h { color: #f2d27a; letter-spacing: 2px; border-bottom: 0; margin-bottom: 0; }
+.casefile-page { border: 1px solid rgba(233, 200, 119, 0.3) !important; border-left: 3px solid #e9c877 !important; }
+.casefile-page-title::before { content: "\1F4CE\00A0"; }
+.casefile-page-text { color: #e6e0d2; line-height: 1.55; font-size: 0.92rem; }
+.casefile-missing { border-left-color: rgba(255, 255, 255, 0.18) !important; color: #8d879a; }
+
+/* Patch 185: "SANITY 20% · FRAYING" overflowed its panel at 384 px (qa/hud_check). */
+#ui-layer .sanity-section.sanity-low #sanity-label, #ui-layer .sanity-section.sanity-breakdown #sanity-label { font-size: 11px; letter-spacing: 0; }
+
+/* Patch 185: the pause inventory must never push a button off screen (qa/sizes_check).
+   It takes what is left after the title, the line and the three buttons, and on a short
+   landscape screen it steps aside entirely. */
+#pause-menu .pause-loadout { max-height: max(0px, min(46vh, calc(100vh - 410px))); }
+#pause-menu .medical-folder { max-height: 98vh; }
+@media (max-height: 520px) { #pause-menu .pause-loadout { display: none; } #pause-menu #pause-desc { margin: 0 0 6px; } }

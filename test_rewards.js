@@ -102,7 +102,8 @@ function takeDoor(rewardType) {
         weaponLevels: Object.values(state.player.weapons).reduce((a, w) => a + w.level, 0)
     };
 
-    Combat.resolveWeapons(game);
+    // Patch 170: a door takes DOOR_ENTER_STEPS to walk through before the room changes.
+    for (let i = 0; i < 24 && state.roomNumber === before.room; i++) Combat.resolveWeapons(game);
 
     const after = {
         lucidity: state.lucidity,

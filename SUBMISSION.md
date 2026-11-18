@@ -1,4 +1,4 @@
-# FRACTURED: Second Opinion: CrazyGames submission sheet (v2.0.0)
+# FRACTURED: Survivors: CrazyGames submission sheet (v2.0.0)
 
 Draft text for the developer-portal form, written from the game as built (Patch 159).
 Check every line against the uploaded build before pasting, and tick
@@ -34,15 +34,15 @@ All of these are in `marketing/`; see `marketing/README.md` for the rules they f
 
 ## Title
 
-FRACTURED: Second Opinion
+FRACTURED: Survivors
 
-The v2 name (Patch 163). It is the same game as the declined v1, reworked.
+The v3 name (Patch 187; v2 was prepared as "FRACTURED: Second Opinion" and never launched). It is the same game as the declined v1, reworked. Seven of the eight comparable games on CrazyGames carry "Survivor(s)" in the title, so the subtitle now names the genre.
 - If the portal treats the title as the game's identity, keep it as the resubmission's title, and say in the notes that v1 was "FRACTURED".
 - The subtitle appears on the title screen, the covers, the logo and the page title.
 
 ## Short description (one line)
 
-Hold the light. Survive the swarm. Break five nightmares, and find your way back.
+Your light is your weapon. Burn through the horde, break five nightmares, and wake up.
 
 (Longer alternative: "A psychological survivors-like: a flashlight against the dark, five
 nightmare bosses, hundreds of builds, and a story about getting better.")
@@ -55,11 +55,13 @@ You are Subject 0, waking inside an evaluation built from a memory you won't fac
 floor of the institution is a defence mechanism, and each one has a guardian. Hold the
 light up, keep your Sanity, and go deeper.
 
-Easy to pick up: move, and your weapons fire on their own. A run lasts a few minutes, and
+Easy to pick up: move, and your light does the rest. Dozens of nightmares close in at
+once, and everything your beam touches burns. A floor lasts four or five minutes, and
 every run makes the next one stronger.
 
-- **Survive the swarm.** Janitors, Hall Monitors, Substitutes, Photocopies, Fire
-  Wardens and Crawlspaces come in waves from the dark.
+- **Burn through the horde.** Janitors, Hall Monitors, Substitutes, Photocopies, Fire
+  Wardens and Crawlspaces pour in from every edge of the screen, their eyes showing in
+  the dark before your beam finds them. Walls block your light, and they know it.
   - Your weapons fire on their own; you move, aim and dash.
   - Aim assist is on by default on touch.
 - **Build your run.** There are 12 weapons, from the Rusted Flashlight to the Lullaby,
@@ -67,7 +69,9 @@ every run makes the next one stronger.
   - Every level-up card says exactly what changes.
 - **Five bosses, five defences.** Sphere Head, the Rorschach, the Panopticon, the
   Amalgamation and the Architect each fight differently.
-- **Come back stronger.** You earn Lucidity on every run, win or lose. Spend it on:
+- **Come back stronger.** Between runs you wake in your bedroom: trophies of the bosses
+  you have beaten on the shelf, the pages you have found pinned to the corkboard. You
+  earn Lucidity on every run, win or lose. Spend it on:
   - the 31-node Synapse Tree;
   - 16 tokens to equip;
   - 4 playable Patients, each with their own start and passive;
@@ -99,7 +103,9 @@ recovery. A short content note is in the Clinical Guide.
 ## Category and tags (suggested)
 
 - **Category:** Action
-- **Tags:** survival, roguelike, bullet hell, horror, dark, 2D, mouse, keyboard, mobile.
+- **Tags:** Horde Survival, Survival, Mobile, Horror, Roguelike, Top-Down, 2D.
+  - Patch 186: all eight comparable games on CrazyGames (checked 18 Nov 2026) carry
+    Action + Horde Survival + Survival; the earlier list missed Horde Survival.
   - Use `mobile` only if `QA_CHECKLIST.md` §4's phone runs all passed.
   - Replace any tag the portal does not offer with its nearest listed tag.
 
@@ -117,12 +123,19 @@ recovery. A short content note is in the Clinical Guide.
 
 ## Notes to the CrazyGames team (resubmission)
 
-v1 (as "FRACTURED") was declined after Basic Launch (average playtime 1m36s, gameplay conversion 32%). v2 is "FRACTURED: Second Opinion".
+v1 (as "FRACTURED") was declined after Basic Launch (average playtime 1m36s, gameplay conversion 32%). the resubmission is "FRACTURED: Survivors".
 What v2 changes, in the order a new player meets it:
 
+- **v3 (after v2 was prepared): the core loop itself.** v2 polished a game that sent
+  about one enemy a second. v3 makes it the horde game its genre promises: 10 to 50
+  enemies alive at once, a closer camera, a readable dark, a new HUD with an XP bar,
+  jointed animated characters and bosses, redrawn menus, set-dressed floors, and a
+  bedroom hub that shows the save.
 - **First minute:**
-  - The first click plays: the cold open runs over the tutorial room.
-  - The first level-up comes at about 20 s, and a second weapon by the second level-up.
+  - The first click plays: straight into a small real horde, with two hint lines. No
+    text cards and no scripted tutorial room.
+  - First kills within about 5 s; the first level-up at about 12 s (measured with a
+    scripted player), and a second weapon by the second level-up.
   - Cards explain themselves and preview synergies.
   - Mobile aim assist frees the right thumb.
 - **Reasons to continue:**

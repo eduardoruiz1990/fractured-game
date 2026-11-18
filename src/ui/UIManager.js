@@ -120,6 +120,27 @@ function computeEffectDiff(fromTokenData, fromRarity, toTokenData, toRarity) {
     return lines;
 }
 
+// Patch 176: the paper doll in the LOADOUT pane (renderSlotChips).
+const DOLL_SLOT_ICONS = { head: '🧠', body: '🦺', hands: '🧤', legs: '👟', prescription: '💊' };
+const DOLL_SVG = `<svg viewBox="0 0 120 190" xmlns="http://www.w3.org/2000/svg">
+  <defs><radialGradient id="dollGlow" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#e9c877" stop-opacity="0.28"/><stop offset="1" stop-color="#e9c877" stop-opacity="0"/></radialGradient></defs>
+  <ellipse cx="60" cy="92" rx="58" ry="88" fill="url(#dollGlow)"/>
+  <ellipse cx="60" cy="178" rx="34" ry="7" fill="rgba(0,0,0,0.5)"/>
+  <g stroke="#0b0d14" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M47 118 L44 166 L55 166 L60 126 L65 166 L76 166 L73 118 Z" fill="#39446a"/>
+    <path d="M40 166 h17 v8 h-19 z M63 166 h17 l2 8 h-19 z" fill="#d9d2c2"/>
+    <path d="M36 66 Q60 56 84 66 L80 122 Q60 128 40 122 Z" fill="#3f78b5"/>
+    <path d="M36 68 L22 104 L30 108 L42 82 Z M84 68 L98 104 L90 108 L78 82 Z" fill="#3f78b5"/>
+    <circle cx="25" cy="109" r="6" fill="#efd2b0"/><circle cx="95" cy="109" r="6" fill="#efd2b0"/>
+    <rect x="92" y="100" width="20" height="8" rx="2" fill="#5a5f6a"/><circle cx="113" cy="104" r="4.5" fill="#fff6cc"/>
+    <circle cx="60" cy="40" r="21" fill="#efd2b0"/>
+    <path d="M39 38 Q40 16 60 17 Q80 16 81 38 Q70 26 60 29 Q50 26 39 38 Z" fill="#2b2530"/>
+  </g>
+  <circle cx="52" cy="42" r="2.6" fill="#12141c"/><circle cx="68" cy="42" r="2.6" fill="#12141c"/>
+  <path d="M54 52 Q60 55 66 52" stroke="#12141c" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M47 46 q5 3 10 0 M63 46 q5 3 10 0" stroke="rgba(90,60,110,0.7)" stroke-width="1.4" fill="none"/>
+</svg>`;
+
 export class UIManager {
     constructor(saveManager, audioEngine, onStartGameCallback) {
         this.saveManager = saveManager;
@@ -941,17 +962,17 @@ export class UIManager {
         };
 
         const sealedCard = () => `
-            <div class="trophy-card" style="background:#f4f1ea; border:2px dashed #c2b59b; box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
-                <div style="font-size:3.5rem; color:#111; opacity:0.07; line-height:1;">?</div>
+            <div class="trophy-card" style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.22); box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
+                <div style="font-size:3.5rem; color: #f2eee3; opacity:0.07; line-height:1;">?</div>
                 <div class="redacted-text" style="font-weight:bold; margin-top:15px; font-size:0.8rem;">(UNENCOUNTERED)</div>
                 <div style="font-size:0.7rem; color:#9a917f; margin-top:5px; letter-spacing:2px;">SEALED</div>
             </div>`;
 
         const trophyCard = (entry, count, tier, goalText) => `
-            <div class="trophy-card" style="background:#fdfaf3; border:2px solid #ccc; box-shadow:4px 4px 0 rgba(0,0,0,0.1); padding:15px; text-align:center; position:relative;">
+            <div class="trophy-card" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(233, 200, 119, 0.35); box-shadow:4px 4px 0 rgba(0,0,0,0.1); padding:15px; text-align:center; position:relative;">
                 <div style="font-size:3.5rem; line-height:1; color:${tier.color || '#111'}; opacity:${tier.color ? 1 : 0.35}; text-shadow:${tier.shadow};">${entry.icon}</div>
                 <div style="font-weight:bold; color:var(--ink-black); margin-top:15px; font-size:0.9rem;">${entry.name}</div>
-                <div style="font-size:0.8rem; color:#555; margin-top:5px; font-weight:bold;">${count}${goalText}</div>
+                <div style="font-size:0.8rem; color: #b3adc0; margin-top:5px; font-weight:bold;">${count}${goalText}</div>
             </div>`;
 
         // Patch 139 (V2 plan D7): the case records, the achievements, and the unlock
@@ -1040,19 +1061,19 @@ export class UIManager {
             const recipe = escapeText(synergyRecipe(syn));
             if (times <= 0) {
                 html += `
-            <div class="trophy-card codex-card codex-locked" data-synergy="${id}" style="background:#f4f1ea; border:2px dashed #c2b59b; box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
-                <div style="font-size:2.6rem; color:#111; opacity:0.08; line-height:1;">🔗</div>
+            <div class="trophy-card codex-card codex-locked" data-synergy="${id}" style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.22); box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
+                <div style="font-size:2.6rem; color: #f2eee3; opacity:0.08; line-height:1;">🔗</div>
                 <div class="redacted-text" style="font-weight:bold; margin-top:10px; font-size:0.8rem;">(UNFORMED)</div>
                 <div style="font-size:0.72rem; color:#6f6656; margin-top:6px; line-height:1.35;">${recipe}</div>
             </div>`;
                 return;
             }
             html += `
-            <div class="trophy-card codex-card" data-synergy="${id}" style="background:#fdfaf3; border:2px solid var(--ui-gold); box-shadow:4px 4px 0 rgba(0,0,0,0.1); padding:15px; text-align:center;">
+            <div class="trophy-card codex-card" data-synergy="${id}" style="background: rgba(255, 255, 255, 0.05); border:2px solid var(--ui-gold); box-shadow:4px 4px 0 rgba(0,0,0,0.1); padding:15px; text-align:center;">
                 <div style="font-size:2.6rem; line-height:1;">🔗</div>
                 <div style="font-weight:bold; color:var(--ink-black); margin-top:10px; font-size:0.9rem;">${escapeText(syn.name)}</div>
                 <div style="font-size:0.72rem; color:#6f6656; margin-top:4px; line-height:1.35;">${recipe}</div>
-                <div style="font-size:0.74rem; color:#333; margin-top:6px; line-height:1.35;">${escapeText(syn.desc)}</div>
+                <div style="font-size:0.74rem; color: #b3adc0; margin-top:6px; line-height:1.35;">${escapeText(syn.desc)}</div>
                 <div style="font-size:0.7rem; color:#8a8172; margin-top:6px; letter-spacing:1px;">FORMED ×${times}</div>
             </div>`;
         });
@@ -1070,8 +1091,8 @@ export class UIManager {
             const recipe = escapeText(evolutionRecipe(evo));
             if (times <= 0) {
                 html += `
-            <div class="trophy-card codex-card codex-locked" data-evolution="${id}" style="background:#f4f1ea; border:2px dashed #c2b59b; box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
-                <div style="font-size:2.6rem; color:#111; opacity:0.08; line-height:1;">⬆</div>
+            <div class="trophy-card codex-card codex-locked" data-evolution="${id}" style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.22); box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
+                <div style="font-size:2.6rem; color: #f2eee3; opacity:0.08; line-height:1;">⬆</div>
                 <div class="redacted-text" style="font-weight:bold; margin-top:10px; font-size:0.8rem;">(UNEVOLVED)</div>
                 <div style="font-size:0.72rem; color:#6f6656; margin-top:6px; line-height:1.35;">${recipe}</div>
             </div>`;
@@ -1082,7 +1103,7 @@ export class UIManager {
                 <div style="font-size:2.6rem; line-height:1; color:#8e6cd8;">⬆</div>
                 <div style="font-weight:bold; color:var(--ink-black); margin-top:10px; font-size:0.9rem;">${escapeText(evo.name)}</div>
                 <div style="font-size:0.72rem; color:#6f6656; margin-top:4px; line-height:1.35;">${recipe}</div>
-                <div style="font-size:0.74rem; color:#333; margin-top:6px; line-height:1.35;">${escapeText(evo.desc)}</div>
+                <div style="font-size:0.74rem; color: #b3adc0; margin-top:6px; line-height:1.35;">${escapeText(evo.desc)}</div>
                 <div style="font-size:0.7rem; color:#8a8172; margin-top:6px; letter-spacing:1px;">EVOLVED ×${times}</div>
             </div>`;
         });
@@ -1199,6 +1220,16 @@ export class UIManager {
         }
         bar.innerHTML = '';
 
+        // Patch 176: the strip is now a paper doll. The Patient stands in the middle
+        // and each slot sits by the part of the body it dresses, with the token's
+        // icon and its rarity colour, so what is worn can be read at a glance.
+        bar.classList.add('paper-doll');
+        const fig = document.createElement('div');
+        fig.className = 'doll-figure';
+        fig.setAttribute('aria-hidden', 'true');
+        fig.innerHTML = DOLL_SVG;
+        bar.appendChild(fig);
+
         // 'all' first so the default state is the leftmost chip and the strip reads
         // left-to-right as "everything, then narrow it down".
         const entries = ['all', ...TOKEN_SLOT_TYPES];
@@ -1228,6 +1259,13 @@ export class UIManager {
                 const tokenData = equippedItem ? TOKENS[equippedItem.id] : null;
                 sub.textContent = tokenData ? tokenData.name : '— empty —';
                 if (tokenData) chip.classList.add('loadout-slot-chip--filled');
+                // Patch 176: the slot's icon, and the worn token's rarity on the frame.
+                const ic = document.createElement('span');
+                ic.className = 'loadout-slot-chip-icon';
+                ic.textContent = DOLL_SLOT_ICONS[slot] || '◆';
+                chip.insertBefore(ic, chip.firstChild);
+                const rar = equippedItem && TOKEN_RARITIES[equippedItem.rarity];
+                if (rar) { chip.style.borderColor = rar.color; chip.style.boxShadow = `0 0 12px ${rar.color}55, inset 0 0 0 1px ${rar.color}55`; }
             } else {
                 const filled = TOKEN_SLOT_TYPES.filter(s => meta.equippedTokens[s]).length;
                 sub.textContent = `${filled}/${TOKEN_SLOT_TYPES.length} worn`;

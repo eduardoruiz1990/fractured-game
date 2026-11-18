@@ -5,14 +5,16 @@ import { InputManager } from './core/Input.js';
 import { Renderer } from './core/Renderer.js';
 import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
-import { LevelUpUI } from './ui/LevelUpUI.js';
+import { LevelUpUI, BOONS, DEEP_BOONS } from './ui/LevelUpUI.js';
+// Patch 172: boon id -> entry, for the pause-screen inventory.
+const BOON_INDEX = Object.fromEntries([...BOONS, ...DEEP_BOONS].map(b => [b.id, b]));
 import { SynergyBanner } from './ui/SynergyBanner.js';
 import { EVOLUTIONS } from './systems/Evolutions.js';   // Patch 134
 import { PATIENTS, newlyAdmitted } from './data/Patients.js';   // Patch 136
 import { roomEventHud } from './systems/RoomEvents.js';   // Patch 138
 import { BUILD_ID } from './data/Build.js';   // Patch 159
 import { lockedWeapons } from './data/Unlocks.js';   // Patch 139
-import { ACHIEVEMENTS } from './data/Achievements.js';
+import { ACHIEVEMENTS, achievementProgress } from './data/Achievements.js';
 import { dailyKey, dailySetup, dailyScore } from './systems/Daily.js';   // Patch 140
 import { INTRUSIVE_THOUGHTS } from './data/Manifestations.js';
 import { MANIFESTATIONS } from './data/Manifestations.js';
@@ -86,8 +88,7 @@ errorLog.setContext(() => ({
 let coarsePointerHint = false;
 try {
     coarsePointerHint =
-        (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) ||
-        (navigator.maxTouchPoints || 0) > 0;
+        (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches);   // Patch 190: no maxTouchPoints. CrazyGames' technical requirements forbid using it (or ontouchstart) to detect mobile: touchscreen laptops report it too.
 } catch (e) { coarsePointerHint = false; }
 
 /**
@@ -658,8 +659,8 @@ function saveSettings() {
 // session if live gameplay is slow; it never steps back up on its own (that would
 // flap), but choosing AUTO again in Settings re-evaluates from HIGH.
 const QUALITY_CAPS = {
-    high: { liveEntityCap: 60, particleCap: 450 },
-    low:  { liveEntityCap: 45, particleCap: 200 }
+    high: { liveEntityCap: 90, particleCap: 450 },   // Patch 165: horde caps (were 60/45)
+    low:  { liveEntityCap: 55, particleCap: 200 }
 };
 function currentQualityTier() {
     const q = gameSettings.quality;
@@ -951,7 +952,7 @@ function applyDevOverrides() {
             game.state.floor = chosenFloor;
             game.state.maxConvergence = Math.floor(100 * Math.pow(1.3, chosenFloor - 1));
             game.state.xp += (chosenFloor - 1) * 1500;
-            console.log(`%c DEV OVERRIDE: Starting on Floor ${chosenFloor}. Free XP granted. `, 'background: #c5a059; color: #000;');
+            console.log(`%c DEV OVERRIDE: Starting on Floor ${chosenFloor}. Free XP granted. `, 'background: #c5a059; color: #f2eee3;');
 
             if (chosenFloor > saveManager.metaState.maxFloorReached) {
                 saveManager.metaState.maxFloorReached = chosenFloor;
@@ -971,7 +972,7 @@ function applyDevOverrides() {
             // boss is fought at level 1 with no weapons and kills you before you can
             // look at it.
             game.state.xp += 1200;
-            console.log(`%c DEV OVERRIDE: Skipping to boss room on Floor ${game.state.floor}. `, 'background: #c5a059; color: #000;');
+            console.log(`%c DEV OVERRIDE: Skipping to boss room on Floor ${game.state.floor}. `, 'background: #c5a059; color: #f2eee3;');
         }
     }
 }
@@ -1084,10 +1085,10 @@ function startNewRun(opts = {}) {
     const story = saveManager.metaState.story || {};
     // (state.isTutorial is set by Director.spawnRoom on the first step, so this reads
     // the same condition it uses.)
-    if (!saveManager.metaState.tutorialCompleted && (game.state.floor || 1) === 1 && !story.coldOpenSeen) {
-        saveManager.markStory('coldOpenSeen');
-        showColdOpen();
-    }
+    // Patch 167: the cold open no longer plays over a new player's first room. Four
+    // cards of text before the first kill is where v1 lost two players in three; the
+    // content note is one line on the title now, and the cards live in the Case File.
+    if (!story.coldOpenSeen) saveManager.markStory('coldOpenSeen');
 }
 
 /**
@@ -1313,6 +1314,9 @@ function dailyDescribe(setup) {
 function refreshDailyEntries() {
     if (!saveManager) return;
     const show = !!saveManager.metaState.tutorialCompleted;
+    // Patch 167: a first-time title is the logo and one button. The sealed Recursion
+    // and the Mind Hub appear once the first room is behind the player (style.css).
+    document.body.classList.toggle('first-time', !show);
     const key = dailyKey();
     const setup = dailySetup(key);
     const d = dailyDescribe(setup);
@@ -1499,6 +1503,9 @@ function showStorageNoticeIfNeeded() {
     // here: if the same player later opens the itch build, they still see it once.
     if (portalSDK.available) return;
     if (saveManager.metaState.storageNoticeAcknowledged === true) return;
+    // Patch 167: not on a first visit. It covered a third of a phone's title screen
+    // before the player had a save worth losing.
+    if (!saveManager.metaState.tutorialCompleted) return;
     el.classList.add('is-visible');
     applyStorageNoticeLayout();
 }
@@ -1645,21 +1652,21 @@ function initEngine() {
 
         document.getElementById('dev-btn-add-lucidity').addEventListener('click', () => {
             saveManager.addLucidity(1000);
-            console.log(`%c DEV: +1000 Lucidity banked. Total: ${saveManager.metaState.lucidityBank} `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: +1000 Lucidity banked. Total: ${saveManager.metaState.lucidityBank} `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
         document.getElementById('dev-btn-add-patient-xp').addEventListener('click', () => {
             saveManager.metaState.spentLucidity = (saveManager.metaState.spentLucidity || 0) + 5000;
             saveManager.saveGame();
-            console.log(`%c DEV: +5000 spent Lucidity. Patient Level now: ${saveManager.getPatientLevelInfo().level} `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: +5000 spent Lucidity. Patient Level now: ${saveManager.getPatientLevelInfo().level} `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
         document.getElementById('dev-btn-force-escape').addEventListener('click', () => {
             saveManager.markFirstEscape();
-            console.log('%c DEV: hasEscapedFloor1 forced TRUE. ', 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log('%c DEV: hasEscapedFloor1 forced TRUE. ', 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
         document.getElementById('dev-btn-force-boss-kill').addEventListener('click', () => {
             saveManager.metaState.killCounts.BOSS = Math.max(1, saveManager.metaState.killCounts.BOSS || 0);
             saveManager.saveGame();
-            console.log(`%c DEV: killCounts.BOSS forced to ${saveManager.metaState.killCounts.BOSS}. `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: killCounts.BOSS forced to ${saveManager.metaState.killCounts.BOSS}. `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
         // Patch 98: the endless mode's entry points are gated on a first Architect kill,
         // which is a ~40-minute prerequisite to reproduce by hand. Sets the same field
@@ -1671,11 +1678,11 @@ function initEngine() {
             saveManager.saveGame();
             refreshRecursionEntries();
             refreshDailyEntries();   // Patch 140
-            console.log(`%c DEV: killCounts.ARCHITECT forced to ${saveManager.metaState.killCounts.ARCHITECT} — THE RECURSION unlocked. `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: killCounts.ARCHITECT forced to ${saveManager.metaState.killCounts.ARCHITECT} — THE RECURSION unlocked. `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
         document.getElementById('dev-btn-dump-builds').addEventListener('click', () => {
             const log = saveManager.getRunBuildLog();
-            console.log(`%c DEV: ${log.length} logged run build(s). `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: ${log.length} logged run build(s). `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
             console.table(log.map(entry => ({
                 floor: entry.floor,
                 level: entry.levels,
@@ -1693,7 +1700,7 @@ function initEngine() {
         // / .export(), which is the only way to get it off a real player's device.
         document.getElementById('dev-btn-dump-errors').addEventListener('click', () => {
             const count = errorLog.dump();
-            console.log(`%c DEV: ${count} error(s) recorded. FRACTURED_ERRORS.export() for JSON. `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: ${count} error(s) recorded. FRACTURED_ERRORS.export() for JSON. `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
 
         // DEV: fires all three capture paths at once so the handlers can be verified
@@ -1728,7 +1735,7 @@ function initEngine() {
                 saveManager.addTokenToInventory(tokenId, rarities[Math.floor(Math.random() * rarities.length)]);
             });
             if (uiManager) uiManager.renderLoadoutUI();
-            console.log(`%c DEV: added all ${Object.keys(TOKENS).length} tokens to inventory (random rarity each). `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: added all ${Object.keys(TOKENS).length} tokens to inventory (random rarity each). `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
 
         document.getElementById('dev-btn-add-random-token').addEventListener('click', () => {
@@ -1738,7 +1745,7 @@ function initEngine() {
             const rarity = rarities[Math.floor(Math.random() * rarities.length)];
             saveManager.addTokenToInventory(tokenId, rarity);
             if (uiManager) uiManager.renderLoadoutUI();
-            console.log(`%c DEV: added ${rarity} ${TOKENS[tokenId].name}. `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: added ${rarity} ${TOKENS[tokenId].name}. `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
 
         // --- VISUAL TEST BENCH -------------------------------------------------
@@ -1756,7 +1763,7 @@ function initEngine() {
                     py + Math.sin(a) * radius
                 );
             });
-            console.log(`%c DEV: spawned ${types.join(', ')}. `, 'background: #c5a059; color: #000;');
+            console.log(`%c DEV: spawned ${types.join(', ')}. `, 'background: #c5a059; color: #f2eee3;');
         };
 
         document.getElementById('dev-btn-spawn-enemies').addEventListener('click', () => {
@@ -1780,19 +1787,19 @@ function initEngine() {
             }
             game.state.activeBoss = null;
             game.state.bossSpawned = false;
-            console.log('%c DEV: cleared all entities. ', 'background: #c5a059; color: #000;');
+            console.log('%c DEV: cleared all entities. ', 'background: #c5a059; color: #f2eee3;');
         });
 
         document.getElementById('dev-freeze-entities').addEventListener('change', (e) => {
             if (!game || !game.state) return;
             game.state.devFreezeEntities = e.target.checked;
-            console.log(`%c DEV: enemy AI ${e.target.checked ? 'FROZEN' : 'RUNNING'}. `, 'background: #c5a059; color: #000;');
+            console.log(`%c DEV: enemy AI ${e.target.checked ? 'FROZEN' : 'RUNNING'}. `, 'background: #c5a059; color: #f2eee3;');
         });
 
         document.getElementById('dev-telemetry-enabled').addEventListener('change', (e) => {
             if (!game || !game.state) return;
             game.state.devTelemetryEnabled = e.target.checked;
-            console.log(`%c DEV: telemetry overlay ${e.target.checked ? 'ON' : 'OFF'}. `, 'background: #c5a059; color: #000;');
+            console.log(`%c DEV: telemetry overlay ${e.target.checked ? 'ON' : 'OFF'}. `, 'background: #c5a059; color: #f2eee3;');
         });
 
         document.getElementById('dev-btn-apply-scenario').addEventListener('click', () => {
@@ -1853,7 +1860,7 @@ function initEngine() {
                         break;
                 }
             });
-            console.log(`%c DEV: applied scenario ${scenario} to ${game.state.entities.length} entities. `, 'background: #c5a059; color: #000;');
+            console.log(`%c DEV: applied scenario ${scenario} to ${game.state.entities.length} entities. `, 'background: #c5a059; color: #f2eee3;');
         });
     }
     // --- NEW: SETTINGS MENU INJECTION (THEME ALIGNED) ---
@@ -2656,6 +2663,74 @@ function initEngine() {
     const pauseTitle = document.getElementById('pause-title');
     const btnDescend = document.getElementById('btn-descend');
 
+    /**
+     * Patch 172: the in-run inventory. What this run is carrying, read from the live
+     * state when the game pauses: instruments with their level, boons, active
+     * synergies, the tokens worn into the run and the ones found in it. Read-only:
+     * gear is fitted in the Mind Hub, so a run stays a run.
+     */
+    /**
+     * Patch 173: the five unearned achievements nearest completion, so a paused player
+     * has something to aim at. Counter achievements rank by value/goal; the rest (a
+     * single feat) rank last, in list order.
+     */
+    function closestAchievementsHtml(meta, esc) {
+        const rows = [];
+        for (const a of ACHIEVEMENTS) {
+            let done = false;
+            try { done = !!a.test(meta || {}); } catch (e) { done = false; }
+            if (done) continue;
+            const pr = achievementProgress(a, meta);
+            rows.push({ a, ratio: pr && pr.goal > 0 ? pr.value / pr.goal : 0, pr });
+        }
+        rows.sort((x, y) => y.ratio - x.ratio);
+        return rows.slice(0, 5).map(({ a, ratio, pr }) =>
+            `<div class="pl-row pl-ach"><span class="pl-name">${esc(a.icon || '')} ${esc(a.name)}<span class="pl-sub">${esc(a.desc || '')}</span>` +
+            `<span class="pl-bar"><i style="width:${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%"></i></span></span>` +
+            `<span class="pl-count">${pr ? `${Math.floor(pr.value)}/${pr.goal}` : '—'}</span></div>`).join('');
+    }
+
+    function renderPauseLoadout() {
+        const el = document.getElementById('pause-loadout');
+        if (!el) return;
+        try {
+            const st = game.state, pl = st.player;
+            const esc = (v) => escapeHtml(String(v));
+            const pretty = (id) => String(id).replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+            const owned = Object.entries(pl.weapons || {}).filter(([, w]) => w && w.level > 0);
+            const weaponRows = owned.map(([id, w]) => {
+                const m = MANIFESTATIONS[id] || {};
+                const max = Math.max(m.maxLvl || 5, w.level);
+                let pips = '';
+                for (let i = 1; i <= max; i++) pips += `<i class="${i <= w.level ? 'on' : ''}"></i>`;
+                return `<div class="pl-row"><span class="pl-name">${esc(m.name || pretty(id))}<span class="pl-sub">${esc(m.desc || '')}</span></span><span class="pl-pips" aria-label="level ${w.level} of ${max}">${pips}</span></div>`;
+            }).join('');
+            const boonName = (id) => { const b = BOON_INDEX[id]; return b ? `${b.icon ? b.icon + ' ' : ''}${b.name}` : pretty(id); };
+            const boons = (pl.boons || []).map(id => `<span class="pl-chip" title="${esc((BOON_INDEX[id] && BOON_INDEX[id].desc) || '')}">${esc(boonName(id))}</span>`).join('');
+            const syn = (pl.synergies || []).map(id => `<span class="pl-chip">${esc((SYNERGIES[id] && SYNERGIES[id].name) || pretty(id))}</span>`).join('');
+            const meta = saveManager.metaState || {};
+            const worn = Object.entries(meta.equippedTokens || {}).map(([slot, uid]) => {
+                const item = uid && (meta.inventory || []).find(i => i.uid === uid);
+                const td = item && TOKENS[item.id];
+                return td ? `<div class="pl-row"><span class="pl-name">${esc(td.name)}<span class="pl-sub">${esc(slot.toUpperCase())} · ${esc(td.desc || '')}</span></span></div>` : '';
+            }).join('');
+            const found = {};
+            (st.runInventory || []).forEach(r => { found[r] = (found[r] || 0) + 1; });
+            const foundChips = Object.entries(found).map(([r, n]) => `<span class="pl-chip">${esc(r)} × ${n}</span>`).join('');
+            const none = '<span class="pl-none">none yet</span>';
+            el.innerHTML =
+                `<h4>INSTRUMENTS ${owned.length}/6</h4>${weaponRows || none}` +
+                `<h4>BOONS</h4><div class="pl-chips">${boons || none}</div>` +
+                `<h4>SYNERGIES</h4><div class="pl-chips">${syn || none}</div>` +
+                `<h4>TOKENS WORN</h4>${worn || none}` +
+                `<h4>TOKENS FOUND THIS RUN</h4><div class="pl-chips">${foundChips || none}</div>` +
+                `<h4>CLOSEST ACHIEVEMENTS</h4>${closestAchievementsHtml(meta, esc) || none}` +
+                `<div class="pl-note">Tokens are fitted in the Mind Hub between runs.</div>`;
+        } catch (e) {
+            el.innerHTML = '';   // the pause menu must open even if this cannot be drawn
+        }
+    }
+
     function togglePause() {
         if (gameState === 'PLAYING') {
             gameState = 'PAUSED';
@@ -2664,6 +2739,11 @@ function initEngine() {
             document.getElementById('pause-desc').innerText = "The nightmare pauses, but it does not end.";
             showSessionNote(null);   // Patch 145: the note belongs to a cleared floor only
             btnDescend.style.display = 'none';
+            // Patch 181: the floor-clear screen hides RESUME (it offers DESCEND instead)
+            // and nothing ever showed it again, so every pause after the first cleared
+            // floor had no way back to the game on a phone. A pause always has RESUME.
+            document.getElementById('btn-unpause').style.display = '';
+            renderPauseLoadout();   // Patch 172
             pauseMenu.style.display = 'flex';
             inputManager.hideJoysticks();
         } else if (gameState === 'PAUSED') {
@@ -2949,7 +3029,7 @@ function initEngine() {
 
         if (import.meta.env.DEV && window.FRACTURED_DEV_MODE && game.state.devTelemetryEnabled && game.state.telemetry) {
             const tel = game.state.telemetry;
-            console.log('%c DEV: RUN TELEMETRY (death) ', 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log('%c DEV: RUN TELEMETRY (death) ', 'background: #c5a059; color: #f2eee3; font-weight: bold;');
             console.log({
                 firstBoonAt_s: tel.firstBoonAt === null ? null : +(tel.firstBoonAt / 1000).toFixed(1),
                 firstBossAt_s: tel.firstBossAt === null ? null : +(tel.firstBossAt / 1000).toFixed(1),
@@ -3427,21 +3507,32 @@ function gameLoop(time) {
                     let hpRatio = Math.max(0, activeBoss.hp / activeBoss.maxHp);
                     hudStyle(conBar, 'width', hudPct(hpRatio));
                     
-                    let bossName = 'SUBJECT: SPHERE HEAD';
-                    if (activeBoss.type === 'RORSCHACH') bossName = 'SUBJECT: RORSCHACH';
-                    if (activeBoss.type === 'PANOPTICON') bossName = 'SUBJECT: THE PANOPTICON';
-                    if (activeBoss.type === 'AMALGAMATION') bossName = 'SUBJECT: THE AMALGAMATION';
-                    if (activeBoss.type === 'ARCHITECT') bossName = 'SUBJECT: THE ARCHITECT';
+                    // Patch 170: the name and a percentage; the long form wrapped on phones.
+                    let bossName = 'SPHERE HEAD';
+                    if (activeBoss.type === 'RORSCHACH') bossName = 'RORSCHACH';
+                    if (activeBoss.type === 'PANOPTICON') bossName = 'THE PANOPTICON';
+                    if (activeBoss.type === 'AMALGAMATION') bossName = 'THE AMALGAMATION';
+                    if (activeBoss.type === 'ARCHITECT') bossName = 'THE ARCHITECT';
 
-                    hudText(conText, `${bossName} - VITAL SIGNS: ${Math.ceil(hpRatio * 100)}%`);
+                    hudText(conText, `${bossName} ${Math.ceil(hpRatio * 100)}%`);
                     hudStyle(conBar, 'background', 'linear-gradient(90deg, #8b0000, #ff0000)');
                     hudStyle(conText, 'color', 'var(--ui-red)');
                     hudStyle(conContainer, 'borderColor', 'var(--ui-red)');
                     hudStyle(conContainer, 'boxShadow', '0 0 20px rgba(139, 0, 0, 0.8)');
                 } else if (conBar && game.state.maxRoomsPerFloor) {
                     let bossRatio = Math.min(1, game.state.roomNumber / game.state.maxRoomsPerFloor);
-                    hudStyle(conBar, 'width', hudPct(bossRatio));
-                    hudText(conText, bossRatio >= 1 ? "ANOMALY DETECTED" : `NIGHTMARE PROGRESS: ${Math.floor(bossRatio * 100)}%`);
+                    if (bossRatio >= 1) hudStyle(conBar, 'width', hudPct(bossRatio));
+                    // Patch 166: the bar is THIS room's progress (bodies dealt with out of
+                    // the room's total), so it moves while the player fights.
+                    const st = game.state;
+                    const roomTotal = st.roomBudgetTotal > 0 ? st.roomBudgetTotal : 0;
+                    if (bossRatio < 1) {
+                        const left = Math.max(0, st.enemyBudget || 0) + st.entities.length;
+                        bossRatio = st.roomCleared ? 1 : (roomTotal > 0 ? Math.max(0, Math.min(1, 1 - left / (roomTotal + 1))) : 0);
+                        hudStyle(conBar, 'width', hudPct(bossRatio));
+                        bossRatio = Math.min(bossRatio, 0.999);
+                    }
+                    hudText(conText, bossRatio >= 1 ? "BOSS ROOM" : (st.roomCleared ? 'ROOM CLEAR — PICK A DOOR' : `ROOM ${st.roomNumber}/${st.maxRoomsPerFloor}`));
                     
                     if (bossRatio >= 1) {
                         hudStyle(conBar, 'background', 'var(--ui-gold)');
@@ -3466,7 +3557,7 @@ function gameLoop(time) {
                     if (game.state.combatActive && !activeBoss) {
                         let totalRemaining = game.state.enemyBudget + game.state.entities.length;
                         // Patch 138: an event in progress says what to do instead.
-                        hudText(enemyCounter, roomEventHud(game.state) || `NIGHTMARES LEFT: ${totalRemaining}`);
+                        hudText(enemyCounter, roomEventHud(game.state) || `${totalRemaining} LEFT`);
                         hudStyle(enemyCounter, 'display', 'block');
                     } else {
                         hudStyle(enemyCounter, 'display', 'none');
@@ -3483,11 +3574,20 @@ function gameLoop(time) {
                 // the Wastes on screen and nothing connects the two.
                 // Patch 123: ROOM n/5 — with five rooms the count is short enough to
                 // be worth showing, and it tells a new player the boss is close.
-                const roomReadout = `${game.state.roomNumber}/${game.state.maxRoomsPerFloor || ROOMS_PER_FLOOR}`;
+                // Patch 166: floor, kills and Lucidity; the room moved to the middle bar.
                 const floorReadout = isEndless(game.state.floor)
-                    ? `CYCLE ${cycleLabel(game.state.floor)} - FLOOR: ${game.state.floor} - ROOM: ${roomReadout}`
-                    : `FLOOR: ${game.state.floor} - ROOM: ${roomReadout}`;
-                hudHtml(document.getElementById('score'), `LUCIDITY: ${game.state.lucidity} <br> ${floorReadout}`);
+                    ? `CYCLE ${cycleLabel(game.state.floor)} · FLOOR ${game.state.floor}`
+                    : `FLOOR ${game.state.floor}`;
+                hudHtml(document.getElementById('score'), `${floorReadout}<span class="hud-sub">☠ ${game.state.runKills || 0} · ✦ ${game.state.lucidity}</span>`);
+
+                // Patch 166: the XP bar and level.
+                {
+                    const need = getXPRequiredForLevel(game.state.level);
+                    let xr = need > 0 ? game.state.xp / need : 0;
+                    if (!Number.isFinite(xr)) xr = 0;
+                    hudStyle(document.getElementById('xp-fill'), 'width', hudPct(Math.max(0, Math.min(1, xr))));
+                    hudText(document.getElementById('xp-level'), `LV ${game.state.level}`);
+                }
 
                 // Patch 25: screen-fixed tutorial banner, driven off the same
                 // state.isTutorial gate Director.spawnRoom/Combat.js already use.
@@ -3501,7 +3601,16 @@ function gameLoop(time) {
                 const tutorialBanner = document.getElementById('tutorial-banner');
                 const tutorialBannerText = document.getElementById('tutorial-banner-text');
                 if (tutorialBanner && tutorialBannerText) {
-                    const tutorialLine = Tutorial.bannerCopy(game.state, inputManager.getInputMode());
+                    // Patch 167: with no scripted tutorial, the first room carries one
+                    // hint for its first seconds, then a second about doors.
+                    let tutorialLine = Tutorial.bannerCopy(game.state, inputManager.getInputMode());
+                    if (!tutorialLine && game.state.firstRoom && gameState === 'PLAYING') {
+                        const touch = inputManager.getInputMode() === 'touch';
+                        if (game.state.roomCleared) tutorialLine = 'Room clear. Walk into a door to pick your reward.';
+                        // Patch 188: the move hint is a picture now (Renderer.drawFirstRunHint);
+                        // one short line follows it, once the player is moving.
+                        else if (game.state.frame > 300 && game.state.frame < 780) tutorialLine = 'Grab the glowing shards to level up.';
+                    }
                     if (tutorialLine) {
                         // Patch 66: restart the fade whenever the line changes, so a new
                         // instruction is visibly new. The class has to be removed and a

@@ -63,10 +63,10 @@ html, body { margin: 0; width: ${W}px; height: ${H}px; overflow: hidden; backgro
 .a { clip-path: polygon(-10% -30%, 110% -30%, 110% 38%, 100% 38%, 64% 46%, 52% 58%, 30% 52%, 0 64%, -10% 64%); }
 .b { clip-path: polygon(-10% 64%, 0 64%, 30% 52%, 52% 58%, 64% 46%, 100% 38%, 110% 38%, 110% 130%, -10% 130%); transform: translate(${tfs * 0.035}px, ${tfs * 0.05}px) rotate(0.6deg); }
 #crack { left: 0; top: 0; width: 100%; height: 100%; }
-/* Patch 163: the name is FRACTURED: Second Opinion; the subtitle is the game's red
+/* Patch 163: the name is FRACTURED: Survivors; the subtitle is the game's red
    clinic stamp, as on the title screen (src/style.css .title-stamp). */
 .stamp { position: absolute; right: 0.2em; bottom: -0.62em; z-index: 2; font-family: 'Courier New', Courier, monospace; font-weight: bold;
-  font-size: 0.25em; letter-spacing: 0.16em; line-height: 1; color: #e0283f; border: 0.14em solid #e0283f; border-radius: 0.15em;
+  font-size: 0.36em; letter-spacing: 0.16em; line-height: 1; color: #e0283f; border: 0.14em solid #e0283f; border-radius: 0.15em;
   padding: 0.32em 0.55em 0.26em; background: rgba(12, 4, 6, 0.6); white-space: nowrap; transform: rotate(-7deg); }
 #title { padding-bottom: 0.4em; }
 #vig { inset: 0; background: radial-gradient(ellipse at 50% 50%, transparent 52%, rgba(0, 0, 0, 0.78) 100%); }
@@ -77,7 +77,7 @@ ${layout === 'logo' ? 'html, body { background: transparent !important; } .l:not
 <div class="l" id="eyeglow"></div><div class="l" id="beamwrap"><div class="l" id="beam"></div></div><div class="l" id="eye"></div><div class="l" id="hero"></div>
 <div class="l" id="vig"></div>
 <svg class="l" id="grain" width="${W * 2}" height="${H * 2}"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
-<div class="l" id="title"><div class="t ghost">FRACTURED</div><div class="t half a">FRACTURED</div><div class="t half b">FRACTURED</div><div class="t stampwrap"><span class="stamp">SECOND OPINION</span></div></div>
+<div class="l" id="title"><div class="t ghost">FRACTURED</div><div class="t half a">FRACTURED</div><div class="t half b">FRACTURED</div><div class="t stampwrap"><span class="stamp">SURVIVORS</span></div></div>
 </body></html>`;
 
 (async () => {

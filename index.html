@@ -7,10 +7,10 @@
          nothing on notched iPhones). -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#0a0505">
-    <title>FRACTURED: Second Opinion</title>
-    <meta name="description" content="Hold the light. Survive the swarm. FRACTURED: Second Opinion is a psychological survivors-like: a flashlight against the dark, five nightmare bosses, hundreds of builds, and a story about getting better.">
-    <meta property="og:title" content="FRACTURED: Second Opinion">
-    <meta property="og:description" content="Hold the light. Survive the swarm. FRACTURED: Second Opinion is a psychological survivors-like: a flashlight against the dark, five nightmare bosses, hundreds of builds, and a story about getting better.">
+    <title>FRACTURED: Survivors</title>
+    <meta name="description" content="Your light is your weapon. FRACTURED: Survivors is a horror horde-survival roguelite: a flashlight against the dark, five nightmare bosses, hundreds of builds, and a story about getting better.">
+    <meta property="og:title" content="FRACTURED: Survivors">
+    <meta property="og:description" content="Your light is your weapon. FRACTURED: Survivors is a horror horde-survival roguelite: a flashlight against the dark, five nightmare bosses, hundreds of builds, and a story about getting better.">
     <meta property="og:type" content="website">
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <!-- Portal SDK — INJECTED AT BUILD TIME (Patch 102, 2026-11-15). This file must
@@ -77,8 +77,8 @@
     </div>
 
     <div id="title-screen" class="fullscreen-menu">
-        <div class="title-glitch" data-text="FRACTURED">FRACTURED<span class="title-stamp">SECOND OPINION</span></div>
-        <div class="title-subtitle">PSYCHOLOGICAL EVALUATION ENGINE</div>
+        <div class="title-glitch" data-text="FRACTURED">FRACTURED<span class="title-stamp">SURVIVORS</span></div>
+        <div class="title-subtitle">YOUR LIGHT IS YOUR WEAPON</div>
         <!-- Patch 52: the primary action now goes STRAIGHT into a run. The old single
              INITIALIZE button led to the walkable hub, which meant a new player had to
              cross a dark room and find the right desk before anything resembling
@@ -87,7 +87,7 @@
              the secondary MIND HUB button. -->
         <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
             <button class="file-btn primary" id="btn-title-resume" style="display: none; width: auto; padding: 15px 50px; font-size: 1.5rem; border-color: var(--ui-gold); color: var(--ui-gold); background: transparent; text-shadow: 0 0 10px var(--ui-gold); box-shadow: 0 0 20px rgba(197, 160, 89, 0.1);">RESUME DESCENT</button>
-            <button class="file-btn primary" id="btn-title-begin" style="width: auto; padding: 15px 50px; font-size: 1.5rem; border-color: var(--ui-gold); color: var(--ui-gold); background: transparent; text-shadow: 0 0 10px var(--ui-gold); box-shadow: 0 0 20px rgba(197, 160, 89, 0.1);">BEGIN DESCENT</button>
+            <button class="file-btn primary" id="btn-title-begin" style="width: auto; padding: 15px 50px; font-size: 1.5rem; border-color: var(--ui-gold); color: var(--ui-gold); background: transparent; text-shadow: 0 0 10px var(--ui-gold); box-shadow: 0 0 20px rgba(197, 160, 89, 0.1);">PLAY</button>
             <button class="file-btn" id="btn-title-hub" style="width: auto; margin-top: 6px; padding: 10px 34px; font-size: 0.95rem; opacity: 0.85;">MIND HUB</button>
         </div>
         <!-- Patch 52b: was bare #8b0000 text, which disappeared into the dark red
@@ -97,6 +97,8 @@
         <!-- Patch 60: returning-player case record. Hidden entirely for a first-time
              player — "0 DESCENTS" is noise on an empty file, and the whole point of
              the Patch 52 title screen is that it stays uncluttered. -->
+        <!-- Patch 167: the content note, one line, in place of the four-card cold open. -->
+        <div id="title-content-note">A story about grief and getting better. No gore.</div>
         <div id="title-case-record" style="display: none; margin-top: 18px; color: #7a7264; font-family: var(--ui-font); font-size: 0.78rem; letter-spacing: 3px; text-align: center; text-shadow: 0 1px 3px #000;"></div>
         <div id="title-suspended-note" style="display: none; margin-top: 24px; padding: 8px 22px; background: rgba(8, 8, 10, 0.85); border: 1px solid rgba(197, 160, 89, 0.5); color: #e8dcc8; font-family: var(--ui-font); font-size: 0.85rem; font-weight: bold; letter-spacing: 3px; text-align: center; text-shadow: 0 1px 3px #000; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);"></div>
     </div>
@@ -150,7 +152,7 @@
             <div style="width: 100%; height: 8px; background: rgba(0,0,0,0.5); border: 1px solid #111;">
                 <div id="toast-xp-bar" style="height: 100%; width: 0%; background: #8b0000; transition: width 0.3s ease-out;"></div>
             </div>
-            <div id="toast-xp-text" style="color: #444; font-size: 0.75rem; margin-top: 5px; font-weight: bold;">0 / 1000 L Spent</div>
+            <div id="toast-xp-text" style="color: #b3adc0; font-size: 0.75rem; margin-top: 5px; font-weight: bold;">0 / 1000 L Spent</div>
         </div>
 
         <div class="medical-folder">
@@ -186,7 +188,7 @@
                 
                 <div id="tab-main" class="tab-pane active">
                     <div style="text-align: center; margin-bottom: 30px;">
-                        <p class="typewriter-text" style="font-size: 1.2rem; color: #555;">Subject exhibits severe dissociative tendencies. <br>Ready for further descent protocol.</p>
+                        <p class="typewriter-text" style="font-size: 1.2rem; color: #b3adc0;">Subject exhibits severe dissociative tendencies. <br>Ready for further descent protocol.</p>
                         
                         <div class="xp-bar-wrapper">
                             <div id="patient-xp-bar" class="xp-bar-fill"></div>
@@ -230,7 +232,7 @@
                 <div id="tab-curses" class="tab-pane">
                     <div style="text-align: center; margin-bottom: 20px;">
                         <h2 style="color: var(--ink-black); border-bottom: 2px solid var(--ink-black); padding-bottom: 10px; margin-top: 0; letter-spacing: 2px; font-family: var(--ui-font);">INTRUSIVE THOUGHTS</h2>
-                        <p class="typewriter-text" style="color: #555; font-size: 0.9rem;">Permanent traits, chosen freely. Each one you adopt makes the descent harder — and pays out more Lucidity for the risk. Not every thought is equally dangerous, and the payout follows accordingly.</p>
+                        <p class="typewriter-text" style="color: #b3adc0; font-size: 0.9rem;">Permanent traits, chosen freely. Each one you adopt makes the descent harder — and pays out more Lucidity for the risk. Not every thought is equally dangerous, and the payout follows accordingly.</p>
                         <!-- Patch 32: static risk-tier key. Per-curse weight values are
                              rendered dynamically by UIManager.renderCurseSelection()
                              (out of this patch's file scope) reading
@@ -337,7 +339,7 @@
                 <div id="tab-roadmap" class="tab-pane">
                     <div style="text-align: center; margin-bottom: 20px;">
                         <h2 style="color: var(--ink-black); border-bottom: 2px solid var(--ink-black); padding-bottom: 10px; margin-top: 0; letter-spacing: 2px; font-family: var(--ui-font);">DESCENT ROADMAP</h2>
-                        <p class="typewriter-text" style="color: #555; font-size: 0.9rem;">Projected psychological deterioration path.</p>
+                        <p class="typewriter-text" style="color: #b3adc0; font-size: 0.9rem;">Projected psychological deterioration path.</p>
                     </div>
                     <div class="roadmap-timeline">
                         <div class="roadmap-node completed">Floor 1: The Wastes (Sphere Head)</div>
@@ -352,7 +354,7 @@
                 <div id="tab-trophies" class="tab-pane">
                     <div style="text-align: center; margin-bottom: 20px;">
                         <h2 style="color: var(--ink-black); border-bottom: 2px solid var(--ink-black); padding-bottom: 10px; margin-top: 0; letter-spacing: 2px; font-family: var(--ui-font);">THE MIND PALACE</h2>
-                        <p class="typewriter-text" style="color: #555; font-size: 0.9rem;">Physical manifestations of conquered trauma.</p>
+                        <p class="typewriter-text" style="color: #b3adc0; font-size: 0.9rem;">Physical manifestations of conquered trauma.</p>
                     </div>
                     
                     <!-- Patch 59: the eight hardcoded trophy cards are gone. They are now
@@ -368,7 +370,7 @@
                 <div id="tab-guide" class="tab-pane">
                     <div style="text-align: center; margin-bottom: 20px;">
                         <h2 style="color: var(--ink-black); border-bottom: 2px solid var(--ink-black); padding-bottom: 10px; margin-top: 0; letter-spacing: 2px; font-family: var(--ui-font);">INDUCTION FLASHCARDS</h2>
-                        <p class="typewriter-text" style="color: #555; font-size: 0.9rem;">Review survival protocols prior to descent.</p>
+                        <p class="typewriter-text" style="color: #b3adc0; font-size: 0.9rem;">Review survival protocols prior to descent.</p>
                     </div>
 
                     <!-- Patch 59: category selector. The guide grew to ~90 entries in
@@ -380,33 +382,33 @@
                          Left as markup (prose, not a catalogue) but now a pane like any
                          other, shown/hidden by GuideUI. -->
                     <div id="guide-cat-basics" class="guide-pane" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; overflow-y: auto; padding-right: 10px; padding-bottom: 20px;">
-                        <div style="background: #fdfaf3; border: 2px solid #4466aa; box-shadow: 4px 4px 0 rgba(68, 102, 170, 0.2); padding: 15px; position: relative;">
+                        <div style="background: rgba(255, 255, 255, 0.05); border: 2px solid #4466aa; box-shadow: 4px 4px 0 rgba(68, 102, 170, 0.2); padding: 15px; position: relative;">
                             <!-- Patch 87: two variants, one chosen by (pointer: coarse) in
                                  style.css. This card taught WASD/SPACE/ESC to phones that
                                  have none of those keys — the same failure Patch 65 fixed in
                                  the tutorial, surviving here because GuideUI has no
                                  device-awareness at all. -->
-                            <div class="kbd-copy" style="font-size: 1.5rem; text-align: center; margin-bottom: 10px; color: #4466aa;">
+                            <div class="kbd-copy" style="font-size: 1.5rem; text-align: center; margin-bottom: 10px; color: #b3adc0;">
                                 <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">W</span><br>
                                 <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">A</span>
                                 <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">S</span>
                                 <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:2px 8px; margin:2px; font-weight:bold; background:#fff;">D</span>
                             </div>
-                            <div class="touch-copy" style="font-size: 1.5rem; text-align: center; margin-bottom: 10px; color: #4466aa;">
+                            <div class="touch-copy" style="font-size: 1.5rem; text-align: center; margin-bottom: 10px; color: #b3adc0;">
                                 <span style="display:inline-block; border:2px solid #4466aa; border-radius:50%; padding:4px 10px; margin:2px; font-weight:bold; background:#fff;">◉</span>
                                 <span style="font-size:1rem;">+</span>
                                 <span style="display:inline-block; border:2px solid #4466aa; border-radius:4px; padding:4px 8px; margin:2px; font-weight:bold; background:#fff; font-size:0.9rem;">DASH</span>
                             </div>
-                            <strong style="color: #4466aa; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">I. EVASION</strong>
-                            <p class="kbd-copy typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
-                                Move to survive. Press <span style="border:1px solid #666; padding:1px 4px; background:#eee;">SPACE</span> to Dash. Dashing grants temporary invulnerability against all nightmares. Press <span style="border:1px solid #666; padding:1px 4px; background:#eee;">ESC</span> or <span style="border:1px solid #666; padding:1px 4px; background:#eee;">P</span> to pause.
+                            <strong style="color: #b3adc0; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">I. EVASION</strong>
+                            <p class="kbd-copy typewriter-text" style="margin: 0; font-size: 0.8rem; color: #b3adc0; line-height: 1.3; text-align: center;">
+                                Move to survive. Press <span style="border:1px solid #666; padding:1px 4px; background: rgba(255, 255, 255, 0.12);">SPACE</span> to Dash. Dashing grants temporary invulnerability against all nightmares. Press <span style="border:1px solid #666; padding:1px 4px; background: rgba(255, 255, 255, 0.12);">ESC</span> or <span style="border:1px solid #666; padding:1px 4px; background: rgba(255, 255, 255, 0.12);">P</span> to pause.
                             </p>
-                            <p class="touch-copy typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
-                                Move to survive. Slide your left thumb to move. Tap <span style="border:1px solid #666; padding:1px 4px; background:#eee;">DASH</span> to dash — nothing can hit you while you dash. Tap <span style="border:1px solid #666; padding:1px 4px; background:#eee;">PAUSE</span>, top right, to pause.
+                            <p class="touch-copy typewriter-text" style="margin: 0; font-size: 0.8rem; color: #b3adc0; line-height: 1.3; text-align: center;">
+                                Move to survive. Slide your left thumb to move. Tap <span style="border:1px solid #666; padding:1px 4px; background: rgba(255, 255, 255, 0.12);">DASH</span> to dash — nothing can hit you while you dash. Tap <span style="border:1px solid #666; padding:1px 4px; background: rgba(255, 255, 255, 0.12);">PAUSE</span>, top right, to pause.
                             </p>
                         </div>
                         
-                        <div style="background: #fdfaf3; border: 2px solid #cc6600; box-shadow: 4px 4px 0 rgba(204, 102, 0, 0.2); padding: 15px;">
+                        <div style="background: rgba(255, 255, 255, 0.05); border: 2px solid #cc6600; box-shadow: 4px 4px 0 rgba(204, 102, 0, 0.2); padding: 15px;">
                             <div class="kbd-copy" style="font-size: 2rem; text-align: center; margin-bottom: 10px; color: #cc6600;">
                                 🖱️ / 🎯
                             </div>
@@ -414,82 +416,82 @@
                                 👆 / 🎯
                             </div>
                             <strong style="color: #cc6600; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">II. DIRECTED THERAPY</strong>
-                            <p class="kbd-copy typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                            <p class="kbd-copy typewriter-text" style="margin: 0; font-size: 0.8rem; color: #b3adc0; line-height: 1.3; text-align: center;">
                                 Weapons fire <b>automatically</b>. Use your mouse cursor to aim directional weapons like the Flashlight.
                             </p>
-                            <p class="touch-copy typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                            <p class="touch-copy typewriter-text" style="margin: 0; font-size: 0.8rem; color: #b3adc0; line-height: 1.3; text-align: center;">
                                 Weapons fire <b>automatically</b>. Slide your right thumb to aim directional weapons like the Flashlight.
                             </p>
                         </div>
 
-                        <div style="background: #fdfaf3; border: 2px solid var(--ui-red); box-shadow: 4px 4px 0 rgba(139, 0, 0, 0.2); padding: 15px;">
+                        <div style="background: rgba(255, 255, 255, 0.05); border: 2px solid var(--ui-red); box-shadow: 4px 4px 0 rgba(139, 0, 0, 0.2); padding: 15px;">
                             <div style="text-align: center; margin-bottom: 10px;">
                                 <div style="display:inline-block; width: 80%; height: 15px; background: #333; border:2px solid var(--ink-black);">
                                     <div style="width: 40%; height: 100%; background: var(--ui-red);"></div>
                                 </div>
                             </div>
                             <strong style="color: var(--ui-red); font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">III. SANITY</strong>
-                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #b3adc0; line-height: 1.3; text-align: center;">
                                 Your health. It drains constantly. Hitting zero triggers a mental breakdown (severe input lag). Drop past zero, and you die.
                             </p>
                         </div>
                         
-                        <div style="background: #fdfaf3; border: 2px solid var(--ui-gold); box-shadow: 4px 4px 0 rgba(197, 160, 89, 0.2); padding: 15px;">
+                        <div style="background: rgba(255, 255, 255, 0.05); border: 2px solid var(--ui-gold); box-shadow: 4px 4px 0 rgba(197, 160, 89, 0.2); padding: 15px;">
                             <div style="font-size: 2rem; text-align: center; margin-bottom: 10px; color: var(--ui-gold); text-shadow: 0 0 10px var(--ui-gold);">
                                 ✧ ✦ ✧
                             </div>
                             <strong style="color: var(--ui-gold); font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">IV. LUCIDITY (XP)</strong>
-                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #b3adc0; line-height: 1.3; text-align: center;">
                                 Gather glowing fragments from defeated enemies to manifest new weapons. Collect enough to extract safely.
                             </p>
                         </div>
                         
-                        <div style="background: #fdfaf3; border: 2px solid #555; box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2); padding: 15px;">
+                        <div style="background: rgba(255, 255, 255, 0.05); border: 2px solid #555; box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2); padding: 15px;">
                             <div style="text-align: center; margin-bottom: 10px;">
-                                <div style="display:inline-block; width:60px; height:60px; background:#fff; border:4px dashed #2a0a3a; border-radius:50%; box-shadow: 0 0 0 10px #1a0525;"></div>
+                                <div style="display:inline-block; width:60px; height:60px; background: rgba(255, 255, 255, 0.08); border:4px dashed #2a0a3a; border-radius:50%; box-shadow: 0 0 0 10px #1a0525;"></div>
                             </div>
-                            <strong style="color: #555; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">V. THE VOID</strong>
-                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                            <strong style="color: #b3adc0; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">V. THE VOID</strong>
+                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #b3adc0; line-height: 1.3; text-align: center;">
                                 The arena is infinite, but the safe zone is not. Wandering into the dark purple void will rapidly drain your Sanity.
                             </p>
                         </div>
                         
-                        <div style="background: #fdfaf3; border: 2px solid var(--ink-black); box-shadow: 4px 4px 0 rgba(26, 26, 26, 0.2); padding: 15px;">
+                        <div style="background: rgba(255, 255, 255, 0.05); border: 2px solid var(--ink-black); box-shadow: 4px 4px 0 rgba(26, 26, 26, 0.2); padding: 15px;">
                             <div style="font-size: 1.5rem; text-align: center; margin-bottom: 10px; color: var(--ink-black); font-weight: 900;">
                                 🔦 <span style="font-size: 1rem;">+</span> 📻 <span style="font-size: 1rem;">=</span> 💀
                             </div>
                             <strong style="color: var(--ink-black); font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">VI. SYNERGIES & TOKENS</strong>
-                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #b3adc0; line-height: 1.3; text-align: center;">
                                 Max out weapons (Lv 5) to unlock devastating synergies. Kill Bosses to earn equippable Tokens.
                             </p>
                         </div>
 
-                        <div style="background: #fdfaf3; border: 2px solid #aa55ff; box-shadow: 4px 4px 0 rgba(170, 85, 255, 0.2); padding: 15px;">
+                        <div style="background: rgba(255, 255, 255, 0.05); border: 2px solid #aa55ff; box-shadow: 4px 4px 0 rgba(170, 85, 255, 0.2); padding: 15px;">
                             <div style="font-size: 1.5rem; text-align: center; margin-bottom: 10px;">
                                 🎭 👕 🧤 👢
                             </div>
                             <strong style="color: #aa55ff; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">VII. TOKENS</strong>
-                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #b3adc0; line-height: 1.3; text-align: center;">
                                 Bosses drop Tokens for Head, Body, Hands, and Legs. Equip up to 4 at once and upgrade their rarity from Common toward Mythic. Matching pieces from the same set unlocks a bonus.
                             </p>
                         </div>
 
-                        <div style="background: #fdfaf3; border: 2px solid var(--ui-red); box-shadow: 4px 4px 0 rgba(139, 0, 0, 0.2); padding: 15px;">
+                        <div style="background: rgba(255, 255, 255, 0.05); border: 2px solid var(--ui-red); box-shadow: 4px 4px 0 rgba(139, 0, 0, 0.2); padding: 15px;">
                             <div style="text-align: center; margin-bottom: 10px;">
                                 <span class="patient-stamp" style="font-size: 0.9rem; padding: 3px 10px;">PL</span>
                             </div>
                             <strong style="color: var(--ui-red); font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">VIII. PATIENT LEVEL</strong>
-                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #b3adc0; line-height: 1.3; text-align: center;">
                                 Your permanent rank, raised by how much Lucidity you've spent in SYNAPSE RECORDS. Higher levels unlock deeper upgrades — and eventually, Intrusive Thoughts.
                             </p>
                         </div>
 
-                        <div style="background: #fdfaf3; border: 2px solid #5a2a7a; box-shadow: 4px 4px 0 rgba(90, 42, 122, 0.2); padding: 15px;">
+                        <div style="background: rgba(255, 255, 255, 0.05); border: 2px solid #5a2a7a; box-shadow: 4px 4px 0 rgba(90, 42, 122, 0.2); padding: 15px;">
                             <div style="font-size: 1.8rem; text-align: center; margin-bottom: 10px;">
                                 🧠⚠️
                             </div>
-                            <strong style="color: #5a2a7a; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">IX. INTRUSIVE THOUGHTS</strong>
-                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #333; line-height: 1.3; text-align: center;">
+                            <strong style="color: #b3adc0; font-size: 1rem; display: block; text-align: center; margin-bottom: 5px;">IX. INTRUSIVE THOUGHTS</strong>
+                            <p class="typewriter-text" style="margin: 0; font-size: 0.8rem; color: #b3adc0; line-height: 1.3; text-align: center;">
                                 Unlocked at Patient Level 5, after your first Boss kill. Adopt permanent, self-inflicted curses in exchange for Lucidity gain — the riskier the thought, the greater the payout. Stack as many as you can survive.
                             </p>
                         </div>
@@ -509,7 +511,7 @@
                 <div id="tab-history" class="tab-pane">
                     <div style="text-align: center; margin-bottom: 20px;">
                         <h2 style="color: var(--ink-black); border-bottom: 2px solid var(--ink-black); padding-bottom: 10px; margin-top: 0; letter-spacing: 2px; font-family: var(--ui-font);">MANIFESTATION LOG</h2>
-                        <p class="typewriter-text" style="color: #555; font-size: 0.9rem;">Every instrument and trait this patient has ever manifested. Unmanifested entries remain sealed.</p>
+                        <p class="typewriter-text" style="color: #b3adc0; font-size: 0.9rem;">Every instrument and trait this patient has ever manifested. Unmanifested entries remain sealed.</p>
                     </div>
                     <div class="roadmap-timeline" id="history-timeline"></div>
                 </div>
@@ -520,16 +522,18 @@
 
     <!-- HUD -->
     <div id="ui-layer">
+        <!-- Patch 166: the XP bar. A survivors-like had no visible XP progress. -->
+        <div id="xp-strip"><div id="xp-fill"></div><span id="xp-level">LV 1</span></div>
         <div class="hud-top">
             <div class="sanity-section">
                 <div class="hud-label" id="sanity-label">SANITY 100%</div>
                 <div class="sanity-bar-container"><div id="sanity-bar"></div></div>
-                <div class="hud-label hud-label-dash">ADRENAL RECHARGE</div>
+                <div class="hud-label hud-label-dash">DASH</div>
                 <div class="dash-bar-container"><div id="dash-bar"></div></div>
             </div>
             
             <div class="convergence-section">
-                <div id="convergence-text" class="hud-label-large">NIGHTMARE PROGRESS: 0%</div>
+                <div id="convergence-text" class="hud-label-large">ROOM 1/5</div>
                 <div class="convergence-bar-container"><div id="convergence-bar"></div></div>
                 <!-- Patch 38: visual props moved to the stylesheet. `display: none`
                      stays inline on purpose — main.js toggles it every frame, and
@@ -538,15 +542,15 @@
             </div>
 
             <div class="score-section">
-                <div id="score" class="hud-label-large">LUCIDITY: 0<br>FLOOR: 1</div>
-                <button id="btn-pause" class="hud-icon-btn" title="Pause Game (ESC or P)">⏸ PAUSE</button>
+                <div id="score" class="hud-label-large">FLOOR 1</div>
+                <button id="btn-pause" class="hud-icon-btn" title="Pause Game (ESC or P)" aria-label="Pause">⏸</button>
             </div>
         </div>
     </div>
 
     <!-- LEVEL UP MODAL -->
     <div id="level-up-modal" class="level-up-modal">
-        <h2 style="color: var(--ui-gold); margin: 0; text-shadow: 0 0 10px rgba(197, 160, 89, 0.5);">MANIFESTATION</h2>
+        <h2 style="color: var(--ui-gold); margin: 0; text-shadow: 0 0 10px rgba(197, 160, 89, 0.5);">LEVEL UP · CHOOSE ONE</h2>
         <div class="cards-container" id="cards-container"></div>
         <button class="file-btn" id="btn-reroll" style="display:none; margin-top: 20px;">Reroll Choices (-20 Sanity)</button>
     </div>
@@ -559,6 +563,8 @@
             </div>
             <div class="folder-content" style="text-align: center;">
                 <p id="pause-desc" class="typewriter-text">The nightmare pauses, but it does not end.</p>
+                <!-- Patch 172: what this run is carrying (filled by main.js on pause). -->
+                <div id="pause-loadout" class="pause-loadout"></div>
                 <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
                     <button class="file-btn primary" id="btn-unpause">RESUME</button>
                     <button class="file-btn danger" id="btn-descend" style="display:none;">DESCEND DEEPER</button>
@@ -581,7 +587,7 @@
                 <div class="title-typewriter" id="confirm-title" style="color: var(--ui-red);">ABANDON PROTOCOL?</div>
             </div>
             <div class="folder-content" style="text-align: center;">
-                <p id="confirm-body" class="typewriter-text" style="font-size: 1.1rem; margin: 0 0 14px 0; color: #111;"></p>
+                <p id="confirm-body" class="typewriter-text" style="font-size: 1.1rem; margin: 0 0 14px 0; color: #f2eee3;"></p>
                 <p id="confirm-note" class="typewriter-text" style="font-size: 0.85rem; color: #666; margin: 0 0 30px 0; line-height: 1.5;"></p>
                 <!-- Patch 103: text field for save import/export (src/ui/Dialog.js). A
                      <textarea>, NOT a <div>: style.css pins `.folder-content > div:last-child`
@@ -615,7 +621,7 @@
                     <button class="file-btn" id="btn-recover-lucidity">RECOVER LOST LUCIDITY (AD)</button>
                     <p id="death-rewarded-note" class="typewriter-text"></p>
                 </div>
-                <div id="final-stats" class="typewriter-text" style="color: #111;"></div>
+                <div id="final-stats" class="typewriter-text" style="color: #f2eee3;"></div>
                 <!-- Patch 124: the way off this screen. Sticky (see style.css). On death,
                      PLAY AGAIN is first and RETURN TO WARD is secondary; on AWAKEN only
                      btn-restart shows, as before. -->

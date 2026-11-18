@@ -340,6 +340,9 @@ export class Game {
             entities: [],
             projectiles: [],
             particles: [],
+            // Patch 168: kill pops, a fixed ring of slots (no allocation per kill).
+            pops: Array.from({ length: 48 }, () => ({ x: 0, y: 0, born: -999, color: '#fff' })),
+            popIdx: 0,
             xpDrops: [],
             tokenDrops: [], 
             damageTexts: [],
@@ -455,6 +458,34 @@ export class Game {
      *   'BOSS', ...) or 'VOLATILE'. Recorded as state.lastDamageSource for the death
      *   screen's "what broke you" line. Optional: an omitted source keeps the last one.
      */
+    /** Patch 165: see the call in processGameLogic. Regular enemies only. */
+    separateCrowd() {
+        const ents = this.state.entities;
+        const n = ents.length;
+        if (n < 2) return;
+        const f = this.state.frame | 0;
+        const offs = [1, 2 + (f % 5), 7 + (f % 11)];
+        for (let i = 0; i < n; i++) {
+            const a = ents[i];
+            if (!a || isBossType(a.type) || a.vacuumState === 'vacuuming' || a.burrowState) continue;
+            const ra = a.radius || 12;
+            for (let k = 0; k < 3; k++) {
+                const b = ents[(i + offs[k]) % n];
+                if (!b || b === a || isBossType(b.type) || b.burrowState) continue;
+                const dx = b.x - a.x, dy = b.y - a.y;
+                const min = ra + (b.radius || 12);
+                if (dx > min || dx < -min || dy > min || dy < -min) continue;
+                const d2 = dx * dx + dy * dy;
+                if (!(d2 < min * min)) continue;   // also rejects NaN
+                if (d2 < 0.0001) { a.x -= 0.6; b.x += 0.6; continue; }
+                const d = Math.sqrt(d2);
+                const push = (min - d) * 0.25 / d;
+                a.x -= dx * push; a.y -= dy * push;
+                b.x += dx * push; b.y += dy * push;
+            }
+        }
+    }
+
     takeDamage(amount, source) {
         // Already invulnerable from a previous hit this window — ignore entirely,
         // same as denialShieldActive's block below, just without consuming anything.
@@ -574,6 +605,15 @@ export class Game {
         if (this.state.sanity <= 0 && this.onDeath) {
             this.onDeath();
         }
+    }
+
+    /** Patch 168: a kill pop (drawn by Renderer.drawEyesInDark). */
+    spawnPop(x, y, color, size = 1) {
+        const st = this.state;
+        if (!st.pops || !Number.isFinite(x) || !Number.isFinite(y)) return;
+        const p = st.pops[st.popIdx];
+        st.popIdx = (st.popIdx + 1) % st.pops.length;
+        p.x = x; p.y = y; p.born = st.frame; p.color = color || '#ffe9a8'; p.size = size;
     }
 
     spawnParticles(x, y, color, count) {
@@ -939,12 +979,17 @@ export class Game {
 
         if (this.state.sanity > 0 && !this.state.inVoid && !isInsideSafeZone && this.state.combatActive) {
             if (!this.state.isTutorial) {
-                let drainRate = 0.02;
-                if (this.state.player.curses && this.state.player.curses.includes('nyctophobia')) drainRate = 0.05;
+                // Patch 165: no passive drain by default. Sanity that falls on its own
+                // read as a bug to new players, and with a horde on screen the enemies
+                // are the pressure. The curses and Glass Cannon keep theirs.
+                let drainRate = 0;
+                if (this.state.player.curses && this.state.player.curses.includes('nyctophobia')) drainRate = 0.03;
+                if (this.state.player.boons && this.state.player.boons.includes('glass_cannon')) drainRate += 0.01;
                 if (this.state.player.curses && this.state.player.curses.includes('manic_episode')) drainRate *= 2;
                 // glass_cannon: the drain half of its tradeoff (damage half is in Combat.js).
                 if (this.state.player.boons && this.state.player.boons.includes('glass_cannon')) drainRate *= 2;
                 this.state.sanity -= drainRate;
+                if (drainRate > 0)
                 // Patch 124: only claims the kill if nothing else has hurt the player
                 // this floor; a hit from an enemy is the more useful answer.
                 if (!this.state.lastDamageSource) this.state.lastDamageSource = 'DRAIN';
@@ -991,6 +1036,15 @@ export class Game {
             }
         }
 
+        // Patch 188: how long a new player has actually been moving (the control hint fades on it).
+        if (this.state.firstRoom && moveInput && moveInput.isMoving) this.state.hintMoveFrames = (this.state.hintMoveFrames || 0) + 1;
+
+        // Patch 165: crowd separation. Without it a horde collapses onto one point and
+        // reads as a single enemy. Each body is checked against three others per step
+        // (a different three every step), so the cost is linear in the crowd and the
+        // pile still spreads out within a few frames.
+        if (!frozen) this.separateCrowd();
+
         // Patch 137: after everything has moved, the room's walls push the player and
         // the regular enemies back out (and the Blueprint rearranges itself).
         if (!devFrozen) updateArena(this.state);
@@ -1020,6 +1074,9 @@ export class Game {
 
         const requiredXP = getXPRequiredForLevel(this.state.level);
         if (this.state.xp >= requiredXP && this.onLevelUp) {
+            // Patch 175: a gold burst around the player as the level lands.
+            this.spawnPop(this.state.player.x, this.state.player.y, '#f2d27a', 5);
+            for (let k = 0; k < 6; k++) this.spawnPop(this.state.player.x + Math.cos(k * 1.047) * 38, this.state.player.y + Math.sin(k * 1.047) * 38, '#fff3c4', 1.4);
             this.state.level++;
             this.state.xp -= requiredXP;
             this.onLevelUp();

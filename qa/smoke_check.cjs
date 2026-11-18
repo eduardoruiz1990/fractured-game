@@ -106,7 +106,8 @@ async function playCrazyGames(browser, base, vp) {
   if (touch) await page.tap('#btn-title-begin'); else await page.click('#btn-title-begin');
   await page.waitForTimeout(1200);
   const cold = await page.evaluate(() => !!document.querySelector('#story-coldopen'));
-  ok(cold, `${tag} the cold open plays on a first launch`);
+  // Patch 167: no cold open any more; a first launch goes straight into a real room.
+  ok(!cold, `${tag} no cold-open cards on a first launch (straight into play)`);
   const calls1 = await page.evaluate(() => window.__sdkCalls.map(c => c[0]));
   ok(calls1.includes('init') && calls1.includes('gameplayStart'), `${tag} SDK heard init and gameplayStart (${[...new Set(calls1)].join(',')})`);
   // The first input dismisses it.
@@ -165,14 +166,31 @@ async function playCrazyGames(browser, base, vp) {
       await note(); i++;
     }
   }
-  ok(seen.size >= 3, `${tag} the tutorial advanced under real input: ${seen.size} banner lines ${JSON.stringify([...seen].slice(0, 6))}`);
+  // Patch 167: the first room carries two or three hints, not a stepped tutorial.
+  // Patch 188: the move hint is drawn on the canvas now; one text line remains.
+  ok(seen.size >= 1, `${tag} the first-room hint line showed under real input: ${seen.size} banner lines ${JSON.stringify([...seen].slice(0, 6))}`);
   await page.screenshot({ path: path.join(SHOTS, `smoke_play_${tag}.png`) });
 
   // Pause: the menu, and gameplayStop. (Close a level-up first: pause waits for it.)
-  if (await levelUpOpen(page)) { if (touch) await page.tap('#cards-container .card').catch(() => {}); else await page.keyboard.press('1'); await page.waitForTimeout(400); }
-  if (touch) await page.tap('#btn-pause').catch(() => {}); else await page.keyboard.press('Escape');
-  await page.waitForTimeout(500);
-  const paused = await page.evaluate(() => { const p = document.getElementById('pause-menu'); return !!p && getComputedStyle(p).display !== 'none'; });
+  // Patch 180: level-ups come every 15-25 s in a horde, and a card ignores input for its
+  // first 300 ms, so one press did not always close it and a second card could open
+  // behind the first. Close whatever is open (up to 6 tries), then pause, and try the
+  // pause again if a card opened in between. The game's rule is unchanged.
+  const closeLevelUps = async () => {
+    for (let k = 0; k < 6 && await levelUpOpen(page); k++) {
+      await page.waitForTimeout(380);
+      if (touch) await page.tap('#cards-container .card').catch(() => {}); else await page.keyboard.press('1');
+      await page.waitForTimeout(450);
+    }
+  };
+  const isPaused = () => page.evaluate(() => { const p = document.getElementById('pause-menu'); return !!p && getComputedStyle(p).display !== 'none'; });
+  let paused = false;
+  for (let attempt = 0; attempt < 3 && !paused; attempt++) {
+    await closeLevelUps();
+    if (touch) await page.tap('#btn-pause').catch(() => {}); else await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    paused = await isPaused();
+  }
   const calls2 = await page.evaluate(() => window.__sdkCalls.map(c => c[0]));
   ok(paused && calls2.lastIndexOf('gameplayStop') > calls2.lastIndexOf('gameplayStart'), `${tag} pause shows the menu and the SDK heard gameplayStop`);
 

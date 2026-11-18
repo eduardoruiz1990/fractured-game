@@ -69,8 +69,8 @@ export class SynapseTree {
                 justify-content: space-between;
                 padding: 10px 14px;
                 margin-bottom: 12px;
-                background: rgba(253, 250, 243, 0.95);
-                border-bottom: 2px dashed #c2b59b;
+                background: rgba(255, 255, 255, 0.05);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.14);
                 font-weight: bold;
             }
             .synapse-branch-col { display: flex; flex-direction: column; min-width: 140px; }
@@ -223,7 +223,7 @@ export class SynapseTree {
                 }
                 .synapse-rail-dot {
                     width: 20px; height: 20px; border-radius: 50%;
-                    border: 2px solid currentColor; background: rgba(253, 250, 243, 0.9);
+                    border: 2px solid currentColor; background: #1b1826;
                     display: flex; align-items: center; justify-content: center;
                     font-size: 0.62rem; font-weight: bold; line-height: 1;
                     flex: 0 0 auto;

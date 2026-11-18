@@ -1,4 +1,8 @@
 // src/systems/Combat.js
+import { LUCIDITY_PER_XP } from '../data/Horde.js';   // Patch 165
+import { ROOM_PACE, DOOR_ENTER_STEPS } from '../data/Config.js';   // Patch 168, 170
+// Patch 168: kill-pop ring colours (the same as the eyes in the dark).
+const POP_COLOURS = { SCAVENGER: '#ffd24a', PREDATOR: '#ff5a48', PARASITE: '#9dff6a', SPLITTER: '#f4f0e0', WARDEN: '#ffb347', BURROWER: '#ffc9a0' };
 import { getActiveSynergies, LIGHT_RECOIL_RESIST, TOKEN_RARITIES } from '../data/Manifestations.js';
 
 // Patch 130 (V2 plan C8): juice constants. Sim steps (Game.update counts them).
@@ -97,6 +101,42 @@ function tagDamageMultiplier(tags, tagDamageStats) {
     let bonus = 0;
     for (const t of tags) bonus += (tagDamageStats[t] || 0);
     return 1 + bonus / 100;
+}
+
+/**
+ * Patch 182: whether a solid wall stands between (ax, ay) and (bx, by). Blocks are
+ * axis-aligned boxes (a slab test), posts are circles. Arcs do not block: they are
+ * thin and curved, and the Renderer does not shadow them either.
+ */
+export function beamBlocked(obstacles, ax, ay, bx, by) {
+    if (!obstacles || !obstacles.length) return false;
+    const dx = bx - ax, dy = by - ay;
+    for (let i = 0; i < obstacles.length; i++) {
+        const o = obstacles[i];
+        if (!o || !o.solid || o.cap) continue;
+        if (o.kind === 'block') {
+            let t0 = 0, t1 = 1, hit = true;
+            for (let axis = 0; axis < 2 && hit; axis++) {
+                const p0 = axis ? ay : ax, d = axis ? dy : dx;
+                const lo = (axis ? o.y - o.hh : o.x - o.hw), hi = (axis ? o.y + o.hh : o.x + o.hw);
+                if (Math.abs(d) < 1e-9) { if (p0 < lo || p0 > hi) hit = false; continue; }
+                let ta = (lo - p0) / d, tb = (hi - p0) / d;
+                if (ta > tb) { const tmp = ta; ta = tb; tb = tmp; }
+                if (ta > t0) t0 = ta;
+                if (tb < t1) t1 = tb;
+                if (t0 > t1) hit = false;
+            }
+            // t0 > 0: the light starts outside the wall; an enemy standing inside one is not hidden
+            if (hit && t0 > 0.001 && t0 < 0.999 && t1 < 0.999) return true;
+        } else if (o.kind === 'post' && o.r > 0) {
+            const len2 = dx * dx + dy * dy;
+            if (len2 < 1e-9) continue;
+            const t = Math.max(0, Math.min(1, ((o.x - ax) * dx + (o.y - ay) * dy) / len2));
+            const cx = ax + dx * t - o.x, cy = ay + dy * t - o.y;
+            if (cx * cx + cy * cy < o.r * o.r * 0.7 && t > 0.02 && t < 0.98) return true;
+        }
+    }
+    return false;
 }
 
 export class Combat {
@@ -220,6 +260,13 @@ export class Combat {
                             state.cameraShake = Math.max(state.cameraShake, 18);
                             game.spawnParticles(obj.x, obj.y, '#ffd27f', 40);
                             game.spawnParticles(obj.x, obj.y, '#ffffff', 20);
+                            // Patch 172: the burst, a big pop and a crown of small ones.
+                            if (typeof game.spawnPop === 'function') {
+                                game.spawnPop(obj.x, obj.y - 8, '#ffd27f', 4.5);
+                                for (let k = 0; k < 8; k++) game.spawnPop(obj.x + Math.cos(k * 0.785) * 46, obj.y - 8 + Math.sin(k * 0.785) * 46, k % 2 ? '#fff3c4' : '#ffb347', 1.3);
+                            }
+                            state.cameraFlash = Math.max(state.cameraFlash || 0, 5);
+                            if (game.audioEngine) game.audioEngine.playSFX('chest_open', 0.9);   // Patch 183
                             game.spawnDamageText(obj.x, obj.y - 30, result.title, '#ffd27f', 1.5, 2.2);
                             if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 1.0);
                             if (typeof game.onChestOpened === 'function') {
@@ -238,15 +285,36 @@ export class Combat {
                     }
                 } else if (obj.type === 'ROOM_DOOR') {
                     const distToPlayer = Math.hypot(obj.x - state.player.x, obj.y - state.player.y);
-                    if (distToPlayer < obj.radius + state.player.radius) {
+                    // Patch 170: walking THROUGH the door. Touching it starts a short
+                    // entry (DOOR_ENTER_STEPS): the player is drawn into the arch and
+                    // cannot be hurt, the screen fills with the door's light
+                    // (Renderer.drawDoorTransition reads state.doorFx), and only then
+                    // does the room change, behind the light.
+                    if (!obj.entering && !state.doorFx_busy && distToPlayer < obj.radius + state.player.radius) {
+                        obj.entering = DOOR_ENTER_STEPS;
+                        state.doorFx_busy = true;
+                        state.doorFx = { born: state.frame, x: obj.x, y: obj.y, rewardType: obj.rewardType };
+                        if (game.audioEngine) game.audioEngine.playSFX('door', 0.8);   // Patch 183
+                        if (typeof game.onHaptic === 'function') game.onHaptic('hit');
+                    }
+                    if (obj.entering > 0) {
+                        obj.entering--;
+                        state.player.x += (obj.x - state.player.x) * 0.22;
+                        state.player.y += (obj.y - state.player.y) * 0.22;
+                        state.player.iframes = Math.max(state.player.iframes || 0, 50);
+                    }
+                    if (obj.entering === 0) {
+                        obj.entering = undefined;
+                        state.doorFx_busy = false;
                         obj.dead = true;
 
-                        if (state.isTutorial) {
-                            state.isTutorial = false;
-                            if (game.saveManager) {
-                                game.saveManager.metaState.tutorialCompleted = true;
-                                game.saveManager.saveGame();
-                            }
+                        // Patch 165: the first door a new player walks through ends
+                        // their first session's hand-holding (no scripted tutorial room).
+                        state.isTutorial = false;
+                        state.firstRoom = false;
+                        if (game.saveManager && !game.saveManager.metaState.tutorialCompleted) {
+                            game.saveManager.metaState.tutorialCompleted = true;
+                            game.saveManager.saveGame();
                         }
 
                         if (obj.rewardType === 'LUCIDITY') {                            state.lucidity += 50;
@@ -410,7 +478,8 @@ export class Combat {
                                 if (camBatt) { ent.acidTime = camBatt.duration; ent.acidDmg = camBatt.damage; }
                             }
 
-                            ent.x += (dx / dist) * 30;
+                            // Patch 165: a Burrower surfaces exactly on the player (dist 0).
+                            if (dist > 0.001) ent.x += (dx / dist) * 30;
                         }
                     }
                 }
@@ -688,7 +757,10 @@ export class Combat {
                             && state.player.synergies
                             && state.player.synergies.includes('ritual_focus');
 
-                        const inCone = Math.abs(angleDiff) < hitAngle;
+                        // Patch 182: the beam stops at walls (the Renderer shows it stopping), so
+                        // an enemy behind a solid wall is in shadow and takes no light damage.
+                        const inCone = Math.abs(angleDiff) < hitAngle
+                            && !beamBlocked(state.obstacles, state.player.x, state.player.y, ent.x, ent.y);
                         if (inCone || wardedBypass) {
                             // Patch 63: where in the beam the target is standing now
                             // matters. A ritual_focus bypass is NOT the beam touching
@@ -820,6 +892,14 @@ export class Combat {
                         // Patch 146 (V2 plan E4): the defense's last line, as a subtitle.
                         const lastLine = bossDeathLine(ent.type);
                         if (lastLine) state.subtitle = { text: lastLine, steps: BOSS_DEATH_SUBTITLE_STEPS, total: BOSS_DEATH_SUBTITLE_STEPS };
+                        // Patch 170: a boss goes out in a ring of detonations.
+                        if (typeof game.spawnPop === 'function') {
+                            game.spawnPop(ent.x, ent.y, '#ffffff', 5);
+                            for (let k = 0; k < 10; k++) {
+                                const ba = k * 0.628, bd = 50 + (k % 3) * 45;
+                                game.spawnPop(ent.x + Math.cos(ba) * bd, ent.y + Math.sin(ba) * bd, k % 2 ? '#ffd27f' : '#ff5a48', 1.6 + (k % 3) * 0.5);
+                            }
+                        }
                         state.cameraShake = 50;
                         if (game.audioEngine) game.audioEngine.playSFX('death', 1.5);
                         // Patch 130 (V2 plan C8): the kill lands. A short impact freeze,
@@ -851,6 +931,7 @@ export class Combat {
                         dropPage(game, ent.x - 44, ent.y + 10, 'elite');   // Patch 144: half the time
                         game.spawnXP(ent.x + 30, ent.y, 2, true);
                         game.spawnParticles(ent.x, ent.y, '#ffd27f', 40);
+                        if (typeof game.spawnPop === 'function') game.spawnPop(ent.x, ent.y, '#ffd27f', 3);   // Patch 170
                         game.spawnDamageText(ent.x, ent.y - 40, `${ent.eliteName || 'ELITE'} DISPERSED`, '#ffd27f', 1.4, 2.4);
                         state.hitStop = Math.max(state.hitStop || 0, 6);
                         state.cameraShake = Math.max(state.cameraShake, 16);
@@ -864,6 +945,8 @@ export class Combat {
                     else if (ent.type === 'WARDEN') dropAmount = 6;
                     else if (ent.type === 'BURROWER') dropAmount = 4;
                     if (ent.maxHp > 30) dropAmount += 5; 
+                    // Patch 168: a thief pays back what it ate, plus a tip.
+                    if (ent.stolen > 0) { dropAmount += Math.ceil(ent.stolen * 1.25 / ROOM_PACE); ent.stolen = 0; }   // orbs are ROOM_PACE XP each
                     if (ent.type === 'SCAVENGER' && state.player.curses && state.player.curses.includes('compulsive_cleaner')) {
                         dropAmount += 3; 
                     }
@@ -891,7 +974,9 @@ export class Combat {
                     if (!state.bossSpawned) {
                         state.convergence += (ent.type === 'PREDATOR' ? 3 : 1);
                     }
-                    game.spawnParticles(ent.x, ent.y, ent.color || '#fff', 15);
+                    game.spawnParticles(ent.x, ent.y, ent.color || '#fff', 8);   // Patch 168: 15 -> 8, the pop carries it
+                    if (typeof game.spawnPop === 'function') game.spawnPop(ent.x, ent.y, POP_COLOURS[ent.type]);
+                    if (game.audioEngine) game.audioEngine.playSFX('kill', 0.55);   // Patch 183
                 }
                 
                 let poolKey = ent.type.toLowerCase();
@@ -912,7 +997,7 @@ export class Combat {
         // that Game.init computes, instead of recomputing from upgrades.magnet —
         // that mirror only covers legacy+tree, so token magnet was invisible here.
         // Falls back to the old derivation for states built before this field existed.
-        let baseVacRadius = 70;
+        let baseVacRadius = 115;   // Patch 165: was 70; a horde leaves orbs everywhere
         if (state.player.vacRadiusBonusPx !== undefined) {
             baseVacRadius += state.player.vacRadiusBonusPx;
         } else if (state.player.upgrades && state.player.upgrades.magnet) {
@@ -933,7 +1018,10 @@ export class Combat {
                 if (distToPlayer < 15) {
                     xp.collected = true; 
                     state.xp += xp.value; 
-                    state.lucidity += xp.value;
+                    // Patch 165: a horde drops far more orbs; Lucidity banks at a fraction,
+                    // in whole points (the remainder carries).
+                    state.lucidityCarry = (state.lucidityCarry || 0) + xp.value * LUCIDITY_PER_XP;
+                    if (state.lucidityCarry >= 1) { const whole = Math.floor(state.lucidityCarry); state.lucidity += whole; state.lucidityCarry -= whole; }
                     // Patch 156: per floor (data/Difficulty.js); 3 on floor 1, as it was.
                     state.sanity = Math.min(state.player.maxHp, state.sanity + floorPressure(state.floor).orbHeal);
                     pickupCount++;

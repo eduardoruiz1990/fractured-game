@@ -39,7 +39,7 @@ const shown = (page, id) => page.evaluate((id) => { const e = document.getElemen
     ok(title.length === 0, `${tag} title: everything on screen ${JSON.stringify(title)}`);
 
     // --- the folder, opened from the hub's desk the way a player does -----------------------------
-    await page.click('#btn-title-hub', { force: true });
+    await page.evaluate(() => { const f = window.__fractured; if (f && f.saveManager) { f.saveManager.metaState.tutorialCompleted = true; f.saveManager.saveGame(); } document.body.classList.remove('first-time'); });   /* Patch 185: the Mind Hub button is hidden until the first room is behind the player (Patch 167); these checks are a returning player's */ await page.click('#btn-title-hub', { force: true });
     await page.waitForTimeout(400);
     await page.evaluate(() => { const g = window.__fractured.game; const z = g.hubWorld.zones.find(z => z.action === 'tab-main') || g.hubWorld.zones[0];
       g.state.player.x = z.x; g.state.player.y = z.y - 60; });

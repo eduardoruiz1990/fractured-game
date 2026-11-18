@@ -3040,6 +3040,362 @@ The user reported that on a phone left alone, aim assist "basically plays itself
 
 ---
 
+## V3 — NIGHT SHIFT: the horde rework (Patches 165–167, 2026-11-18)
+
+**Why.** A critique of v2 as a product, played at phone size, found three things the
+v2 work never touched because every earlier phase polished the game as designed:
+
+1. **It was not a horde game.** A room spent about 17 budget points at one arrival a
+   second; `data/Difficulty.js` itself measured 0.5–2.9 enemies alive. A scripted
+   player got about 10 kills and no level-up in the first 30 seconds.
+2. **A screenshot was a black rectangle.** Pitch-black outside the beam, zoom 0.58–0.70
+   (a 12-unit enemy drawn 7–8 px wide), brown enemies on a brown floor, full-strength
+   grain and 80% scanlines on top.
+3. **The first minute was reading.** Four cold-open cards, a stepped tutorial with one
+   enemy, three bezelled HUD panels of jargon, and no XP bar.
+
+**Patch 165 — the horde.**
+- `src/data/Horde.js` (new, pure): a room spawns at `hordeSpawnPerSec(floor, room)`
+  for `hordeRoomSeconds` (the budget is the product) while fewer than
+  `hordeAliveTarget` regular enemies are alive. `Director.spawnWave` uses an
+  accumulator (`state.spawnAcc`), so 4.7 arrivals a second is exact. `pack` in
+  `Difficulty.js` is retired (kept at 1).
+- **Enemies arrive at the edge of the view rectangle** (+70 units), not on a circle
+  around its corners. On a portrait phone that circle was 740 units out, past the hard
+  leash, so every arrival was teleported back in on screen. Bosses (`minSpawnRadius`)
+  keep the far ring. `Enemy.applyMovement`'s hard leash is now never inside the view's
+  diagonal + 260.
+- `Game.separateCrowd()`: each regular enemy is pushed off three others per step (a
+  different three each step). Linear cost; without it a horde stacks into one sprite.
+- Scavengers: base speed 1.2 → 1.55; only `THIEF_CHANCE` (12%) still chase XP orbs;
+  the per-scavenger scan of every entity for the boss reads `state.activeBoss`.
+- Economy refit to four to five times the kills: XP curve is a power law
+  (`25 * level^1.25` after the two onboarding levels), orbs heal 0.2–0.3 Sanity
+  (were 1.5–3), Lucidity banks at `LUCIDITY_PER_XP` (0.4) in whole points, pickup
+  radius 70 → 115. **Passive Sanity drain is gone** (Nyctophobia and Glass Cannon keep
+  theirs). Floor 1 enemies have 0.6× HP and hit for 0.8×; HP rises to 2.5× by floor 5.
+- Live-enemy cap 60 → 90 (HIGH), 45 → 55 (LOW).
+- Fix found by the fuzz suite: the Polaroid's knockback divided by the distance to the
+  target, which is exactly 0 when a Burrower surfaces on the player (NaN position).
+- Measured (`sim_difficulty.js`, fresh save): 9–12 enemies alive in regular rooms,
+  about 10 level-ups on floor 1, 4–5 minutes a floor. In the browser a weaving player
+  gets 113 kills and 4 level-ups in the first 45 s.
+
+**Patch 166 — readability and the HUD.**
+- `Renderer.updateZoom`: floors 0.70/0.58 → 0.90/0.86.
+- The darkness mask is composited at `DARKNESS_ALPHA` (0.6), not 1. A Power Outage and
+  Tunnel Vision still go to 0.96.
+- `Renderer.drawEyesInDark`: after the mask, every unlit regular enemy shows a pair of
+  eyes (two `fillRect`s and one cached glow), coloured by type, and XP shards glint (one
+  path for all). Floor palettes lifted three to four times in luminance, same
+  identities. Grain at 30%; `#crt-scanlines` opacity 0.8 → 0.22.
+- HUD (`index.html`, the Patch 166 block at the end of `style.css`): an XP bar across
+  the top with the level, Sanity + dash at the left, **this room's** progress in the
+  middle (it moves while you fight), floor / kills / Lucidity at the right, a 40 px
+  pause icon. Same element ids.
+
+**Patch 167 — the first session.**
+- No scripted tutorial room: `Director.spawnRoomInner` sets `state.firstRoom` and uses
+  `FIRST_ROOM` (10 alive, 26 s, no modifier, event or elite). `main.js` shows two or
+  three hint lines over play. `tutorialCompleted` is set by the first door, as before.
+  `Tutorial.js` is no longer entered (nothing sets `state.isTutorial`); it and
+  `test_tutorial.js` are left in place.
+- The cold open no longer plays over the first room (`coldOpenSeen` is marked); its
+  content note is one line on the title.
+- A first-time title is the logo, a filled PLAY button and SYSTEM SETTINGS
+  (`body.first-time`). The Records Retention notice waits for `tutorialCompleted`.
+- Reward doors sit inside a portrait view (`doorDX`).
+
+**Patch 168 — first visual pass and the first phone playtest (2026-11-18).**
+The A56 playtest of v3: fluent, the horde is fun, thumbs felt natural in portrait, the
+early floors lean too easy, and the game still needs a visual overhaul.
+- **Regular enemies get one presentation layer** in `Renderer`'s entity loop, before
+  their own sprite: a ground shadow, a rim glow in their eye colour, and the body drawn
+  1.3× (hit radius unchanged; `dressed`, restored after the dispatch).
+- **The Scavenger is redrawn** as a shade with a pale outline and two lit eyes (cache
+  key `scav2`); it was near-black on a dark floor.
+- **The player** has a warm halo and is drawn 1.25× (hitbox unchanged).
+- **Kill pops:** `Game.spawnPop` writes into `state.pops`, a fixed ring of 48 slots (no
+  allocation); `Renderer.drawEyesInDark` draws a flash and an expanding ring after the
+  darkness. Death particles 15 → 8.
+- **Quiet damage numbers:** a regular enemy shows a number only for a hit of 10+, and
+  none on death. Bosses and elites are unchanged.
+- **XP thieves fixed.** With a horde, thieves outlived the fodder, grew on every orb and
+  ate a room's XP (a test player was level 1 after 96 kills). `THIEF_CHANCE` 0.12 → 0.06,
+  a thief stops at `THIEF_FULL` (14 XP), gains +2 HP an orb instead of +5/+10, and
+  **drops what it stole ×1.25 when it dies**.
+- **Difficulty:** floor 1 HP 0.6 → 0.75 and damage 0.8 → 0.9; floor 2 HP 1.0 → 1.2 and
+  damage 1.1 → 1.2; spawn rate and alive target raised slightly (`Horde.js`). A first
+  attempt went further and took a careless player to 22% Sanity in room 1; this is the
+  eased version. Simulator, fresh save: floor 1 lows 90–98%, floor 2 lows 70–78%.
+- The Sanity label no longer wraps under its bar.
+
+**Patch 169 — doors, the Predator, the beam, the burn-away (2026-11-18).**
+- **Reward doors redrawn** (`Renderer`, the `ROOM_DOOR` branch): light spilling on the
+  floor, a stone arch, a lit portal with rising streaks, the reward's glyph in the head
+  of the arch (star, cross, arrow, diamond, exclamation) and the label on a dark plate
+  under the sill. They were a black rectangle with a coloured stroke. HEAL's label is
+  now `HEAL +50`.
+- **Predator** recoloured crimson with a pale rim and a larger eye (cache key `pred2`);
+  it was `#111` on a dark floor. **Parasite** drawn 1.6× (it was a speck).
+- **Warm beam:** a screen-blended amber gradient inside the flashlight cone
+  (`drawEffectsAndAuras`), one gradient a frame; the composite mode is reset after it.
+- **Burn-away:** a kill pop now also has a shrinking white core and five embers.
+
+**Patch 170 — walking through doors, living enemies, bosses that own the floor (2026-11-18).**
+- **Door entry.** Touching a reward door no longer changes the room on that step.
+  `Combat` starts an entry of `DOOR_ENTER_STEPS` (16, `Config.js`): the player is drawn
+  into the arch with i-frames, and `state.doorFx` is set. The room changes on the last
+  step. `Renderer.drawDoorTransition` (screen space, after the vignette) fills the
+  screen with the door's light from the door, then opens an iris from the player onto
+  the new room with `ROOM n / N` (or `BOSS ROOM`). The door swells and the player
+  shrinks during the entry. `test_rewards.js` ticks until the room changes.
+- **Enemies move like bodies:** a waddle and a breathing squash per enemy, faster with
+  speed, and an orange bloom while the light burns them.
+- **Bosses:** a wide ground shadow and two counter-rotating dashed rings in the boss's
+  colour; under half health the rings turn red and spin up. A boss dies in a ring of
+  eleven detonations (`spawnPop` takes a size); an elite's death gets a large pop.
+- Boss HUD line is the name and a percentage (the long form wrapped on phones).
+
+**Patch 171 — jointed procedural rigs (2026-11-18).** The user chose procedural rigs
+over commissioned sprite sheets, to be tried on the player, the first boss and the
+regular enemies.
+- **`src/core/Rig.js`** (new, pure): `ik2()` solves a two-bone limb; `WalkerRig` keeps
+  feet PLANTED in the world and steps them in alternating groups when the body leaves
+  them behind. A teleport or a non-finite position re-plants the feet.
+- **The player** (`Renderer.drawPlayer`) is a jointed figure: IK legs striding along the
+  direction actually moved, a coat that twists with the step, a backpack, a free arm
+  swinging against the legs, an IK arm holding the flashlight out, a head with hair and
+  a face that turns toward travel.
+- **Scavenger:** two IK legs under the hunch. **Predator:** four IK legs skittering in
+  diagonal pairs, folded back in a lunge (cache key `pred3`; the two painted legs are
+  gone). One path and two strokes per enemy.
+- **Sphere Head** (floor-1 boss) walks on a six-leg `WalkerRig` kept per boss in
+  `Renderer.bossRigs` (a WeakMap, render-side state only): thigh and shin per leg, the
+  red eyes ride the knees, the stance widens while it charges and splays on the pulse.
+  A lidded central eye tracks the player, narrows before the pulse and blinks; under
+  half health the shell is cracked. The old body sway rotation is removed.
+
+**Patch 172 — the chest and the in-run inventory (2026-11-18).**
+- **Chest redrawn:** banded wood, a seam of light, a beacon and two motes while it
+  waits; opening, the lid swings up and nine rays fan out (screen-blended, composite
+  reset), then a large pop, a crown of eight and a short flash.
+- **Inventory on the pause screen** (`#pause-loadout`, `renderPauseLoadout` in
+  `main.js`): instruments with level pips, boons, active synergies, tokens worn, tokens
+  found this run. Read-only; tokens are still fitted in the Mind Hub. It is wrapped so
+  the pause menu opens even if the panel cannot be drawn.
+
+**Patch 173 — lens beam, Patients that look different and afraid, the Parasite, closest achievements (2026-11-18).**
+- **The beam leaves the lens.** `Renderer.lensPoint` (41 ahead, 5 to the side of the
+  player) is the origin of the light-mask cone and the warm tint. Visual only: the
+  weapon's cone is still measured from the player in `Combat.js`.
+- **Patients look different** (`PATIENT_LOOKS`, keyed on `state.player.character`):
+  Insomniac in blue with a pillow and eye bags, Vandal in a red hood with a pipe across
+  the back, Artist in mustard with a beret and satchel, Photographer in olive with a cap,
+  strap and camera bag.
+- **Fear.** `drawPlayer` derives a 0-1 fear from low Sanity and the nearest enemy's
+  distance: shoulders draw in, the figure trembles, the head turns to the threat, the
+  eye whites show and grow, sweat flies off; a flinch squash on being hit; blinks and a
+  slow look-around when calm.
+- **Parasite** rebuilt as a tick on six IK legs with a glowing abdomen and mandibles (it
+  was a spinning star). Its lash line is green.
+- **Pause inventory:** the five unearned achievements nearest completion, with bars.
+- **Level-up panel** restyled (dark glass, gold edge, cards with a gold spine); sizes
+  and layout rules unchanged.
+
+**Patch 174 — the house style everywhere, and glass-and-gold menus (2026-11-18).**
+The user confirmed the art direction (dark body, pale rim, one glowing accent, jointed
+limbs) and chose glass-and-gold over the paper "medical file" for every menu.
+- **Splitter** redrawn as a dark sheet with a pale edge, a face printed in light, two IK
+  legs and a faint trailing copy. **Warden**: a dark broad body on IK legs, both arms
+  raised to hold the ward, a helmet lamp that sweeps like a beacon (the ward ring is
+  unchanged). **Burrower** (exposed): a dark mole in a ring of thrown earth with two IK
+  arms and pale claws that rake. All three face their direction of travel now.
+- **Bosses walk:** `BOSS_LEGS` gives the Panopticon four long stilts, the Amalgamation
+  eight short limbs and the Architect three gold compass legs, each a `WalkerRig` kept in
+  `Renderer.bossRigs`, drawn in the boss presentation layer under the existing sprite.
+  Rorschach is ink and has none.
+- **Menus:** the Patch 174 blocks at the end of `style.css` flip `--paper-bg` and
+  `--ink-black` (so every rule built on them follows), change `--ui-font` to a sans stack
+  and restate the folder, header, buttons, tabs, cards, token slots, roadmap, records,
+  achievements, Synapse nodes, stamps, inputs and the death screen. 77 hard-coded dark
+  text colours and about 30 paper-coloured backgrounds in `style.css`, `index.html` and
+  the UI scripts were converted by script. `CLAUDE.md`'s "preserve the clinical folder"
+  convention is marked superseded.
+- Not converted or not looked at: the settings screen, the confirm dialog, the Clinical
+  Guide's inner diagrams, the story/Case File reader and the ending screens were not
+  individually checked in the new skin.
+
+**Patch 175 — atmosphere (2026-11-18).** Dust motes drift in the flashlight beam
+(24 stateless motes, off on the LOW tier), and a level-up throws a gold burst around the
+player.
+
+**Patches 176–180 — the second phone review: levels, the hub, the doll, the lore (2026-11-18).**
+From the user's A56 screenshots: Intrusive Thoughts were white on grey; items needed a
+visual home ("like Diablo"); the lore deserved pictures; and the walkable hub's look
+clashed with the rest ("I had a Hades-style hub in mind").
+- **176.** Every `.synapse-node-file` outside the Synapse grid (the Intrusive Thoughts
+  cards) is dark glass with light text; the inline FORGE buttons are gold on glass.
+  **The loadout strip is a paper doll** (`UIManager.renderSlotChips`): the Patient in the
+  middle (inline SVG), each slot beside the body part it dresses, with an icon and the
+  worn token's rarity on the frame. It replaces the equipped column on every width.
+- **177. Set dressing** (`src/systems/Decor.js`, new, pure and stateless). The world is
+  cut into 230-unit cells; a hash of (cell, floor, room) decides whether a cell holds a
+  prop, which of the floor's four, where and how turned, or a LAMP. Props are cached
+  sprites (`Renderer.paintDecor`), muted so they are never mistaken for enemies. A lamp
+  cuts a hole in the darkness mask and adds a screen-blended warm pool over it.
+  Decoration only: nothing collides or blocks light. No decor in the Void or on a room's
+  centre.
+- **178. The hub is THE BEDROOM** (`HubWorld.js` rewritten; zone ids, positions, radii
+  and actions unchanged). Floorboards, a rug, moonlight. The BED starts a run; the DESK
+  shows a notebook per Patient Level; the WARDROBE has a hook per token slot, lit in the
+  worn token's rarity; the SHELF has a trophy per boss beaten (a dashed plinth for the
+  rest) and a jar per regular enemy that fills with kills (full at 500); a CORKBOARD
+  pins a sheet for every Case File page found, joined by red thread. The hub's darkness
+  is lighter and its light no longer strobes. The station prompt is glass-and-gold.
+- **179. The Case File is illustrated:** each chapter opens on an inline-SVG scene of its
+  place (the chair outside the office, the inkblot cards, the watchtower, the pile, the
+  blueprint), a dark outline until the chapter's boss has been faced.
+- **180.** The Amalgamation and Rorschach get the house style's pale rim.
+
+**Patch 181 — the third phone review (2026-11-18).**
+- **Pause had no RESUME after a cleared floor.** The floor-clear screen hides
+  `#btn-unpause` (it offers DESCEND) and nothing showed it again, so from floor 2 on a
+  pause on a phone offered only AWAKEN and SETTINGS; the user lost a floor-3 run to it.
+  `togglePause` now shows it every time. **This predates v3** (the same single hide is
+  on `master`); Escape masked it on desktop. The intermittent smoke-check failure fixed
+  in the previous commit was a different thing (a level-up card open at the pause).
+- **Walls have height.** `drawObstacles`: a lighter top face, a dark face toward the
+  camera `WALL_H` (16) below it, a longer shadow. Collision is unchanged.
+- **Props are floor imprints.** Drawn at 26% with no contact shadow, and fewer of them
+  (about a third of cells). At full strength a desk read as a wall.
+- **Lamps are removed** (`Decor.js` no longer returns them). A pool of light with
+  nothing casting a shadow in it read as a pickup. The Renderer's lamp code is left in
+  place and finds none.
+- **An outage is dark for every Patient** (0.95). The Insomniac, the default Patient,
+  used to keep the whole room lit, so the event showed nothing; they now keep a smaller
+  ring of ambient light. BLACKOUT rooms are darker than normal ones (0.84).
+- **Hub:** a baked name plate by every station and the corkboard, and a gold marker
+  bobbing over each station.
+
+**Patch 182 — depth from the one light in the game (2026-11-18).**
+- **Walls block the beam.** `drawLightingMasks` paints the darkness back behind every
+  solid block and post as seen from the lens (one quad per edge facing away). The wall's
+  top stays lit.
+- **And block its damage.** `Combat.beamBlocked` (exported): the flashlight does not
+  burn an enemy with a solid block or post between it and the player. Arcs do not block,
+  and no other weapon is affected. Enemies get brief cover behind walls; the simulator's
+  floor 1-2 numbers did not move.
+- **Beam shadows.** `Renderer.drawBeamShadows`: every enemy inside the cone throws a
+  tapered shadow away from the lens, longer the nearer it is. One path for all.
+- XP shards hover over a small floor shadow.
+- **Keep clause 58:** if the beam's look and its damage ever disagree about walls, fix
+  both together. They are computed in two places (the Renderer from the lens, Combat
+  from the player).
+
+**Patch 183 — sound for the horde (2026-11-18).** All synthesised in
+`AudioEngine.playProceduralSFX`; no new files.
+- `kill` and `pickup` climb a pentatonic ladder while they keep coming (a run of kills
+  plays a rising phrase), and reset after a short gap. `levelup` is a four-note chime
+  (the key was already played by `main.js` and `LevelUpUI` but had no synthesiser branch,
+  so it was silent unless a sample existed). `door`, `chest_open`, `room_clear` are new.
+- Hooked in `Combat` (regular kills, door entry, chest burst) and `Director` (room
+  clear). The new keys clamp their volume multiplier at 1.2.
+- Verified to run without errors in a real session; not listened to.
+
+**Patch 184 — store assets and copy rebuilt for v3 (2026-11-18).** The four cover
+layers, the three covers and both preview videos were re-rendered from the current game
+with `marketing/tools/` (no tool changes were needed; both captures ran with no page
+errors). `SUBMISSION.md`'s short description, description and resubmission notes now
+describe the horde game, the bedroom hub and the v3 first minute. The logo is unchanged.
+The covers were looked at once at reduced size; the landscape cover has a creature
+overlapping the title's left edge and wants a second look (re-render `L_ring` for a
+different scatter).
+
+**Patch 185 — the full browser-check pass and the slow-phone soak (2026-11-18).**
+All 31 dev-server checks in `qa/` were run for the first time since the v3 rework.
+- **Real bugs found and fixed:** "SANITY 20% · FRAYING" overflowed its HUD panel at
+  384 px (`hud_check`); the pause inventory pushed SYSTEM SETTINGS off screen on
+  landscape sizes (`sizes_check`), so it now takes only the space left and steps aside
+  under 520 px of height.
+- **Checks updated for intended changes:** `hub`, `text` and `sizes` set up a returning
+  player before opening the Mind Hub (hidden on a first visit since Patch 167);
+  `story` asserts there is no cold open and that the content note is on the title;
+  `juice` chooses the level-up cards a boss's XP now pays for before timing the slow
+  motion.
+- **Soak** (`soak_check --throttle 4 --phone`, floor 9, every boss, crowd at the cap,
+  software rendering), v3 against `master` in the same session:
+
+  | tier | build | enemies | loop CPU mean / p95 | frame p50 |
+  | --- | --- | --- | --- | --- |
+  | HIGH | master | 55 | 16.5 / 32.2 ms | 83 ms |
+  | HIGH | v3 | 73 | 25.5 / 45.3 ms | 150 ms |
+  | LOW | master | 42 | 12.9 / 21.9 ms | 83 ms |
+  | LOW | v3 | 60 | 19.3 / 34.2 ms | 117 ms |
+
+  Invariants hold on both tiers. v3 costs about 50% more CPU per frame in this worst
+  case; per enemy it is about the same on LOW and about 17% more on HIGH, so most of it
+  is simply more enemies. The LOW tier now also drops the per-enemy glows
+  (`Renderer.lowTier`). Headless numbers exaggerate fill cost and say nothing absolute
+  about a real GPU; the A56 reports "fluent".
+- Not run: `auto_quality_check`, `sim_cost_check`.
+
+**Patches 187–189 — the name, a picture for the first control, the floor-3 boss (2026-11-18).**
+From the benchmark against eight survivors-likes on CrazyGames (seven carry
+"Survivor(s)" in the title; all carry the Horde Survival tag; CrazyGames' quality guide
+asks for visual onboarding).
+- **187. The game is FRACTURED: Survivors** (was "Second Opinion", a subtitle that never
+  launched). Title screen stamp, page title and meta, the end-card string, the cover
+  tool, `SUBMISSION.md`, `marketing/README.md`. The stamp is set larger for the shorter
+  word. Covers, logo and both preview videos rebuilt. The Synapse node named "Second
+  Opinion" is unrelated and unchanged.
+- **188. The first room's move hint is a picture** (`Renderer.drawFirstRunHint`): a thumb
+  dragging a ghost stick on touch, W A S D lighting in turn on a keyboard. It fades after
+  about a second of real movement (`state.hintMoveFrames`) or 12 s. The text line it
+  replaces is gone; "Grab the glowing shards" and the door line remain.
+- **189. The Panopticon.** HP 4000 → 2600, sweep 15 → 9 a tick over 150 steps (was 180),
+  tracking 0.010 → 0.0085 rad a step, the closing ring 18 bolts of 30 → 14 of 16, contact
+  40 → 26. Simulator, 10 runs each: it killed 100% of players on every profile before;
+  now 10% of fresh novices, 50% of fresh and returning competent players, and the
+  Architect (the final boss) is the fight most runs end on. One fresh novice cleared all
+  five floors.
+
+**Patch 190 — CrazyGames' technical requirements, re-read (2026-11-18).**
+- `navigator.maxTouchPoints` is no longer used to guess a touch device (`main.js`'s
+  portrait-layout hint, `Input.js`'s `coarsePointer`). The requirements page says not to
+  detect mobile with it or with `ontouchstart`; a touchscreen laptop reports it and would
+  get the phone layout. `(pointer: coarse)` remains, corrected by real input as before.
+  `ErrorLog` still records it as a diagnostic only.
+- Already met: `user-select: none` on `body`; gameplayStart/Stop and loadingStart/Stop.
+- **Leaderboards:** the SDK has them (`CrazyGames.SDK.user.submitScore` with an
+  encrypted score, one board per game) but the docs say "only available for invited
+  games", so the Daily Session board cannot be built for a Basic Launch. Not started.
+- Not used: `reportGameCompletedPercentage`.
+
+**New Keep clauses.**
+- **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
+  regular spawns back on the corner-radius circle: on portrait it is beyond the leash.
+- **55. `DARKNESS_ALPHA` stays well under 1.** The game must be readable in a
+  screenshot and on a phone in daylight; darkness is mood, the eyes are the threat.
+- **56. The PLAY button's box never moves** (its pulse is `filter`, not `transform`):
+  the browser checks wait for a stable element.
+- **57. Any change to kill volume goes through `Horde.js` and is followed by
+  `sim_difficulty.js`**: XP, healing and Lucidity are all fitted to it.
+
+**Checks.** All assertion suites pass; `test_bosses`, `test_content`, `test_viewport`
+and `qa/smoke_check.cjs` had expectations updated for the contracts above.
+`qa/smoke_check.cjs --no-soak` passes on the built bundles.
+
+**Not re-verified in this pass:** the other `qa/*.cjs` scripts (several assert the old
+HUD text, the cold open or tutorial steps and will need the same kind of update), the
+soak on a throttled phone profile at the new caps, and the marketing covers/videos,
+which still show the old darkness.
+
+**Known issues.** The floor-3 boss (Panopticon) kills every scripted player, before and
+after this rework; it wants its own pass. `Tutorial.js` is dead code pending removal.
+
+---
+
 ## Keep clauses (things future patches break by accident)
 
 1. **Never touch `localStorage` directly in `main.js`.** Use

@@ -29,6 +29,40 @@ const el = (tag, cls, text) => {
 let coldOpen = null;
 
 /** Shows the cold-open cards. Returns a handle with dismiss(). Calls onDone once. */
+// Patch 179: chapter illustrations for the Case File (inline SVG, one accent each).
+const ART_OPEN = (accent) => `<svg viewBox="0 0 320 112" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice"><rect width="320" height="112" fill="#15121d"/><rect width="320" height="112" fill="${accent}" opacity="0.08"/>`;
+const CHAPTER_ART = {
+    // 1 THE OFFICE: the chair outside the door, the clock stopped at 1:52, rain
+    1: ART_OPEN('#ffcf8a') + `<g stroke="#f2d27a" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M0 92 H320"/><rect x="196" y="18" width="56" height="74" fill="#231d2e"/><rect x="206" y="28" width="36" height="30" fill="#ffcf8a" opacity="0.35"/><circle cx="244" cy="62" r="2.5" fill="#f2d27a"/>
+        <circle cx="120" cy="30" r="15" fill="#231d2e"/><path d="M120 30 V20 M120 30 L129 35"/>
+        <path d="M60 92 V62 H84 V92 M60 62 V40 H66 V62 M58 76 H86"/></g>
+        <g stroke="#bcd6ff" stroke-width="1.2" opacity="0.5"><path d="M20 10 l-5 14 M38 22 l-5 14 M290 12 l-5 14 M304 40 l-5 14 M272 34 l-5 14 M150 60 l-4 12"/></g></svg>`,
+    // 2 THE INKBLOTS: three cards, each blot a mirrored face
+    2: ART_OPEN('#bcd6ff') + `<g stroke="#f2d27a" stroke-width="2" stroke-linejoin="round">
+        <g transform="translate(70 56) rotate(-9)"><rect x="-30" y="-40" width="60" height="80" rx="4" fill="#efe6d6"/><path d="M0 -24 C-26 -30 -24 6 -6 4 C-22 20 -4 30 0 16 C4 30 22 20 6 4 C24 6 26 -30 0 -24Z" fill="#12101a" stroke="none"/></g>
+        <g transform="translate(160 54)"><rect x="-30" y="-40" width="60" height="80" rx="4" fill="#efe6d6"/><path d="M0 -28 C-20 -20 -28 0 -12 10 C-20 26 -6 30 0 18 C6 30 20 26 12 10 C28 0 20 -20 0 -28Z" fill="#12101a" stroke="none"/><circle cx="-8" cy="-6" r="3" fill="#efe6d6" stroke="none"/><circle cx="8" cy="-6" r="3" fill="#efe6d6" stroke="none"/></g>
+        <g transform="translate(250 58) rotate(8)"><rect x="-30" y="-40" width="60" height="80" rx="4" fill="#efe6d6"/><path d="M0 -20 C-30 -34 -30 20 -4 8 C-10 30 10 30 4 8 C30 20 30 -34 0 -20Z" fill="#12101a" stroke="none"/></g></g></svg>`,
+    // 3 THE WATCHTOWER: one eye over a row of lit windows
+    3: ART_OPEN('#ff7a86') + `<g stroke="#f2d27a" stroke-width="2" fill="none" stroke-linejoin="round">
+        <path d="M150 112 L156 54 H164 L170 112Z" fill="#231d2e"/>
+        <path d="M112 40 Q160 4 208 40 Q160 76 112 40Z" fill="#efe6d6"/><circle cx="160" cy="40" r="15" fill="#ff5a6a"/><circle cx="160" cy="40" r="6" fill="#12101a" stroke="none"/>
+        <path d="M160 54 L40 112 M160 54 L280 112" stroke="#ff7a86" opacity="0.5"/></g>
+        <g fill="#ffcf8a" opacity="0.8">${[20,52,84,224,256,288].map(x => `<rect x="${x}" y="84" width="14" height="18"/>`).join('')}</g></svg>`,
+    // 4 THE PILE: everything put away, heaped, one small hand reaching out
+    4: ART_OPEN('#b6ff5a') + `<g stroke="#f2d27a" stroke-width="2" stroke-linejoin="round" fill="#231d2e">
+        <rect x="96" y="70" width="52" height="34"/><rect x="150" y="62" width="60" height="42"/><rect x="118" y="38" width="46" height="32" transform="rotate(-8 141 54)"/>
+        <rect x="170" y="30" width="38" height="32" transform="rotate(10 189 46)"/><rect x="212" y="78" width="40" height="26"/><rect x="60" y="84" width="34" height="20"/>
+        <path d="M110 80 h24 M160 74 h40 M128 50 h26" fill="none"/></g>
+        <path d="M232 60 q10 -18 22 -22 M254 38 l5 -7 M254 38 l8 -3 M254 38 l7 3" stroke="#b6ff5a" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`,
+    // 5 THE BLUEPRINT: a house in plan, one room left undrawn
+    5: ART_OPEN('#ffd24a') + `<g stroke="#ffd24a" stroke-width="1.6" fill="none">
+        ${Array.from({ length: 9 }, (_, i) => `<path d="M${i * 40} 0 V112" opacity="0.14"/>`).join('')}${Array.from({ length: 4 }, (_, i) => `<path d="M0 ${i * 32 + 8} H320" opacity="0.14"/>`).join('')}
+        <path d="M70 22 H250 V96 H70Z M70 58 H150 M150 22 V96 M150 58 H200" stroke-width="2.2"/>
+        <path d="M200 58 H250 V96 H200Z" stroke-dasharray="5 5" opacity="0.9"/><path d="M216 70 l18 14 M234 70 l-18 14" opacity="0.7"/>
+        <path d="M96 22 a14 14 0 0 1 14 14" /><path d="M150 76 a12 12 0 0 0 -12 12"/></g></svg>`
+};
+
 export function showColdOpen({ cards = COLD_OPEN, cardMs = COLD_OPEN_CARD_MS, armMs = 400, onDone } = {}) {
     if (typeof document === 'undefined') return null;
     dismissColdOpen(true);
@@ -257,6 +291,12 @@ export function renderCaseFile(container, meta, { onReplay } = {}) {
         const faced = (Number(kills[ch.boss]) || 0) > 0 || got > 0;
         const sec = el('section', 'casefile-chapter');
         sec.dataset.chapter = String(ch.n);
+        // Patch 179: each chapter opens on an illustration of its place. It is drawn in
+        // full once the chapter's boss has been faced; before that it is a dark outline.
+        const art = el('div', `casefile-art${faced ? '' : ' casefile-art--locked'}`);
+        art.setAttribute('aria-hidden', 'true');
+        art.innerHTML = CHAPTER_ART[ch.n] || '';
+        sec.appendChild(art);
         sec.appendChild(el('h3', 'casefile-chapter-h', `${ch.n}. ${ch.title} — ${faced ? ch.defense.toUpperCase() : '???'} · ${got} / ${pages.length}`));
         if (!faced) sec.appendChild(el('p', 'casefile-locked', STRINGS.caseFileChapterLocked));
         pages.forEach(p => {

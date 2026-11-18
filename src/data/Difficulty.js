@@ -37,13 +37,16 @@
 //
 // Floors past 5 (THE RECURSION) read the floor-5 row; Endless.js scales on top of
 // it as before.
+// Patch 165 (v3, the horde): retuned for crowds. A room now keeps 20-50 bodies alive
+// (data/Horde.js), so each body is weaker, each orb heals far less (there are four to
+// five times as many), and `pack` is retired (kept at 1; arrivals are continuous).
 export const FLOOR_PRESSURE = [
     null,
-    { orbHeal: 3,    damage: 1,    budget: 1,    pack: 1, hp: 1,    speed: 1,    density: 1 },   // floor 1: unchanged
-    { orbHeal: 2.25, damage: 1.15, budget: 1.25, pack: 2, hp: 1.3,  speed: 1.1,  density: 1 },
-    { orbHeal: 2,    damage: 1.2,  budget: 1.35, pack: 3, hp: 1.45, speed: 1.12, density: 1 },
-    { orbHeal: 1.75, damage: 1.25, budget: 1.4,  pack: 3, hp: 1.6,  speed: 1.15, density: 1 },
-    { orbHeal: 1.5,  damage: 1.3,  budget: 1.5,  pack: 3, hp: 1.75, speed: 1.18, density: 1 }
+    { orbHeal: 0.3, damage: 0.9, budget: 1, pack: 1, hp: 0.75, speed: 1, density: 1 },
+    { orbHeal: 0.26, damage: 1.2, budget: 1.05, pack: 1, hp: 1.2, speed: 1.08, density: 1 },
+    { orbHeal: 0.25, damage: 1.2, budget: 1.1, pack: 1, hp: 1.4, speed: 1.1, density: 1 },
+    { orbHeal: 0.22, damage: 1.3, budget: 1.15, pack: 1, hp: 1.9, speed: 1.13, density: 1 },
+    { orbHeal: 0.2, damage: 1.4, budget: 1.2, pack: 1, hp: 2.5, speed: 1.16, density: 1 }
 ];
 
 /** The pressure row for a floor (floors < 1 read floor 1, floors > 5 read floor 5). */

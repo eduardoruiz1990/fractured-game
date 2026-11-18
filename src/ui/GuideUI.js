@@ -85,12 +85,12 @@ export class GuideUI {
     /** One catalogue entry, styled like the hand-written flashcards above it. */
     card(accent, icon, title, body, footnote) {
         return `
-            <div style="background:#fdfaf3; border:2px solid ${accent}; box-shadow:4px 4px 0 rgba(0,0,0,0.12); padding:12px; display:flex; flex-direction:column; gap:6px;">
+            <div style="background: rgba(255, 255, 255, 0.05); border:2px solid ${accent}; box-shadow:4px 4px 0 rgba(0,0,0,0.12); padding:12px; display:flex; flex-direction:column; gap:6px;">
                 <div style="display:flex; align-items:center; gap:8px;">
                     ${icon ? `<span style="font-size:1.4rem; line-height:1;">${icon}</span>` : ''}
                     <strong style="color:${accent}; font-size:0.9rem; letter-spacing:1px;">${esc(title)}</strong>
                 </div>
-                <p class="typewriter-text" style="margin:0; font-size:0.78rem; color:#333; line-height:1.35;">${esc(body)}</p>
+                <p class="typewriter-text" style="margin:0; font-size:0.78rem; color: #b3adc0; line-height:1.35;">${esc(body)}</p>
                 ${footnote ? `<div style="font-size:0.68rem; color:#8a8172; letter-spacing:1px;">${esc(footnote)}</div>` : ''}
             </div>`;
     }

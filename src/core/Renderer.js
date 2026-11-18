@@ -7,7 +7,9 @@
 import { errorLog } from './ErrorLog.js';
 // The arena wall drawn below is the same boundary Game.js drains Sanity past and
 // Director.js clamps spawns inside — see the note on ARENA_VOID_RADIUS in Config.js.
-import { ARENA_VOID_RADIUS, isBossType } from '../data/Config.js';
+import { ARENA_VOID_RADIUS, isBossType, DOOR_ENTER_STEPS } from '../data/Config.js';
+import { ik2, WalkerRig } from './Rig.js';   // Patch 171
+import { forEachDecor, LAMP_RADIUS } from '../systems/Decor.js';   // Patch 177
 import { ARENA_LAYOUTS, ARENA_RISE_STEPS, ARENA_FADE_STEPS, GRID_TELEGRAPH_STEPS } from '../systems/Arena.js';   // Patch 137
 // Patch 96 — THE RECURSION's look: the five biomes cycle past floor 5, with a capped
 // depth escalation layered over them. The cap is a memory bound, not a taste one —
@@ -20,11 +22,43 @@ import { bossTelegraphing } from './Haptics.js';   // Patch 150 (V2 plan F4)   /
 // the real working set — entity bodies x phase buckets x variants, glows per colour.
 const SPRITE_CACHE_MAX = 768;
 
+// Patch 173: the lens of the flashlight in the player's frame, in world units.
+const LENS_DIST = 41, LENS_SIDE = 5;
+// Patch 165: how dark the unlit world is (1 = the old pitch black).
+const DARKNESS_ALPHA = 0.6;
+// Patch 173: how each Patient is drawn (Renderer.drawPlayer).
+const PATIENT_LOOKS = {
+    insomniac:    { coat: '#3f78b5', coatDark: '#284f7a', skin: '#efd2b0', hair: '#2b2530', trouser: '#39446a', carry: 'pillow', bags: true },
+    vandal:       { coat: '#b0392f', coatDark: '#742019', skin: '#e3b48a', hair: '#1c1a1a', trouser: '#2a2a30', carry: 'pipe', hat: 'hood' },
+    artist:       { coat: '#d1a02c', coatDark: '#8f6a12', skin: '#f1d6bd', hair: '#5a3220', trouser: '#3a2f4a', carry: 'satchel', hat: 'beret' },
+    photographer: { coat: '#61803a', coatDark: '#3d5422', skin: '#c99874', hair: '#201a14', trouser: '#3b3a30', carry: 'camera', hat: 'cap', strap: '#15151a' }
+};
+// Patch 174: walking rigs for the bosses that have legs (Renderer's boss layer).
+const BOSS_LEGS = {
+    PANOPTICON:   { n: 4, rest: 92, step: 40, time: 14, hip: 30, l1: 52, l2: 56, w: 5,   lift: 14, body: '#3a0d1e', rim: 'rgba(255, 170, 190, 0.85)', glow: '#ff2a6a' },
+    AMALGAMATION: { n: 8, rest: 62, step: 22, time: 8,  hip: 34, l1: 22, l2: 24, w: 6.5, lift: 6,  body: '#2c3a1c', rim: 'rgba(214, 255, 170, 0.8)',  glow: '#b6ff5a' },
+    ARCHITECT:    { n: 3, rest: 70, step: 34, time: 11, hip: 16, l1: 40, l2: 44, w: 3,   lift: 12, body: '#1a1626', rim: 'rgba(255, 226, 150, 0.95)', glow: '#ffd24a', turn: 0.004 }
+};
+// Patch 177: prop colours per biome (paintDecor). Muted on purpose: furniture must
+// never be mistaken for an enemy, which is dark with a bright rim and lit eyes.
+const DECOR_PALETTES = [
+    { base: '#7a5636', dark: '#4a321e', rim: 'rgba(240, 214, 170, 0.45)', accent: '#d9c9a8', ink: '#1c1410', lamp: '#ffcf8a' },
+    { base: '#46566e', dark: '#232c3c', rim: 'rgba(200, 220, 255, 0.42)', accent: '#c9d2e0', ink: '#0b0d15', lamp: '#bcd6ff' },
+    { base: '#7c2c38', dark: '#3d1018', rim: 'rgba(255, 180, 180, 0.42)', accent: '#ff7a86', ink: '#1a0508', lamp: '#ff9a8a' },
+    { base: '#34784a', dark: '#163822', rim: 'rgba(200, 255, 200, 0.4)',  accent: '#b6ff5a', ink: '#081409', lamp: '#c8ff9a' },
+    { base: '#34305a', dark: '#18152c', rim: 'rgba(255, 226, 150, 0.5)',  accent: '#e9c877', ink: '#0a0816', lamp: '#ffe2a0' }
+];
+const EYE_COLOURS = {
+    SCAVENGER: '#ffd24a', PREDATOR: '#ff5a48', PARASITE: '#9dff6a',
+    SPLITTER: '#f4f0e0', WARDEN: '#ffb347', BURROWER: '#ffc9a0'
+};
+
 export class Renderer {
     constructor(canvas, ctx) {
         this.canvas = canvas;
         this.ctx = ctx;
         
+        this.bossRigs = new WeakMap();   // Patch 171: per-boss walking rigs (render-side state)
         this.noisePattern = this.generateNoisePattern();
         this.cachedNoisePattern = this.ctx.createPattern(this.noisePattern, 'repeat');
         this.fogClouds = this.generateFogClouds();
@@ -150,7 +184,7 @@ export class Renderer {
             // "HEAL", not a bare "+50": a player reported not being able to tell
             // whether this door raised max Sanity or restored lost Sanity. It restores
             // (Combat.js ROOM_DOOR: min(maxHp, sanity + 50)), so the label says so.
-            HEAL: { color: '#33ff55', glowRgb: '100, 255, 100', label: 'HEAL +50 SANITY' },
+            HEAL: { color: '#33ff55', glowRgb: '100, 255, 100', label: 'HEAL +50' },
             WEAPON_UPGRADE: { color: '#4499ff', glowRgb: '80, 160, 255', label: 'WEAPON UP' },
             TOKEN_DOOR: { color: '#ff8c00', glowRgb: '255, 140, 0', label: 'TOKEN' },
             RISK_REWARD: { color: '#ff3333', glowRgb: '255, 60, 60', label: 'RISK / REWARD' }
@@ -198,8 +232,11 @@ export class Renderer {
      */
     updateZoom() {
         const MAX_ZOOM = 1.3;            // desktop, unchanged
-        const MIN_ZOOM = 0.70;           // readability floor for small screens
-        const MIN_ZOOM_PORTRAIT = 0.58;  // portrait trades sprite size for warning distance
+        // Patch 165: 0.70/0.58 drew a 12-unit enemy at 7-8 px on a phone. With enemies
+        // arriving at the edge of the view (Director.spawnEntity) the warning distance is
+        // the screen itself, so the camera can sit close enough to read the crowd.
+        const MIN_ZOOM = 0.90;
+        const MIN_ZOOM_PORTRAIT = 0.86;
         const TARGET_W = 900;            // world units we want visible horizontally
         const TARGET_H = 620;            // and vertically
 
@@ -392,11 +429,14 @@ export class Renderer {
         const patterns = [];
 
         const biomes = [
-            { bg: '#1a1410', line: '#0f0a05', accent1: 'rgba(50, 30, 20, 0.4)', accent2: 'rgba(0, 0, 0, 0.5)', crack: 'rgba(0, 0, 0, 0.55)' }, // Floor 1: Wastes (Rusty Browns)
-            { bg: '#0d0d0d', line: '#222222', accent1: 'rgba(80, 80, 80, 0.2)', accent2: 'rgba(0, 0, 0, 0.6)' }, // Floor 2: Divide (Stark Grayscale)
-            { bg: '#250808', line: '#110202', accent1: 'rgba(100, 10, 10, 0.3)', accent2: 'rgba(0, 0, 0, 0.7)' }, // Floor 3: Panopticon (Oppressive Reds)
-            { bg: '#081a0c', line: '#030a04', accent1: 'rgba(20, 80, 20, 0.3)', accent2: 'rgba(5, 15, 5, 0.6)' }, // Floor 4: Amalgamation (Toxic Greens)
-            { bg: '#000000', line: '#b8860b', accent1: 'rgba(218, 165, 32, 0.1)', accent2: 'rgba(0, 0, 0, 0.8)' }  // Floor 5: Architect (Pitch Black & Gold)
+            // Patch 165: every floor lifted out of near-black and given a clear hue, so a
+            // biome is recognisable in the dim light outside the beam and on a phone
+            // screen in daylight. Same identities, three to four times the luminance.
+            { bg: '#4a3526', line: '#2b1d12', accent1: 'rgba(120, 78, 46, 0.45)', accent2: 'rgba(20, 12, 6, 0.45)', crack: 'rgba(16, 9, 4, 0.6)' }, // Floor 1: Wastes (rust and amber)
+            { bg: '#2b3442', line: '#4a586e', accent1: 'rgba(140, 160, 190, 0.25)', accent2: 'rgba(8, 12, 20, 0.5)' }, // Floor 2: Divide (cold steel blue)
+            { bg: '#541a20', line: '#2c0a0e', accent1: 'rgba(170, 40, 46, 0.35)', accent2: 'rgba(24, 4, 6, 0.55)' }, // Floor 3: Panopticon (crimson)
+            { bg: '#1a4a2c', line: '#0c2414', accent1: 'rgba(60, 150, 80, 0.3)', accent2: 'rgba(6, 22, 10, 0.5)' }, // Floor 4: Amalgamation (toxic green)
+            { bg: '#1c1830', line: '#c9972a', accent1: 'rgba(218, 165, 32, 0.16)', accent2: 'rgba(6, 4, 16, 0.6)' }  // Floor 5: Architect (midnight violet and gold)
         ];
 
         const tileWrap = (cx, fn) => {
@@ -1355,8 +1395,9 @@ export class Renderer {
                     this.lightCtx.scale(this.zoom, this.zoom);
                     this.lightCtx.translate(-state.player.x, -state.player.y);
 
-                    let darkness = state.hubWorld.lightIntensity < 0.5 ? 0.95 : 0.82;
-                    this.lightCtx.fillStyle = `rgba(5, 8, 12, ${darkness})`;
+                    // Patch 178: the bedroom is dim and warm, not a blacked-out ward.
+                    let darkness = state.hubWorld.lightIntensity < 0.7 ? 0.74 : 0.56;
+                    this.lightCtx.fillStyle = `rgba(10, 7, 16, ${darkness})`;
                     this.lightCtx.fillRect(state.player.x - 2000, state.player.y - 2000, 4000, 4000);
 
                     this.lightCtx.globalCompositeOperation = 'destination-out';
@@ -1456,6 +1497,7 @@ export class Renderer {
                 this.drawWorldItems(state, audioEngine);
                 if (this.diag.fog) this.drawFog(state);
                 if (this.diag.lights) this.drawLightingMasks(state, curShakeX, curShakeY);
+                if (this.diag.lights) this.drawEyesInDark(state);   // Patch 165
                 this.drawObstacleOutlines(state);   // Patch 137: walls stay readable in the dark
                 if (this.cbAssist) this.drawTelegraphRings(state);   // Patch 150: Colour-Blind Assist
                 this.drawEffectsAndAuras(state);
@@ -1468,6 +1510,8 @@ export class Renderer {
 
             if (gameState !== 'HUB') {
                 if (this.diag.vignette) this.drawVignette(state);
+                if (state.doorFx) { try { this.drawDoorTransition(state); } catch (e) { /* cosmetic; never fatal */ } }   // Patch 170
+                if (state.firstRoom && !state.roomCleared) { try { this.drawFirstRunHint(state); } catch (e) { /* cosmetic; never fatal */ } }   // Patch 188
 
                 // Patch 146: a defeated boss's last line, as a subtitle.
                 if (state.subtitle && state.subtitle.steps > 0) {
@@ -1487,7 +1531,8 @@ export class Renderer {
                     this.bossAnnouncementTimer = Math.max(0, this.bossAnnouncementTimer - this.drawSteps());
                 }
                 
-                if (this.filmGrainEnabled !== false) this.drawFilmGrain();   // Patch 115: off on LOW
+                // Patch 165: grain at 30%. At full strength it flattened every colour.
+                if (this.filmGrainEnabled !== false) { this.ctx.globalAlpha = 0.3; this.drawFilmGrain(); this.ctx.globalAlpha = 1; }
             } else if (this.filmGrainEnabled !== false) {
                 // Patch 157: the hub honours the tier's film grain like gameplay does. It
                 // drew this full-screen pattern pass every frame even on LOW.
@@ -1728,6 +1773,9 @@ export class Renderer {
         this.lightScale = low ? 0.35 : 1;
         this.fogCloudLimit = low ? 12 : 30;
         this.filmGrainEnabled = !low;
+        // Patch 185: the LOW tier also drops the per-enemy glows added in v3 (rim, burn
+        // bloom, eye halo). They are one drawImage each, per enemy, per frame.
+        this.lowTier = low;
     }
 
     drawLightingMasks(state, curShakeX, curShakeY) {
@@ -1808,6 +1856,25 @@ export class Renderer {
 
         // Patch 135: a Crawlspace's warning ring is lit, so the tell is never hidden
         // by the dark (it is the whole counterplay).
+        // Patch 177: every lamp in view is a pool of light in the dark.
+        if (!state.isHub && !(state.powerOut > 0 && !state.roomCleared)) {
+            const bnd = this.decorBounds(state);
+            const lf = this.renderFrame;
+            forEachDecor(bnd.l - LAMP_RADIUS, bnd.t - LAMP_RADIUS, bnd.r + LAMP_RADIUS, bnd.b + LAMP_RADIUS,
+                paletteIndexForFloor(state.floor), state.floor, state.roomNumber, (d) => {
+                    if (d.kind !== 'lamp') return;
+                    const fl = 0.85 + 0.15 * Math.sin(lf * 0.07 + d.seed * 40) * (Math.sin(lf * 0.31 + d.seed * 9) > -0.92 ? 1 : 0.3);
+                    const g = this.lightCtx.createRadialGradient(d.x, d.y, 8, d.x, d.y, LAMP_RADIUS);
+                    g.addColorStop(0, `rgba(255, 255, 255, ${0.95 * fl})`);
+                    g.addColorStop(0.55, `rgba(255, 255, 255, ${0.55 * fl})`);
+                    g.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                    this.lightCtx.fillStyle = g;
+                    this.lightCtx.beginPath();
+                    this.lightCtx.arc(d.x, d.y, LAMP_RADIUS, 0, Math.PI * 2);
+                    this.lightCtx.fill();
+                }, this.decorClear(state));
+        }
+
         if (state.entities) {
             for (const ent of state.entities) {
                 if (ent.type !== 'BURROWER' || ent.burrowState !== 'warning') continue;
@@ -1845,6 +1912,7 @@ export class Renderer {
         // The Insomniac (blackoutImmune) keeps their ambient light.
         if (state.powerOut > 0 && !state.roomCleared) {
             if (!state.player.blackoutImmune) ambientRad = 0;
+            else ambientRad *= 0.7;   // Patch 181: the Insomniac keeps a ring, not the room
             flRadius *= 0.8;
         }
 
@@ -1883,9 +1951,13 @@ export class Renderer {
             const reach = flRadius * flicker * (0.94 + t * 0.06);
             if (!Number.isFinite(spread) || !Number.isFinite(reach) || reach <= 0) continue;
 
+            // Patch 173: the beam leaves the LENS, not the player's chest. Visual only;
+            // the weapon's cone is still measured from the player (Combat.js).
+            const lens = this.lensPoint(state);
+            const lreach = Math.max(20, reach - LENS_DIST);
             const flHole = this.lightCtx.createRadialGradient(
-                state.player.x, state.player.y, 10,
-                state.player.x, state.player.y, reach
+                lens.x, lens.y, 3,
+                lens.x, lens.y, lreach
             );
             flHole.addColorStop(0, `rgba(255, 255, 255, ${strength})`);
             flHole.addColorStop(0.8, `rgba(255, 255, 255, ${strength * 0.9})`);
@@ -1893,14 +1965,51 @@ export class Renderer {
 
             this.lightCtx.fillStyle = flHole;
             this.lightCtx.beginPath();
-            this.lightCtx.moveTo(state.player.x, state.player.y);
+            this.lightCtx.moveTo(lens.x, lens.y);
             this.lightCtx.arc(
-                state.player.x, state.player.y, reach,
+                lens.x, lens.y, lreach,
                 state.player.angle - spread + jitter,
                 state.player.angle + spread + jitter
             );
             this.lightCtx.closePath();
             this.lightCtx.fill();
+        }
+
+        // Patch 182: walls block the light. Behind every solid block and post, as seen
+        // from the lens, the darkness is painted back over whatever the beam and the
+        // ambient ring had cleared. One quad per wall edge that faces away from the
+        // light. The wall's own top stays lit, so it reads as standing in the beam.
+        if (state.obstacles && state.obstacles.length && this.arenaAlpha(state) > 0.5) {
+            const lp = this.lensPoint(state);
+            const lc = this.lightCtx;
+            lc.globalCompositeOperation = 'source-over';
+            lc.fillStyle = this.getAtmosphere(state.floor).dark;
+            const FAR = 900;
+            const cast = (ax, ay, bx, by) => {
+                const dax = ax - lp.x, day = ay - lp.y, dbx = bx - lp.x, dby = by - lp.y;
+                const la = Math.hypot(dax, day) || 1, lb = Math.hypot(dbx, dby) || 1;
+                lc.beginPath();
+                lc.moveTo(ax, ay); lc.lineTo(bx, by);
+                lc.lineTo(bx + dbx / lb * FAR, by + dby / lb * FAR);
+                lc.lineTo(ax + dax / la * FAR, ay + day / la * FAR);
+                lc.closePath(); lc.fill();
+            };
+            for (const o of state.obstacles) {
+                if (!o.solid || o.cap) continue;
+                if (o.kind === 'block') {
+                    const x0 = o.x - o.hw, x1 = o.x + o.hw, y0 = o.y - o.hh, y1 = o.y + o.hh;
+                    if (lp.x >= x0 && lp.x <= x1 && lp.y >= y0 && lp.y <= y1) continue;   // the lens is over it
+                    if (lp.y < y1) cast(x0, y1, x1, y1);   // far (bottom) edge, light above it
+                    if (lp.y > y0) cast(x0, y0, x1, y0);
+                    if (lp.x < x1) cast(x1, y0, x1, y1);
+                    if (lp.x > x0) cast(x0, y0, x0, y1);
+                } else if (o.kind === 'post') {
+                    const dx = o.x - lp.x, dy = o.y - lp.y, d = Math.hypot(dx, dy);
+                    if (d <= o.r) continue;
+                    const nx = -dy / d * o.r, ny = dx / d * o.r;
+                    cast(o.x + nx, o.y + ny, o.x - nx, o.y - ny);
+                }
+            }
         }
 
         this.lightCtx.restore();
@@ -1915,8 +2024,466 @@ export class Renderer {
         this.ctx.save();
         this.ctx.setTransform(1, 0, 0, 1, 0, 0); 
         // Patch 115: drawn to the full canvas — the mask may be stored at reduced size.
+        // Patch 165: at DARKNESS_ALPHA, not 1. Pitch black outside the beam hid the
+        // horde, the floor and the room; now the dark is dim, not blind. A Power
+        // Outage and the Tunnel Vision curse still go fully dark.
+        // Patch 181: an outage is dark for EVERY Patient. The Insomniac (the default
+        // one) keeps a ring of ambient light, which is their perk, but used to keep the
+        // whole room lit, so the event did nothing you could see. BLACKOUT rooms are
+        // darker than a normal room too, so the word means something.
+        const outage = state.powerOut > 0 && !state.roomCleared;
+        const blind = outage || (state.player.curses && state.player.curses.includes('tunnel_vision'));
+        const dimRoom = state.roomModifier === 'BLACKOUT' && !state.roomCleared && !state.player.blackoutImmune;
+        this.ctx.globalAlpha = blind ? 0.95 : (dimRoom ? 0.84 : DARKNESS_ALPHA);
         this.ctx.drawImage(this.lightCanvas, 0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.globalAlpha = 1;
         this.ctx.restore(); 
+    }
+
+    /**
+     * Patch 177: set dressing (systems/Decor.js). Each prop is a cached sprite, drawn
+     * turned and scaled; a lamp is a sprite plus a warm pool on the floor (its hole in
+     * the darkness is cut in drawLightingMasks). Nothing here collides.
+     */
+    decorBounds(state) {
+        const pad = 140;
+        const hw = (this.worldViewWidth || this.canvas.width) / 2 / this.zoom + pad;
+        const hh = (this.worldViewHeight || this.canvas.height) / 2 / this.zoom + pad;
+        // the camera is centred on the player; the portrait band only shifts it up
+        return { l: state.player.x - hw, r: state.player.x + hw, t: state.player.y - hh, b: state.player.y + hh + (this.controlBandH || 0) / this.zoom };
+    }
+
+    decorClear(state) {
+        const ox = state.mapOriginX || 0, oy = state.mapOriginY || 0;
+        const lim = ARENA_VOID_RADIUS - 120;
+        return (x, y) => {
+            const dx = x - ox, dy = y - oy;
+            if (dx * dx + dy * dy > lim * lim) return false;        // not out in the Void
+            return dx * dx + dy * dy > 130 * 130;                    // nor on the room's centre, where a run starts
+        };
+    }
+
+    drawDecor(state) {
+        if (!state || state.isHub) return;
+        const pal = paletteIndexForFloor(state.floor);
+        const bnd = this.decorBounds(state);
+        const c = this.ctx;
+        const flick = this.renderFrame;
+        forEachDecor(bnd.l, bnd.t, bnd.r, bnd.b, pal, state.floor, state.roomNumber, (d) => {
+            if (d.kind === 'lamp') {
+                const fl = 0.85 + 0.15 * Math.sin(flick * 0.07 + d.seed * 40) * (Math.sin(flick * 0.31 + d.seed * 9) > -0.92 ? 1 : 0.3);
+                this.drawSprite(this.getSprite(`decor|lamp|${pal}`, 64, 64, (cx) => this.paintDecor(cx, 'lamp', pal)), d.x, d.y);
+                this.drawGlow(d.x, d.y, 26, '#fff3cf', 0.85 * fl);
+                return;
+            }
+            const sprite = this.getSprite(`decor2|${d.id}|${pal}`, 128, 128, (cx) => this.paintDecor(cx, d.id, pal));
+            // Patch 181: a faded imprint ON the floor, not a thing standing on it. At
+            // full strength a desk looked like a wall and a wall like a desk.
+            c.save();
+            c.translate(d.x, d.y);
+            c.rotate(d.rot);
+            c.scale(d.scale, d.scale);
+            c.globalAlpha = 0.26;
+            this.drawSprite(sprite);
+            c.restore();
+        }, this.decorClear(state));
+    }
+
+    /** Patch 177: one prop, painted once into its sprite. Origin at the centre. */
+    paintDecor(cx, id, pal) {
+        const P = DECOR_PALETTES[pal];
+        const box = (x, y, w, h, fill) => { cx.fillStyle = fill; cx.beginPath(); cx.rect(x, y, w, h); cx.fill(); cx.stroke(); };
+        cx.lineJoin = 'round'; cx.lineCap = 'round';
+        // a soft contact shadow under everything
+        // Patch 181: no contact shadow. A shadow says "this stands up"; these do not.
+        cx.strokeStyle = P.rim; cx.lineWidth = 1.6;
+        switch (id) {
+            case 'lamp':
+                cx.fillStyle = P.dark; cx.beginPath(); cx.arc(0, 0, 11, 0, Math.PI * 2); cx.fill(); cx.stroke();
+                cx.fillStyle = '#fff3cf'; cx.beginPath(); cx.arc(0, 0, 6, 0, Math.PI * 2); cx.fill();
+                break;
+            // --- 1 The Office ---
+            case 'desk':
+                box(-44, -24, 88, 48, P.base); box(-40, -20, 30, 40, P.dark);
+                cx.fillStyle = P.accent; cx.fillRect(-2, -14, 22, 16); cx.fillRect(14, 2, 18, 13);
+                cx.fillStyle = P.dark; cx.beginPath(); cx.arc(30, -12, 6, 0, Math.PI * 2); cx.fill(); cx.stroke();
+                break;
+            case 'chair':
+                box(-16, -16, 32, 32, P.base); box(-18, -22, 36, 9, P.dark);
+                cx.beginPath(); cx.moveTo(-14, 16); cx.lineTo(-22, 30); cx.moveTo(14, 16); cx.lineTo(22, 30); cx.stroke();
+                break;
+            case 'cabinet':
+                box(-22, -34, 44, 68, P.dark);
+                for (let i = 0; i < 3; i++) { box(-18, -30 + i * 22, 36, 18, P.base); cx.fillStyle = P.accent; cx.fillRect(-6, -23 + i * 22, 12, 3); }
+                break;
+            case 'papers':
+                for (let i = 0; i < 6; i++) { cx.save(); cx.translate(-30 + (i * 37) % 60, -22 + (i * 23) % 44); cx.rotate(i * 0.9); box(-9, -12, 18, 24, P.accent); cx.restore(); }
+                break;
+            // --- 2 The Inkblots ---
+            case 'easel':
+                box(-26, -34, 52, 62, P.accent);
+                cx.fillStyle = P.ink; cx.beginPath(); cx.ellipse(-9, -4, 9, 16, 0.3, 0, Math.PI * 2); cx.ellipse(9, -4, 9, 16, -0.3, 0, Math.PI * 2); cx.fill();
+                cx.beginPath(); cx.moveTo(-26, 28); cx.lineTo(-34, 44); cx.moveTo(26, 28); cx.lineTo(34, 44); cx.stroke();
+                break;
+            case 'inkpool':
+                cx.fillStyle = P.ink; cx.beginPath();
+                for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2, r = 30 + ((i * 53) % 17); cx.lineTo(Math.cos(a) * r, Math.sin(a) * r * 0.75); }
+                cx.closePath(); cx.fill(); cx.stroke();
+                cx.fillStyle = 'rgba(200, 220, 255, 0.22)'; cx.beginPath(); cx.ellipse(-10, -8, 12, 5, -0.4, 0, Math.PI * 2); cx.fill();
+                break;
+            case 'mirror':
+                cx.fillStyle = P.base; cx.beginPath(); cx.moveTo(-8, -40); cx.lineTo(22, -20); cx.lineTo(12, 36); cx.lineTo(-22, 22); cx.closePath(); cx.fill(); cx.stroke();
+                cx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; cx.beginPath(); cx.moveTo(-4, -26); cx.lineTo(8, 20); cx.moveTo(6, -18); cx.lineTo(12, 6); cx.stroke();
+                break;
+            case 'cards':
+                for (let i = 0; i < 4; i++) { cx.save(); cx.translate(-22 + i * 15, -6 + (i % 2) * 14); cx.rotate(i * 0.5 - 0.6); box(-11, -15, 22, 30, P.accent); cx.fillStyle = P.ink; cx.beginPath(); cx.arc(0, 0, 6, 0, Math.PI * 2); cx.fill(); cx.restore(); }
+                break;
+            // --- 3 The Panopticon ---
+            case 'post':
+                cx.fillStyle = P.dark; cx.beginPath();
+                for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + 0.39; cx.lineTo(Math.cos(a) * 30, Math.sin(a) * 30); }
+                cx.closePath(); cx.fill(); cx.stroke();
+                cx.fillStyle = P.base; cx.beginPath(); cx.arc(0, 0, 17, 0, Math.PI * 2); cx.fill(); cx.stroke();
+                cx.fillStyle = P.accent; cx.beginPath(); cx.arc(0, 0, 6, 0, Math.PI * 2); cx.fill();
+                break;
+            case 'grate':
+                box(-34, -34, 68, 68, P.dark);
+                for (let i = -2; i <= 2; i++) { cx.beginPath(); cx.moveTo(i * 13, -30); cx.lineTo(i * 13, 30); cx.moveTo(-30, i * 13); cx.lineTo(30, i * 13); cx.stroke(); }
+                break;
+            case 'fence':
+                box(-50, -5, 100, 10, P.base);
+                for (let i = -2; i <= 2; i++) box(i * 22 - 4, -12, 8, 24, P.dark);
+                break;
+            case 'tally':
+                cx.strokeStyle = P.accent; cx.lineWidth = 2.4;
+                for (let g = 0; g < 3; g++) { for (let i = 0; i < 4; i++) { cx.beginPath(); cx.moveTo(-34 + g * 26 + i * 5, -14); cx.lineTo(-34 + g * 26 + i * 5, 14); cx.stroke(); } cx.beginPath(); cx.moveTo(-38 + g * 26, 10); cx.lineTo(-14 + g * 26, -10); cx.stroke(); }
+                break;
+            // --- 4 The Amalgamation ---
+            case 'pod':
+                cx.fillStyle = P.base; cx.beginPath(); cx.ellipse(0, 0, 26, 34, 0, 0, Math.PI * 2); cx.fill(); cx.stroke();
+                cx.fillStyle = P.accent; cx.globalAlpha = 0.7; cx.beginPath(); cx.ellipse(0, 4, 10, 16, 0, 0, Math.PI * 2); cx.fill(); cx.globalAlpha = 1;
+                cx.beginPath(); cx.moveTo(0, -34); cx.quadraticCurveTo(-14, 0, 0, 34); cx.stroke();
+                break;
+            case 'roots':
+                cx.strokeStyle = P.base; cx.lineWidth = 7;
+                for (let i = 0; i < 5; i++) { const a = i * 1.3; cx.beginPath(); cx.moveTo(0, 0); cx.quadraticCurveTo(Math.cos(a) * 24, Math.sin(a + 0.8) * 24, Math.cos(a) * 46, Math.sin(a) * 40); cx.stroke(); }
+                cx.strokeStyle = P.rim; cx.lineWidth = 1.2;
+                for (let i = 0; i < 5; i++) { const a = i * 1.3; cx.beginPath(); cx.moveTo(0, 0); cx.quadraticCurveTo(Math.cos(a) * 24, Math.sin(a + 0.8) * 24, Math.cos(a) * 46, Math.sin(a) * 40); cx.stroke(); }
+                break;
+            case 'spores':
+                for (let i = 0; i < 7; i++) { const a = i * 0.9, r = 8 + (i * 29) % 26; cx.fillStyle = i % 2 ? P.base : P.dark; cx.beginPath(); cx.arc(Math.cos(a) * r, Math.sin(a) * r, 7 + (i % 3) * 3, 0, Math.PI * 2); cx.fill(); cx.stroke(); }
+                cx.fillStyle = P.accent; cx.beginPath(); cx.arc(0, 0, 4, 0, Math.PI * 2); cx.fill();
+                break;
+            case 'ribs':
+                cx.strokeStyle = P.accent; cx.lineWidth = 4; cx.globalAlpha = 0.75;
+                for (let i = -2; i <= 2; i++) { cx.beginPath(); cx.arc(i * 14, 20, 34, Math.PI * 1.15, Math.PI * 1.85); cx.stroke(); }
+                cx.globalAlpha = 1;
+                break;
+            // --- 5 The Architect ---
+            case 'drafting':
+                box(-44, -28, 88, 56, P.base);
+                cx.strokeStyle = P.accent; cx.lineWidth = 1.2;
+                for (let i = -3; i <= 3; i++) { cx.beginPath(); cx.moveTo(i * 12, -24); cx.lineTo(i * 12, 24); cx.stroke(); }
+                cx.beginPath(); cx.arc(8, 0, 16, 0, Math.PI * 2); cx.moveTo(-36, 18); cx.lineTo(36, -18); cx.stroke();
+                break;
+            case 'column':
+                box(-28, -28, 56, 56, P.dark);
+                cx.fillStyle = P.base; cx.beginPath(); cx.arc(0, 0, 20, 0, Math.PI * 2); cx.fill(); cx.stroke();
+                cx.strokeStyle = P.accent; cx.lineWidth = 2; cx.beginPath(); cx.arc(0, 0, 12, 0, Math.PI * 2); cx.stroke();
+                break;
+            case 'setsquare':
+                cx.fillStyle = 'rgba(233, 200, 119, 0.16)'; cx.strokeStyle = P.accent; cx.lineWidth = 2.4;
+                cx.beginPath(); cx.moveTo(-34, 30); cx.lineTo(34, 30); cx.lineTo(-34, -34); cx.closePath(); cx.fill(); cx.stroke();
+                cx.beginPath(); cx.moveTo(-20, 20); cx.lineTo(10, 20); cx.lineTo(-20, -8); cx.closePath(); cx.stroke();
+                break;
+            case 'scaffold':
+                cx.strokeStyle = P.accent; cx.lineWidth = 3;
+                cx.beginPath(); cx.rect(-36, -30, 72, 60); cx.moveTo(-36, -30); cx.lineTo(36, 30); cx.moveTo(36, -30); cx.lineTo(-36, 30); cx.stroke();
+                for (const [px, py] of [[-36, -30], [36, -30], [-36, 30], [36, 30]]) { cx.fillStyle = P.dark; cx.beginPath(); cx.arc(px, py, 6, 0, Math.PI * 2); cx.fill(); cx.stroke(); }
+                break;
+            default: break;
+        }
+    }
+
+    /**
+     * Patch 182: depth from the one light in the game. Every enemy standing in the
+     * flashlight's cone throws a long tapered shadow across the floor, away from the
+     * lens, and it swings as the beam or the enemy moves. One path, one fill for all.
+     */
+    drawBeamShadows(state) {
+        const ents = state.entities;
+        const fl = state.player.weapons && state.player.weapons.flashlight;
+        if (!ents || !ents.length || !fl || !(fl.radius > 0)) return;
+        const lp = this.lensPoint(state);
+        const pa = state.player.angle || 0;
+        const c = this.ctx;
+        c.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        c.beginPath();
+        for (let i = 0; i < ents.length; i++) {
+            const e = ents[i];
+            if (!e || e.burrowed) continue;
+            const dx = e.x - lp.x, dy = e.y - lp.y;
+            const d = Math.hypot(dx, dy);
+            if (!(d > 6) || d > fl.radius) continue;
+            let diff = Math.atan2(dy, dx) - pa;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            if (Math.abs(diff) > fl.angle) continue;
+            if (!this.inView(e.x, e.y)) continue;
+            const r = (e.radius || 12) * (isBossType(e.type) ? 1 : 1.1);
+            const ux = dx / d, uy = dy / d, px = -uy, py = ux;
+            // nearer the lens, the shadow is longer and spreads more
+            const len = Math.min(200, 60 + r * 2.6 + (1 - d / fl.radius) * 70);
+            c.moveTo(e.x + px * r * 0.8, e.y + py * r * 0.8);
+            c.lineTo(e.x + ux * len + px * r * 1.5, e.y + uy * len + py * r * 1.5);
+            c.lineTo(e.x + ux * len - px * r * 1.5, e.y + uy * len - py * r * 1.5);
+            c.lineTo(e.x - px * r * 0.8, e.y - py * r * 0.8);
+            c.closePath();
+        }
+        c.fill();
+    }
+
+    /** Patch 173: where the flashlight's lens is in the world (matches drawPlayer's rig). */
+    lensPoint(state) {
+        const a = Number.isFinite(state.player.angle) ? state.player.angle : 0;
+        const ca = Math.cos(a), sa = Math.sin(a);
+        return { x: state.player.x + ca * LENS_DIST - sa * LENS_SIDE, y: state.player.y + sa * LENS_DIST + ca * LENS_SIDE };
+    }
+
+    /**
+     * Patch 188: the first room teaches its one control with a picture, not a sentence
+     * (CrazyGames' quality guide: "Prioritize visuals and limit the use of text", "Show
+     * the user how to control the game with a keyboard overlay or mouse gestures").
+     * On touch, a thumb drags around a ghost stick where the left thumb rests; on a
+     * keyboard, the W A S D keys light in turn. It fades once the player has actually
+     * moved for about a second (state.hintMoveFrames, counted in Game), or after 12 s.
+     * Screen space, a handful of fills, first room of a new save only.
+     */
+    drawFirstRunHint(state) {
+        const moved = state.hintMoveFrames || 0;
+        const age = state.frame || 0;
+        let alpha = Math.min(1, age / 30) * Math.max(0, 1 - Math.max(0, moved - 45) / 30) * Math.max(0, Math.min(1, (720 - age) / 40));
+        if (!(alpha > 0.02)) return;
+        const c = this.ctx;
+        const w = this.canvas.width, h = this.canvas.height;
+        const t = this.renderFrame * 0.045;
+        const touch = state.inputMode === 'touch';
+        c.save();
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.globalAlpha = alpha;
+        c.lineCap = 'round'; c.lineJoin = 'round';
+        const label = (text, x, y) => {
+            c.font = "800 15px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif";
+            c.textAlign = 'center'; c.textBaseline = 'middle';
+            c.fillStyle = 'rgba(0, 0, 0, 0.7)'; c.fillText(text, x + 1, y + 1);
+            c.fillStyle = '#f2d27a'; c.fillText(text, x, y);
+        };
+        if (touch) {
+            const band = this.controlBandH || 0;
+            const cx = w * 0.27, cy = band > 0 ? h - band * 0.52 : h * 0.74;
+            const R = Math.max(40, Math.min(58, w * 0.13));
+            // the ghost stick
+            c.strokeStyle = 'rgba(242, 210, 122, 0.75)'; c.lineWidth = 2.5;
+            c.setLineDash([7, 7]); c.beginPath(); c.arc(cx, cy, R, 0, Math.PI * 2); c.stroke(); c.setLineDash([]);
+            // the thumb: out, around, back
+            const tx = cx + Math.cos(t) * R * 0.62, ty = cy + Math.sin(t * 1.0) * R * 0.5;
+            c.strokeStyle = 'rgba(255, 243, 196, 0.5)'; c.lineWidth = 3;
+            c.beginPath(); c.moveTo(cx, cy); c.lineTo(tx, ty); c.stroke();
+            c.fillStyle = 'rgba(0, 0, 0, 0.45)'; c.beginPath(); c.arc(tx + 2, ty + 3, R * 0.36, 0, Math.PI * 2); c.fill();
+            c.fillStyle = '#fff3c4'; c.beginPath(); c.arc(tx, ty, R * 0.34, 0, Math.PI * 2); c.fill();
+            c.strokeStyle = 'rgba(8, 10, 16, 0.85)'; c.lineWidth = 2; c.stroke();
+            label('DRAG TO MOVE', cx, cy - R - 20);
+        } else {
+            const k = 44, gap = 6, cx = w / 2, cy = h * 0.8;
+            const keys = [['W', 0, -1], ['A', -1, 0], ['S', 0, 0], ['D', 1, 0]];
+            const lit = Math.floor(t * 0.9) % 4;
+            keys.forEach(([ch, gx, gy], i) => {
+                const x = cx + gx * (k + gap) - k / 2, y = cy + gy * (k + gap) - k / 2;
+                c.fillStyle = i === lit ? '#f2d27a' : 'rgba(20, 18, 28, 0.88)';
+                c.strokeStyle = 'rgba(242, 210, 122, 0.9)'; c.lineWidth = 2;
+                c.beginPath(); if (c.roundRect) c.roundRect(x, y, k, k, 8); else c.rect(x, y, k, k); c.fill(); c.stroke();
+                c.font = "800 18px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif";
+                c.textAlign = 'center'; c.textBaseline = 'middle';
+                c.fillStyle = i === lit ? '#1a1206' : '#f2eee3';
+                c.fillText(ch, x + k / 2, y + k / 2 + 1);
+            });
+            label('MOVE', cx, cy - k * 1.5 - 22);
+        }
+        c.globalAlpha = 1;
+        c.restore();
+    }
+
+    /**
+     * Patch 170: walking through a reward door, in screen space. state.doorFx is set by
+     * Combat when the player touches a door.
+     *   steps 0..ENTER      the door's light swells from the door until it fills the screen
+     *                       (the room changes behind it on the last step)
+     *   steps ENTER..END    an iris opens from the player onto the new room, with the
+     *                       room's name
+     * Keyed on state.frame, so it holds still under hit-stop and pause.
+     */
+    drawDoorTransition(state) {
+        const fx = state.doorFx;
+        const age = state.frame - fx.born;
+        const ENTER = DOOR_ENTER_STEPS, END = DOOR_ENTER_STEPS + 40;
+        if (!(age >= 0 && age <= END)) return;
+        const c = this.ctx;
+        const w = this.canvas.width, h = this.canvas.height;
+        const info = this.roomDoorVisual(fx.rewardType);
+        const maxR = Math.hypot(w, h);
+        const pcx = Number.isFinite(this.cameraCenterX) ? this.cameraCenterX : w / 2;
+        const pcy = Number.isFinite(this.cameraCenterY) ? this.cameraCenterY : h / 2;
+        c.save();
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        if (age < ENTER) {
+            const t = age / ENTER;
+            const sx = pcx + (fx.x - state.player.x) * this.zoom;
+            const sy = pcy + (fx.y - state.player.y) * this.zoom;
+            if (Number.isFinite(sx) && Number.isFinite(sy)) {
+                const r = 30 + maxR * t * t * t;
+                c.fillStyle = info.color;
+                c.globalAlpha = 0.55 + 0.45 * t;
+                c.beginPath(); c.arc(sx, sy, r, 0, Math.PI * 2); c.fill();
+                c.fillStyle = '#ffffff';
+                c.globalAlpha = 0.9;
+                c.beginPath(); c.arc(sx, sy, r * 0.55, 0, Math.PI * 2); c.fill();
+            }
+        } else {
+            const t = (age - ENTER) / (END - ENTER);
+            const hole = maxR * Math.pow(t, 1.7);
+            // the light, with a growing hole onto the new room
+            c.globalAlpha = 1 - t * 0.35;
+            c.fillStyle = '#ffffff';
+            c.beginPath();
+            c.rect(0, 0, w, h);
+            c.arc(pcx, pcy, hole, 0, Math.PI * 2, true);
+            c.fill('evenodd');
+            // a coloured lip on the iris
+            c.globalAlpha = Math.max(0, 1 - t);
+            c.strokeStyle = info.color;
+            c.lineWidth = 10 + 30 * (1 - t);
+            c.beginPath(); c.arc(pcx, pcy, hole, 0, Math.PI * 2); c.stroke();
+            // the room's name
+            const ta = Math.sin(Math.min(1, t * 1.15) * Math.PI);
+            if (ta > 0.02) {
+                const boss = state.roomNumber >= (state.maxRoomsPerFloor || 5);
+                const label = boss ? 'BOSS ROOM' : `ROOM ${state.roomNumber} / ${state.maxRoomsPerFloor || 5}`;
+                const fs = Math.max(22, Math.min(54, w * 0.085));
+                c.globalAlpha = ta;
+                c.font = `bold ${fs}px 'Courier New', Courier, monospace`;
+                c.textAlign = 'center'; c.textBaseline = 'middle';
+                c.fillStyle = 'rgba(0, 0, 0, 0.75)';
+                c.fillText(label, w / 2 + 2, pcy - h * 0.2 + 2);
+                c.fillStyle = boss ? '#ff5a48' : '#f2d27a';
+                c.fillText(label, w / 2, pcy - h * 0.2);
+            }
+        }
+        c.globalAlpha = 1;
+        c.restore();
+    }
+
+    /**
+     * Patch 165: eyes in the dark. Every regular enemy outside the beam shows a pair of
+     * small bright eyes facing the player, drawn after the darkness, so a horde closing
+     * in reads at a glance on a small screen. Two fillRects per enemy; no gradients.
+     */
+    drawEyesInDark(state) {
+        // XP shards glint through the dark too: one path, one fill for all of them.
+        const drops = state.xpDrops;
+        if (drops && drops.length) {
+            const c = this.ctx;
+            const tw = this.renderFrame * 0.12;
+            // Patch 182: each shard hovers; a small shadow on the floor under it says so.
+            c.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            c.beginPath();
+            for (let i = 0; i < drops.length; i++) {
+                const xp = drops[i];
+                if (!this.inView(xp.x, xp.y)) continue;
+                c.moveTo(xp.x + 3.5, xp.y + 8); c.ellipse(xp.x, xp.y + 8, 3.5, 1.6, 0, 0, Math.PI * 2);
+            }
+            c.fill();
+            c.fillStyle = '#bfe6ff';
+            c.beginPath();
+            for (let i = 0; i < drops.length; i++) {
+                const xp = drops[i];
+                if (!this.inView(xp.x, xp.y)) continue;
+                const r = 4 + Math.sin(tw + xp.x * 0.05) * 1.2;
+                const hy = xp.y - 3 + Math.sin(tw * 0.8 + xp.x * 0.07) * 2.5;   // the hover
+                c.moveTo(xp.x, hy - r); c.lineTo(xp.x + r * 0.7, hy);
+                c.lineTo(xp.x, hy + r); c.lineTo(xp.x - r * 0.7, hy);
+                c.closePath();
+            }
+            c.fill();
+        }
+        // Patch 168: kill pops. A fixed ring of slots written by Game.spawnPop: a white
+        // flash and an expanding ring in the dead enemy's colour, over 16 steps.
+        const pops = state.pops;
+        if (pops) {
+            const c = this.ctx;
+            for (let i = 0; i < pops.length; i++) {
+                const p = pops[i];
+                const age = state.frame - p.born;
+                if (!(age >= 0 && age < 16) || !this.inView(p.x, p.y)) continue;
+                const t = age / 16;
+                const pz = p.size || 1;
+                if (age < 5) this.drawGlow(p.x, p.y, (26 - age * 2) * pz, '#fff6dc', 0.85 - age * 0.15);
+                c.globalAlpha = 1 - t;
+                c.strokeStyle = p.color;
+                c.lineWidth = 3 * (1 - t) + 0.5;
+                c.beginPath();
+                c.arc(p.x, p.y, (8 + age * 2.4) * pz, 0, Math.PI * 2);
+                c.stroke();
+                // Patch 169: the body burns away: a white core shrinking, embers thrown out.
+                if (age < 9) {
+                    c.fillStyle = '#fffaf0';
+                    c.beginPath();
+                    c.arc(p.x, p.y, 11 * (1 - age / 9), 0, Math.PI * 2);
+                    c.fill();
+                }
+                c.fillStyle = p.color;
+                for (let k = 0; k < 5; k++) {
+                    const ang = k * 1.2566 + i * 0.7;
+                    const dist = 6 + age * (2.2 + (k % 2) * 0.9);
+                    const sz = 3 * (1 - t) + 1;
+                    c.fillRect(p.x + Math.cos(ang) * dist - sz / 2, p.y + Math.sin(ang) * dist - sz / 2 - age * 0.3, sz, sz);
+                }
+            }
+            c.globalAlpha = 1;
+        }
+        const ents = state.entities;
+        if (!ents || !ents.length) return;
+        const px = state.player.x, py = state.player.y;
+        const fl = state.player.weapons && state.player.weapons.flashlight;
+        const flR = (fl && Number.isFinite(fl.radius)) ? fl.radius : 250;
+        const flA = (fl && Number.isFinite(fl.angle)) ? fl.angle : 0.6;
+        const pa = state.player.angle || 0;
+        const blink = this.renderFrame;
+        const ctx = this.ctx;
+        for (let i = 0; i < ents.length; i++) {
+            const e = ents[i];
+            if (!e || isBossType(e.type) || e.burrowState === 'burrowed') continue;
+            const dx = px - e.x, dy = py - e.y;
+            const d = Math.hypot(dx, dy);
+            if (!(d > 1)) continue;
+            if (d < flR) {
+                let diff = Math.atan2(-dy, -dx) - pa;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                if (Math.abs(diff) < flA) continue;   // lit: the sprite itself shows
+            }
+            if (((blink + ((e.id * 997) | 0)) % 173) < 5) continue;   // a blink
+            const r = e.radius || 12;
+            const ux = dx / d, uy = dy / d;
+            const cx = e.x + ux * r * 0.35, cy = e.y + uy * r * 0.35;
+            const sx = -uy * r * 0.34, sy = ux * r * 0.34;
+            const sz = r > 16 ? 5 : 4;
+            const col = EYE_COLOURS[e.type] || '#ffe9a8';
+            // a soft halo first (one translucent square), then the two eyes
+            if (!this.lowTier) this.drawGlow(e.x, e.y, r * 1.9, col, 0.2);   // cached sprite, one drawImage
+            ctx.fillStyle = col;
+            ctx.fillRect(cx + sx - sz / 2, cy + sy - sz / 2, sz, sz);
+            ctx.fillRect(cx - sx - sz / 2, cy - sy - sz / 2, sz, sz);
+        }
     }
 
     drawEffectsAndAuras(state) {
@@ -2184,6 +2751,61 @@ export class Renderer {
 
         this.ctx.globalCompositeOperation = 'source-over'; 
 
+        // Patch 177: each lamp's warm pool, screen-blended OVER the darkness (the hole cut
+        // in the mask only un-dims the floor; this is what makes it read as light).
+        {
+            const bnd = this.decorBounds(state);
+            const lpal = paletteIndexForFloor(state.floor);
+            const lf = this.renderFrame;
+            this.ctx.globalCompositeOperation = 'screen';
+            forEachDecor(bnd.l - LAMP_RADIUS, bnd.t - LAMP_RADIUS, bnd.r + LAMP_RADIUS, bnd.b + LAMP_RADIUS, lpal, state.floor, state.roomNumber, (d) => {
+                if (d.kind !== 'lamp') return;
+                const fl = 0.85 + 0.15 * Math.sin(lf * 0.07 + d.seed * 40) * (Math.sin(lf * 0.31 + d.seed * 9) > -0.92 ? 1 : 0.3);
+                this.drawGlow(d.x, d.y, LAMP_RADIUS, DECOR_PALETTES[lpal].lamp, 0.42 * fl);
+            }, this.decorClear(state));
+            this.ctx.globalCompositeOperation = 'source-over';
+        }
+
+        // Patch 169: a warm tint inside the beam (screen-blended), so the light reads as
+        // light and not as a grey hole in the dark. One gradient a frame.
+        if (fl && Number.isFinite(flRadius) && flRadius > 0 && Number.isFinite(state.player.angle) && Number.isFinite(fl.angle)) {
+            const wl = this.lensPoint(state);
+            const wx = wl.x, wy = wl.y;
+            const warm = this.ctx.createRadialGradient(wx, wy, 3, wx, wy, Math.max(20, flRadius - LENS_DIST));
+            warm.addColorStop(0, 'rgba(255, 226, 160, 0.30)');
+            warm.addColorStop(0.7, 'rgba(255, 196, 110, 0.14)');
+            warm.addColorStop(1, 'rgba(255, 180, 90, 0)');
+            this.ctx.globalCompositeOperation = 'screen';
+            this.ctx.fillStyle = warm;
+            this.ctx.beginPath();
+            this.ctx.moveTo(wx, wy);
+            this.ctx.arc(wx, wy, Math.max(20, flRadius - LENS_DIST), state.player.angle - fl.angle, state.player.angle + fl.angle);
+            this.ctx.closePath();
+            this.ctx.fill();
+            this.ctx.globalCompositeOperation = 'source-over';
+
+            // Patch 175: dust adrift in the beam. Twenty-four motes placed by a fixed
+            // recipe along the cone (no state, no allocation), drifting outward and
+            // fading at both ends. Skipped on the LOW tier.
+            if (this.filmGrainEnabled !== false) {
+                const reach = Math.max(20, flRadius - LENS_DIST);
+                const f = this.renderFrame;
+                this.ctx.fillStyle = '#fff4d2';
+                for (let i = 0; i < 24; i++) {
+                    const t = ((i * 0.137 + f * (0.0016 + (i % 5) * 0.0004)) % 1);
+                    const off = (((i * 7919) % 100) / 100 - 0.5) * 2 * fl.angle * 0.85 + Math.sin(f * 0.013 + i) * 0.04;
+                    const a = state.player.angle + off;
+                    const r = 14 + t * reach * 0.92;
+                    const al = Math.sin(t * Math.PI) * (0.25 + (i % 3) * 0.15);
+                    if (al <= 0.02) continue;
+                    this.ctx.globalAlpha = al;
+                    const sz = 1.5 + (i % 3) * 0.7;
+                    this.ctx.fillRect(wx + Math.cos(a) * r - sz / 2, wy + Math.sin(a) * r - sz / 2 + Math.sin(f * 0.02 + i * 2) * 2, sz, sz);
+                }
+                this.ctx.globalAlpha = 1;
+            }
+        }
+
         if (state.cameraFlash > 0) {
             this.ctx.save();
             this.ctx.globalCompositeOperation = 'screen';
@@ -2319,12 +2941,16 @@ export class Renderer {
         const L = ARENA_LAYOUTS[state.arenaLayout];
         const style = L ? L.style : 'ink';
         const P = {
-            locker:    { fill: '#2c3226', edge: '#6b7558', line: '#171a13' },
-            ink:       { fill: '#0c0c10', edge: '#73737f', line: '#26262e' },
-            brick:     { fill: '#2b100e', edge: '#86443a', line: '#170706' },
-            ward:      { fill: '#15201a', edge: '#5b7c62', line: '#0c140f' },
-            blueprint: { fill: '#19160b', edge: '#c9a54a', line: '#5e4d22' }
-        }[style] || { fill: '#111', edge: '#666', line: '#222' };
+            // Patch 181: walls have HEIGHT. `fill` is the top face (lighter than it was, so
+            // it reads as a lit surface above the floor), `side` the face toward the
+            // camera, drawn WALL_H below it. What blocks you now looks like it would.
+            locker:    { fill: '#56634a', side: '#1d2318', edge: '#c3d0a6', line: '#2e3626' },
+            ink:       { fill: '#3a3a4a', side: '#0b0b10', edge: '#c2c2d6', line: '#1d1d28' },
+            brick:     { fill: '#6a2a24', side: '#210a08', edge: '#e09080', line: '#3a1410' },
+            ward:      { fill: '#35543f', side: '#0e1a13', edge: '#a6d6b0', line: '#1c2e22' },
+            blueprint: { fill: '#3a3320', side: '#100d05', edge: '#f2d27a', line: '#6e5a28' }
+        }[style] || { fill: '#444', side: '#111', edge: '#bbb', line: '#222' };
+        const WALL_H = 16;
         const ctx = this.ctx;
         const a = this.arenaAlpha(state);
         ctx.save();
@@ -2350,9 +2976,23 @@ export class Renderer {
             }
             ctx.globalAlpha = a * 0.45;
             ctx.fillStyle = '#000';
-            if (o.kind === 'block') ctx.fillRect(o.x - o.hw + 6, o.y - o.hh + 9, o.hw * 2, o.hh * 2);
-            else if (o.kind === 'post') { ctx.beginPath(); ctx.arc(o.x + 5, o.y + 8, o.r, 0, Math.PI * 2); ctx.fill(); }
+            if (o.kind === 'block') ctx.fillRect(o.x - o.hw + 12, o.y - o.hh + WALL_H + 12, o.hw * 2, o.hh * 2);
+            else if (o.kind === 'post') { ctx.beginPath(); ctx.arc(o.x + 10, o.y + WALL_H + 10, o.r, 0, Math.PI * 2); ctx.fill(); }
             ctx.globalAlpha = a;
+            // the face toward the camera: the same shape, WALL_H lower, in the dark tone
+            ctx.fillStyle = P.side;
+            if (o.kind === 'block') {
+                ctx.fillRect(o.x - o.hw, o.y - o.hh + WALL_H, o.hw * 2, o.hh * 2);
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'; ctx.lineWidth = 1;
+                ctx.strokeRect(o.x - o.hw, o.y - o.hh + WALL_H, o.hw * 2, o.hh * 2);
+            } else if (o.kind === 'post') {
+                ctx.beginPath(); ctx.arc(o.x, o.y + WALL_H, o.r, 0, Math.PI * 2); ctx.fill();
+                ctx.fillRect(o.x - o.r, o.y, o.r * 2, WALL_H);
+            } else if (o.kind === 'arc') {
+                ctx.lineCap = 'round'; ctx.lineWidth = o.w; ctx.strokeStyle = P.side;
+                ctx.beginPath(); ctx.arc(o.x, o.y + WALL_H, o.r, o.a0, o.a1); ctx.stroke();
+                ctx.lineCap = 'butt';
+            }
             ctx.fillStyle = P.fill;
             ctx.strokeStyle = P.edge;
             ctx.lineWidth = 2;
@@ -2797,6 +3437,8 @@ export class Renderer {
             this.ctx.restore();
         }
 
+        this.drawDecor(state);       // Patch 177: furniture and lamps, under the walls and everything that moves
+        this.drawBeamShadows(state); // Patch 182: long shadows thrown by whatever stands in the beam
         this.drawObstacles(state);   // Patch 137: the room's walls, under everything that moves
 
         if (state.safeZones) {
@@ -2900,29 +3542,98 @@ export class Renderer {
                     this.ctx.font = "bold 14px 'Courier New', Courier, monospace";
                     this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, -35); 
                 } else if (obj.type === 'CHEST') {
-                    // Patch 133: an evidence locker — a squat box with a brass hasp. It
-                    // rattles harder through the opening beat (obj.opening counts up).
-                    const t = obj.opening ? obj.opening / 26 : 0;
-                    const rattle = obj.opening ? Math.sin(this.renderFrame * 1.7) * (1 + t * 3) : 0;
-                    const bob = obj.opening ? 0 : Math.sin(this.renderFrame * 0.08) * 2;
-                    this.drawGlow(0, 0, 46 + t * 20, '#ffd27f', 0.35 + t * 0.3);
-                    this.ctx.translate(rattle, bob);
-                    this.ctx.fillStyle = '#3b2a17';
-                    this.ctx.fillRect(-20, -10, 40, 24);
-                    this.ctx.fillStyle = '#5a4022';
-                    this.ctx.fillRect(-21, -18 - t * 6, 42, 10);   // the lid lifts as it opens
-                    this.ctx.strokeStyle = '#d9a441';
-                    this.ctx.lineWidth = 2;
-                    this.ctx.strokeRect(-20, -10, 40, 24);
-                    this.ctx.strokeRect(-21, -18 - t * 6, 42, 10);
-                    this.ctx.fillStyle = '#ffd27f';
-                    this.ctx.fillRect(-4, -6, 8, 9);
+                    // Patch 172: the chest, redrawn and given an opening. Idle: a banded
+                    // wooden chest with light leaking from its seam, a slow beacon above it
+                    // and two motes circling. Opening (obj.opening counts up to
+                    // CHEST_OPEN_STEPS): it rattles, the lid swings up and back, and rays
+                    // of light fan out of it, turning, until the burst.
+                    const c = this.ctx;
+                    const t = obj.opening ? Math.min(1, obj.opening / 26) : 0;
+                    const tick = this.renderFrame;
+                    const rattle = obj.opening ? Math.sin(tick * 1.7) * (1 + t * 3) : 0;
+                    const bob = obj.opening ? 0 : Math.sin(tick * 0.08) * 2;
+                    const seam = 0.5 + 0.5 * Math.sin(tick * 0.12);
+
+                    // floor light and beacon
+                    c.save(); c.translate(0, 16); c.scale(1, 0.4);
+                    this.drawGlow(0, 0, 60 + t * 50, '#ffd27f', 0.45 + t * 0.4);
+                    c.restore();
                     if (!obj.opening) {
-                        this.ctx.fillStyle = '#ffd27f';
-                        this.ctx.textAlign = 'center';
-                        this.ctx.textBaseline = 'middle';
-                        this.ctx.font = "bold 12px 'Courier New', Courier, monospace";
-                        this.ctx.fillText('CHEST', 0, -32);
+                        c.save(); c.scale(0.22, 1);
+                        this.drawGlow(0, -70, 90, '#ffe7a8', 0.28 + seam * 0.14);
+                        c.restore();
+                    }
+
+                    // rays out of the open chest (screen-blended, reset after)
+                    if (t > 0.15) {
+                        const rt = (t - 0.15) / 0.85;
+                        c.save();
+                        c.translate(rattle, -6);
+                        c.globalCompositeOperation = 'screen';
+                        c.fillStyle = `rgba(255, 226, 150, ${0.16 + rt * 0.3})`;
+                        for (let i = 0; i < 9; i++) {
+                            const ra = -Math.PI / 2 + (i - 4) * 0.36 + Math.sin(tick * 0.09 + i) * 0.1;
+                            const len = (50 + rt * 120) * (0.7 + 0.3 * Math.sin(tick * 0.2 + i * 1.9));
+                            c.beginPath();
+                            c.moveTo(0, 0);
+                            c.lineTo(Math.cos(ra - 0.07) * len, Math.sin(ra - 0.07) * len);
+                            c.lineTo(Math.cos(ra + 0.07) * len, Math.sin(ra + 0.07) * len);
+                            c.closePath(); c.fill();
+                        }
+                        c.globalCompositeOperation = 'source-over';
+                        c.restore();
+                        this.drawGlow(rattle, -8, 30 + rt * 40, '#fff6d8', 0.5 + rt * 0.4);
+                    }
+
+                    c.translate(rattle, bob);
+                    // body
+                    c.fillStyle = '#5a3a1c';
+                    c.strokeStyle = '#1c1208'; c.lineWidth = 2;
+                    c.beginPath(); c.rect(-22, -8, 44, 24); c.fill(); c.stroke();
+                    c.fillStyle = '#7a5228';
+                    c.fillRect(-20, -6, 40, 6);
+                    // brass bands and corners
+                    c.fillStyle = '#d9a441';
+                    c.fillRect(-15, -8, 5, 24); c.fillRect(10, -8, 5, 24);
+                    c.fillRect(-22, 12, 44, 4);
+                    // the seam of light under the lid
+                    c.fillStyle = `rgba(255, 240, 190, ${0.5 + seam * 0.5})`;
+                    c.fillRect(-21, -10 - t * 3, 42, 3 + t * 6);
+                    // the lid: swings up and back as it opens
+                    c.save();
+                    c.translate(0, -10);
+                    const lidLift = t * 16, lidH = 13 * (1 - t * 0.55);
+                    c.fillStyle = '#6b4622';
+                    c.strokeStyle = '#1c1208'; c.lineWidth = 2;
+                    c.beginPath();
+                    c.moveTo(-23, -lidLift);
+                    c.lineTo(-23, -lidLift - lidH * 0.5);
+                    c.quadraticCurveTo(0, -lidLift - lidH * 1.6, 23, -lidLift - lidH * 0.5);
+                    c.lineTo(23, -lidLift);
+                    c.closePath(); c.fill(); c.stroke();
+                    c.fillStyle = '#d9a441';
+                    c.fillRect(-15, -lidLift - lidH, 5, lidH); c.fillRect(10, -lidLift - lidH, 5, lidH);
+                    c.restore();
+                    // the lock
+                    if (t < 0.4) {
+                        c.fillStyle = '#ffd27f'; c.strokeStyle = '#1c1208'; c.lineWidth = 1.5;
+                        c.beginPath(); c.rect(-5, -9, 10, 11); c.fill(); c.stroke();
+                        c.fillStyle = '#1c1208';
+                        c.beginPath(); c.arc(0, -4, 1.8, 0, Math.PI * 2); c.fill();
+                    }
+                    // two motes circling while it waits
+                    if (!obj.opening) {
+                        c.fillStyle = '#fff3c4';
+                        for (let i = 0; i < 2; i++) {
+                            const ma = tick * 0.05 + i * Math.PI;
+                            c.fillRect(Math.cos(ma) * 30 - 1.5, -4 + Math.sin(ma) * 11 - 1.5, 3, 3);
+                        }
+                        c.font = "bold 12px 'Courier New', Courier, monospace";
+                        c.textAlign = 'center'; c.textBaseline = 'middle';
+                        c.fillStyle = 'rgba(8, 6, 10, 0.85)';
+                        c.fillRect(-24, -44, 48, 16);
+                        c.fillStyle = '#ffd27f';
+                        c.fillText('CHEST', 0, -35.5);
                     }
                 } else if (obj.type === 'CASE_PAGE') {
                     // Patch 144: a loose sheet from the Case File — paper, a red margin
@@ -2972,28 +3683,100 @@ export class Renderer {
                     this.ctx.moveTo(-10, -5); this.ctx.lineTo(10, -5); this.ctx.lineTo(0, 10);
                     this.ctx.fill();
                 } else if (obj.type === 'ROOM_DOOR') {
-                    let pulse = Math.sin(this.renderFrame * 0.1) * 10;
+                    // Patch 169: the reward door, redrawn. It was a black rectangle with a
+                    // coloured stroke. Now: light spilling on the floor, a stone arch, a
+                    // lit portal with rising streaks, the reward's glyph in the arch and
+                    // a backed label under the sill. Two doors at most, so the two
+                    // gradients per door per frame are affordable.
                     const doorInfo = this.roomDoorVisual(obj.rewardType);
+                    const c = this.ctx;
+                    const tick = this.renderFrame;
+                    const pulse = Math.sin(tick * 0.08 + obj.x * 0.01) * 0.5 + 0.5;
+                    const W = 30, H = 46;          // half-width, half-height of the opening
+                    if (obj.entering > 0) { const sw = 1 + (1 - obj.entering / DOOR_ENTER_STEPS) * 0.35; c.scale(sw, sw); }   // Patch 170
 
-                    const doorGlow = this.ctx.createRadialGradient(0, 0, 10, 0, 0, 80 + pulse);
-                    doorGlow.addColorStop(0, `rgba(${doorInfo.glowRgb}, 0.8)`);
-                    doorGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                    this.ctx.fillStyle = doorGlow;
-                    this.ctx.beginPath();
-                    this.ctx.arc(0, 0, 80 + pulse, 0, Math.PI * 2);
-                    this.ctx.fill();
+                    // light on the floor in front of the door
+                    c.save();
+                    c.translate(0, H + 6);
+                    c.scale(1, 0.42);
+                    this.drawGlow(0, 0, 92 + pulse * 10, doorInfo.color, 0.5);
+                    c.restore();
+                    this.drawGlow(0, -6, 78 + pulse * 8, doorInfo.color, 0.28);
 
-                    this.ctx.fillStyle = '#111';
-                    this.ctx.fillRect(-25, -40, 50, 80);
-                    this.ctx.strokeStyle = doorInfo.color;
-                    this.ctx.lineWidth = 3;
-                    this.ctx.strokeRect(-25, -40, 50, 80);
+                    // the arch path: straight jambs, a round head
+                    const arch = (hw, hh) => {
+                        c.beginPath();
+                        c.moveTo(-hw, hh);
+                        c.lineTo(-hw, -hh + hw);
+                        c.arc(0, -hh + hw, hw, Math.PI, 0);
+                        c.lineTo(hw, hh);
+                        c.closePath();
+                    };
 
-                    this.ctx.fillStyle = doorInfo.color;
-                    this.ctx.textAlign = 'center';
-                    this.ctx.textBaseline = 'middle';
-                    this.ctx.font = "bold 16px 'Courier New', Courier, monospace";
-                    this.ctx.fillText(doorInfo.label, 0, -60);
+                    // stone frame
+                    arch(W + 9, H + 7);
+                    c.fillStyle = '#2a2622';
+                    c.fill();
+                    c.strokeStyle = '#6f675c';
+                    c.lineWidth = 2;
+                    c.stroke();
+
+                    // the portal
+                    arch(W, H);
+                    const pg = c.createLinearGradient(0, -H, 0, H);
+                    pg.addColorStop(0, `rgba(${doorInfo.glowRgb}, 0.95)`);
+                    pg.addColorStop(0.55, `rgba(${doorInfo.glowRgb}, 0.45)`);
+                    pg.addColorStop(1, 'rgba(10, 8, 14, 0.95)');
+                    c.fillStyle = pg;
+                    c.fill();
+                    c.save();
+                    c.clip();
+                    c.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                    c.lineWidth = 1.5;
+                    c.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const sx = -W + 5 + i * ((W * 2 - 10) / 5);
+                        const sy = H - ((tick * (0.8 + i * 0.13) + i * 37) % (H * 2));
+                        c.moveTo(sx, sy); c.lineTo(sx, sy - 12);
+                    }
+                    c.stroke();
+                    c.restore();
+                    arch(W, H);
+                    c.strokeStyle = doorInfo.color;
+                    c.lineWidth = 3;
+                    c.stroke();
+
+                    // the reward's glyph, in the head of the arch
+                    c.save();
+                    c.translate(0, -H + W + 2);
+                    c.fillStyle = '#ffffff';
+                    c.strokeStyle = '#ffffff';
+                    c.lineWidth = 4;
+                    c.lineCap = 'round';
+                    c.beginPath();
+                    const rt = obj.rewardType;
+                    if (rt === 'HEAL') { c.moveTo(-10, 0); c.lineTo(10, 0); c.moveTo(0, -10); c.lineTo(0, 10); c.stroke(); }
+                    else if (rt === 'WEAPON_UPGRADE') { c.moveTo(0, 11); c.lineTo(0, -9); c.moveTo(-8, -1); c.lineTo(0, -10); c.lineTo(8, -1); c.stroke(); }
+                    else if (rt === 'TOKEN_DOOR') { c.moveTo(0, -12); c.lineTo(10, 0); c.lineTo(0, 12); c.lineTo(-10, 0); c.closePath(); c.fill(); }
+                    else if (rt === 'RISK_REWARD') { c.moveTo(0, -11); c.lineTo(0, 3); c.stroke(); c.beginPath(); c.arc(0, 10, 2.6, 0, Math.PI * 2); c.fill(); }
+                    else {   // LUCIDITY: a four-point star
+                        c.moveTo(0, -13); c.lineTo(3.5, -3.5); c.lineTo(13, 0); c.lineTo(3.5, 3.5);
+                        c.lineTo(0, 13); c.lineTo(-3.5, 3.5); c.lineTo(-13, 0); c.lineTo(-3.5, -3.5); c.closePath(); c.fill();
+                    }
+                    c.restore();
+
+                    // the label, on a dark plate under the sill
+                    c.font = "bold 13px 'Courier New', Courier, monospace";
+                    c.textAlign = 'center';
+                    c.textBaseline = 'middle';
+                    const tw = c.measureText(doorInfo.label).width + 14;
+                    c.fillStyle = 'rgba(8, 6, 10, 0.86)';
+                    c.fillRect(-tw / 2, H + 12, tw, 20);
+                    c.strokeStyle = doorInfo.color;
+                    c.lineWidth = 1;
+                    c.strokeRect(-tw / 2, H + 12, tw, 20);
+                    c.fillStyle = doorInfo.color;
+                    c.fillText(doorInfo.label, 0, H + 22.5);
                 }
                 
                 this.ctx.restore();
@@ -3178,6 +3961,89 @@ export class Renderer {
                     this.ctx.fillText(ent.eliteName || 'ELITE', 0, barY - 3);
                     this.ctx.save();
                     this.ctx.scale(1.45, 1.45);
+                }
+
+                // Patch 168: one presentation layer for every regular enemy, before its
+                // own sprite: a ground shadow, a rim glow in its eye colour (dark bodies
+                // no longer melt into a dark floor), and the body drawn 30% larger. The
+                // hit radius is unchanged. Balanced by the restore after the dispatch.
+                const dressed = !isBossType(ent.type) && !ent.burrowed;
+                if (dressed) {
+                    const pr = ent.radius || 12;
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(0, pr * 0.85, pr * 1.25, pr * 0.5, 0, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    if (!this.lowTier) this.drawGlow(0, 0, pr * 2.6, EYE_COLOURS[ent.type] || '#ffe9a8', isFlashed ? 0.5 : 0.24);
+                    this.ctx.save();
+                    const ps = ent.type === 'PARASITE' ? 1.6 : 1.3;   // Patch 169: the parasite was a speck
+                    // Patch 170: every body is alive. A waddle and a breathing squash on
+                    // its own clock (id), faster the faster it moves; and while the light
+                    // is burning it (flashTime), a hot orange bloom over the rim glow.
+                    const sp = Math.min(3, Math.hypot(ent.vx || 0, ent.vy || 0));
+                    const wob = Math.sin(this.renderFrame * (0.14 + sp * 0.06) + ((ent.id * 97) % 6.283));
+                    if (isFlashed && !this.lowTier) this.drawGlow(0, 0, pr * 3.1, '#ff9a3c', 0.55);
+                    this.ctx.rotate(wob * 0.07);
+                    this.ctx.scale(ps * (1 + wob * 0.06), ps * (1 - wob * 0.06));
+                }
+
+                // Patch 170: a boss owns the floor it stands on: a wide shadow, a slow
+                // rune ring in its colour, and under half health the ring turns red and
+                // spins up. Drawn before the boss's own sprite.
+                if (isBossType(ent.type) && ent.hp > 0) {
+                    const br = (ent.radius || 40);
+                    const hurt = ent.maxHp > 0 && ent.hp / ent.maxHp < 0.5;
+                    const ringCol = hurt ? '#ff4a3a' : (ent.originalColor && /^#[0-9a-f]{6}$/i.test(ent.originalColor) ? ent.originalColor : '#e9c877');
+                    const spin = this.renderFrame * (hurt ? 0.035 : 0.012);
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(0, br * 0.9, br * 1.7, br * 0.6, 0, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    this.drawGlow(0, 0, br * 3.4, ringCol, hurt ? 0.3 : 0.18);
+                    this.ctx.save();
+                    this.ctx.rotate(spin);
+                    this.ctx.strokeStyle = ringCol;
+                    this.ctx.globalAlpha *= 0.75;
+                    this.ctx.lineWidth = 3;
+                    this.ctx.setLineDash([18, 10]);
+                    this.ctx.beginPath(); this.ctx.arc(0, 0, br * 1.9, 0, Math.PI * 2); this.ctx.stroke();
+                    this.ctx.rotate(-spin * 2.3);
+                    this.ctx.lineWidth = 1.5;
+                    this.ctx.setLineDash([4, 12]);
+                    this.ctx.beginPath(); this.ctx.arc(0, 0, br * 2.25, 0, Math.PI * 2); this.ctx.stroke();
+                    this.ctx.setLineDash([]);
+                    this.ctx.restore();
+
+                    // Patch 174: the other bosses walk too. Each gets a WalkerRig of its
+                    // own shape, drawn under its body in the house style (dark limb, pale
+                    // rim, a glowing joint): the Panopticon stalks on four long stilts,
+                    // the Amalgamation drags itself on eight short limbs, the Architect
+                    // steps on three gold compass legs. Sphere Head has its own rig in
+                    // its sprite; Rorschach is ink and has none.
+                    const spec = BOSS_LEGS[ent.type];
+                    if (spec) {
+                        let rig = this.bossRigs.get(ent);
+                        if (!rig) { rig = new WalkerRig(spec.n, spec.rest, spec.step, spec.time); this.bossRigs.set(ent, rig); }
+                        if (!state.devFreezeEntities || !rig.placed) rig.update(ent.x, ent.y, spec.turn ? this.renderFrame * spec.turn : 0, 1);
+                        const c = this.ctx;
+                        c.lineCap = 'round'; c.lineJoin = 'round';
+                        for (let li = 0; li < rig.n; li++) {
+                            const f = rig.feet[li];
+                            const fx = f.x - ent.x, fy = f.y - ent.y - f.lift * spec.lift;
+                            const ha = Math.atan2(fy, fx);
+                            const hipX = Math.cos(ha) * spec.hip, hipY = Math.sin(ha) * spec.hip;
+                            const lg = ik2(hipX, hipY, fx, fy, spec.l1, spec.l2, (li % 2 ? 1 : -1) * (fx >= 0 ? 1 : -1));
+                            c.strokeStyle = spec.rim; c.lineWidth = spec.w + 2.6;
+                            c.beginPath(); c.moveTo(hipX, hipY); c.lineTo(lg.kx, lg.ky); c.lineTo(lg.ex, lg.ey); c.stroke();
+                            c.strokeStyle = isFlashed ? '#ffffff' : spec.body; c.lineWidth = spec.w;
+                            c.beginPath(); c.moveTo(hipX, hipY); c.lineTo(lg.kx, lg.ky); c.lineTo(lg.ex, lg.ey); c.stroke();
+                            this.drawGlow(lg.kx, lg.ky, spec.w * 2.6, spec.glow, 0.55);
+                            c.fillStyle = spec.glow;
+                            c.beginPath(); c.arc(lg.kx, lg.ky, spec.w * 0.55, 0, Math.PI * 2); c.fill();
+                            c.fillStyle = spec.rim;
+                            c.beginPath(); c.arc(lg.ex, lg.ey, spec.w * 0.6 * (1 - f.lift * 0.4), 0, Math.PI * 2); c.fill();
+                        }
+                    }
                 }
 
                 if (ent.type === 'ARCHITECT') {
@@ -3412,7 +4278,18 @@ export class Renderer {
                         {dist: 18, ang: 5.4,  rx: 21, ry: 27, rot: 0.5,  spin: 0.012}
                     ];
 
-                    this.ctx.fillStyle = isFlashed ? '#ddaaaa' : ent.color;
+                    // Patch 180: the house style's pale rim. Every lobe is first laid down
+                    // slightly larger in the rim colour, so only the fused outline shows it.
+                    this.ctx.fillStyle = isFlashed ? '#ffffff' : 'rgba(214, 255, 170, 0.85)';
+                    amalLobes.forEach((lb, m) => {
+                        let breath = Math.sin(this.renderFrame * 0.05 + m * 1.3) * 4;
+                        this.ctx.beginPath();
+                        this.ctx.ellipse(Math.cos(lb.ang) * (lb.dist + breath), Math.sin(lb.ang) * (lb.dist + breath),
+                                         lb.rx + breath + 2.6, Math.max(1, lb.ry - breath * 0.5 + 2.6),
+                                         lb.rot + this.renderFrame * lb.spin, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    });
+                    this.ctx.fillStyle = isFlashed ? '#ffe9e2' : '#2c3a1c';
                     amalLobes.forEach((lb, m) => {
                         let breath = Math.sin(this.renderFrame * 0.05 + m * 1.3) * 4;
                         let lx = Math.cos(lb.ang) * (lb.dist + breath);
@@ -3536,6 +4413,11 @@ export class Renderer {
                         this.ctx.lineTo(rorLobes[rorLobes.length - 1].x * ent.radius, rorLobes[rorLobes.length - 1].y * ent.radius);
                         this.ctx.closePath();
                         this.ctx.fill();
+                        // Patch 180: a pale lilac rim, so the blot reads against any floor.
+                        this.ctx.strokeStyle = isFlashed ? '#ffffff' : 'rgba(226, 190, 255, 0.85)';
+                        this.ctx.lineWidth = 2;
+                        this.ctx.lineJoin = 'round';
+                        this.ctx.stroke();
 
                         this.ctx.strokeStyle = 'rgba(180, 100, 220, 0.4)';
                         this.ctx.lineWidth = 1.5;
@@ -3556,29 +4438,51 @@ export class Renderer {
                 else if (ent.type === 'SPLITTER') {
                     // A photocopied paper figure: a sheet with a smudged face; the
                     // copies (generation 2) are smaller and a shade greyer.
+                    // Patch 174: the Photocopy in the house style: a dark sheet with a
+                    // pale edge, a face printed on it in light, two jointed legs, and a
+                    // faint misregistered copy trailing behind it (what it will become).
                     const k = ent.generation === 2 ? 0.65 : 1;
-                    const sw = Math.sin(ent.phase || 0) * 0.15;
-                    this.ctx.save();
-                    this.ctx.rotate(sw);
-                    this.ctx.scale(k, k);
-                    this.ctx.fillStyle = isFlashed ? '#ffffff' : (ent.generation === 2 ? '#b9b2a2' : '#e8e0cc');
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(-11, -15); this.ctx.lineTo(7, -15); this.ctx.lineTo(12, -10);
-                    this.ctx.lineTo(12, 15); this.ctx.lineTo(-11, 15);
-                    this.ctx.closePath();
-                    this.ctx.fill();
-                    this.ctx.strokeStyle = '#6b6352';
-                    this.ctx.lineWidth = 1.5;
-                    this.ctx.stroke();
-                    this.ctx.fillStyle = '#2a2620';
-                    this.ctx.fillRect(-6, -6, 3, 3);
-                    this.ctx.fillRect(3, -6, 3, 3);
-                    this.ctx.fillRect(-5, 4, 10, 2);
-                    this.ctx.strokeStyle = 'rgba(40, 36, 30, 0.5)';
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(-11, 9); this.ctx.lineTo(-6, 7); this.ctx.lineTo(-1, 10); this.ctx.lineTo(5, 7); this.ctx.lineTo(12, 9);
-                    this.ctx.stroke();
-                    this.ctx.restore();
+                    const c = this.ctx;
+                    const sv = Math.hypot(ent.vx || 0, ent.vy || 0);
+                    const sPh = this.renderFrame * (0.2 + Math.min(2.5, sv) * 0.1) + ((ent.id * 157) % 6.283);
+                    c.save();
+                    if (sv > 0.01) c.rotate(Math.atan2(ent.vy, ent.vx));
+                    c.scale(k, k);
+                    const sheet = () => {
+                        c.beginPath();
+                        c.moveTo(-13, -11); c.lineTo(9, -11); c.lineTo(14, -6);
+                        c.lineTo(14, 11); c.lineTo(-13, 11); c.closePath();
+                    };
+                    // the trailing copy
+                    if (ent.generation !== 2) {
+                        c.save(); c.translate(-6 + Math.sin(sPh * 0.5) * 1.5, 3);
+                        sheet(); c.strokeStyle = 'rgba(244, 240, 224, 0.28)'; c.lineWidth = 1.5; c.stroke();
+                        c.restore();
+                    }
+                    // legs
+                    const stride = 2 + Math.min(2.5, sv) * 2.2;
+                    const lA = ik2(-2, 8, -1 + Math.sin(sPh) * stride, 16, 5, 5, 1);
+                    const lB = ik2(-2, -8, -1 - Math.sin(sPh) * stride, -16, 5, 5, -1);
+                    c.lineCap = 'round'; c.lineJoin = 'round';
+                    c.beginPath();
+                    c.moveTo(-2, 8); c.lineTo(lA.kx, lA.ky); c.lineTo(lA.ex, lA.ey);
+                    c.moveTo(-2, -8); c.lineTo(lB.kx, lB.ky); c.lineTo(lB.ex, lB.ey);
+                    c.strokeStyle = 'rgba(244, 240, 224, 0.8)'; c.lineWidth = 3.4; c.stroke();
+                    c.strokeStyle = isFlashed ? '#ffffff' : '#262838'; c.lineWidth = 1.8; c.stroke();
+                    // the sheet
+                    sheet();
+                    c.fillStyle = isFlashed ? '#ffffff' : '#262838';
+                    c.fill();
+                    c.strokeStyle = 'rgba(244, 240, 224, 0.9)'; c.lineWidth = 1.5; c.stroke();
+                    c.beginPath(); c.moveTo(9, -11); c.lineTo(9, -6); c.lineTo(14, -6); c.stroke();   // the dog-ear
+                    // the printed face, in light (facing +x)
+                    this.drawGlow(6, 0, 12, '#f4f0e0', 0.35);
+                    c.fillStyle = '#f8f5ea';
+                    c.fillRect(5, -6, 3.2, 3.2); c.fillRect(5, 2.8, 3.2, 3.2);
+                    c.fillRect(-1, -4, 1.8, 8);
+                    c.strokeStyle = 'rgba(244, 240, 224, 0.4)'; c.lineWidth = 1;
+                    c.beginPath(); c.moveTo(-9, -7); c.lineTo(-9, 7); c.moveTo(-6, -7); c.lineTo(-6, 7); c.stroke();
+                    c.restore();
                 }
                 else if (ent.type === 'WARDEN') {
                     // Hi-vis vest and helmet; its ward is the dashed orange ring.
@@ -3591,14 +4495,50 @@ export class Renderer {
                     this.ctx.setLineDash([]);
                     this.ctx.fillStyle = `rgba(240, 170, 60, ${pulse * 0.5})`;
                     this.ctx.fill();
-                    this.ctx.fillStyle = isFlashed ? '#ffffff' : '#e0a030';
-                    this.ctx.beginPath(); this.ctx.arc(0, 0, 15, 0, Math.PI * 2); this.ctx.fill();
-                    this.ctx.fillStyle = '#f4f0d0';
-                    this.ctx.fillRect(-15, -3, 30, 4);
-                    this.ctx.fillStyle = '#c2381e';
-                    this.ctx.beginPath(); this.ctx.arc(0, -6, 8, Math.PI, 0); this.ctx.fill();
-                    this.ctx.fillStyle = '#111';
-                    this.ctx.fillRect(-5, 3, 3, 3); this.ctx.fillRect(2, 3, 3, 3);
+                    // Patch 174: the Fire Warden in the house style: a dark, broad body
+                    // on two jointed legs, both arms raised to hold the ward up, and a
+                    // helmet lamp that burns orange and sweeps like a beacon.
+                    {
+                        const c = this.ctx;
+                        const wv = Math.hypot(ent.vx || 0, ent.vy || 0);
+                        const wPh = this.renderFrame * (0.15 + Math.min(2, wv) * 0.1) + ((ent.id * 139) % 6.283);
+                        c.save();
+                        if (wv > 0.01) c.rotate(Math.atan2(ent.vy, ent.vx));
+                        const BODY = isFlashed ? '#ffffff' : '#33211a';
+                        const RIM = 'rgba(255, 214, 160, 0.85)';
+                        c.lineCap = 'round'; c.lineJoin = 'round';
+                        const str = 2 + Math.min(2, wv) * 2.4;
+                        const lA = ik2(-3, 8, -2 + Math.sin(wPh) * str, 17, 6, 6, 1);
+                        const lB = ik2(-3, -8, -2 - Math.sin(wPh) * str, -17, 6, 6, -1);
+                        const raise = 0.6 + Math.sin(this.renderFrame * 0.08 + (ent.phase || 0)) * 0.15;
+                        const aA = ik2(4, 11, 13, 19 * raise + 6, 7, 7, -1);
+                        const aB = ik2(4, -11, 13, -19 * raise - 6, 7, 7, 1);
+                        c.beginPath();
+                        c.moveTo(-3, 8); c.lineTo(lA.kx, lA.ky); c.lineTo(lA.ex, lA.ey);
+                        c.moveTo(-3, -8); c.lineTo(lB.kx, lB.ky); c.lineTo(lB.ex, lB.ey);
+                        c.moveTo(4, 11); c.lineTo(aA.kx, aA.ky); c.lineTo(aA.ex, aA.ey);
+                        c.moveTo(4, -11); c.lineTo(aB.kx, aB.ky); c.lineTo(aB.ex, aB.ey);
+                        c.strokeStyle = RIM; c.lineWidth = 5.4; c.stroke();
+                        c.strokeStyle = BODY; c.lineWidth = 3.4; c.stroke();
+                        // palms, lit by the ward they hold
+                        c.fillStyle = '#ffb347';
+                        c.beginPath(); c.arc(aA.ex, aA.ey, 2.6, 0, Math.PI * 2); c.arc(aB.ex, aB.ey, 2.6, 0, Math.PI * 2); c.fill();
+                        // body
+                        c.fillStyle = BODY; c.strokeStyle = RIM; c.lineWidth = 1.6;
+                        c.beginPath(); c.ellipse(0, 0, 12, 14, 0, 0, Math.PI * 2); c.fill(); c.stroke();
+                        c.strokeStyle = 'rgba(255, 179, 71, 0.9)'; c.lineWidth = 2.2;   // the hi-vis band
+                        c.beginPath(); c.moveTo(-3, -13); c.quadraticCurveTo(-8, 0, -3, 13); c.stroke();
+                        // helmet and lamp
+                        c.fillStyle = isFlashed ? '#ffffff' : '#8f2a18'; c.strokeStyle = RIM; c.lineWidth = 1.4;
+                        c.beginPath(); c.arc(4, 0, 8, 0, Math.PI * 2); c.fill(); c.stroke();
+                        const beam = this.renderFrame * 0.09 + (ent.phase || 0);
+                        this.drawGlow(8, 0, 20, '#ffb347', 0.6);
+                        c.fillStyle = 'rgba(255, 190, 90, 0.28)';
+                        c.beginPath(); c.moveTo(8, 0); c.arc(8, 0, 34, Math.sin(beam) * 0.6 - 0.28, Math.sin(beam) * 0.6 + 0.28); c.closePath(); c.fill();
+                        c.fillStyle = '#fff1c8';
+                        c.beginPath(); c.arc(9, 0, 3, 0, Math.PI * 2); c.fill();
+                        c.restore();
+                    }
                 }
                 else if (ent.type === 'BURROWER') {
                     const st = ent.burrowState;
@@ -3628,19 +4568,44 @@ export class Renderer {
                         const down = st === 'digging' ? Math.max(0.05, ent.burrowTimer / 24) : 1;
                         this.ctx.save();
                         this.ctx.scale(down, down);
-                        this.ctx.fillStyle = 'rgba(70, 50, 30, 0.8)';
-                        this.ctx.beginPath(); this.ctx.ellipse(0, 6, 20, 9, 0, 0, Math.PI * 2); this.ctx.fill();
-                        this.ctx.fillStyle = isFlashed ? '#ffffff' : '#8a6a46';
-                        this.ctx.beginPath(); this.ctx.arc(0, -2, 13, 0, Math.PI * 2); this.ctx.fill();
-                        this.ctx.strokeStyle = '#d9c3a0';
-                        this.ctx.lineWidth = 2;
-                        for (const sx of [-1, 1]) {
-                            this.ctx.beginPath();
-                            this.ctx.moveTo(sx * 9, -6); this.ctx.lineTo(sx * 17, -14); this.ctx.lineTo(sx * 14, -4);
-                            this.ctx.stroke();
+                        // Patch 174: the Crawlspace in the house style: a dark mole
+                        // half out of a ring of thrown earth, two jointed arms with pale
+                        // claws that rake as it drags itself along, a twitching snout
+                        // and two ember eyes.
+                        const c = this.ctx;
+                        const bPh = this.renderFrame * 0.22 + ((ent.id * 113) % 6.283);
+                        const BODY = isFlashed ? '#ffffff' : '#2e2219';
+                        const RIM = 'rgba(255, 220, 190, 0.85)';
+                        // the hole: a dark pit and clods around its lip
+                        c.fillStyle = 'rgba(18, 12, 8, 0.85)';
+                        c.beginPath(); c.ellipse(0, 6, 21, 10, 0, 0, Math.PI * 2); c.fill();
+                        c.fillStyle = '#6a4c30';
+                        for (let q = 0; q < 7; q++) {
+                            const qa = q * 0.9 + 0.3;
+                            c.beginPath(); c.arc(Math.cos(qa) * 21, 6 + Math.sin(qa) * 10, 3 + (q % 3), 0, Math.PI * 2); c.fill();
                         }
-                        this.ctx.fillStyle = '#ffcf7a';
-                        this.ctx.fillRect(-5, -5, 3, 3); this.ctx.fillRect(2, -5, 3, 3);
+                        // arms and claws
+                        c.lineCap = 'round'; c.lineJoin = 'round';
+                        for (const sx of [-1, 1]) {
+                            const rake = Math.sin(bPh + (sx > 0 ? Math.PI : 0));
+                            const arm = ik2(sx * 8, -2, sx * (19 + rake * 2), -6 + rake * 7, 8, 8, sx);
+                            c.strokeStyle = RIM; c.lineWidth = 6.4;
+                            c.beginPath(); c.moveTo(sx * 8, -2); c.lineTo(arm.kx, arm.ky); c.lineTo(arm.ex, arm.ey); c.stroke();
+                            c.strokeStyle = BODY; c.lineWidth = 4.2;
+                            c.beginPath(); c.moveTo(sx * 8, -2); c.lineTo(arm.kx, arm.ky); c.lineTo(arm.ex, arm.ey); c.stroke();
+                            c.strokeStyle = '#f2e6d0'; c.lineWidth = 1.8;
+                            c.beginPath();
+                            for (let cl = -1; cl <= 1; cl++) { c.moveTo(arm.ex, arm.ey); c.lineTo(arm.ex + sx * 5 + cl * 2.5, arm.ey - 6 + Math.abs(cl) * 1.5); }
+                            c.stroke();
+                        }
+                        // body, snout, eyes
+                        c.fillStyle = BODY; c.strokeStyle = RIM; c.lineWidth = 1.6;
+                        c.beginPath(); c.ellipse(0, -1, 12, 13, 0, 0, Math.PI * 2); c.fill(); c.stroke();
+                        c.fillStyle = isFlashed ? '#ffffff' : '#c98a78';
+                        c.beginPath(); c.arc(Math.sin(bPh * 1.3) * 1, -12, 3.2, 0, Math.PI * 2); c.fill();
+                        this.drawGlow(0, -6, 12, '#ffc9a0', 0.45);
+                        c.fillStyle = '#ffd9b8';
+                        c.fillRect(-6, -8, 3, 3); c.fillRect(3, -8, 3, 3);
                         this.ctx.restore();
                     }
                 }
@@ -3673,11 +4638,11 @@ export class Renderer {
                     let sackSize = 10 + (ent.hp > 30 ? 3 : 0);
 
                     const scavSprite = this.getSprite(
-                        `scav|${isFlashed ? 1 : 0}|${sackSize}|${bobQ}`, 64, 64,
+                        `scav2|${isFlashed ? 1 : 0}|${sackSize}|${bobQ}`, 64, 64,
                         (cx) => {
                             // Sack: heavy load dragging behind the hunch, drawn first so the
                             // body's back edge overlaps its top and reads as "carried".
-                            cx.fillStyle = isFlashed ? '#999999' : '#1a1c1a';
+                            cx.fillStyle = isFlashed ? '#f2ead8' : '#2b2536';
                             cx.beginPath();
                             cx.ellipse(-9, 6 + bobQ * 0.5, sackSize, sackSize * 0.85, 0.3, 0, Math.PI * 2);
                             cx.fill();
@@ -3693,7 +4658,9 @@ export class Renderer {
 
                             // Hunched body: shoulders arch up just behind a low, dropped head,
                             // then slope down toward the rear where the sack tucks in behind.
-                            cx.fillStyle = isFlashed ? '#bbbbbb' : '#2a2d2a';
+                            // Patch 168: a shade with a pale rim and two lit eyes, so it
+                            // reads against any floor instead of being black on brown.
+                            cx.fillStyle = isFlashed ? '#ffffff' : '#3a3148';
                             cx.beginPath();
                             cx.moveTo(13, 4 + bobQ);
                             cx.quadraticCurveTo(10, -11, 2, -9 + bobQ);
@@ -3702,19 +4669,40 @@ export class Renderer {
                             cx.quadraticCurveTo(6, 9, 13, 4 + bobQ);
                             cx.closePath();
                             cx.fill();
+                            cx.strokeStyle = 'rgba(236, 224, 196, 0.7)';
+                            cx.lineWidth = 1.4;
+                            cx.stroke();
 
-                            cx.fillStyle = '#aaaa00';
+                            cx.fillStyle = '#ffd24a';
                             cx.beginPath();
-                            cx.arc(11, 1 + bobQ, 1.5, 0, Math.PI*2);
+                            cx.arc(9.5, -3 + bobQ, 2.1, 0, Math.PI*2);
+                            cx.arc(10.5, 3.5 + bobQ, 2.1, 0, Math.PI*2);
                             cx.fill();
                         }
                     );
+                    // Patch 171: legs. Two jointed legs striding under the hunch, on the
+                    // enemy's own clock and faster with its speed; one path, two strokes.
+                    if (ent.vacuumState !== 'vacuuming') {
+                        const sSp = Math.min(2.5, Math.hypot(ent.vx || 0, ent.vy || 0));
+                        const sPh = this.renderFrame * (0.16 + sSp * 0.1) + ((ent.id * 131) % 6.283);
+                        const sStr = 2 + sSp * 2.6;
+                        const lA = ik2(-3, 4, -2 + Math.sin(sPh) * sStr, 10, 5, 5, 1);
+                        const lB = ik2(-3, -4, -2 - Math.sin(sPh) * sStr, -10, 5, 5, -1);
+                        this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round';
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(-3, 4); this.ctx.lineTo(lA.kx, lA.ky); this.ctx.lineTo(lA.ex, lA.ey);
+                        this.ctx.moveTo(-3, -4); this.ctx.lineTo(lB.kx, lB.ky); this.ctx.lineTo(lB.ex, lB.ey);
+                        this.ctx.strokeStyle = 'rgba(236, 224, 196, 0.75)'; this.ctx.lineWidth = 4;
+                        this.ctx.stroke();
+                        this.ctx.strokeStyle = isFlashed ? '#ffffff' : '#3a3148'; this.ctx.lineWidth = 2.4;
+                        this.ctx.stroke();
+                    }
                     this.drawSprite(scavSprite);
 
                     // Sweeping arm stays live — it swings independently of the body and
                     // would otherwise multiply the sprite count by every sweep position.
-                    this.ctx.strokeStyle = '#111';
-                    this.ctx.lineWidth = 2.5;
+                    this.ctx.strokeStyle = '#d8ccb0';
+                    this.ctx.lineWidth = 2;
                     this.ctx.beginPath();
                     this.ctx.moveTo(4, 6 + bobQ);
                     let sweepOffset = ent.vacuumState === 'vacuuming' ? 0 : this.entPulse(ent, 0.2)*5;
@@ -3789,10 +4777,11 @@ export class Renderer {
                     // for a 1px-vs-0.5px step in the body-edge breathing.
                     let pulseA = Math.round(this.entPulse(ent, 0.2) * 2);
                     let pulseB = Math.round(this.entPulse(ent, 0.2, Math.PI/2) * 2);
-                    const predColor = isFlashed ? '#ddaaaa' : (ent.buffed ? '#3a0a0a' : '#111111');
+                    // Patch 169: crimson with a pale rim (was #111 on a dark floor).
+                    const predColor = isFlashed ? '#ffe0d8' : (ent.buffed ? '#8a1414' : '#5c1622');
 
                     const predSprite = this.getSprite(
-                        `pred|${isFlashed ? 1 : 0}|${ent.buffed ? 1 : 0}|${lunging ? 1 : 0}|${pulseA}|${pulseB}`, 64, 64,
+                        `pred3|${isFlashed ? 1 : 0}|${ent.buffed ? 1 : 0}|${lunging ? 1 : 0}|${pulseA}|${pulseB}`, 64, 64,
                         (cx) => {
                             cx.fillStyle = predColor;
                             cx.beginPath();
@@ -3808,6 +4797,9 @@ export class Renderer {
                             cx.lineTo(9, -5 - pulseB);
                             cx.closePath();
                             cx.fill();
+                            cx.strokeStyle = 'rgba(255, 176, 160, 0.75)';
+                            cx.lineWidth = 1.3;
+                            cx.stroke();
 
                             // Jagged spine: serrated ridge along the top edge, tail to shoulders.
                             cx.beginPath();
@@ -3823,37 +4815,50 @@ export class Renderer {
                             }
                             cx.lineTo(spineEndX, -4);
                             cx.closePath();
+                            cx.fillStyle = isFlashed ? '#ffffff' : '#a02c38';
                             cx.fill();
 
                             cx.strokeStyle = predColor;
                             cx.lineWidth = 2;
                             cx.beginPath();
 
-                            if (lunging) {
-                                cx.moveTo(-2, 5);
-                                cx.lineTo(-22, 9);
-                                cx.moveTo(-2, -5);
-                                cx.lineTo(-22, -9);
-                            } else {
-                                cx.moveTo(-2, 5);
-                                cx.quadraticCurveTo(8, 13, 12, 4);
-                                cx.moveTo(-2, -5);
-                                cx.quadraticCurveTo(8, -13, 12, -4);
-                            }
-                            cx.stroke();
+                            // Patch 171: the two painted-on legs are gone; the live
+                            // rig below the sprite draws four.
                         }
                     );
+                    // Patch 171: four jointed legs that skitter in diagonal pairs, and
+                    // fold back flat in a lunge.
+                    {
+                        const pSp = Math.min(3, Math.hypot(ent.vx || 0, ent.vy || 0));
+                        const pPh = this.renderFrame * (0.2 + pSp * 0.1) + ((ent.id * 173) % 6.283);
+                        const pStr = lunging ? 0 : 2.5 + pSp * 2.2;
+                        this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round';
+                        this.ctx.beginPath();
+                        for (let li = 0; li < 4; li++) {
+                            const front = li < 2, sideY = li % 2 ? 1 : -1;
+                            const hipX = front ? 6 : -9;
+                            const sw = Math.sin(pPh + ((li === 0 || li === 3) ? 0 : Math.PI));
+                            const footX = lunging ? hipX - 13 : hipX + (front ? 4 : -3) + sw * pStr;
+                            const footY = sideY * (lunging ? 7 : 14);
+                            const lg = ik2(hipX, sideY * 3, footX, footY, 7.5, 7.5, sideY * (front ? -1 : 1));
+                            this.ctx.moveTo(hipX, sideY * 3); this.ctx.lineTo(lg.kx, lg.ky); this.ctx.lineTo(lg.ex, lg.ey);
+                        }
+                        this.ctx.strokeStyle = 'rgba(255, 176, 160, 0.7)'; this.ctx.lineWidth = 3.6;
+                        this.ctx.stroke();
+                        this.ctx.strokeStyle = predColor; this.ctx.lineWidth = 2;
+                        this.ctx.stroke();
+                    }
                     this.drawSprite(predSprite);
 
                     const predGlowAmt = (ent.attackState === 'telegraphing') ? 20 : 10;
-                    const predEyeColor = (ent.attackState === 'telegraphing') ? '#ff3333' : (ent.buffed ? '#ff0000' : '#cc0000');
+                    const predEyeColor = (ent.attackState === 'telegraphing') ? '#ffffff' : (ent.buffed ? '#ff5040' : '#ff7a5a');
 
                     // Single glowing red eye, centered on the snout.
                     this.drawGlow(13 + stretch, 0, 10 + predGlowAmt, predEyeColor, 0.5);
 
                     this.ctx.fillStyle = predEyeColor;
                     this.ctx.beginPath();
-                    this.ctx.ellipse(13 + stretch, 0, 3, 2, 0, 0, Math.PI*2);
+                    this.ctx.ellipse(13 + stretch, 0, 4, 2.8, 0, 0, Math.PI*2);
                     this.ctx.fill();
 
                     this.ctx.restore();
@@ -3866,87 +4871,57 @@ export class Renderer {
                     // Body spin carries the entity's phase so parasites don't all rotate
                     // in unison. The tether below cancels the exact same expression, so
                     // these two must stay in step if either is ever changed.
-                    let paraSpin = this.renderFrame * 0.2 + (ent.phase || 0);
-                    this.ctx.rotate(paraSpin);
-
-                    if (ent.lashingState === 'lashing' && ent.lashTarget) {
-                        this.ctx.save();
-                        let dx = ent.lashTarget.x - ent.x;
-                        let dy = ent.lashTarget.y - ent.y;
-
-                        this.ctx.rotate(-paraSpin);
-
-                        this.ctx.strokeStyle = `rgba(255, 100, 100, ${1 - (ent.lashTimer/30)})`;
-                        this.ctx.lineWidth = 3;
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(0,0);
-                        this.ctx.lineTo(dx, dy);
-                        this.ctx.stroke();
-                        
-                        this.ctx.restore();
+                    // Patch 173: the Parasite as a tick on six jointed legs (it was a
+                    // spinning eight-point star). It faces where it is going, its abdomen
+                    // swells and glows green, and it rears with the legs drawn in while it
+                    // lashes a host.
+                    const c = this.ctx;
+                    const lashing = ent.lashingState === 'lashing';
+                    if (lashing && ent.lashTarget) {
+                        c.strokeStyle = `rgba(190, 255, 120, ${Math.max(0, 1 - (ent.lashTimer / 30))})`;
+                        c.lineWidth = 3;
+                        c.beginPath(); c.moveTo(0, 0); c.lineTo(ent.lashTarget.x - ent.x, ent.lashTarget.y - ent.y); c.stroke();
                     }
-
-                    let pulse = this.entPulse(ent, 0.3) * 1.5;
-                    if (ent.lashingState === 'lashing') pulse = this.entPulse(ent, 1.5) * 3;
-
-                    let curl = ent.lashingState === 'lashing' ? 0.5 : 0;
-
-                    // Radial tendrils: tapered (wide at core, thin at tip) filled shapes
-                    // instead of uniform-width strokes, so they read as flesh, not wire.
-                    this.ctx.fillStyle = isFlashed ? '#ffffff' : ent.color;
-                    for (let i = 0; i < 8; i++) {
-                        let angle = (i/8) * Math.PI * 2 + (this.entPulse(ent, 0.5, i)*0.2) + curl;
-                        let length = 10 + Math.random() * 4;
-                        if (ent.lashingState === 'lashing') length -= 3;
-
-                        let dirX = Math.cos(angle), dirY = Math.sin(angle);
-                        let perpX = -dirY, perpY = dirX;
-                        let baseW = 1.6;
-                        let midX = dirX * (length * 0.55) + Math.cos(angle + 0.3) * 2;
-                        let midY = dirY * (length * 0.55) + Math.sin(angle + 0.3) * 2;
-
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(dirX*4 + perpX*baseW, dirY*4 + perpY*baseW);
-                        this.ctx.quadraticCurveTo(midX + perpX*baseW*0.4, midY + perpY*baseW*0.4, dirX*length, dirY*length);
-                        this.ctx.quadraticCurveTo(midX - perpX*baseW*0.4, midY - perpY*baseW*0.4, dirX*4 - perpX*baseW, dirY*4 - perpY*baseW);
-                        this.ctx.closePath();
-                        this.ctx.fill();
+                    const pvx = ent.vx || 0, pvy = ent.vy || 0;
+                    const face = lashing && ent.lashTarget ? Math.atan2(ent.lashTarget.y - ent.y, ent.lashTarget.x - ent.x)
+                        : ((Math.abs(pvx) + Math.abs(pvy) > 0.01) ? Math.atan2(pvy, pvx) : (ent.phase || 0));
+                    c.rotate(face);
+                    let pulse = this.entPulse(ent, lashing ? 1.5 : 0.3) * (lashing ? 2 : 1);
+                    const tSp = Math.min(3, Math.hypot(pvx, pvy));
+                    const tPh = this.renderFrame * (0.28 + tSp * 0.1) + ((ent.id * 211) % 6.283);
+                    const BODY = isFlashed ? '#ffffff' : '#27331a';
+                    const RIM = 'rgba(214, 255, 170, 0.8)';
+                    c.lineCap = 'round'; c.lineJoin = 'round';
+                    c.beginPath();
+                    for (let li = 0; li < 6; li++) {
+                        const sideY = li % 2 ? 1 : -1, row = (li / 2) | 0;        // 3 rows of 2
+                        const hipX = 3 - row * 3.5;
+                        const sw = Math.sin(tPh + row * 2.1 + (sideY > 0 ? Math.PI : 0));
+                        const footX = hipX + (1 - row) * 4 + sw * (lashing ? 0 : 2.4);
+                        const footY = sideY * (lashing ? 5 : 9.5);
+                        const lg = ik2(hipX, sideY * 2, footX, footY, 5, 5.5, sideY * (row === 0 ? -1 : 1));
+                        c.moveTo(hipX, sideY * 2); c.lineTo(lg.kx, lg.ky); c.lineTo(lg.ex, lg.ey);
                     }
-
-                    // Small core: faint faux-glow behind a compact body and dark nucleus,
-                    // drawn after the tendrils so it stays the visual focal point.
-                    //
-                    // Patch 41 (12b): the two fills below ARE cached (same quantised-bucket
-                    // recipe as Scavenger/Predator above) — they depend only on
-                    // (isFlashed, pulse), both deterministic per frame. The 8 tendrils
-                    // above are deliberately left OUT of caching and OUT of this key:
-                    // they call raw Math.random() every frame (`length = 10 +
-                    // Math.random()*4`), which is what gives the parasite its organic
-                    // wriggle. Math.random() cannot be bucketed into a cache key — baking
-                    // it into a cached sprite would freeze that jitter into one static
-                    // shape per bucket, trading a real animated detail for a cache hit.
-                    // drawGlow() is also left live and outside this cache, unchanged from
-                    // before — it already does its own (color, alpha) caching, and
-                    // composing it into this sprite would just double-cache the same glow.
-                    const paraGlowAmt = 6 + pulse;
-                    this.drawGlow(0, 0, 5 + paraGlowAmt, isFlashed ? '#ffcccc' : '#6b2222', 0.4);
-
-                    let pulseQ = Math.round(pulse * 2) / 2;
-                    const paraSprite = this.getSprite(
-                        `para|${isFlashed ? 1 : 0}|${pulseQ}`, 24, 24,
-                        (cx) => {
-                            cx.fillStyle = isFlashed ? '#ffcccc' : '#6b2222';
-                            cx.beginPath();
-                            cx.arc(0, 0, 5 + pulseQ, 0, Math.PI*2);
-                            cx.fill();
-
-                            cx.fillStyle = '#050505';
-                            cx.beginPath();
-                            cx.arc(0, 0, 2 + pulseQ*0.5, 0, Math.PI*2);
-                            cx.fill();
-                        }
-                    );
-                    this.drawSprite(paraSprite);
+                    c.strokeStyle = RIM; c.lineWidth = 2.6; c.stroke();
+                    c.strokeStyle = BODY; c.lineWidth = 1.3; c.stroke();
+                    // abdomen: swollen, glowing from inside
+                    this.drawGlow(-4, 0, 13 + pulse * 2, '#9dff6a', isFlashed ? 0.7 : 0.45);
+                    c.fillStyle = BODY;
+                    c.strokeStyle = RIM; c.lineWidth = 1.2;
+                    c.beginPath(); c.ellipse(-4, 0, 6.5 + pulse * 0.6, 5.2 + pulse * 0.6, 0, 0, Math.PI * 2); c.fill(); c.stroke();
+                    c.fillStyle = isFlashed ? '#ffffff' : '#9dff6a';
+                    c.beginPath(); c.ellipse(-4.5, 0, 3 + pulse * 0.4, 2.2 + pulse * 0.4, 0, 0, Math.PI * 2); c.fill();
+                    // head and mandibles
+                    c.fillStyle = BODY;
+                    c.beginPath(); c.arc(4, 0, 3.4, 0, Math.PI * 2); c.fill(); c.stroke();
+                    const jaw = 0.35 + Math.abs(Math.sin(tPh * 0.7)) * 0.4 + (lashing ? 0.5 : 0);
+                    c.strokeStyle = RIM; c.lineWidth = 1.4;
+                    c.beginPath();
+                    c.moveTo(6, -1.5); c.lineTo(6 + Math.cos(-jaw) * 5, -1.5 + Math.sin(-jaw) * 5);
+                    c.moveTo(6, 1.5); c.lineTo(6 + Math.cos(jaw) * 5, 1.5 + Math.sin(jaw) * 5);
+                    c.stroke();
+                    c.fillStyle = '#eaffc8';
+                    c.fillRect(4.6, -2.2, 1.5, 1.5); c.fillRect(4.6, 0.7, 1.5, 1.5);
 
                     this.ctx.restore();
                 }
@@ -3972,7 +4947,7 @@ export class Renderer {
                         }
 
                         let phase = ent.phase || 0;
-                        this.ctx.rotate(Math.sin(phase * 0.5) * 0.1); 
+                        // Patch 171: no body sway here any more; the feet are planted in the world.
                         
                         let pulse = this.entPulse(ent) * 3;
                         if (ent.pulseState === 'charging') {
@@ -3983,73 +4958,79 @@ export class Renderer {
                         const activeBoss = state.activeBoss;
                         const orbR = 26;
 
-                        // Real tendril anatomy: curved (quadratic) limbs radiating from the
-                        // orb, tapered via a thick base segment + thinner tip segment,
-                        // instead of the old jagged-polygon "spike ball" silhouette.
-                        const tendrilCount = 6;
-                        const tendrils = [];
-                        for (let i = 0; i < tendrilCount; i++) {
-                            let angle = (i / tendrilCount) * Math.PI * 2 + phase * 0.15;
-                            let reach = 42 + Math.sin(phase * 3 + i * 2) * 12;
-                            if (ent.pulseState === 'charging') reach -= 12;
-                            let perpX = -Math.sin(angle), perpY = Math.cos(angle);
-                            let wave = Math.sin(phase * 4 + i * 1.7) * 10;
-                            tendrils.push({
-                                baseX: Math.cos(angle) * (orbR - 4), baseY: Math.sin(angle) * (orbR - 4),
-                                ctrlX: Math.cos(angle) * (orbR + reach * 0.55) + perpX * wave,
-                                ctrlY: Math.sin(angle) * (orbR + reach * 0.55) + perpY * wave,
-                                tipX: Math.cos(angle) * (orbR + reach), tipY: Math.sin(angle) * (orbR + reach),
-                                angle
-                            });
+                        // Patch 171: Sphere Head on a walking rig. Six jointed legs whose
+                        // feet are planted in the world (core/Rig.js WalkerRig) and step in
+                        // alternating groups as it advances; the stance widens as it
+                        // charges, and the legs slam flat on the pulse. The eyes ride the
+                        // knees. A lidded central eye tracks the player and narrows before
+                        // the pulse; under half health the shell is cracked.
+                        const c = this.ctx;
+                        let rig = this.bossRigs.get(ent);
+                        if (!rig) { rig = new WalkerRig(6, 70, 30, 10); this.bossRigs.set(ent, rig); }
+                        const charging = ent.pulseState === 'charging', slamming = ent.pulseState === 'pulsing';
+                        if (!state.devFreezeEntities || !rig.placed) rig.update(ent.x, ent.y, 0, charging ? 1.3 : (slamming ? 1.55 : 1));
+                        const bodyLift = charging ? -4 : (slamming ? 5 : Math.sin(phase * 3) * 1.5);
+                        const SHELL = isFlashed ? '#ffe9e2' : '#3b1f2b';
+                        const SHELL_DARK = isFlashed ? '#f0c8c0' : '#1c0d15';
+                        const RIM = isFlashed ? '#ffffff' : 'rgba(255, 170, 160, 0.8)';
+                        const glowAmount = charging ? 26 : 12;
+
+                        c.lineCap = 'round'; c.lineJoin = 'round';
+                        for (let i = 0; i < rig.n; i++) {
+                            const f = rig.feet[i];
+                            const fx = f.x - ent.x, fy = f.y - ent.y - f.lift * 9;
+                            const ha = Math.atan2(fy, fx);
+                            const hipX = Math.cos(ha) * (orbR - 5), hipY = Math.sin(ha) * (orbR - 5) + bodyLift;
+                            const lg = ik2(hipX, hipY, fx, fy, 34, 38, (i % 2 ? 1 : -1) * (fx >= 0 ? 1 : -1));
+                            // outline, then thigh and tapering shin
+                            c.strokeStyle = RIM; c.lineWidth = 10;
+                            c.beginPath(); c.moveTo(hipX, hipY); c.lineTo(lg.kx, lg.ky); c.stroke();
+                            c.lineWidth = 6;
+                            c.beginPath(); c.moveTo(lg.kx, lg.ky); c.lineTo(lg.ex, lg.ey); c.stroke();
+                            c.strokeStyle = SHELL; c.lineWidth = 7.5;
+                            c.beginPath(); c.moveTo(hipX, hipY); c.lineTo(lg.kx, lg.ky); c.stroke();
+                            c.strokeStyle = SHELL_DARK; c.lineWidth = 3.8;
+                            c.beginPath(); c.moveTo(lg.kx, lg.ky); c.lineTo(lg.ex, lg.ey); c.stroke();
+                            // the foot: a planted claw, and dust when it lands
+                            c.fillStyle = RIM;
+                            c.beginPath(); c.arc(lg.ex, lg.ey, 3.2 - f.lift * 1.2, 0, Math.PI * 2); c.fill();
+                            // the knee eye
+                            const eyeR = 3.5 + (i % 3);
+                            this.drawGlow(lg.kx, lg.ky, eyeR + glowAmount, '#ff2a1a', 0.5);
+                            c.fillStyle = '#ff3a2a';
+                            c.beginPath(); c.arc(lg.kx, lg.ky, eyeR, 0, Math.PI * 2); c.fill();
+                            c.fillStyle = '#12040a';
+                            c.beginPath(); c.ellipse(lg.kx, lg.ky, eyeR * 0.25, eyeR * 0.8, ha, 0, Math.PI * 2); c.fill();
                         }
 
-                        this.ctx.strokeStyle = isFlashed ? '#ddaaaa' : '#1a0d15';
-                        this.ctx.lineCap = 'round';
-                        tendrils.forEach(t => {
-                            this.ctx.beginPath();
-                            this.ctx.moveTo(t.baseX, t.baseY);
-                            this.ctx.lineTo(t.ctrlX, t.ctrlY);
-                            this.ctx.lineWidth = 7;
-                            this.ctx.stroke();
-                            this.ctx.beginPath();
-                            this.ctx.moveTo(t.ctrlX, t.ctrlY);
-                            this.ctx.lineTo(t.tipX, t.tipY);
-                            this.ctx.lineWidth = 3;
-                            this.ctx.stroke();
-                        });
-
-                        // Floating orb: drawn over the tendril bases so they read as
-                        // emerging from beneath it.
-                        const orbGrad = this.ctx.createRadialGradient(-8, -8, 4, 0, 0, orbR + pulse);
-                        orbGrad.addColorStop(0, isFlashed ? '#ffffff' : '#3a1d25');
-                        orbGrad.addColorStop(1, isFlashed ? '#ddaaaa' : '#1a0d15');
-                        this.ctx.fillStyle = orbGrad;
-                        this.ctx.beginPath();
-                        this.ctx.arc(0, 0, orbR + pulse, 0, Math.PI * 2);
-                        this.ctx.fill();
-
-                        // Multiple eyes along the tendrils, one per limb, positioned at
-                        // its curve point rather than fixed on the body.
-                        const glowAmount = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
-                        tendrils.forEach((t, i) => {
-                            let et = 0.55 + (i % 2) * 0.25;
-                            let mt = 1 - et;
-                            const eyeX = mt*mt*t.baseX + 2*mt*et*t.ctrlX + et*et*t.tipX;
-                            const eyeY = mt*mt*t.baseY + 2*mt*et*t.ctrlY + et*et*t.tipY;
-                            const eyeR = 3 + (i % 3);
-
-                            this.drawGlow(eyeX, eyeY, eyeR + glowAmount, '#ff0000', 0.5);
-
-                            this.ctx.fillStyle = '#ff0000';
-                            this.ctx.beginPath();
-                            this.ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI*2);
-                            this.ctx.fill();
-
-                            this.ctx.fillStyle = '#000000';
-                            this.ctx.beginPath();
-                            this.ctx.ellipse(eyeX, eyeY, eyeR * 0.2, eyeR * 0.8, t.angle, 0, Math.PI*2);
-                            this.ctx.fill();
-                        });
+                        // the shell
+                        c.save();
+                        c.translate(0, bodyLift);
+                        const orbGrad = c.createRadialGradient(-8, -8, 4, 0, 0, orbR + pulse);
+                        orbGrad.addColorStop(0, isFlashed ? '#ffffff' : '#6a3a4a');
+                        orbGrad.addColorStop(1, SHELL_DARK);
+                        c.fillStyle = orbGrad;
+                        c.beginPath(); c.arc(0, 0, orbR + pulse, 0, Math.PI * 2); c.fill();
+                        c.strokeStyle = RIM; c.lineWidth = 2; c.stroke();
+                        if (ent.maxHp > 0 && ent.hp / ent.maxHp < 0.5) {
+                            c.strokeStyle = 'rgba(255, 90, 70, 0.85)'; c.lineWidth = 1.6;
+                            c.beginPath();
+                            c.moveTo(-orbR * 0.8, -6); c.lineTo(-10, -12); c.lineTo(-14, 2); c.lineTo(-2, 8);
+                            c.moveTo(orbR * 0.7, 10); c.lineTo(12, 14); c.lineTo(16, 2);
+                            c.stroke();
+                        }
+                        // the central eye, looking at the player
+                        const look = Math.atan2(state.player.y - ent.y, state.player.x - ent.x);
+                        const lid = charging ? 0.35 : (slamming ? 1 : 0.8 - (((this.renderFrame + 40) % 220) < 7 ? 0.7 : 0));
+                        c.fillStyle = '#f6efe2';
+                        c.beginPath(); c.ellipse(0, 0, 14, 14 * lid, 0, 0, Math.PI * 2); c.fill();
+                        c.fillStyle = charging ? '#ff2a1a' : '#b3202a';
+                        c.beginPath(); c.arc(Math.cos(look) * 5, Math.sin(look) * 5 * lid, 6.5 * Math.min(1, lid + 0.25), 0, Math.PI * 2); c.fill();
+                        c.fillStyle = '#12040a';
+                        c.beginPath(); c.arc(Math.cos(look) * 6.5, Math.sin(look) * 6.5 * lid, 2.8, 0, Math.PI * 2); c.fill();
+                        c.strokeStyle = SHELL_DARK; c.lineWidth = 2.5;
+                        c.beginPath(); c.ellipse(0, 0, 14, 14 * lid, 0, 0, Math.PI * 2); c.stroke();
+                        c.restore();
 
                         this.ctx.strokeStyle = '#555';
                         this.ctx.lineWidth = 3;
@@ -4077,6 +5058,7 @@ export class Renderer {
                     }
                 }
 
+                if (dressed) this.ctx.restore();   // Patch 168: undo the presentation scale
                 if (isElite) this.ctx.restore();   // Patch 133: undo the elite scale
 
                 if (!isElite && ent.hp < ent.maxHp && ent.flashTime <= 0 && !isBossType(ent.type)) {
@@ -4963,6 +5945,16 @@ export class Renderer {
             this.ctx.rotate(state.player.angle);
         }
 
+        // Patch 168: the player is the one thing that must never be lost in a crowd:
+        // a warm halo under them, and the figure drawn 25% larger (hitbox unchanged).
+        this.drawGlow(0, 0, 44, '#ffe2a8', 0.22);
+        this.ctx.scale(1.25, 1.25);
+        // Patch 170: stepping into a door, the figure shrinks away into the light.
+        if (state.doorFx) {
+            const da = state.frame - state.doorFx.born;
+            if (da >= 0 && da < DOOR_ENTER_STEPS) { const ds = 1 - (da / DOOR_ENTER_STEPS) * 0.75; this.ctx.scale(ds, ds); }
+        }
+
         let shake = panic * 3;
 
         this.ctx.globalAlpha = 0.3;
@@ -4979,126 +5971,214 @@ export class Renderer {
             this.ctx.globalAlpha = (Math.floor(this.renderFrame / 4) % 2 === 0) ? 1.0 : 0.35;
         }
 
-        this.ctx.strokeStyle = '#050505';
-        this.ctx.lineWidth = 4;
-        this.ctx.lineCap = 'round';
-        
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, 5);
-        this.ctx.lineTo(-8 + Math.cos(this.legPhase)*6, 8 + Math.sin(this.legPhase)*6);
-        this.ctx.stroke();
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, -5);
-        this.ctx.lineTo(-8 + Math.cos(this.legPhase + Math.PI)*6, -8 + Math.sin(this.legPhase + Math.PI)*6);
-        this.ctx.stroke();
+        // Patch 171: the player as a jointed rig (was two leg strokes, a blob and a
+        // disc). Top-down, facing +x. Feet stride along the direction actually moved
+        // (so strafing and backing up look right), knees and elbows are solved with
+        // two-bone IK (core/Rig.js), the torso twists with the step, the free arm
+        // swings against the legs and the other holds the flashlight out.
+        const c = this.ctx;
+        const hurt = state.player.flashTime > 0;
+        const hurtCol = (this.renderFrame % 6 < 3) ? '#ff3b30' : '#ffffff';
+        // Patch 173: each Patient has their own look (coat, hair, skin, what they carry).
+        const look = PATIENT_LOOKS[state.player.character] || PATIENT_LOOKS.insomniac;
+        const COAT = hurt ? hurtCol : look.coat;
+        const COAT_DARK = hurt ? hurtCol : look.coatDark;
+        const SKIN = hurt ? hurtCol : look.skin;
+        const HAIR = hurt ? hurtCol : look.hair;
+        const TROUSER = hurt ? hurtCol : look.trouser;
+        const INK = 'rgba(8, 10, 16, 0.9)';
 
-        let baseBodyColor = '#1a1a24';
-        let headColor = '#e0e0e0';
-        if (state.player.flashTime > 0) {
-            let isRed = (this.renderFrame % 6 < 3);
-            baseBodyColor = isRed ? '#ff0000' : '#ffffff';
-            headColor = isRed ? '#ff0000' : '#ffffff';
+        // Patch 173: fear. How frightened the figure looks: low Sanity, plus how close
+        // the nearest enemy is. It drives the hunch, the tremble, the wide eyes, where
+        // the head turns, and the sweat. One pass over the entities per frame.
+        let nearD = 9999, nearA = 0;
+        if (state.entities) {
+            for (let i = 0; i < state.entities.length; i++) {
+                const e = state.entities[i];
+                const ddx = e.x - state.player.x, ddy = e.y - state.player.y;
+                const dd = ddx * ddx + ddy * ddy;
+                if (dd < nearD * nearD) { nearD = Math.sqrt(dd); nearA = Math.atan2(ddy, ddx); }
+            }
+        }
+        const threat = nearD < 220 ? 1 - nearD / 220 : 0;
+        const fear = Math.max(0, Math.min(1, panic * 0.75 + threat * 0.6));
+        const tremble = fear > 0.25 ? (fear - 0.25) * 1.6 : 0;
+        if (tremble > 0) c.translate((Math.random() - 0.5) * tremble, (Math.random() - 0.5) * tremble);
+        // a flinch on being hit: the whole figure squashes back for a few frames
+        if (hurt) c.scale(0.9, 1.08);
+
+        const mvLen = Math.hypot(moveX, moveY);
+        const walking = isMoving && mvLen > 0.05;
+        const dirX = walking ? moveX / mvLen : 1, dirY = walking ? moveY / mvLen : 0;
+        const stride = walking ? Math.min(8, 3 + mvLen * 2) : 0;
+        const sw1 = Math.sin(this.legPhase), sw2 = -sw1;
+        let breathe = state.player.breathPhase ? Math.sin(state.player.breathPhase) * (1 + panic * 3) : 0;
+
+        // --- legs: hip -> knee -> foot, then the shoe ---
+        c.lineCap = 'round';
+        c.lineJoin = 'round';
+        for (const side of [-1, 1]) {
+            const swing = side < 0 ? sw1 : sw2;
+            const hx = -1, hy = side * 4.5;
+            const fx = hx + dirX * swing * stride + 1, fy = hy + dirY * swing * stride + side * 1.5;
+            const leg = ik2(hx, hy, fx, fy, 5, 5, side);
+            c.strokeStyle = INK; c.lineWidth = 6.5;
+            c.beginPath(); c.moveTo(hx, hy); c.lineTo(leg.kx, leg.ky); c.lineTo(leg.ex, leg.ey); c.stroke();
+            c.strokeStyle = TROUSER; c.lineWidth = 4.5;
+            c.beginPath(); c.moveTo(hx, hy); c.lineTo(leg.kx, leg.ky); c.lineTo(leg.ex, leg.ey); c.stroke();
+            c.fillStyle = hurt ? hurtCol : '#d9d2c2';
+            c.strokeStyle = INK; c.lineWidth = 1.2;
+            c.beginPath(); c.ellipse(leg.ex + 1.5, leg.ey, 4.2, 2.7, 0, 0, Math.PI * 2); c.fill(); c.stroke();
         }
 
-        this.ctx.fillStyle = baseBodyColor;
+        // --- torso: twists a little with each step ---
+        c.save();
+        c.rotate(walking ? sw1 * 0.1 : 0);
+        // backpack
+        c.strokeStyle = INK; c.lineWidth = 1.4;
+        if (look.carry === 'pipe') {            // the Vandal: a length of pipe across the back
+            c.fillStyle = hurt ? hurtCol : '#9aa0aa';
+            c.save(); c.rotate(0.5);
+            c.beginPath(); c.rect(-11, -13, 3.6, 26); c.fill(); c.stroke();
+            c.restore();
+        } else if (look.carry === 'satchel') {  // the Artist: a satchel with a brush sticking out
+            c.fillStyle = hurt ? hurtCol : '#6b4a8a';
+            c.beginPath(); c.rect(-13, -2, 8, 10); c.fill(); c.stroke();
+            c.strokeStyle = hurt ? hurtCol : '#e8d9b0'; c.lineWidth = 1.8;
+            c.beginPath(); c.moveTo(-10, -2); c.lineTo(-15, -9); c.stroke();
+            c.strokeStyle = INK; c.lineWidth = 1.4;
+        } else if (look.carry === 'camera') {   // the Photographer: a camera bag
+            c.fillStyle = hurt ? hurtCol : '#2b2b30';
+            c.beginPath(); c.rect(-13, -5, 7, 10); c.fill(); c.stroke();
+            c.fillStyle = hurt ? hurtCol : '#c9c9d2';
+            c.beginPath(); c.arc(-9.5, 0, 2.2, 0, Math.PI * 2); c.fill();
+        } else {                                // the Insomniac: a pillow strapped on
+            c.fillStyle = hurt ? hurtCol : '#e6e2d6';
+            c.beginPath(); c.ellipse(-10, 0, 4.5, 7, 0, 0, Math.PI * 2); c.fill(); c.stroke();
+        }
+        // coat
+        let sw = 9 + breathe - fear * 1.6;   // shoulders draw in when frightened
+        c.fillStyle = COAT;
+        c.beginPath();
+        c.moveTo(8, 0);
+        c.bezierCurveTo(8, sw * 0.78, 4, sw * 1.2, -3, sw * 1.1);
+        c.bezierCurveTo(-sw * 0.9, sw, -sw * 1.05, sw * 0.44, -sw * 0.98, 0);
+        c.bezierCurveTo(-sw * 1.05, -sw * 0.44, -sw * 0.9, -sw, -3, -sw * 1.1);
+        c.bezierCurveTo(4, -sw * 1.2, 8, -sw * 0.78, 8, 0);
+        c.closePath();
+        c.fill();
+        c.strokeStyle = INK; c.lineWidth = 1.6; c.stroke();
+        // collar and shoulder seam
+        c.strokeStyle = COAT_DARK; c.lineWidth = 2;
+        c.beginPath(); c.moveTo(2, -sw * 0.95); c.quadraticCurveTo(-3, 0, 2, sw * 0.95); c.stroke();
+        if (look.strap) {                       // a strap across the chest
+            c.strokeStyle = hurt ? hurtCol : look.strap; c.lineWidth = 1.8;
+            c.beginPath(); c.moveTo(4, -sw * 0.8); c.lineTo(-6, sw * 0.9); c.stroke();
+        }
 
-        let breathe = state.player.breathPhase ? Math.sin(state.player.breathPhase) * (1 + panic * 3) : 0;
-        let sw = 9 + breathe; // shoulder/hip width, breathes with breathPhase
+        // --- free arm: swings against the legs ---
+        {
+            const shx = 1, shy = -sw * 0.95;
+            const hx2 = shx + 4 + (walking ? sw2 * 5 : 0), hy2 = shy - 4;
+            const arm = ik2(shx, shy, hx2, hy2, 5.5, 5.5, -1);
+            c.strokeStyle = INK; c.lineWidth = 6;
+            c.beginPath(); c.moveTo(shx, shy); c.lineTo(arm.kx, arm.ky); c.lineTo(arm.ex, arm.ey); c.stroke();
+            c.strokeStyle = COAT; c.lineWidth = 4;
+            c.beginPath(); c.moveTo(shx, shy); c.lineTo(arm.kx, arm.ky); c.lineTo(arm.ex, arm.ey); c.stroke();
+            c.fillStyle = SKIN;
+            c.beginPath(); c.arc(arm.ex, arm.ey, 2.4, 0, Math.PI * 2); c.fill();
+        }
 
-        // Lean, compact coat silhouette: shield/teardrop shape, forward-pointed,
-        // tapering to a narrow hem at the back. Height ~= width (top-down),
-        // deliberately NOT elongated to avoid a "slithering" read.
-        this.ctx.beginPath();
-        this.ctx.moveTo(9, 0);
-        this.ctx.bezierCurveTo(9, sw * 0.78, 4, sw * 1.22, -3, sw * 1.11);
-        this.ctx.bezierCurveTo(-sw, sw, -sw * 1.22, sw * 0.44, -sw * 1.11, 0);
-        this.ctx.bezierCurveTo(-sw * 1.22, -sw * 0.44, -sw, -sw, -3, -sw * 1.11);
-        this.ctx.bezierCurveTo(4, -sw * 1.22, 9, -sw * 0.78, 9, 0);
-        this.ctx.closePath();
-        this.ctx.fill();
+        // --- flashlight arm: held out, bobbing a touch with the step ---
+        const handX = 19 + (walking ? Math.abs(sw1) * 1.2 : 0), handY = 4.5 + breathe * 0.3;
+        {
+            const shx = 2, shy = sw * 0.95;
+            const arm = ik2(shx, shy, handX, handY, 9.5, 9.5, 1);
+            c.strokeStyle = INK; c.lineWidth = 6;
+            c.beginPath(); c.moveTo(shx, shy); c.lineTo(arm.kx, arm.ky); c.lineTo(arm.ex, arm.ey); c.stroke();
+            c.strokeStyle = COAT; c.lineWidth = 4;
+            c.beginPath(); c.moveTo(shx, shy); c.lineTo(arm.kx, arm.ky); c.lineTo(arm.ex, arm.ey); c.stroke();
+            c.fillStyle = SKIN;
+            c.beginPath(); c.arc(arm.ex, arm.ey, 2.6, 0, Math.PI * 2); c.fill();
+        }
+        c.restore();   // torso twist
 
-        // subtle waist fold so the taper still reads under flash colors
-        this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
-        this.ctx.lineWidth = 1;
-        this.ctx.beginPath();
-        this.ctx.moveTo(-2, -6);
-        this.ctx.quadraticCurveTo(-8, 0, -2, 6);
-        this.ctx.stroke();
-
-        let headShiftX = Math.max(-5, Math.min(5, moveX * 0.5));
-        let headShiftY = Math.max(-5, Math.min(5, moveY * 0.5));
-        let headJitterX = (Math.random() - 0.5) * panic * 4;
-        let headJitterY = (Math.random() - 0.5) * panic * 4;
-
-        // Arm + flashlight: shoulder -> hand -> flashlight, extending forward
-        // along the aim axis so it reads as physically held.
-        this.ctx.save();
-        this.ctx.strokeStyle = baseBodyColor;
-        this.ctx.lineWidth = 4;
-        this.ctx.lineCap = 'round';
-        this.ctx.beginPath();
-        this.ctx.moveTo(6, 6);
-        this.ctx.lineTo(22, 3);
-        this.ctx.stroke();
-
-        this.ctx.fillStyle = '#c9a678';
-        this.ctx.beginPath();
-        this.ctx.arc(22, 3, 2.5, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        this.ctx.translate(22, 3);
-        this.ctx.rotate(-0.15);
-        this.ctx.fillStyle = '#4a4a4a';
-        this.ctx.fillRect(0, -2, 14, 4);
-        this.ctx.strokeStyle = '#111111';
-        this.ctx.lineWidth = 1;
-        this.ctx.strokeRect(0, -2, 14, 4);
-        this.ctx.fillStyle = '#2a2a2a';
-        this.ctx.fillRect(3, -2, 1.2, 4);
-        this.ctx.fillRect(6, -2, 1.2, 4);
-
+        // the flashlight itself
+        c.save();
+        c.translate(handX + 1, handY - 0.5);
+        c.rotate(-0.12);
+        c.fillStyle = '#5a5f6a';
+        c.strokeStyle = INK; c.lineWidth = 1.2;
+        c.beginPath(); c.rect(0, -2.2, 12, 4.4); c.fill(); c.stroke();
+        c.fillStyle = '#c9a23a';
+        c.fillRect(8.5, -3.2, 4, 6.4);
+        c.strokeRect(8.5, -3.2, 4, 6.4);
         const lensGlowAmt = 10 + Math.random() * 4 * panic;
-        const lensGlow = this.ctx.createRadialGradient(14, 0, 0, 14, 0, lensGlowAmt);
-        lensGlow.addColorStop(0, 'rgba(255, 246, 204, 0.9)');
-        lensGlow.addColorStop(1, 'rgba(255, 246, 204, 0)');
-        this.ctx.fillStyle = lensGlow;
-        this.ctx.beginPath();
-        this.ctx.arc(14, 0, lensGlowAmt, 0, Math.PI * 2);
-        this.ctx.fill();
+        this.drawGlow(13.5, 0, lensGlowAmt + 4, '#fff6cc', 0.9);
+        c.fillStyle = '#fffdf0';
+        c.beginPath(); c.arc(13, 0, 3, 0, Math.PI * 2); c.fill();
+        c.restore();
 
-        this.ctx.fillStyle = '#dcdcdc';
-        this.ctx.beginPath();
-        this.ctx.arc(14, 0, 3.5, 0, Math.PI * 2);
-        this.ctx.fill();
-        this.ctx.restore();
-
-        // Head: kept small relative to the coat so it doesn't dominate the silhouette
-        this.ctx.fillStyle = headColor;
-        this.ctx.beginPath();
-        this.ctx.arc(13 + headJitterX + headShiftX, headJitterY + headShiftY, 5, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        this.ctx.fillStyle = '#1a1a24';
-        this.ctx.beginPath();
-        this.ctx.ellipse(10 + headJitterX * 0.5 + headShiftX, 3 + headJitterY * 0.5 + headShiftY, 4, 2.5, Math.PI / 5, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        const eyeX = 16 + headJitterX * 0.5 + headShiftX;
-        const eyeY = headJitterY * 0.5 + headShiftY;
-        const eyeR = 2.5;
-        const eyeGlowAmt = 8 + Math.random() * 5 * panic;
-        const eyeGlow = this.ctx.createRadialGradient(eyeX, eyeY, 0, eyeX, eyeY, eyeR + eyeGlowAmt);
-        eyeGlow.addColorStop(0, 'rgba(255, 250, 230, 0.5)');
-        eyeGlow.addColorStop(1, 'rgba(255, 250, 230, 0)');
-        this.ctx.fillStyle = eyeGlow;
-        this.ctx.beginPath();
-        this.ctx.arc(eyeX, eyeY, eyeR + eyeGlowAmt, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        this.ctx.fillStyle = '#fffae6';
-        this.ctx.beginPath();
-        this.ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI * 2);
-        this.ctx.fill();
+        // --- head: looks where the danger is, eyes widening with fear ---
+        let headShiftX = Math.max(-3, Math.min(3, moveX * 0.4));
+        let headShiftY = Math.max(-3, Math.min(3, moveY * 0.4));
+        const hx0 = 7 + headShiftX - fear * 1.5, hy0 = headShiftY;
+        // turn toward the nearest enemy (in the body's frame), or look about when calm
+        let turn = Math.sin(this.renderFrame * 0.021) * 0.25;
+        if (threat > 0) {
+            let rel = nearA - state.player.angle;
+            while (rel > Math.PI) rel -= Math.PI * 2;
+            while (rel < -Math.PI) rel += Math.PI * 2;
+            turn = Math.max(-1.1, Math.min(1.1, rel)) * Math.min(1, threat * 1.6);
+        }
+        c.save();
+        c.translate(hx0, hy0);
+        c.rotate(turn);
+        c.fillStyle = HAIR;
+        c.strokeStyle = INK; c.lineWidth = 1.5;
+        c.beginPath(); c.arc(0, 0, 6.2, 0, Math.PI * 2); c.fill(); c.stroke();
+        if (look.hat === 'hood') {              // the hood is the coat's colour
+            c.fillStyle = COAT;
+            c.beginPath(); c.arc(-0.8, 0, 6.6, Math.PI * 0.42, Math.PI * 1.58); c.closePath(); c.fill(); c.stroke();
+        }
+        c.fillStyle = SKIN;
+        c.beginPath(); c.ellipse(2.6, 0, 3.6, 4.6, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = HAIR;   // a fringe, so the face has a top
+        c.beginPath(); c.ellipse(0.8, -2.6, 3.4, 2.2, 0.5, 0, Math.PI * 2); c.fill();
+        if (look.hat === 'beret') {
+            c.fillStyle = hurt ? hurtCol : '#7a2f8a';
+            c.beginPath(); c.ellipse(-1.2, -1, 5.4, 4.6, 0.3, 0, Math.PI * 2); c.fill(); c.stroke();
+        } else if (look.hat === 'cap') {
+            c.fillStyle = hurt ? hurtCol : look.coatDark;
+            c.beginPath(); c.arc(-0.5, 0, 6.3, Math.PI * 0.5, Math.PI * 1.5); c.closePath(); c.fill(); c.stroke();
+            c.beginPath(); c.ellipse(5.6, 0, 2.6, 4.2, 0, 0, Math.PI * 2); c.fill();   // the peak
+        }
+        // eyes: whites show and grow as fear rises; a blink now and then when calm
+        const blink = fear < 0.3 && ((this.renderFrame + 17) % 190) < 6;
+        if (!blink) {
+            const ew = 0.9 + fear * 1.3;
+            if (fear > 0.2) {
+                c.fillStyle = '#ffffff';
+                c.beginPath(); c.arc(4.3, -1.8, ew + 0.5, 0, Math.PI * 2); c.arc(4.3, 1.8, ew + 0.5, 0, Math.PI * 2); c.fill();
+            }
+            c.fillStyle = '#12141c';
+            c.beginPath(); c.arc(4.6, -1.8, 0.9, 0, Math.PI * 2); c.arc(4.6, 1.8, 0.9, 0, Math.PI * 2); c.fill();
+        }
+        if (look.bags && fear < 0.5) {          // the Insomniac's eye bags
+            c.strokeStyle = 'rgba(90, 60, 110, 0.8)'; c.lineWidth = 0.8;
+            c.beginPath(); c.arc(3.6, -1.8, 1.6, -0.6, 0.6); c.arc(3.6, 1.8, 1.6, -0.6, 0.6); c.stroke();
+        }
+        c.restore();
+        // sweat, flung off when badly frightened
+        if (fear > 0.55) {
+            c.fillStyle = '#bfe6ff';
+            for (let i = 0; i < 2; i++) {
+                const tt = ((this.renderFrame * 0.06 + i * 0.5) % 1);
+                c.globalAlpha *= (1 - tt);
+                c.fillRect(hx0 - 4 - tt * 9, hy0 + (i ? 7 : -7) * (0.6 + tt), 1.8, 1.8);
+                c.globalAlpha /= (1 - tt) || 1;
+            }
+        }
 
         const spinner = state.player.weapons.fidget_spinner;
         if (spinner && spinner.level > 0) {
