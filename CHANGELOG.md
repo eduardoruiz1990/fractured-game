@@ -3157,6 +3157,34 @@ early floors lean too easy, and the game still needs a visual overhaul.
   eleven detonations (`spawnPop` takes a size); an elite's death gets a large pop.
 - Boss HUD line is the name and a percentage (the long form wrapped on phones).
 
+**Patch 171 — jointed procedural rigs (2026-11-18).** The user chose procedural rigs
+over commissioned sprite sheets, to be tried on the player, the first boss and the
+regular enemies.
+- **`src/core/Rig.js`** (new, pure): `ik2()` solves a two-bone limb; `WalkerRig` keeps
+  feet PLANTED in the world and steps them in alternating groups when the body leaves
+  them behind. A teleport or a non-finite position re-plants the feet.
+- **The player** (`Renderer.drawPlayer`) is a jointed figure: IK legs striding along the
+  direction actually moved, a coat that twists with the step, a backpack, a free arm
+  swinging against the legs, an IK arm holding the flashlight out, a head with hair and
+  a face that turns toward travel.
+- **Scavenger:** two IK legs under the hunch. **Predator:** four IK legs skittering in
+  diagonal pairs, folded back in a lunge (cache key `pred3`; the two painted legs are
+  gone). One path and two strokes per enemy.
+- **Sphere Head** (floor-1 boss) walks on a six-leg `WalkerRig` kept per boss in
+  `Renderer.bossRigs` (a WeakMap, render-side state only): thigh and shin per leg, the
+  red eyes ride the knees, the stance widens while it charges and splays on the pulse.
+  A lidded central eye tracks the player, narrows before the pulse and blinks; under
+  half health the shell is cracked. The old body sway rotation is removed.
+
+**Patch 172 — the chest and the in-run inventory (2026-11-18).**
+- **Chest redrawn:** banded wood, a seam of light, a beacon and two motes while it
+  waits; opening, the lid swings up and nine rays fan out (screen-blended, composite
+  reset), then a large pop, a crown of eight and a short flash.
+- **Inventory on the pause screen** (`#pause-loadout`, `renderPauseLoadout` in
+  `main.js`): instruments with level pips, boons, active synergies, tokens worn, tokens
+  found this run. Read-only; tokens are still fitted in the Mind Hub. It is wrapped so
+  the pause menu opens even if the panel cannot be drawn.
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.

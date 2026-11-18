@@ -5,7 +5,9 @@ import { InputManager } from './core/Input.js';
 import { Renderer } from './core/Renderer.js';
 import { AudioEngine } from './core/AudioEngine.js';
 import { Game } from './core/Game.js';
-import { LevelUpUI } from './ui/LevelUpUI.js';
+import { LevelUpUI, BOONS, DEEP_BOONS } from './ui/LevelUpUI.js';
+// Patch 172: boon id -> entry, for the pause-screen inventory.
+const BOON_INDEX = Object.fromEntries([...BOONS, ...DEEP_BOONS].map(b => [b.id, b]));
 import { SynergyBanner } from './ui/SynergyBanner.js';
 import { EVOLUTIONS } from './systems/Evolutions.js';   // Patch 134
 import { PATIENTS, newlyAdmitted } from './data/Patients.js';   // Patch 136
@@ -2662,6 +2664,52 @@ function initEngine() {
     const pauseTitle = document.getElementById('pause-title');
     const btnDescend = document.getElementById('btn-descend');
 
+    /**
+     * Patch 172: the in-run inventory. What this run is carrying, read from the live
+     * state when the game pauses: instruments with their level, boons, active
+     * synergies, the tokens worn into the run and the ones found in it. Read-only:
+     * gear is fitted in the Mind Hub, so a run stays a run.
+     */
+    function renderPauseLoadout() {
+        const el = document.getElementById('pause-loadout');
+        if (!el) return;
+        try {
+            const st = game.state, pl = st.player;
+            const esc = (v) => escapeHtml(String(v));
+            const pretty = (id) => String(id).replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+            const owned = Object.entries(pl.weapons || {}).filter(([, w]) => w && w.level > 0);
+            const weaponRows = owned.map(([id, w]) => {
+                const m = MANIFESTATIONS[id] || {};
+                const max = Math.max(m.maxLvl || 5, w.level);
+                let pips = '';
+                for (let i = 1; i <= max; i++) pips += `<i class="${i <= w.level ? 'on' : ''}"></i>`;
+                return `<div class="pl-row"><span class="pl-name">${esc(m.name || pretty(id))}<span class="pl-sub">${esc(m.desc || '')}</span></span><span class="pl-pips" aria-label="level ${w.level} of ${max}">${pips}</span></div>`;
+            }).join('');
+            const boonName = (id) => { const b = BOON_INDEX[id]; return b ? `${b.icon ? b.icon + ' ' : ''}${b.name}` : pretty(id); };
+            const boons = (pl.boons || []).map(id => `<span class="pl-chip" title="${esc((BOON_INDEX[id] && BOON_INDEX[id].desc) || '')}">${esc(boonName(id))}</span>`).join('');
+            const syn = (pl.synergies || []).map(id => `<span class="pl-chip">${esc((SYNERGIES[id] && SYNERGIES[id].name) || pretty(id))}</span>`).join('');
+            const meta = saveManager.metaState || {};
+            const worn = Object.entries(meta.equippedTokens || {}).map(([slot, uid]) => {
+                const item = uid && (meta.inventory || []).find(i => i.uid === uid);
+                const td = item && TOKENS[item.id];
+                return td ? `<div class="pl-row"><span class="pl-name">${esc(td.name)}<span class="pl-sub">${esc(slot.toUpperCase())} · ${esc(td.desc || '')}</span></span></div>` : '';
+            }).join('');
+            const found = {};
+            (st.runInventory || []).forEach(r => { found[r] = (found[r] || 0) + 1; });
+            const foundChips = Object.entries(found).map(([r, n]) => `<span class="pl-chip">${esc(r)} × ${n}</span>`).join('');
+            const none = '<span class="pl-none">none yet</span>';
+            el.innerHTML =
+                `<h4>INSTRUMENTS ${owned.length}/6</h4>${weaponRows || none}` +
+                `<h4>BOONS</h4><div class="pl-chips">${boons || none}</div>` +
+                `<h4>SYNERGIES</h4><div class="pl-chips">${syn || none}</div>` +
+                `<h4>TOKENS WORN</h4>${worn || none}` +
+                `<h4>TOKENS FOUND THIS RUN</h4><div class="pl-chips">${foundChips || none}</div>` +
+                `<div class="pl-note">Tokens are fitted in the Mind Hub between runs.</div>`;
+        } catch (e) {
+            el.innerHTML = '';   // the pause menu must open even if this cannot be drawn
+        }
+    }
+
     function togglePause() {
         if (gameState === 'PLAYING') {
             gameState = 'PAUSED';
@@ -2670,6 +2718,7 @@ function initEngine() {
             document.getElementById('pause-desc').innerText = "The nightmare pauses, but it does not end.";
             showSessionNote(null);   // Patch 145: the note belongs to a cleared floor only
             btnDescend.style.display = 'none';
+            renderPauseLoadout();   // Patch 172
             pauseMenu.style.display = 'flex';
             inputManager.hideJoysticks();
         } else if (gameState === 'PAUSED') {

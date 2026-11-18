@@ -2278,3 +2278,20 @@ body.first-time #btn-title-endless, body.first-time #btn-title-hub { display: no
 /* Patch 168: the Sanity label stays on one line (" · FRAYING" wrapped under the bar). */
 #ui-layer #sanity-label { white-space: nowrap; }
 #ui-layer .sanity-section { flex: 0 1 40%; }
+
+/* Patch 172: the in-run inventory on the pause screen. */
+.pause-loadout { text-align: left; margin: 0 0 16px; max-height: 46vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    border: 1px solid rgba(0,0,0,0.25); background: rgba(0,0,0,0.06); padding: 10px 12px; font-family: var(--ui-font); }
+.pause-loadout:empty { display: none; }
+.pause-loadout h4 { margin: 10px 0 5px; font-size: 12px; letter-spacing: 2px; color: #6b1a12; }
+.pause-loadout h4:first-child { margin-top: 0; }
+.pl-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px dotted rgba(0,0,0,0.25); font-size: 13px; color: #1b1b1b; }
+.pl-row .pl-name { min-width: 0; font-weight: 700; }
+.pl-row .pl-sub { display: block; font-weight: 400; font-size: 11px; color: #4a4a4a; }
+.pl-pips { flex: 0 0 auto; display: flex; gap: 3px; }
+.pl-pips i { width: 9px; height: 9px; border: 1px solid #1b1b1b; display: block; }
+.pl-pips i.on { background: #b98a2e; }
+.pl-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.pl-chip { font-size: 12px; padding: 3px 7px; border: 1px solid rgba(0,0,0,0.45); background: rgba(255,255,255,0.35); color: #1b1b1b; }
+.pl-none { font-size: 12px; color: #555; }
+.pl-note { margin-top: 10px; font-size: 11px; color: #555; }

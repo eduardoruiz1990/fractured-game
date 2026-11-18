@@ -8,6 +8,7 @@ import { errorLog } from './ErrorLog.js';
 // The arena wall drawn below is the same boundary Game.js drains Sanity past and
 // Director.js clamps spawns inside — see the note on ARENA_VOID_RADIUS in Config.js.
 import { ARENA_VOID_RADIUS, isBossType, DOOR_ENTER_STEPS } from '../data/Config.js';
+import { ik2, WalkerRig } from './Rig.js';   // Patch 171
 import { ARENA_LAYOUTS, ARENA_RISE_STEPS, ARENA_FADE_STEPS, GRID_TELEGRAPH_STEPS } from '../systems/Arena.js';   // Patch 137
 // Patch 96 — THE RECURSION's look: the five biomes cycle past floor 5, with a capped
 // depth escalation layered over them. The cap is a memory bound, not a taste one —
@@ -32,6 +33,7 @@ export class Renderer {
         this.canvas = canvas;
         this.ctx = ctx;
         
+        this.bossRigs = new WeakMap();   // Patch 171: per-boss walking rigs (render-side state)
         this.noisePattern = this.generateNoisePattern();
         this.cachedNoisePattern = this.ctx.createPattern(this.noisePattern, 'repeat');
         this.fogClouds = this.generateFogClouds();
@@ -3104,29 +3106,98 @@ export class Renderer {
                     this.ctx.font = "bold 14px 'Courier New', Courier, monospace";
                     this.ctx.fillText(Math.ceil(obj.life / 60) + "s", 0, -35); 
                 } else if (obj.type === 'CHEST') {
-                    // Patch 133: an evidence locker — a squat box with a brass hasp. It
-                    // rattles harder through the opening beat (obj.opening counts up).
-                    const t = obj.opening ? obj.opening / 26 : 0;
-                    const rattle = obj.opening ? Math.sin(this.renderFrame * 1.7) * (1 + t * 3) : 0;
-                    const bob = obj.opening ? 0 : Math.sin(this.renderFrame * 0.08) * 2;
-                    this.drawGlow(0, 0, 46 + t * 20, '#ffd27f', 0.35 + t * 0.3);
-                    this.ctx.translate(rattle, bob);
-                    this.ctx.fillStyle = '#3b2a17';
-                    this.ctx.fillRect(-20, -10, 40, 24);
-                    this.ctx.fillStyle = '#5a4022';
-                    this.ctx.fillRect(-21, -18 - t * 6, 42, 10);   // the lid lifts as it opens
-                    this.ctx.strokeStyle = '#d9a441';
-                    this.ctx.lineWidth = 2;
-                    this.ctx.strokeRect(-20, -10, 40, 24);
-                    this.ctx.strokeRect(-21, -18 - t * 6, 42, 10);
-                    this.ctx.fillStyle = '#ffd27f';
-                    this.ctx.fillRect(-4, -6, 8, 9);
+                    // Patch 172: the chest, redrawn and given an opening. Idle: a banded
+                    // wooden chest with light leaking from its seam, a slow beacon above it
+                    // and two motes circling. Opening (obj.opening counts up to
+                    // CHEST_OPEN_STEPS): it rattles, the lid swings up and back, and rays
+                    // of light fan out of it, turning, until the burst.
+                    const c = this.ctx;
+                    const t = obj.opening ? Math.min(1, obj.opening / 26) : 0;
+                    const tick = this.renderFrame;
+                    const rattle = obj.opening ? Math.sin(tick * 1.7) * (1 + t * 3) : 0;
+                    const bob = obj.opening ? 0 : Math.sin(tick * 0.08) * 2;
+                    const seam = 0.5 + 0.5 * Math.sin(tick * 0.12);
+
+                    // floor light and beacon
+                    c.save(); c.translate(0, 16); c.scale(1, 0.4);
+                    this.drawGlow(0, 0, 60 + t * 50, '#ffd27f', 0.45 + t * 0.4);
+                    c.restore();
                     if (!obj.opening) {
-                        this.ctx.fillStyle = '#ffd27f';
-                        this.ctx.textAlign = 'center';
-                        this.ctx.textBaseline = 'middle';
-                        this.ctx.font = "bold 12px 'Courier New', Courier, monospace";
-                        this.ctx.fillText('CHEST', 0, -32);
+                        c.save(); c.scale(0.22, 1);
+                        this.drawGlow(0, -70, 90, '#ffe7a8', 0.28 + seam * 0.14);
+                        c.restore();
+                    }
+
+                    // rays out of the open chest (screen-blended, reset after)
+                    if (t > 0.15) {
+                        const rt = (t - 0.15) / 0.85;
+                        c.save();
+                        c.translate(rattle, -6);
+                        c.globalCompositeOperation = 'screen';
+                        c.fillStyle = `rgba(255, 226, 150, ${0.16 + rt * 0.3})`;
+                        for (let i = 0; i < 9; i++) {
+                            const ra = -Math.PI / 2 + (i - 4) * 0.36 + Math.sin(tick * 0.09 + i) * 0.1;
+                            const len = (50 + rt * 120) * (0.7 + 0.3 * Math.sin(tick * 0.2 + i * 1.9));
+                            c.beginPath();
+                            c.moveTo(0, 0);
+                            c.lineTo(Math.cos(ra - 0.07) * len, Math.sin(ra - 0.07) * len);
+                            c.lineTo(Math.cos(ra + 0.07) * len, Math.sin(ra + 0.07) * len);
+                            c.closePath(); c.fill();
+                        }
+                        c.globalCompositeOperation = 'source-over';
+                        c.restore();
+                        this.drawGlow(rattle, -8, 30 + rt * 40, '#fff6d8', 0.5 + rt * 0.4);
+                    }
+
+                    c.translate(rattle, bob);
+                    // body
+                    c.fillStyle = '#5a3a1c';
+                    c.strokeStyle = '#1c1208'; c.lineWidth = 2;
+                    c.beginPath(); c.rect(-22, -8, 44, 24); c.fill(); c.stroke();
+                    c.fillStyle = '#7a5228';
+                    c.fillRect(-20, -6, 40, 6);
+                    // brass bands and corners
+                    c.fillStyle = '#d9a441';
+                    c.fillRect(-15, -8, 5, 24); c.fillRect(10, -8, 5, 24);
+                    c.fillRect(-22, 12, 44, 4);
+                    // the seam of light under the lid
+                    c.fillStyle = `rgba(255, 240, 190, ${0.5 + seam * 0.5})`;
+                    c.fillRect(-21, -10 - t * 3, 42, 3 + t * 6);
+                    // the lid: swings up and back as it opens
+                    c.save();
+                    c.translate(0, -10);
+                    const lidLift = t * 16, lidH = 13 * (1 - t * 0.55);
+                    c.fillStyle = '#6b4622';
+                    c.strokeStyle = '#1c1208'; c.lineWidth = 2;
+                    c.beginPath();
+                    c.moveTo(-23, -lidLift);
+                    c.lineTo(-23, -lidLift - lidH * 0.5);
+                    c.quadraticCurveTo(0, -lidLift - lidH * 1.6, 23, -lidLift - lidH * 0.5);
+                    c.lineTo(23, -lidLift);
+                    c.closePath(); c.fill(); c.stroke();
+                    c.fillStyle = '#d9a441';
+                    c.fillRect(-15, -lidLift - lidH, 5, lidH); c.fillRect(10, -lidLift - lidH, 5, lidH);
+                    c.restore();
+                    // the lock
+                    if (t < 0.4) {
+                        c.fillStyle = '#ffd27f'; c.strokeStyle = '#1c1208'; c.lineWidth = 1.5;
+                        c.beginPath(); c.rect(-5, -9, 10, 11); c.fill(); c.stroke();
+                        c.fillStyle = '#1c1208';
+                        c.beginPath(); c.arc(0, -4, 1.8, 0, Math.PI * 2); c.fill();
+                    }
+                    // two motes circling while it waits
+                    if (!obj.opening) {
+                        c.fillStyle = '#fff3c4';
+                        for (let i = 0; i < 2; i++) {
+                            const ma = tick * 0.05 + i * Math.PI;
+                            c.fillRect(Math.cos(ma) * 30 - 1.5, -4 + Math.sin(ma) * 11 - 1.5, 3, 3);
+                        }
+                        c.font = "bold 12px 'Courier New', Courier, monospace";
+                        c.textAlign = 'center'; c.textBaseline = 'middle';
+                        c.fillStyle = 'rgba(8, 6, 10, 0.85)';
+                        c.fillRect(-24, -44, 48, 16);
+                        c.fillStyle = '#ffd27f';
+                        c.fillText('CHEST', 0, -35.5);
                     }
                 } else if (obj.type === 'CASE_PAGE') {
                     // Patch 144: a loose sheet from the Case File — paper, a red margin
@@ -4043,6 +4114,23 @@ export class Renderer {
                             cx.fill();
                         }
                     );
+                    // Patch 171: legs. Two jointed legs striding under the hunch, on the
+                    // enemy's own clock and faster with its speed; one path, two strokes.
+                    if (ent.vacuumState !== 'vacuuming') {
+                        const sSp = Math.min(2.5, Math.hypot(ent.vx || 0, ent.vy || 0));
+                        const sPh = this.renderFrame * (0.16 + sSp * 0.1) + ((ent.id * 131) % 6.283);
+                        const sStr = 2 + sSp * 2.6;
+                        const lA = ik2(-3, 4, -2 + Math.sin(sPh) * sStr, 10, 5, 5, 1);
+                        const lB = ik2(-3, -4, -2 - Math.sin(sPh) * sStr, -10, 5, 5, -1);
+                        this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round';
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(-3, 4); this.ctx.lineTo(lA.kx, lA.ky); this.ctx.lineTo(lA.ex, lA.ey);
+                        this.ctx.moveTo(-3, -4); this.ctx.lineTo(lB.kx, lB.ky); this.ctx.lineTo(lB.ex, lB.ey);
+                        this.ctx.strokeStyle = 'rgba(236, 224, 196, 0.75)'; this.ctx.lineWidth = 4;
+                        this.ctx.stroke();
+                        this.ctx.strokeStyle = isFlashed ? '#ffffff' : '#3a3148'; this.ctx.lineWidth = 2.4;
+                        this.ctx.stroke();
+                    }
                     this.drawSprite(scavSprite);
 
                     // Sweeping arm stays live — it swings independently of the body and
@@ -4127,7 +4215,7 @@ export class Renderer {
                     const predColor = isFlashed ? '#ffe0d8' : (ent.buffed ? '#8a1414' : '#5c1622');
 
                     const predSprite = this.getSprite(
-                        `pred2|${isFlashed ? 1 : 0}|${ent.buffed ? 1 : 0}|${lunging ? 1 : 0}|${pulseA}|${pulseB}`, 64, 64,
+                        `pred3|${isFlashed ? 1 : 0}|${ent.buffed ? 1 : 0}|${lunging ? 1 : 0}|${pulseA}|${pulseB}`, 64, 64,
                         (cx) => {
                             cx.fillStyle = predColor;
                             cx.beginPath();
@@ -4168,20 +4256,32 @@ export class Renderer {
                             cx.lineWidth = 2;
                             cx.beginPath();
 
-                            if (lunging) {
-                                cx.moveTo(-2, 5);
-                                cx.lineTo(-22, 9);
-                                cx.moveTo(-2, -5);
-                                cx.lineTo(-22, -9);
-                            } else {
-                                cx.moveTo(-2, 5);
-                                cx.quadraticCurveTo(8, 13, 12, 4);
-                                cx.moveTo(-2, -5);
-                                cx.quadraticCurveTo(8, -13, 12, -4);
-                            }
-                            cx.stroke();
+                            // Patch 171: the two painted-on legs are gone; the live
+                            // rig below the sprite draws four.
                         }
                     );
+                    // Patch 171: four jointed legs that skitter in diagonal pairs, and
+                    // fold back flat in a lunge.
+                    {
+                        const pSp = Math.min(3, Math.hypot(ent.vx || 0, ent.vy || 0));
+                        const pPh = this.renderFrame * (0.2 + pSp * 0.1) + ((ent.id * 173) % 6.283);
+                        const pStr = lunging ? 0 : 2.5 + pSp * 2.2;
+                        this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round';
+                        this.ctx.beginPath();
+                        for (let li = 0; li < 4; li++) {
+                            const front = li < 2, sideY = li % 2 ? 1 : -1;
+                            const hipX = front ? 6 : -9;
+                            const sw = Math.sin(pPh + ((li === 0 || li === 3) ? 0 : Math.PI));
+                            const footX = lunging ? hipX - 13 : hipX + (front ? 4 : -3) + sw * pStr;
+                            const footY = sideY * (lunging ? 7 : 14);
+                            const lg = ik2(hipX, sideY * 3, footX, footY, 7.5, 7.5, sideY * (front ? -1 : 1));
+                            this.ctx.moveTo(hipX, sideY * 3); this.ctx.lineTo(lg.kx, lg.ky); this.ctx.lineTo(lg.ex, lg.ey);
+                        }
+                        this.ctx.strokeStyle = 'rgba(255, 176, 160, 0.7)'; this.ctx.lineWidth = 3.6;
+                        this.ctx.stroke();
+                        this.ctx.strokeStyle = predColor; this.ctx.lineWidth = 2;
+                        this.ctx.stroke();
+                    }
                     this.drawSprite(predSprite);
 
                     const predGlowAmt = (ent.attackState === 'telegraphing') ? 20 : 10;
@@ -4311,7 +4411,7 @@ export class Renderer {
                         }
 
                         let phase = ent.phase || 0;
-                        this.ctx.rotate(Math.sin(phase * 0.5) * 0.1); 
+                        // Patch 171: no body sway here any more; the feet are planted in the world.
                         
                         let pulse = this.entPulse(ent) * 3;
                         if (ent.pulseState === 'charging') {
@@ -4322,73 +4422,79 @@ export class Renderer {
                         const activeBoss = state.activeBoss;
                         const orbR = 26;
 
-                        // Real tendril anatomy: curved (quadratic) limbs radiating from the
-                        // orb, tapered via a thick base segment + thinner tip segment,
-                        // instead of the old jagged-polygon "spike ball" silhouette.
-                        const tendrilCount = 6;
-                        const tendrils = [];
-                        for (let i = 0; i < tendrilCount; i++) {
-                            let angle = (i / tendrilCount) * Math.PI * 2 + phase * 0.15;
-                            let reach = 42 + Math.sin(phase * 3 + i * 2) * 12;
-                            if (ent.pulseState === 'charging') reach -= 12;
-                            let perpX = -Math.sin(angle), perpY = Math.cos(angle);
-                            let wave = Math.sin(phase * 4 + i * 1.7) * 10;
-                            tendrils.push({
-                                baseX: Math.cos(angle) * (orbR - 4), baseY: Math.sin(angle) * (orbR - 4),
-                                ctrlX: Math.cos(angle) * (orbR + reach * 0.55) + perpX * wave,
-                                ctrlY: Math.sin(angle) * (orbR + reach * 0.55) + perpY * wave,
-                                tipX: Math.cos(angle) * (orbR + reach), tipY: Math.sin(angle) * (orbR + reach),
-                                angle
-                            });
+                        // Patch 171: Sphere Head on a walking rig. Six jointed legs whose
+                        // feet are planted in the world (core/Rig.js WalkerRig) and step in
+                        // alternating groups as it advances; the stance widens as it
+                        // charges, and the legs slam flat on the pulse. The eyes ride the
+                        // knees. A lidded central eye tracks the player and narrows before
+                        // the pulse; under half health the shell is cracked.
+                        const c = this.ctx;
+                        let rig = this.bossRigs.get(ent);
+                        if (!rig) { rig = new WalkerRig(6, 70, 30, 10); this.bossRigs.set(ent, rig); }
+                        const charging = ent.pulseState === 'charging', slamming = ent.pulseState === 'pulsing';
+                        if (!state.devFreezeEntities || !rig.placed) rig.update(ent.x, ent.y, 0, charging ? 1.3 : (slamming ? 1.55 : 1));
+                        const bodyLift = charging ? -4 : (slamming ? 5 : Math.sin(phase * 3) * 1.5);
+                        const SHELL = isFlashed ? '#ffe9e2' : '#3b1f2b';
+                        const SHELL_DARK = isFlashed ? '#f0c8c0' : '#1c0d15';
+                        const RIM = isFlashed ? '#ffffff' : 'rgba(255, 170, 160, 0.8)';
+                        const glowAmount = charging ? 26 : 12;
+
+                        c.lineCap = 'round'; c.lineJoin = 'round';
+                        for (let i = 0; i < rig.n; i++) {
+                            const f = rig.feet[i];
+                            const fx = f.x - ent.x, fy = f.y - ent.y - f.lift * 9;
+                            const ha = Math.atan2(fy, fx);
+                            const hipX = Math.cos(ha) * (orbR - 5), hipY = Math.sin(ha) * (orbR - 5) + bodyLift;
+                            const lg = ik2(hipX, hipY, fx, fy, 34, 38, (i % 2 ? 1 : -1) * (fx >= 0 ? 1 : -1));
+                            // outline, then thigh and tapering shin
+                            c.strokeStyle = RIM; c.lineWidth = 10;
+                            c.beginPath(); c.moveTo(hipX, hipY); c.lineTo(lg.kx, lg.ky); c.stroke();
+                            c.lineWidth = 6;
+                            c.beginPath(); c.moveTo(lg.kx, lg.ky); c.lineTo(lg.ex, lg.ey); c.stroke();
+                            c.strokeStyle = SHELL; c.lineWidth = 7.5;
+                            c.beginPath(); c.moveTo(hipX, hipY); c.lineTo(lg.kx, lg.ky); c.stroke();
+                            c.strokeStyle = SHELL_DARK; c.lineWidth = 3.8;
+                            c.beginPath(); c.moveTo(lg.kx, lg.ky); c.lineTo(lg.ex, lg.ey); c.stroke();
+                            // the foot: a planted claw, and dust when it lands
+                            c.fillStyle = RIM;
+                            c.beginPath(); c.arc(lg.ex, lg.ey, 3.2 - f.lift * 1.2, 0, Math.PI * 2); c.fill();
+                            // the knee eye
+                            const eyeR = 3.5 + (i % 3);
+                            this.drawGlow(lg.kx, lg.ky, eyeR + glowAmount, '#ff2a1a', 0.5);
+                            c.fillStyle = '#ff3a2a';
+                            c.beginPath(); c.arc(lg.kx, lg.ky, eyeR, 0, Math.PI * 2); c.fill();
+                            c.fillStyle = '#12040a';
+                            c.beginPath(); c.ellipse(lg.kx, lg.ky, eyeR * 0.25, eyeR * 0.8, ha, 0, Math.PI * 2); c.fill();
                         }
 
-                        this.ctx.strokeStyle = isFlashed ? '#ddaaaa' : '#1a0d15';
-                        this.ctx.lineCap = 'round';
-                        tendrils.forEach(t => {
-                            this.ctx.beginPath();
-                            this.ctx.moveTo(t.baseX, t.baseY);
-                            this.ctx.lineTo(t.ctrlX, t.ctrlY);
-                            this.ctx.lineWidth = 7;
-                            this.ctx.stroke();
-                            this.ctx.beginPath();
-                            this.ctx.moveTo(t.ctrlX, t.ctrlY);
-                            this.ctx.lineTo(t.tipX, t.tipY);
-                            this.ctx.lineWidth = 3;
-                            this.ctx.stroke();
-                        });
-
-                        // Floating orb: drawn over the tendril bases so they read as
-                        // emerging from beneath it.
-                        const orbGrad = this.ctx.createRadialGradient(-8, -8, 4, 0, 0, orbR + pulse);
-                        orbGrad.addColorStop(0, isFlashed ? '#ffffff' : '#3a1d25');
-                        orbGrad.addColorStop(1, isFlashed ? '#ddaaaa' : '#1a0d15');
-                        this.ctx.fillStyle = orbGrad;
-                        this.ctx.beginPath();
-                        this.ctx.arc(0, 0, orbR + pulse, 0, Math.PI * 2);
-                        this.ctx.fill();
-
-                        // Multiple eyes along the tendrils, one per limb, positioned at
-                        // its curve point rather than fixed on the body.
-                        const glowAmount = (activeBoss && activeBoss.pulseState === 'charging') ? 30 : 15;
-                        tendrils.forEach((t, i) => {
-                            let et = 0.55 + (i % 2) * 0.25;
-                            let mt = 1 - et;
-                            const eyeX = mt*mt*t.baseX + 2*mt*et*t.ctrlX + et*et*t.tipX;
-                            const eyeY = mt*mt*t.baseY + 2*mt*et*t.ctrlY + et*et*t.tipY;
-                            const eyeR = 3 + (i % 3);
-
-                            this.drawGlow(eyeX, eyeY, eyeR + glowAmount, '#ff0000', 0.5);
-
-                            this.ctx.fillStyle = '#ff0000';
-                            this.ctx.beginPath();
-                            this.ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI*2);
-                            this.ctx.fill();
-
-                            this.ctx.fillStyle = '#000000';
-                            this.ctx.beginPath();
-                            this.ctx.ellipse(eyeX, eyeY, eyeR * 0.2, eyeR * 0.8, t.angle, 0, Math.PI*2);
-                            this.ctx.fill();
-                        });
+                        // the shell
+                        c.save();
+                        c.translate(0, bodyLift);
+                        const orbGrad = c.createRadialGradient(-8, -8, 4, 0, 0, orbR + pulse);
+                        orbGrad.addColorStop(0, isFlashed ? '#ffffff' : '#6a3a4a');
+                        orbGrad.addColorStop(1, SHELL_DARK);
+                        c.fillStyle = orbGrad;
+                        c.beginPath(); c.arc(0, 0, orbR + pulse, 0, Math.PI * 2); c.fill();
+                        c.strokeStyle = RIM; c.lineWidth = 2; c.stroke();
+                        if (ent.maxHp > 0 && ent.hp / ent.maxHp < 0.5) {
+                            c.strokeStyle = 'rgba(255, 90, 70, 0.85)'; c.lineWidth = 1.6;
+                            c.beginPath();
+                            c.moveTo(-orbR * 0.8, -6); c.lineTo(-10, -12); c.lineTo(-14, 2); c.lineTo(-2, 8);
+                            c.moveTo(orbR * 0.7, 10); c.lineTo(12, 14); c.lineTo(16, 2);
+                            c.stroke();
+                        }
+                        // the central eye, looking at the player
+                        const look = Math.atan2(state.player.y - ent.y, state.player.x - ent.x);
+                        const lid = charging ? 0.35 : (slamming ? 1 : 0.8 - (((this.renderFrame + 40) % 220) < 7 ? 0.7 : 0));
+                        c.fillStyle = '#f6efe2';
+                        c.beginPath(); c.ellipse(0, 0, 14, 14 * lid, 0, 0, Math.PI * 2); c.fill();
+                        c.fillStyle = charging ? '#ff2a1a' : '#b3202a';
+                        c.beginPath(); c.arc(Math.cos(look) * 5, Math.sin(look) * 5 * lid, 6.5 * Math.min(1, lid + 0.25), 0, Math.PI * 2); c.fill();
+                        c.fillStyle = '#12040a';
+                        c.beginPath(); c.arc(Math.cos(look) * 6.5, Math.sin(look) * 6.5 * lid, 2.8, 0, Math.PI * 2); c.fill();
+                        c.strokeStyle = SHELL_DARK; c.lineWidth = 2.5;
+                        c.beginPath(); c.ellipse(0, 0, 14, 14 * lid, 0, 0, Math.PI * 2); c.stroke();
+                        c.restore();
 
                         this.ctx.strokeStyle = '#555';
                         this.ctx.lineWidth = 3;
@@ -5329,126 +5435,128 @@ export class Renderer {
             this.ctx.globalAlpha = (Math.floor(this.renderFrame / 4) % 2 === 0) ? 1.0 : 0.35;
         }
 
-        this.ctx.strokeStyle = '#050505';
-        this.ctx.lineWidth = 4;
-        this.ctx.lineCap = 'round';
-        
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, 5);
-        this.ctx.lineTo(-8 + Math.cos(this.legPhase)*6, 8 + Math.sin(this.legPhase)*6);
-        this.ctx.stroke();
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, -5);
-        this.ctx.lineTo(-8 + Math.cos(this.legPhase + Math.PI)*6, -8 + Math.sin(this.legPhase + Math.PI)*6);
-        this.ctx.stroke();
+        // Patch 171: the player as a jointed rig (was two leg strokes, a blob and a
+        // disc). Top-down, facing +x. Feet stride along the direction actually moved
+        // (so strafing and backing up look right), knees and elbows are solved with
+        // two-bone IK (core/Rig.js), the torso twists with the step, the free arm
+        // swings against the legs and the other holds the flashlight out.
+        const c = this.ctx;
+        const hurt = state.player.flashTime > 0;
+        const hurtCol = (this.renderFrame % 6 < 3) ? '#ff3b30' : '#ffffff';
+        const COAT = hurt ? hurtCol : '#2f7f8c';
+        const COAT_DARK = hurt ? hurtCol : '#1d525b';
+        const SKIN = hurt ? hurtCol : '#efcfa4';
+        const HAIR = hurt ? hurtCol : '#3a2a20';
+        const TROUSER = hurt ? hurtCol : '#262a3a';
+        const INK = 'rgba(8, 10, 16, 0.9)';
 
-        let baseBodyColor = '#1a1a24';
-        let headColor = '#e0e0e0';
-        if (state.player.flashTime > 0) {
-            let isRed = (this.renderFrame % 6 < 3);
-            baseBodyColor = isRed ? '#ff0000' : '#ffffff';
-            headColor = isRed ? '#ff0000' : '#ffffff';
+        const mvLen = Math.hypot(moveX, moveY);
+        const walking = isMoving && mvLen > 0.05;
+        const dirX = walking ? moveX / mvLen : 1, dirY = walking ? moveY / mvLen : 0;
+        const stride = walking ? Math.min(8, 3 + mvLen * 2) : 0;
+        const sw1 = Math.sin(this.legPhase), sw2 = -sw1;
+        let breathe = state.player.breathPhase ? Math.sin(state.player.breathPhase) * (1 + panic * 3) : 0;
+
+        // --- legs: hip -> knee -> foot, then the shoe ---
+        c.lineCap = 'round';
+        c.lineJoin = 'round';
+        for (const side of [-1, 1]) {
+            const swing = side < 0 ? sw1 : sw2;
+            const hx = -1, hy = side * 4.5;
+            const fx = hx + dirX * swing * stride + 1, fy = hy + dirY * swing * stride + side * 1.5;
+            const leg = ik2(hx, hy, fx, fy, 5, 5, side);
+            c.strokeStyle = INK; c.lineWidth = 6.5;
+            c.beginPath(); c.moveTo(hx, hy); c.lineTo(leg.kx, leg.ky); c.lineTo(leg.ex, leg.ey); c.stroke();
+            c.strokeStyle = TROUSER; c.lineWidth = 4.5;
+            c.beginPath(); c.moveTo(hx, hy); c.lineTo(leg.kx, leg.ky); c.lineTo(leg.ex, leg.ey); c.stroke();
+            c.fillStyle = hurt ? hurtCol : '#d9d2c2';
+            c.strokeStyle = INK; c.lineWidth = 1.2;
+            c.beginPath(); c.ellipse(leg.ex + 1.5, leg.ey, 4.2, 2.7, 0, 0, Math.PI * 2); c.fill(); c.stroke();
         }
 
-        this.ctx.fillStyle = baseBodyColor;
+        // --- torso: twists a little with each step ---
+        c.save();
+        c.rotate(walking ? sw1 * 0.1 : 0);
+        // backpack
+        c.fillStyle = hurt ? hurtCol : '#8a5a2b';
+        c.strokeStyle = INK; c.lineWidth = 1.4;
+        c.beginPath(); c.rect(-13, -6, 7, 12); c.fill(); c.stroke();
+        c.fillStyle = hurt ? hurtCol : '#c98a3a';
+        c.fillRect(-12, -1.5, 5, 3);
+        // coat
+        let sw = 9 + breathe;
+        c.fillStyle = COAT;
+        c.beginPath();
+        c.moveTo(8, 0);
+        c.bezierCurveTo(8, sw * 0.78, 4, sw * 1.2, -3, sw * 1.1);
+        c.bezierCurveTo(-sw * 0.9, sw, -sw * 1.05, sw * 0.44, -sw * 0.98, 0);
+        c.bezierCurveTo(-sw * 1.05, -sw * 0.44, -sw * 0.9, -sw, -3, -sw * 1.1);
+        c.bezierCurveTo(4, -sw * 1.2, 8, -sw * 0.78, 8, 0);
+        c.closePath();
+        c.fill();
+        c.strokeStyle = INK; c.lineWidth = 1.6; c.stroke();
+        // collar and shoulder seam
+        c.strokeStyle = COAT_DARK; c.lineWidth = 2;
+        c.beginPath(); c.moveTo(2, -sw * 0.95); c.quadraticCurveTo(-3, 0, 2, sw * 0.95); c.stroke();
 
-        let breathe = state.player.breathPhase ? Math.sin(state.player.breathPhase) * (1 + panic * 3) : 0;
-        let sw = 9 + breathe; // shoulder/hip width, breathes with breathPhase
+        // --- free arm: swings against the legs ---
+        {
+            const shx = 1, shy = -sw * 0.95;
+            const hx2 = shx + 4 + (walking ? sw2 * 5 : 0), hy2 = shy - 4;
+            const arm = ik2(shx, shy, hx2, hy2, 5.5, 5.5, -1);
+            c.strokeStyle = INK; c.lineWidth = 6;
+            c.beginPath(); c.moveTo(shx, shy); c.lineTo(arm.kx, arm.ky); c.lineTo(arm.ex, arm.ey); c.stroke();
+            c.strokeStyle = COAT; c.lineWidth = 4;
+            c.beginPath(); c.moveTo(shx, shy); c.lineTo(arm.kx, arm.ky); c.lineTo(arm.ex, arm.ey); c.stroke();
+            c.fillStyle = SKIN;
+            c.beginPath(); c.arc(arm.ex, arm.ey, 2.4, 0, Math.PI * 2); c.fill();
+        }
 
-        // Lean, compact coat silhouette: shield/teardrop shape, forward-pointed,
-        // tapering to a narrow hem at the back. Height ~= width (top-down),
-        // deliberately NOT elongated to avoid a "slithering" read.
-        this.ctx.beginPath();
-        this.ctx.moveTo(9, 0);
-        this.ctx.bezierCurveTo(9, sw * 0.78, 4, sw * 1.22, -3, sw * 1.11);
-        this.ctx.bezierCurveTo(-sw, sw, -sw * 1.22, sw * 0.44, -sw * 1.11, 0);
-        this.ctx.bezierCurveTo(-sw * 1.22, -sw * 0.44, -sw, -sw, -3, -sw * 1.11);
-        this.ctx.bezierCurveTo(4, -sw * 1.22, 9, -sw * 0.78, 9, 0);
-        this.ctx.closePath();
-        this.ctx.fill();
+        // --- flashlight arm: held out, bobbing a touch with the step ---
+        const handX = 19 + (walking ? Math.abs(sw1) * 1.2 : 0), handY = 4.5 + breathe * 0.3;
+        {
+            const shx = 2, shy = sw * 0.95;
+            const arm = ik2(shx, shy, handX, handY, 9.5, 9.5, 1);
+            c.strokeStyle = INK; c.lineWidth = 6;
+            c.beginPath(); c.moveTo(shx, shy); c.lineTo(arm.kx, arm.ky); c.lineTo(arm.ex, arm.ey); c.stroke();
+            c.strokeStyle = COAT; c.lineWidth = 4;
+            c.beginPath(); c.moveTo(shx, shy); c.lineTo(arm.kx, arm.ky); c.lineTo(arm.ex, arm.ey); c.stroke();
+            c.fillStyle = SKIN;
+            c.beginPath(); c.arc(arm.ex, arm.ey, 2.6, 0, Math.PI * 2); c.fill();
+        }
+        c.restore();   // torso twist
 
-        // subtle waist fold so the taper still reads under flash colors
-        this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
-        this.ctx.lineWidth = 1;
-        this.ctx.beginPath();
-        this.ctx.moveTo(-2, -6);
-        this.ctx.quadraticCurveTo(-8, 0, -2, 6);
-        this.ctx.stroke();
-
-        let headShiftX = Math.max(-5, Math.min(5, moveX * 0.5));
-        let headShiftY = Math.max(-5, Math.min(5, moveY * 0.5));
-        let headJitterX = (Math.random() - 0.5) * panic * 4;
-        let headJitterY = (Math.random() - 0.5) * panic * 4;
-
-        // Arm + flashlight: shoulder -> hand -> flashlight, extending forward
-        // along the aim axis so it reads as physically held.
-        this.ctx.save();
-        this.ctx.strokeStyle = baseBodyColor;
-        this.ctx.lineWidth = 4;
-        this.ctx.lineCap = 'round';
-        this.ctx.beginPath();
-        this.ctx.moveTo(6, 6);
-        this.ctx.lineTo(22, 3);
-        this.ctx.stroke();
-
-        this.ctx.fillStyle = '#c9a678';
-        this.ctx.beginPath();
-        this.ctx.arc(22, 3, 2.5, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        this.ctx.translate(22, 3);
-        this.ctx.rotate(-0.15);
-        this.ctx.fillStyle = '#4a4a4a';
-        this.ctx.fillRect(0, -2, 14, 4);
-        this.ctx.strokeStyle = '#111111';
-        this.ctx.lineWidth = 1;
-        this.ctx.strokeRect(0, -2, 14, 4);
-        this.ctx.fillStyle = '#2a2a2a';
-        this.ctx.fillRect(3, -2, 1.2, 4);
-        this.ctx.fillRect(6, -2, 1.2, 4);
-
+        // the flashlight itself
+        c.save();
+        c.translate(handX + 1, handY - 0.5);
+        c.rotate(-0.12);
+        c.fillStyle = '#5a5f6a';
+        c.strokeStyle = INK; c.lineWidth = 1.2;
+        c.beginPath(); c.rect(0, -2.2, 12, 4.4); c.fill(); c.stroke();
+        c.fillStyle = '#c9a23a';
+        c.fillRect(8.5, -3.2, 4, 6.4);
+        c.strokeRect(8.5, -3.2, 4, 6.4);
         const lensGlowAmt = 10 + Math.random() * 4 * panic;
-        const lensGlow = this.ctx.createRadialGradient(14, 0, 0, 14, 0, lensGlowAmt);
-        lensGlow.addColorStop(0, 'rgba(255, 246, 204, 0.9)');
-        lensGlow.addColorStop(1, 'rgba(255, 246, 204, 0)');
-        this.ctx.fillStyle = lensGlow;
-        this.ctx.beginPath();
-        this.ctx.arc(14, 0, lensGlowAmt, 0, Math.PI * 2);
-        this.ctx.fill();
+        this.drawGlow(13.5, 0, lensGlowAmt + 4, '#fff6cc', 0.9);
+        c.fillStyle = '#fffdf0';
+        c.beginPath(); c.arc(13, 0, 3, 0, Math.PI * 2); c.fill();
+        c.restore();
 
-        this.ctx.fillStyle = '#dcdcdc';
-        this.ctx.beginPath();
-        this.ctx.arc(14, 0, 3.5, 0, Math.PI * 2);
-        this.ctx.fill();
-        this.ctx.restore();
-
-        // Head: kept small relative to the coat so it doesn't dominate the silhouette
-        this.ctx.fillStyle = headColor;
-        this.ctx.beginPath();
-        this.ctx.arc(13 + headJitterX + headShiftX, headJitterY + headShiftY, 5, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        this.ctx.fillStyle = '#1a1a24';
-        this.ctx.beginPath();
-        this.ctx.ellipse(10 + headJitterX * 0.5 + headShiftX, 3 + headJitterY * 0.5 + headShiftY, 4, 2.5, Math.PI / 5, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        const eyeX = 16 + headJitterX * 0.5 + headShiftX;
-        const eyeY = headJitterY * 0.5 + headShiftY;
-        const eyeR = 2.5;
-        const eyeGlowAmt = 8 + Math.random() * 5 * panic;
-        const eyeGlow = this.ctx.createRadialGradient(eyeX, eyeY, 0, eyeX, eyeY, eyeR + eyeGlowAmt);
-        eyeGlow.addColorStop(0, 'rgba(255, 250, 230, 0.5)');
-        eyeGlow.addColorStop(1, 'rgba(255, 250, 230, 0)');
-        this.ctx.fillStyle = eyeGlow;
-        this.ctx.beginPath();
-        this.ctx.arc(eyeX, eyeY, eyeR + eyeGlowAmt, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        this.ctx.fillStyle = '#fffae6';
-        this.ctx.beginPath();
-        this.ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI * 2);
-        this.ctx.fill();
+        // --- head: turns toward where the body is going ---
+        let headShiftX = Math.max(-3, Math.min(3, moveX * 0.4));
+        let headShiftY = Math.max(-3, Math.min(3, moveY * 0.4));
+        let headJitterX = (Math.random() - 0.5) * panic * 3;
+        let headJitterY = (Math.random() - 0.5) * panic * 3;
+        const hx0 = 7 + headShiftX + headJitterX, hy0 = headShiftY + headJitterY;
+        c.fillStyle = HAIR;
+        c.strokeStyle = INK; c.lineWidth = 1.5;
+        c.beginPath(); c.arc(hx0, hy0, 6.2, 0, Math.PI * 2); c.fill(); c.stroke();
+        c.fillStyle = SKIN;
+        c.beginPath(); c.ellipse(hx0 + 2.6, hy0, 3.6, 4.6, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = HAIR;   // a fringe, so the face has a top
+        c.beginPath(); c.ellipse(hx0 + 0.8, hy0 - 2.6, 3.4, 2.2, 0.5, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#12141c';
+        c.beginPath(); c.arc(hx0 + 4.4, hy0 - 1.7, 0.9, 0, Math.PI * 2); c.arc(hx0 + 4.4, hy0 + 1.7, 0.9, 0, Math.PI * 2); c.fill();
 
         const spinner = state.player.weapons.fidget_spinner;
         if (spinner && spinner.level > 0) {

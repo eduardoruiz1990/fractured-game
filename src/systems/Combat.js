@@ -224,6 +224,12 @@ export class Combat {
                             state.cameraShake = Math.max(state.cameraShake, 18);
                             game.spawnParticles(obj.x, obj.y, '#ffd27f', 40);
                             game.spawnParticles(obj.x, obj.y, '#ffffff', 20);
+                            // Patch 172: the burst, a big pop and a crown of small ones.
+                            if (typeof game.spawnPop === 'function') {
+                                game.spawnPop(obj.x, obj.y - 8, '#ffd27f', 4.5);
+                                for (let k = 0; k < 8; k++) game.spawnPop(obj.x + Math.cos(k * 0.785) * 46, obj.y - 8 + Math.sin(k * 0.785) * 46, k % 2 ? '#fff3c4' : '#ffb347', 1.3);
+                            }
+                            state.cameraFlash = Math.max(state.cameraFlash || 0, 5);
                             game.spawnDamageText(obj.x, obj.y - 30, result.title, '#ffd27f', 1.5, 2.2);
                             if (game.audioEngine) game.audioEngine.playSFX('ui_upgrade', 1.0);
                             if (typeof game.onChestOpened === 'function') {
