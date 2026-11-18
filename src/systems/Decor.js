@@ -40,12 +40,13 @@ function hash(a, b, c, d) {
 export function decorForCell(cx, cy, paletteIndex, floor, room) {
     const f = (floor | 0) * 31 + (room | 0);
     const r = hash(cx, cy, f, 1);
-    if (r > 0.46) return null;                         // a little under half the cells hold something
+    if (r > 0.36) return null;                         // about a third of the cells hold something
     const ox = (hash(cx, cy, f, 2) - 0.5) * DECOR_CELL * 0.6;
     const oy = (hash(cx, cy, f, 3) - 0.5) * DECOR_CELL * 0.6;
     const x = (cx + 0.5) * DECOR_CELL + ox, y = (cy + 0.5) * DECOR_CELL + oy;
     const seed = hash(cx, cy, f, 4);
-    if (r < 0.11) return { kind: 'lamp', id: 'lamp', x, y, rot: 0, scale: 1, seed };
+    // Patch 181: lamps are gone. A pool of light with nothing casting a shadow in it
+    // read as a pickup, not as lighting; the Renderer's lamp code now finds none.
     const set = DECOR_SETS[Math.max(0, Math.min(DECOR_SETS.length - 1, paletteIndex | 0))];
     const id = set[Math.floor(hash(cx, cy, f, 5) * set.length) % set.length];
     return { kind: 'prop', id, x, y, rot: (hash(cx, cy, f, 6) - 0.5) * 1.2, scale: 0.9 + hash(cx, cy, f, 7) * 0.35, seed };

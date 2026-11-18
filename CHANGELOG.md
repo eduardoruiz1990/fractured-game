@@ -3258,6 +3258,26 @@ clashed with the rest ("I had a Hades-style hub in mind").
   blueprint), a dark outline until the chapter's boss has been faced.
 - **180.** The Amalgamation and Rorschach get the house style's pale rim.
 
+**Patch 181 — the third phone review (2026-11-18).**
+- **Pause had no RESUME after a cleared floor.** The floor-clear screen hides
+  `#btn-unpause` (it offers DESCEND) and nothing showed it again, so from floor 2 on a
+  pause on a phone offered only AWAKEN and SETTINGS; the user lost a floor-3 run to it.
+  `togglePause` now shows it every time. **This predates v3** (the same single hide is
+  on `master`); Escape masked it on desktop. The intermittent smoke-check failure fixed
+  in the previous commit was a different thing (a level-up card open at the pause).
+- **Walls have height.** `drawObstacles`: a lighter top face, a dark face toward the
+  camera `WALL_H` (16) below it, a longer shadow. Collision is unchanged.
+- **Props are floor imprints.** Drawn at 26% with no contact shadow, and fewer of them
+  (about a third of cells). At full strength a desk read as a wall.
+- **Lamps are removed** (`Decor.js` no longer returns them). A pool of light with
+  nothing casting a shadow in it read as a pickup. The Renderer's lamp code is left in
+  place and finds none.
+- **An outage is dark for every Patient** (0.95). The Insomniac, the default Patient,
+  used to keep the whole room lit, so the event showed nothing; they now keep a smaller
+  ring of ambient light. BLACKOUT rooms are darker than normal ones (0.84).
+- **Hub:** a baked name plate by every station and the corkboard, and a gold marker
+  bobbing over each station.
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.

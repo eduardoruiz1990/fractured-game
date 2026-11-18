@@ -1908,6 +1908,7 @@ export class Renderer {
         // The Insomniac (blackoutImmune) keeps their ambient light.
         if (state.powerOut > 0 && !state.roomCleared) {
             if (!state.player.blackoutImmune) ambientRad = 0;
+            else ambientRad *= 0.7;   // Patch 181: the Insomniac keeps a ring, not the room
             flRadius *= 0.8;
         }
 
@@ -1985,9 +1986,14 @@ export class Renderer {
         // Patch 165: at DARKNESS_ALPHA, not 1. Pitch black outside the beam hid the
         // horde, the floor and the room; now the dark is dim, not blind. A Power
         // Outage and the Tunnel Vision curse still go fully dark.
-        const blind = (state.powerOut > 0 && !state.roomCleared && !state.player.blackoutImmune)
-            || (state.player.curses && state.player.curses.includes('tunnel_vision'));
-        this.ctx.globalAlpha = blind ? 0.96 : DARKNESS_ALPHA;
+        // Patch 181: an outage is dark for EVERY Patient. The Insomniac (the default
+        // one) keeps a ring of ambient light, which is their perk, but used to keep the
+        // whole room lit, so the event did nothing you could see. BLACKOUT rooms are
+        // darker than a normal room too, so the word means something.
+        const outage = state.powerOut > 0 && !state.roomCleared;
+        const blind = outage || (state.player.curses && state.player.curses.includes('tunnel_vision'));
+        const dimRoom = state.roomModifier === 'BLACKOUT' && !state.roomCleared && !state.player.blackoutImmune;
+        this.ctx.globalAlpha = blind ? 0.95 : (dimRoom ? 0.84 : DARKNESS_ALPHA);
         this.ctx.drawImage(this.lightCanvas, 0, 0, this.canvas.width, this.canvas.height);
         this.ctx.globalAlpha = 1;
         this.ctx.restore(); 
@@ -2029,11 +2035,14 @@ export class Renderer {
                 this.drawGlow(d.x, d.y, 26, '#fff3cf', 0.85 * fl);
                 return;
             }
-            const sprite = this.getSprite(`decor|${d.id}|${pal}`, 128, 128, (cx) => this.paintDecor(cx, d.id, pal));
+            const sprite = this.getSprite(`decor2|${d.id}|${pal}`, 128, 128, (cx) => this.paintDecor(cx, d.id, pal));
+            // Patch 181: a faded imprint ON the floor, not a thing standing on it. At
+            // full strength a desk looked like a wall and a wall like a desk.
             c.save();
             c.translate(d.x, d.y);
             c.rotate(d.rot);
             c.scale(d.scale, d.scale);
+            c.globalAlpha = 0.26;
             this.drawSprite(sprite);
             c.restore();
         }, this.decorClear(state));
@@ -2045,8 +2054,7 @@ export class Renderer {
         const box = (x, y, w, h, fill) => { cx.fillStyle = fill; cx.beginPath(); cx.rect(x, y, w, h); cx.fill(); cx.stroke(); };
         cx.lineJoin = 'round'; cx.lineCap = 'round';
         // a soft contact shadow under everything
-        cx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-        cx.beginPath(); cx.ellipse(3, 6, id === 'lamp' ? 14 : 46, id === 'lamp' ? 9 : 30, 0, 0, Math.PI * 2); cx.fill();
+        // Patch 181: no contact shadow. A shadow says "this stands up"; these do not.
         cx.strokeStyle = P.rim; cx.lineWidth = 1.6;
         switch (id) {
             case 'lamp':
@@ -2781,12 +2789,16 @@ export class Renderer {
         const L = ARENA_LAYOUTS[state.arenaLayout];
         const style = L ? L.style : 'ink';
         const P = {
-            locker:    { fill: '#2c3226', edge: '#6b7558', line: '#171a13' },
-            ink:       { fill: '#0c0c10', edge: '#73737f', line: '#26262e' },
-            brick:     { fill: '#2b100e', edge: '#86443a', line: '#170706' },
-            ward:      { fill: '#15201a', edge: '#5b7c62', line: '#0c140f' },
-            blueprint: { fill: '#19160b', edge: '#c9a54a', line: '#5e4d22' }
-        }[style] || { fill: '#111', edge: '#666', line: '#222' };
+            // Patch 181: walls have HEIGHT. `fill` is the top face (lighter than it was, so
+            // it reads as a lit surface above the floor), `side` the face toward the
+            // camera, drawn WALL_H below it. What blocks you now looks like it would.
+            locker:    { fill: '#56634a', side: '#1d2318', edge: '#c3d0a6', line: '#2e3626' },
+            ink:       { fill: '#3a3a4a', side: '#0b0b10', edge: '#c2c2d6', line: '#1d1d28' },
+            brick:     { fill: '#6a2a24', side: '#210a08', edge: '#e09080', line: '#3a1410' },
+            ward:      { fill: '#35543f', side: '#0e1a13', edge: '#a6d6b0', line: '#1c2e22' },
+            blueprint: { fill: '#3a3320', side: '#100d05', edge: '#f2d27a', line: '#6e5a28' }
+        }[style] || { fill: '#444', side: '#111', edge: '#bbb', line: '#222' };
+        const WALL_H = 16;
         const ctx = this.ctx;
         const a = this.arenaAlpha(state);
         ctx.save();
@@ -2812,9 +2824,23 @@ export class Renderer {
             }
             ctx.globalAlpha = a * 0.45;
             ctx.fillStyle = '#000';
-            if (o.kind === 'block') ctx.fillRect(o.x - o.hw + 6, o.y - o.hh + 9, o.hw * 2, o.hh * 2);
-            else if (o.kind === 'post') { ctx.beginPath(); ctx.arc(o.x + 5, o.y + 8, o.r, 0, Math.PI * 2); ctx.fill(); }
+            if (o.kind === 'block') ctx.fillRect(o.x - o.hw + 12, o.y - o.hh + WALL_H + 12, o.hw * 2, o.hh * 2);
+            else if (o.kind === 'post') { ctx.beginPath(); ctx.arc(o.x + 10, o.y + WALL_H + 10, o.r, 0, Math.PI * 2); ctx.fill(); }
             ctx.globalAlpha = a;
+            // the face toward the camera: the same shape, WALL_H lower, in the dark tone
+            ctx.fillStyle = P.side;
+            if (o.kind === 'block') {
+                ctx.fillRect(o.x - o.hw, o.y - o.hh + WALL_H, o.hw * 2, o.hh * 2);
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'; ctx.lineWidth = 1;
+                ctx.strokeRect(o.x - o.hw, o.y - o.hh + WALL_H, o.hw * 2, o.hh * 2);
+            } else if (o.kind === 'post') {
+                ctx.beginPath(); ctx.arc(o.x, o.y + WALL_H, o.r, 0, Math.PI * 2); ctx.fill();
+                ctx.fillRect(o.x - o.r, o.y, o.r * 2, WALL_H);
+            } else if (o.kind === 'arc') {
+                ctx.lineCap = 'round'; ctx.lineWidth = o.w; ctx.strokeStyle = P.side;
+                ctx.beginPath(); ctx.arc(o.x, o.y + WALL_H, o.r, o.a0, o.a1); ctx.stroke();
+                ctx.lineCap = 'butt';
+            }
             ctx.fillStyle = P.fill;
             ctx.strokeStyle = P.edge;
             ctx.lineWidth = 2;

@@ -155,6 +155,17 @@ export class HubWorld {
         const hd = renderer && renderer.hubDiag;
         if (!hd || hd.floor !== false) ctx.drawImage(this.baked, -600, -600);
         if (this.activeZone) this.drawHighlight(ctx, this.activeZone);
+        // Patch 181: a gold marker bobbing over every station, so what can be used is
+        // obvious from across the room (the name plates are baked with the furniture).
+        const t = (typeof performance !== 'undefined' ? performance.now() : 0) * 0.004;
+        for (const z of this.zones) {
+            const top = z.id === 'bed' ? -122 : (z.id === 'trophies' ? -72 : -100);
+            const y = z.y + top + Math.sin(t + z.x * 0.01) * 5;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+            ctx.beginPath(); ctx.moveTo(z.x - 11, y - 9); ctx.lineTo(z.x + 11, y - 9); ctx.lineTo(z.x, y + 7); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = z === this.activeZone ? '#fff3c4' : '#f2d27a';
+            ctx.beginPath(); ctx.moveTo(z.x - 8, y - 8); ctx.lineTo(z.x + 8, y - 8); ctx.lineTo(z.x, y + 4); ctx.closePath(); ctx.fill();
+        }
     }
 
     bake(state) {
@@ -330,6 +341,26 @@ export class HubWorld {
             box(x - 8, 40, 16, 6, '#6b4a30', 2);
         });
         ctx.restore();
+
+        // Patch 181: a name plate by every station (and the corkboard), baked in.
+        const plate = (x, y, text) => {
+            ctx.font = "800 15px 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif";
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            const w = ctx.measureText(text).width + 22;
+            ctx.strokeStyle = 'rgba(233, 200, 119, 0.9)'; ctx.lineWidth = 1.5;
+            ctx.fillStyle = 'rgba(14, 12, 20, 0.92)';
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(x - w / 2, y - 12, w, 24, 12); else ctx.rect(x - w / 2, y - 12, w, 24);
+            ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#f2d27a';
+            ctx.fillText(text, x, y + 1);
+            ctx.strokeStyle = INK; ctx.lineWidth = 2.5;
+        };
+        plate(0, -196, 'BED · PLAY');
+        plate(300, 96, 'DESK · UPGRADES');
+        plate(-300, 92, 'WARDROBE · TOKENS');
+        plate(0, 392, 'SHELF · TROPHIES');
+        plate(-232, 318, 'CASE FILE');
 
         // the corkboard, on the wall between the shelf and the wardrobe: a pinned sheet
         // for every Case File page found, and red thread once there are enough to join

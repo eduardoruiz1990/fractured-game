@@ -2740,6 +2740,10 @@ function initEngine() {
             document.getElementById('pause-desc').innerText = "The nightmare pauses, but it does not end.";
             showSessionNote(null);   // Patch 145: the note belongs to a cleared floor only
             btnDescend.style.display = 'none';
+            // Patch 181: the floor-clear screen hides RESUME (it offers DESCEND instead)
+            // and nothing ever showed it again, so every pause after the first cleared
+            // floor had no way back to the game on a phone. A pause always has RESUME.
+            document.getElementById('btn-unpause').style.display = '';
             renderPauseLoadout();   // Patch 172
             pauseMenu.style.display = 'flex';
             inputManager.hideJoysticks();
