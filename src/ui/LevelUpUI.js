@@ -367,7 +367,7 @@ export class LevelUpUI {
             if (e.key === '0') {
                 window.FRACTURED_DEV_MODE = !window.FRACTURED_DEV_MODE;
                 console.log(`%c FRACTURED DEV MODE: ${window.FRACTURED_DEV_MODE ? 'ENABLED' : 'DISABLED'} `,
-                            'background: #c5a059; color: #000; font-weight: bold;');
+                            'background: #c5a059; color: #f2eee3; font-weight: bold;');
             }
         });
     }

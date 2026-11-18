@@ -953,7 +953,7 @@ function applyDevOverrides() {
             game.state.floor = chosenFloor;
             game.state.maxConvergence = Math.floor(100 * Math.pow(1.3, chosenFloor - 1));
             game.state.xp += (chosenFloor - 1) * 1500;
-            console.log(`%c DEV OVERRIDE: Starting on Floor ${chosenFloor}. Free XP granted. `, 'background: #c5a059; color: #000;');
+            console.log(`%c DEV OVERRIDE: Starting on Floor ${chosenFloor}. Free XP granted. `, 'background: #c5a059; color: #f2eee3;');
 
             if (chosenFloor > saveManager.metaState.maxFloorReached) {
                 saveManager.metaState.maxFloorReached = chosenFloor;
@@ -973,7 +973,7 @@ function applyDevOverrides() {
             // boss is fought at level 1 with no weapons and kills you before you can
             // look at it.
             game.state.xp += 1200;
-            console.log(`%c DEV OVERRIDE: Skipping to boss room on Floor ${game.state.floor}. `, 'background: #c5a059; color: #000;');
+            console.log(`%c DEV OVERRIDE: Skipping to boss room on Floor ${game.state.floor}. `, 'background: #c5a059; color: #f2eee3;');
         }
     }
 }
@@ -1653,21 +1653,21 @@ function initEngine() {
 
         document.getElementById('dev-btn-add-lucidity').addEventListener('click', () => {
             saveManager.addLucidity(1000);
-            console.log(`%c DEV: +1000 Lucidity banked. Total: ${saveManager.metaState.lucidityBank} `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: +1000 Lucidity banked. Total: ${saveManager.metaState.lucidityBank} `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
         document.getElementById('dev-btn-add-patient-xp').addEventListener('click', () => {
             saveManager.metaState.spentLucidity = (saveManager.metaState.spentLucidity || 0) + 5000;
             saveManager.saveGame();
-            console.log(`%c DEV: +5000 spent Lucidity. Patient Level now: ${saveManager.getPatientLevelInfo().level} `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: +5000 spent Lucidity. Patient Level now: ${saveManager.getPatientLevelInfo().level} `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
         document.getElementById('dev-btn-force-escape').addEventListener('click', () => {
             saveManager.markFirstEscape();
-            console.log('%c DEV: hasEscapedFloor1 forced TRUE. ', 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log('%c DEV: hasEscapedFloor1 forced TRUE. ', 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
         document.getElementById('dev-btn-force-boss-kill').addEventListener('click', () => {
             saveManager.metaState.killCounts.BOSS = Math.max(1, saveManager.metaState.killCounts.BOSS || 0);
             saveManager.saveGame();
-            console.log(`%c DEV: killCounts.BOSS forced to ${saveManager.metaState.killCounts.BOSS}. `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: killCounts.BOSS forced to ${saveManager.metaState.killCounts.BOSS}. `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
         // Patch 98: the endless mode's entry points are gated on a first Architect kill,
         // which is a ~40-minute prerequisite to reproduce by hand. Sets the same field
@@ -1679,11 +1679,11 @@ function initEngine() {
             saveManager.saveGame();
             refreshRecursionEntries();
             refreshDailyEntries();   // Patch 140
-            console.log(`%c DEV: killCounts.ARCHITECT forced to ${saveManager.metaState.killCounts.ARCHITECT} — THE RECURSION unlocked. `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: killCounts.ARCHITECT forced to ${saveManager.metaState.killCounts.ARCHITECT} — THE RECURSION unlocked. `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
         document.getElementById('dev-btn-dump-builds').addEventListener('click', () => {
             const log = saveManager.getRunBuildLog();
-            console.log(`%c DEV: ${log.length} logged run build(s). `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: ${log.length} logged run build(s). `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
             console.table(log.map(entry => ({
                 floor: entry.floor,
                 level: entry.levels,
@@ -1701,7 +1701,7 @@ function initEngine() {
         // / .export(), which is the only way to get it off a real player's device.
         document.getElementById('dev-btn-dump-errors').addEventListener('click', () => {
             const count = errorLog.dump();
-            console.log(`%c DEV: ${count} error(s) recorded. FRACTURED_ERRORS.export() for JSON. `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: ${count} error(s) recorded. FRACTURED_ERRORS.export() for JSON. `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
 
         // DEV: fires all three capture paths at once so the handlers can be verified
@@ -1736,7 +1736,7 @@ function initEngine() {
                 saveManager.addTokenToInventory(tokenId, rarities[Math.floor(Math.random() * rarities.length)]);
             });
             if (uiManager) uiManager.renderLoadoutUI();
-            console.log(`%c DEV: added all ${Object.keys(TOKENS).length} tokens to inventory (random rarity each). `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: added all ${Object.keys(TOKENS).length} tokens to inventory (random rarity each). `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
 
         document.getElementById('dev-btn-add-random-token').addEventListener('click', () => {
@@ -1746,7 +1746,7 @@ function initEngine() {
             const rarity = rarities[Math.floor(Math.random() * rarities.length)];
             saveManager.addTokenToInventory(tokenId, rarity);
             if (uiManager) uiManager.renderLoadoutUI();
-            console.log(`%c DEV: added ${rarity} ${TOKENS[tokenId].name}. `, 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log(`%c DEV: added ${rarity} ${TOKENS[tokenId].name}. `, 'background: #c5a059; color: #f2eee3; font-weight: bold;');
         });
 
         // --- VISUAL TEST BENCH -------------------------------------------------
@@ -1764,7 +1764,7 @@ function initEngine() {
                     py + Math.sin(a) * radius
                 );
             });
-            console.log(`%c DEV: spawned ${types.join(', ')}. `, 'background: #c5a059; color: #000;');
+            console.log(`%c DEV: spawned ${types.join(', ')}. `, 'background: #c5a059; color: #f2eee3;');
         };
 
         document.getElementById('dev-btn-spawn-enemies').addEventListener('click', () => {
@@ -1788,19 +1788,19 @@ function initEngine() {
             }
             game.state.activeBoss = null;
             game.state.bossSpawned = false;
-            console.log('%c DEV: cleared all entities. ', 'background: #c5a059; color: #000;');
+            console.log('%c DEV: cleared all entities. ', 'background: #c5a059; color: #f2eee3;');
         });
 
         document.getElementById('dev-freeze-entities').addEventListener('change', (e) => {
             if (!game || !game.state) return;
             game.state.devFreezeEntities = e.target.checked;
-            console.log(`%c DEV: enemy AI ${e.target.checked ? 'FROZEN' : 'RUNNING'}. `, 'background: #c5a059; color: #000;');
+            console.log(`%c DEV: enemy AI ${e.target.checked ? 'FROZEN' : 'RUNNING'}. `, 'background: #c5a059; color: #f2eee3;');
         });
 
         document.getElementById('dev-telemetry-enabled').addEventListener('change', (e) => {
             if (!game || !game.state) return;
             game.state.devTelemetryEnabled = e.target.checked;
-            console.log(`%c DEV: telemetry overlay ${e.target.checked ? 'ON' : 'OFF'}. `, 'background: #c5a059; color: #000;');
+            console.log(`%c DEV: telemetry overlay ${e.target.checked ? 'ON' : 'OFF'}. `, 'background: #c5a059; color: #f2eee3;');
         });
 
         document.getElementById('dev-btn-apply-scenario').addEventListener('click', () => {
@@ -1861,7 +1861,7 @@ function initEngine() {
                         break;
                 }
             });
-            console.log(`%c DEV: applied scenario ${scenario} to ${game.state.entities.length} entities. `, 'background: #c5a059; color: #000;');
+            console.log(`%c DEV: applied scenario ${scenario} to ${game.state.entities.length} entities. `, 'background: #c5a059; color: #f2eee3;');
         });
     }
     // --- NEW: SETTINGS MENU INJECTION (THEME ALIGNED) ---
@@ -3026,7 +3026,7 @@ function initEngine() {
 
         if (import.meta.env.DEV && window.FRACTURED_DEV_MODE && game.state.devTelemetryEnabled && game.state.telemetry) {
             const tel = game.state.telemetry;
-            console.log('%c DEV: RUN TELEMETRY (death) ', 'background: #c5a059; color: #000; font-weight: bold;');
+            console.log('%c DEV: RUN TELEMETRY (death) ', 'background: #c5a059; color: #f2eee3; font-weight: bold;');
             console.log({
                 firstBoonAt_s: tel.firstBoonAt === null ? null : +(tel.firstBoonAt / 1000).toFixed(1),
                 firstBossAt_s: tel.firstBossAt === null ? null : +(tel.firstBossAt / 1000).toFixed(1),

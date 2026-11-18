@@ -3203,6 +3203,29 @@ regular enemies.
 - **Level-up panel** restyled (dark glass, gold edge, cards with a gold spine); sizes
   and layout rules unchanged.
 
+**Patch 174 — the house style everywhere, and glass-and-gold menus (2026-11-18).**
+The user confirmed the art direction (dark body, pale rim, one glowing accent, jointed
+limbs) and chose glass-and-gold over the paper "medical file" for every menu.
+- **Splitter** redrawn as a dark sheet with a pale edge, a face printed in light, two IK
+  legs and a faint trailing copy. **Warden**: a dark broad body on IK legs, both arms
+  raised to hold the ward, a helmet lamp that sweeps like a beacon (the ward ring is
+  unchanged). **Burrower** (exposed): a dark mole in a ring of thrown earth with two IK
+  arms and pale claws that rake. All three face their direction of travel now.
+- **Bosses walk:** `BOSS_LEGS` gives the Panopticon four long stilts, the Amalgamation
+  eight short limbs and the Architect three gold compass legs, each a `WalkerRig` kept in
+  `Renderer.bossRigs`, drawn in the boss presentation layer under the existing sprite.
+  Rorschach is ink and has none.
+- **Menus:** the Patch 174 blocks at the end of `style.css` flip `--paper-bg` and
+  `--ink-black` (so every rule built on them follows), change `--ui-font` to a sans stack
+  and restate the folder, header, buttons, tabs, cards, token slots, roadmap, records,
+  achievements, Synapse nodes, stamps, inputs and the death screen. 77 hard-coded dark
+  text colours and about 30 paper-coloured backgrounds in `style.css`, `index.html` and
+  the UI scripts were converted by script. `CLAUDE.md`'s "preserve the clinical folder"
+  convention is marked superseded.
+- Not converted or not looked at: the settings screen, the confirm dialog, the Clinical
+  Guide's inner diagrams, the story/Case File reader and the ending screens were not
+  individually checked in the new skin.
+
 **New Keep clauses.**
 - **54. Regular enemies spawn at the view's edge, bosses on the far ring.** Do not put
   regular spawns back on the corner-radius circle: on portrait it is beyond the leash.

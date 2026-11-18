@@ -941,17 +941,17 @@ export class UIManager {
         };
 
         const sealedCard = () => `
-            <div class="trophy-card" style="background:#f4f1ea; border:2px dashed #c2b59b; box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
-                <div style="font-size:3.5rem; color:#111; opacity:0.07; line-height:1;">?</div>
+            <div class="trophy-card" style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.22); box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
+                <div style="font-size:3.5rem; color: #f2eee3; opacity:0.07; line-height:1;">?</div>
                 <div class="redacted-text" style="font-weight:bold; margin-top:15px; font-size:0.8rem;">(UNENCOUNTERED)</div>
                 <div style="font-size:0.7rem; color:#9a917f; margin-top:5px; letter-spacing:2px;">SEALED</div>
             </div>`;
 
         const trophyCard = (entry, count, tier, goalText) => `
-            <div class="trophy-card" style="background:#fdfaf3; border:2px solid #ccc; box-shadow:4px 4px 0 rgba(0,0,0,0.1); padding:15px; text-align:center; position:relative;">
+            <div class="trophy-card" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(233, 200, 119, 0.35); box-shadow:4px 4px 0 rgba(0,0,0,0.1); padding:15px; text-align:center; position:relative;">
                 <div style="font-size:3.5rem; line-height:1; color:${tier.color || '#111'}; opacity:${tier.color ? 1 : 0.35}; text-shadow:${tier.shadow};">${entry.icon}</div>
                 <div style="font-weight:bold; color:var(--ink-black); margin-top:15px; font-size:0.9rem;">${entry.name}</div>
-                <div style="font-size:0.8rem; color:#555; margin-top:5px; font-weight:bold;">${count}${goalText}</div>
+                <div style="font-size:0.8rem; color: #b3adc0; margin-top:5px; font-weight:bold;">${count}${goalText}</div>
             </div>`;
 
         // Patch 139 (V2 plan D7): the case records, the achievements, and the unlock
@@ -1040,19 +1040,19 @@ export class UIManager {
             const recipe = escapeText(synergyRecipe(syn));
             if (times <= 0) {
                 html += `
-            <div class="trophy-card codex-card codex-locked" data-synergy="${id}" style="background:#f4f1ea; border:2px dashed #c2b59b; box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
-                <div style="font-size:2.6rem; color:#111; opacity:0.08; line-height:1;">🔗</div>
+            <div class="trophy-card codex-card codex-locked" data-synergy="${id}" style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.22); box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
+                <div style="font-size:2.6rem; color: #f2eee3; opacity:0.08; line-height:1;">🔗</div>
                 <div class="redacted-text" style="font-weight:bold; margin-top:10px; font-size:0.8rem;">(UNFORMED)</div>
                 <div style="font-size:0.72rem; color:#6f6656; margin-top:6px; line-height:1.35;">${recipe}</div>
             </div>`;
                 return;
             }
             html += `
-            <div class="trophy-card codex-card" data-synergy="${id}" style="background:#fdfaf3; border:2px solid var(--ui-gold); box-shadow:4px 4px 0 rgba(0,0,0,0.1); padding:15px; text-align:center;">
+            <div class="trophy-card codex-card" data-synergy="${id}" style="background: rgba(255, 255, 255, 0.05); border:2px solid var(--ui-gold); box-shadow:4px 4px 0 rgba(0,0,0,0.1); padding:15px; text-align:center;">
                 <div style="font-size:2.6rem; line-height:1;">🔗</div>
                 <div style="font-weight:bold; color:var(--ink-black); margin-top:10px; font-size:0.9rem;">${escapeText(syn.name)}</div>
                 <div style="font-size:0.72rem; color:#6f6656; margin-top:4px; line-height:1.35;">${recipe}</div>
-                <div style="font-size:0.74rem; color:#333; margin-top:6px; line-height:1.35;">${escapeText(syn.desc)}</div>
+                <div style="font-size:0.74rem; color: #b3adc0; margin-top:6px; line-height:1.35;">${escapeText(syn.desc)}</div>
                 <div style="font-size:0.7rem; color:#8a8172; margin-top:6px; letter-spacing:1px;">FORMED ×${times}</div>
             </div>`;
         });
@@ -1070,8 +1070,8 @@ export class UIManager {
             const recipe = escapeText(evolutionRecipe(evo));
             if (times <= 0) {
                 html += `
-            <div class="trophy-card codex-card codex-locked" data-evolution="${id}" style="background:#f4f1ea; border:2px dashed #c2b59b; box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
-                <div style="font-size:2.6rem; color:#111; opacity:0.08; line-height:1;">⬆</div>
+            <div class="trophy-card codex-card codex-locked" data-evolution="${id}" style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.22); box-shadow:4px 4px 0 rgba(0,0,0,0.06); padding:15px; text-align:center;">
+                <div style="font-size:2.6rem; color: #f2eee3; opacity:0.08; line-height:1;">⬆</div>
                 <div class="redacted-text" style="font-weight:bold; margin-top:10px; font-size:0.8rem;">(UNEVOLVED)</div>
                 <div style="font-size:0.72rem; color:#6f6656; margin-top:6px; line-height:1.35;">${recipe}</div>
             </div>`;
@@ -1082,7 +1082,7 @@ export class UIManager {
                 <div style="font-size:2.6rem; line-height:1; color:#8e6cd8;">⬆</div>
                 <div style="font-weight:bold; color:var(--ink-black); margin-top:10px; font-size:0.9rem;">${escapeText(evo.name)}</div>
                 <div style="font-size:0.72rem; color:#6f6656; margin-top:4px; line-height:1.35;">${recipe}</div>
-                <div style="font-size:0.74rem; color:#333; margin-top:6px; line-height:1.35;">${escapeText(evo.desc)}</div>
+                <div style="font-size:0.74rem; color: #b3adc0; margin-top:6px; line-height:1.35;">${escapeText(evo.desc)}</div>
                 <div style="font-size:0.7rem; color:#8a8172; margin-top:6px; letter-spacing:1px;">EVOLVED ×${times}</div>
             </div>`;
         });
