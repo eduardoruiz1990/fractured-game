@@ -601,8 +601,12 @@ export class AudioEngine {
         const osc1 = this.audioCtx.createOscillator();
         osc1.type = 'sine'; osc1.frequency.value = 60;
         
+        // Patch 192: was a 10 kHz triangle, held for the whole run. At this gain it was
+        // louder than the drone under it and sat in the most piercing part of hearing: a
+        // player on itch called the start of a run "rough". The hum is now the mains
+        // pair (60 Hz and its 120 Hz harmonic), which reads as a lamp, not a whistle.
         const osc2 = this.audioCtx.createOscillator();
-        osc2.type = 'triangle'; osc2.frequency.value = 10000;
+        osc2.type = 'triangle'; osc2.frequency.value = 120;
         
         osc1.connect(this.gains.flashlight);
         osc2.connect(this.gains.flashlight);
