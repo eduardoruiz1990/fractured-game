@@ -3417,6 +3417,17 @@ which still show the old darkness.
 **Known issues.** The floor-3 boss (Panopticon) kills every scripted player, before and
 after this rework; it wants its own pass. `Tutorial.js` is dead code pending removal.
 
+**Patch 192 — the flashlight hum no longer whistles (2026-11-26).** A player on itch
+said the start of a run was "rough" in the high frequencies. `startFallbackFlashlight()`
+(called by every `startGameDrone()`, so on every run) held a 10 kHz triangle at 0.03 for
+the whole run: about 0.017 rms against the drone's 0.011 under it, in the most piercing
+part of hearing. The music files themselves carry almost nothing above 5 kHz (measured
+with ffmpeg: menu theme 0.0%, drone 0.3%). The hum is now 60 Hz plus its 120 Hz
+harmonic at the same gain. **Not verified by ear** (no audio in this environment):
+listen to the first seconds of a run on headphones. `ui_click.mp3` is the next
+brightest sound (60% of its energy at 2–5 kHz, peaks above full scale) and is unchanged.
+
+
 ---
 
 ## Keep clauses (things future patches break by accident)
